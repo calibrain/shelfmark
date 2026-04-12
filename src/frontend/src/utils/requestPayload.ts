@@ -1,4 +1,4 @@
-import { Book, ContentType, CreateRequestPayload, Release } from '../types';
+import type { Book, ContentType, CreateRequestPayload, Release } from '../types';
 
 export const toContentType = (value: string): ContentType => {
   return value.trim().toLowerCase() === 'audiobook' ? 'audiobook' : 'ebook';

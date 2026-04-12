@@ -1,7 +1,7 @@
-import { DeliveryPreferencesResponse } from '../../../services/api';
-import { ActionResult, SettingsTab } from '../../../types/settings';
+import type { DeliveryPreferencesResponse } from '../../../services/api';
+import type { ActionResult, SettingsTab } from '../../../types/settings';
 import { SettingsSubpage } from '../shared';
-import { PerUserSettings } from './types';
+import type { PerUserSettings } from './types';
 import { UserOverridesSections } from './UserOverridesSections';
 
 interface UserOverridesViewProps {

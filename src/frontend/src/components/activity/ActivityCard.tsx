@@ -1,11 +1,13 @@
-import { ReactNode, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-import { RequestRecord } from '../../types';
+import type { RequestRecord } from '../../types';
 import { withBasePath } from '../../utils/basePath';
 import { Tooltip } from '../shared/Tooltip';
-import { ActivityCardAction, buildActivityCardModel } from './activityCardModel';
+import type { ActivityCardAction } from './activityCardModel';
+import { buildActivityCardModel } from './activityCardModel';
 import { STATUS_BADGE_STYLES, STATUS_TOOLTIP_CLASSES, getProgressConfig } from './activityStyles';
-import { ActivityItem } from './activityTypes';
+import type { ActivityItem } from './activityTypes';
 
 interface RequestApproveOptions {
   browseOnly?: boolean;
@@ -453,11 +455,10 @@ export const ActivityCard = ({
   const showSourceField = reviewRecord?.request_level === 'release';
   const isRetryAfterFailure = Boolean(toOptionalText(reviewRecord?.last_failure_reason));
 
-  const approveLabel = requiresBrowseBeforeApprove
-    ? isRetryAfterFailure
-      ? 'Browse Releases To Retry'
-      : 'Browse Releases To Approve'
-    : 'Approve Attached File';
+  let approveLabel = 'Approve Attached File';
+  if (requiresBrowseBeforeApprove) {
+    approveLabel = isRetryAfterFailure ? 'Browse Releases To Retry' : 'Browse Releases To Approve';
+  }
   const canMarkAsApprovedWithoutRelease = requiresBrowseBeforeApprove && !hasAttachedRelease;
 
   const provider = toOptionalText(bookData.provider)?.toLowerCase();
@@ -519,6 +520,16 @@ export const ActivityCard = ({
   const titleLineClassName = isDetailsExpanded
     ? 'text-sm leading-tight min-w-0 whitespace-normal wrap-break-word'
     : 'text-sm truncate leading-tight min-w-0';
+  let missingAttachedReleaseMessage =
+    'No attached release data is available. Choose a release before approval.';
+  if (reviewRecord?.request_level === 'book') {
+    missingAttachedReleaseMessage = isRetryAfterFailure
+      ? 'Previous download failed. Choose a release before re-approving.'
+      : 'This is a book-level request without an attached file. Choose a release before approval.';
+  } else if (isRetryAfterFailure) {
+    missingAttachedReleaseMessage =
+      'Previous download failed and the attached release was cleared. Choose a release before re-approving.';
+  }
 
   const canShowDownloadLink =
     item.kind === 'download' &&
@@ -728,15 +739,7 @@ export const ActivityCard = ({
                   </div>
                 </div>
               ) : (
-                <p className="text-xs opacity-70">
-                  {reviewRecord?.request_level === 'book'
-                    ? isRetryAfterFailure
-                      ? 'Previous download failed. Choose a release before re-approving.'
-                      : 'This is a book-level request without an attached file. Choose a release before approval.'
-                    : isRetryAfterFailure
-                      ? 'Previous download failed and the attached release was cleared. Choose a release before re-approving.'
-                      : 'No attached release data is available. Choose a release before approval.'}
-                </p>
+                <p className="text-xs opacity-70">{missingAttachedReleaseMessage}</p>
               )}
 
               <div className="flex flex-wrap items-center gap-2">

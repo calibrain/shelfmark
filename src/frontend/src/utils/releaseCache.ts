@@ -1,4 +1,4 @@
-import { ReleasesResponse } from '../types';
+import type { ReleasesResponse } from '../types';
 
 // Module-level cache for release search results
 // Key format: `${provider}:${provider_id}:${source}:${contentType}`

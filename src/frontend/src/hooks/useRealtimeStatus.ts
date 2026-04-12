@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 
 import { useSocket } from '../contexts/SocketContext';
 import { getStatus } from '../services/api';
-import { StatusData } from '../types';
+import type { StatusData } from '../types';
 
 interface UseRealtimeStatusOptions {
   pollInterval?: number;

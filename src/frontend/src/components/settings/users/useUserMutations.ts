@@ -1,15 +1,14 @@
 import { useState } from 'react';
 
+import type { AdminUser, DeliveryPreferencesResponse } from '../../../services/api';
 import {
-  AdminUser,
-  DeliveryPreferencesResponse,
   createAdminUser,
   deleteAdminUser,
   syncAdminCwaUsers,
   updateAdminUser,
 } from '../../../services/api';
 import { buildUserSettingsPayload } from './settingsPayload';
-import { CreateUserFormState, PerUserSettings } from './types';
+import type { CreateUserFormState, PerUserSettings } from './types';
 
 const MIN_PASSWORD_LENGTH = 4;
 interface UseUserMutationsParams {

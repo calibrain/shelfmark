@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { applyRequestUpdateEvent, upsertRequestRecord } from '../hooks/useRequests.helpers';
-import { RequestRecord } from '../types/index';
+import type { RequestRecord } from '../types/index';
 
 const makeRequest = (overrides: Partial<RequestRecord> = {}): RequestRecord => ({
   id: 1,

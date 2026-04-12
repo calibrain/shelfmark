@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from 'react';
 
-import { TagListFieldConfig } from '../../../types/settings';
+import type { TagListFieldConfig } from '../../../types/settings';
 
 interface TagListFieldProps {
   field: TagListFieldConfig;

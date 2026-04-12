@@ -9,7 +9,7 @@ import {
   listRequests,
   rejectAdminRequest,
 } from '../services/api';
-import { RequestRecord } from '../types';
+import type { RequestRecord } from '../types';
 import {
   applyRequestUpdateEvent,
   normalizeRequestUpdatePayload,

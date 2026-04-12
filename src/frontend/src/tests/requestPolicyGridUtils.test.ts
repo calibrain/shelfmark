@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
+import type { RequestPolicyRuleRow } from '../components/settings/users/requestPolicyGridUtils';
 import {
   getAllowedMatrixModes,
   getEffectiveCellMode,
@@ -8,7 +9,6 @@ import {
   normalizeRequestPolicyDefaults,
   normalizeRequestPolicyRules,
   parseSourceCapabilitiesFromRulesField,
-  RequestPolicyRuleRow,
 } from '../components/settings/users/requestPolicyGridUtils';
 import type { TableFieldConfig } from '../types/settings';
 

@@ -1,4 +1,4 @@
-import { NumberFieldConfig } from '../../../types/settings';
+import type { NumberFieldConfig } from '../../../types/settings';
 
 interface NumberFieldProps {
   field: NumberFieldConfig;

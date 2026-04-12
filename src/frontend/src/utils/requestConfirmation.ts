@@ -1,4 +1,4 @@
-import { Book, CreateRequestPayload } from '../types';
+import type { Book, CreateRequestPayload } from '../types';
 import { toStringValue } from './objectHelpers';
 
 export const MAX_REQUEST_NOTE_LENGTH = 1000;
@@ -50,18 +50,19 @@ export const buildRequestConfirmationPreview = (
     typeof bookData.series_position === 'number' ? bookData.series_position : null,
     typeof bookData.series_count === 'number' ? bookData.series_count : null,
   );
+  let preview = '';
+  if (typeof bookData.preview === 'string') {
+    preview = bookData.preview;
+  } else if (typeof releaseData.preview === 'string') {
+    preview = releaseData.preview;
+  }
 
   return {
     title: toText(bookData.title ?? releaseData.title, 'Untitled'),
     author: toText(bookData.author ?? releaseData.author, 'Unknown author'),
     year: toText(bookData.year ?? releaseData.year, ''),
     seriesLine,
-    preview:
-      typeof bookData.preview === 'string'
-        ? bookData.preview
-        : typeof releaseData.preview === 'string'
-          ? releaseData.preview
-          : '',
+    preview,
     releaseLine:
       requestLevel === 'release'
         ? [

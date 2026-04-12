@@ -1,4 +1,4 @@
-import { RequestRecord } from '../types';
+import type { RequestRecord } from '../types';
 import { isRecord } from '../utils/objectHelpers';
 
 type RequestUpdateStatus = RequestRecord['status'];

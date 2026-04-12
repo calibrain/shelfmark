@@ -1,4 +1,4 @@
-import { AdvancedFilterState, Language } from '../types';
+import type { AdvancedFilterState, Language } from '../types';
 import { getLanguageFilterValues } from './languageFilters';
 
 interface BuildSearchQueryOptions {

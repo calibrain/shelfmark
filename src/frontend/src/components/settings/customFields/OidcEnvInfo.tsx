@@ -1,4 +1,4 @@
-import { CustomSettingsFieldRendererProps } from './types';
+import type { CustomSettingsFieldRendererProps } from './types';
 
 export const OidcEnvInfo = (_props: CustomSettingsFieldRendererProps) => {
   return (

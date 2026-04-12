@@ -1,7 +1,8 @@
-import { FormEvent, KeyboardEvent, useEffect, useRef, useState } from 'react';
+import type { FormEvent, KeyboardEvent } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-import { LoginCredentials } from '../types';
+import type { LoginCredentials } from '../types';
 import { buildOidcLoginUrl } from '../utils/authRedirect';
 import { withBasePath } from '../utils/basePath';
 

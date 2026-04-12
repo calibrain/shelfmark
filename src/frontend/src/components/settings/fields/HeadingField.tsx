@@ -1,4 +1,4 @@
-import { HeadingFieldConfig } from '../../../types/settings';
+import type { HeadingFieldConfig } from '../../../types/settings';
 
 interface HeadingFieldProps {
   field: HeadingFieldConfig;

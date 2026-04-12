@@ -1,4 +1,4 @@
-import { CustomSettingsFieldRendererProps } from './types';
+import type { CustomSettingsFieldRendererProps } from './types';
 
 const interpolate = (text: string): string => text.replace(/\{origin\}/g, window.location.origin);
 

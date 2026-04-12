@@ -1,7 +1,8 @@
 import { useState } from 'react';
 
-import { AdminUser, DownloadDefaults } from '../../../services/api';
-import { canCreateLocalUsersForAuthMode, CreateUserFormState } from './types';
+import type { AdminUser, DownloadDefaults } from '../../../services/api';
+import type { CreateUserFormState } from './types';
+import { canCreateLocalUsersForAuthMode } from './types';
 import {
   UserAccountCardContent,
   UserCreateCard,
@@ -91,136 +92,150 @@ export const UserListView = ({
 
   return (
     <div className="space-y-4">
-      {loadingUsers && users.length === 0 ? (
-        <div className="space-y-2 py-8 text-center">
-          <p className="text-sm opacity-50">Loading users...</p>
-        </div>
-      ) : loadError && users.length === 0 ? (
-        <div className="space-y-3 py-8 text-center">
-          <p className="text-sm opacity-60">{loadError}</p>
-          <button
-            onClick={onRetryLoadUsers}
-            className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface)"
-          >
-            Retry
-          </button>
-        </div>
-      ) : users.length === 0 ? (
-        <div className="space-y-2 py-8 text-center">
-          <p className="text-sm opacity-50">No users yet.</p>
-          <p className="text-xs opacity-40">
-            Create a local admin account before enabling OIDC to avoid getting locked out.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {users.map((user) => {
-            const active = user.is_active;
-            const isEditingRow = showEditForm && activeEditUserId === user.id;
-            const hasLoadedEditUser = isEditingRow && editingUser?.id === user.id;
-            const editorPanelId = `user-editor-${user.id}`;
-            const toggleUserEditor = () => {
-              setConfirmDelete(null);
-              if (isEditingRow) {
-                onCancelEdit();
-                return;
-              }
+      {(() => {
+        if (loadingUsers && users.length === 0) {
+          return (
+            <div className="space-y-2 py-8 text-center">
+              <p className="text-sm opacity-50">Loading users...</p>
+            </div>
+          );
+        }
 
-              onEdit(user);
-            };
-            return (
-              <div
-                key={user.id}
-                className={`rounded-lg border border-(--border-muted) bg-(--bg-soft) transition-colors ${active ? '' : 'opacity-60'}`}
+        if (loadError && users.length === 0) {
+          return (
+            <div className="space-y-3 py-8 text-center">
+              <p className="text-sm opacity-60">{loadError}</p>
+              <button
+                onClick={onRetryLoadUsers}
+                className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface)"
               >
-                <div
-                  className={`hover-surface relative flex cursor-pointer flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between ${isEditingRow ? 'rounded-t-lg border-b border-(--border-muted)' : 'rounded-lg'}`}
-                >
-                  <button
-                    type="button"
-                    onClick={toggleUserEditor}
-                    aria-expanded={isEditingRow}
-                    aria-controls={editorPanelId}
-                    aria-label={
-                      isEditingRow ? 'Collapse user editor' : `Expand ${user.username} editor`
-                    }
-                    className={`absolute inset-0 appearance-none border-0 bg-transparent p-0 focus-visible:ring-2 focus-visible:ring-sky-500/50 focus-visible:outline-hidden ${isEditingRow ? 'rounded-t-lg' : 'rounded-lg'}`}
-                  />
+                Retry
+              </button>
+            </div>
+          );
+        }
 
-                  <div className="pointer-events-none relative z-10 min-w-0 flex-1">
-                    <UserIdentityHeader user={user} />
+        if (users.length === 0) {
+          return (
+            <div className="space-y-2 py-8 text-center">
+              <p className="text-sm opacity-50">No users yet.</p>
+              <p className="text-xs opacity-40">
+                Create a local admin account before enabling OIDC to avoid getting locked out.
+              </p>
+            </div>
+          );
+        }
+
+        return (
+          <div className="space-y-2">
+            {users.map((user) => {
+              const active = user.is_active;
+              const isEditingRow = showEditForm && activeEditUserId === user.id;
+              const hasLoadedEditUser = isEditingRow && editingUser?.id === user.id;
+              const editorPanelId = `user-editor-${user.id}`;
+              const toggleUserEditor = () => {
+                setConfirmDelete(null);
+                if (isEditingRow) {
+                  onCancelEdit();
+                  return;
+                }
+
+                onEdit(user);
+              };
+              return (
+                <div
+                  key={user.id}
+                  className={`rounded-lg border border-(--border-muted) bg-(--bg-soft) transition-colors ${active ? '' : 'opacity-60'}`}
+                >
+                  <div
+                    className={`hover-surface relative flex cursor-pointer flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between ${isEditingRow ? 'rounded-t-lg border-b border-(--border-muted)' : 'rounded-lg'}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={toggleUserEditor}
+                      aria-expanded={isEditingRow}
+                      aria-controls={editorPanelId}
+                      aria-label={
+                        isEditingRow ? 'Collapse user editor' : `Expand ${user.username} editor`
+                      }
+                      className={`absolute inset-0 appearance-none border-0 bg-transparent p-0 focus-visible:ring-2 focus-visible:ring-sky-500/50 focus-visible:outline-hidden ${isEditingRow ? 'rounded-t-lg' : 'rounded-lg'}`}
+                    />
+
+                    <div className="pointer-events-none relative z-10 min-w-0 flex-1">
+                      <UserIdentityHeader user={user} />
+                    </div>
+
+                    <div className="pointer-events-none relative z-10 flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                      <div className="pointer-events-auto">
+                        {hasLoadedEditUser && editingUser ? (
+                          <UserRoleControl
+                            user={editingUser}
+                            onUserChange={onEditingUserChange}
+                            oidcAdminGroup={downloadDefaults?.OIDC_ADMIN_GROUP}
+                            tooltipPosition="bottom"
+                          />
+                        ) : (
+                          <UserRoleControl user={user} />
+                        )}
+                      </div>
+
+                      <div
+                        className="rounded-full p-2 text-gray-500 dark:text-gray-400"
+                        aria-hidden="true"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          strokeWidth={1.5}
+                          stroke="currentColor"
+                          className={`h-[18px] w-[18px] transition-transform duration-200 ${isEditingRow ? 'rotate-180' : ''}`}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="m19.5 8.25-7.5 7.5-7.5-7.5"
+                          />
+                        </svg>
+                      </div>
+                    </div>
                   </div>
 
-                  <div className="pointer-events-none relative z-10 flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
-                    <div className="pointer-events-auto">
+                  {isEditingRow && (
+                    <div id={editorPanelId} className="space-y-5 rounded-b-lg bg-(--bg) p-4">
                       {hasLoadedEditUser && editingUser ? (
-                        <UserRoleControl
+                        <UserAccountCardContent
                           user={editingUser}
                           onUserChange={onEditingUserChange}
-                          oidcAdminGroup={downloadDefaults?.OIDC_ADMIN_GROUP}
-                          tooltipPosition="bottom"
+                          onSave={onEditSave}
+                          saving={saving}
+                          onCancel={onCancelEdit}
+                          editPassword={editPassword}
+                          onEditPasswordChange={onEditPasswordChange}
+                          editPasswordConfirm={editPasswordConfirm}
+                          onEditPasswordConfirmChange={onEditPasswordConfirmChange}
+                          onDelete={() => setConfirmDelete(user.id)}
+                          onConfirmDelete={() => handleDelete(user.id)}
+                          onCancelDelete={() => setConfirmDelete(null)}
+                          isDeletePending={confirmDelete === user.id}
+                          deleting={deletingUserId === user.id}
+                          preferencesPanel={{
+                            description: 'Customise delivery and request settings for this user.',
+                            actionLabel: 'Open User Preferences',
+                            onAction: onOpenOverrides,
+                          }}
                         />
                       ) : (
-                        <UserRoleControl user={user} />
+                        <div className="text-sm opacity-60">Loading user details...</div>
                       )}
                     </div>
-
-                    <div
-                      className="rounded-full p-2 text-gray-500 dark:text-gray-400"
-                      aria-hidden="true"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        strokeWidth={1.5}
-                        stroke="currentColor"
-                        className={`h-[18px] w-[18px] transition-transform duration-200 ${isEditingRow ? 'rotate-180' : ''}`}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="m19.5 8.25-7.5 7.5-7.5-7.5"
-                        />
-                      </svg>
-                    </div>
-                  </div>
+                  )}
                 </div>
-
-                {isEditingRow && (
-                  <div id={editorPanelId} className="space-y-5 rounded-b-lg bg-(--bg) p-4">
-                    {hasLoadedEditUser && editingUser ? (
-                      <UserAccountCardContent
-                        user={editingUser}
-                        onUserChange={onEditingUserChange}
-                        onSave={onEditSave}
-                        saving={saving}
-                        onCancel={onCancelEdit}
-                        editPassword={editPassword}
-                        onEditPasswordChange={onEditPasswordChange}
-                        editPasswordConfirm={editPasswordConfirm}
-                        onEditPasswordConfirmChange={onEditPasswordConfirmChange}
-                        onDelete={() => setConfirmDelete(user.id)}
-                        onConfirmDelete={() => handleDelete(user.id)}
-                        onCancelDelete={() => setConfirmDelete(null)}
-                        isDeletePending={confirmDelete === user.id}
-                        deleting={deletingUserId === user.id}
-                        preferencesPanel={{
-                          description: 'Customise delivery and request settings for this user.',
-                          actionLabel: 'Open User Preferences',
-                          onAction: onOpenOverrides,
-                        }}
-                      />
-                    ) : (
-                      <div className="text-sm opacity-60">Loading user details...</div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {canCreateLocalUsers && (
         <div>

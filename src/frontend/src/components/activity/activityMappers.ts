@@ -1,6 +1,6 @@
-import { Book, RequestRecord, StatusData } from '../../types';
+import type { Book, RequestRecord, StatusData } from '../../types';
 import { STATUS_LABELS, isActiveDownloadStatus } from './activityStyles.js';
-import { ActivityItem, ActivityVisualStatus } from './activityTypes';
+import type { ActivityItem, ActivityVisualStatus } from './activityTypes';
 
 export type DownloadStatusKey = Extract<
   keyof StatusData,

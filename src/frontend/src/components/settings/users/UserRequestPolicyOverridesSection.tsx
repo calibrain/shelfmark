@@ -1,4 +1,4 @@
-import {
+import type {
   CustomComponentFieldConfig,
   HeadingFieldConfig,
   SelectFieldConfig,
@@ -7,14 +7,14 @@ import {
 } from '../../../types/settings';
 import { HeadingField } from '../fields';
 import { RequestPolicyGrid } from './RequestPolicyGrid';
+import type { RequestPolicyRuleRow } from './requestPolicyGridUtils';
 import {
   normalizeRequestPolicyDefaults,
   normalizeRequestPolicyRules,
   normalizeExplicitRulesForPersistence,
   parseSourceCapabilitiesFromRulesField,
-  RequestPolicyRuleRow,
 } from './requestPolicyGridUtils';
-import { PerUserSettings } from './types';
+import type { PerUserSettings } from './types';
 
 interface UserRequestPolicyOverridesSectionProps {
   usersTab: SettingsTab;

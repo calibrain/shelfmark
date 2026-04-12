@@ -1,4 +1,4 @@
-import { Language } from '../types';
+import type { Language } from '../types';
 
 export const LANGUAGE_OPTION_DEFAULT = 'default';
 export const LANGUAGE_OPTION_ALL = 'all';

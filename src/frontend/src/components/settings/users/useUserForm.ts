@@ -1,9 +1,13 @@
 import { useMemo, useState } from 'react';
 
-import { AdminUser, DeliveryPreferencesResponse, DownloadDefaults } from '../../../services/api';
+import type {
+  AdminUser,
+  DeliveryPreferencesResponse,
+  DownloadDefaults,
+} from '../../../services/api';
 import { INITIAL_CREATE_FORM } from './types';
 import { useUserOverridesState } from './useUserOverridesState';
-import { UserEditContext } from './useUsersFetch';
+import type { UserEditContext } from './useUsersFetch';
 
 export const useUserForm = () => {
   const [createForm, setCreateForm] = useState({ ...INITIAL_CREATE_FORM });

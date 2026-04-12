@@ -1,4 +1,4 @@
-import { AdvancedFilterState, ContentType } from '../types';
+import type { AdvancedFilterState, ContentType } from '../types';
 
 /**
  * Parsed search parameters from URL

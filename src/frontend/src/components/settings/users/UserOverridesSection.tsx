@@ -1,5 +1,5 @@
-import { DeliveryPreferencesResponse } from '../../../services/api';
-import {
+import type { DeliveryPreferencesResponse } from '../../../services/api';
+import type {
   HeadingFieldConfig,
   MultiSelectFieldConfig,
   SelectFieldConfig,
@@ -8,7 +8,7 @@ import {
 import { HeadingField, MultiSelectField, SelectField, TextField } from '../fields';
 import { FieldWrapper } from '../shared';
 import { getFieldByKey, toNormalizedLowercaseTextValue, toTextValue } from './fieldHelpers';
-import { PerUserSettings } from './types';
+import type { PerUserSettings } from './types';
 
 interface UserOverridesSectionProps {
   deliveryPreferences: DeliveryPreferencesResponse | null;

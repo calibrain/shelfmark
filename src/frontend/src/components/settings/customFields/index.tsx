@@ -1,10 +1,10 @@
-import { ComponentType, ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
 
 import { OidcAdminHint } from './OidcAdminHint';
 import { OidcEnvInfo } from './OidcEnvInfo';
 import { RequestPolicyGridField } from './RequestPolicyGridField';
 import { SettingsLabel } from './SettingsLabel';
-import {
+import type {
   CustomSettingsFieldLayout,
   CustomSettingsFieldLayoutContext,
   CustomSettingsFieldRendererProps,

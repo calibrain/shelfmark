@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 
 import { useSearchMode } from '../contexts/SearchModeContext';
 import { SORT_OPTIONS } from '../data/filterOptions';
-import { Book, ButtonStateInfo, SortOption } from '../types';
+import type { Book, ButtonStateInfo, SortOption } from '../types';
 import { Dropdown } from './Dropdown';
 import { CardView } from './resultsViews/CardView';
 import { CompactView } from './resultsViews/CompactView';
@@ -56,6 +56,10 @@ export const ResultsSection = ({
   resultsSourceUrl,
 }: ResultsSectionProps) => {
   const { searchMode } = useSearchMode();
+  const activeViewClasses =
+    searchMode === 'universal'
+      ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+      : 'bg-sky-700 text-white hover:bg-sky-800';
   const [viewMode, setViewMode] = useState<'card' | 'compact' | 'list'>(() => {
     const saved = localStorage.getItem('bookViewMode');
     return saved === 'card' || saved === 'compact' || saved === 'list' ? saved : 'compact';
@@ -93,13 +97,14 @@ export const ResultsSection = ({
   return (
     <section id="results-section" className="mb-4 w-full sm:mb-8">
       <div className="relative z-10 mb-2 flex items-center justify-between sm:mb-3">
-        {showSortControl ? (
+        {showSortControl && (
           <SortControl
             value={sortValue}
             onChange={onSortChange}
             metadataSortOptions={metadataSortOptions}
           />
-        ) : resultsSourceUrl ? (
+        )}
+        {!showSortControl && resultsSourceUrl && (
           <a
             href={resultsSourceUrl}
             target="_blank"
@@ -116,7 +121,7 @@ export const ResultsSection = ({
               />
             </svg>
           </a>
-        ) : null}
+        )}
 
         {/* View toggle buttons - Desktop: show all 3, Mobile: show Compact and List only */}
         <div className="ml-auto flex items-center gap-2">
@@ -125,9 +130,7 @@ export const ResultsSection = ({
               onClick={() => setViewMode('card')}
               className={`rounded-full p-2 transition-all duration-200 ${
                 viewMode === 'card'
-                  ? searchMode === 'universal'
-                    ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                    : 'bg-sky-700 text-white hover:bg-sky-800'
+                  ? activeViewClasses
                   : 'hover-action text-gray-900 dark:text-gray-100'
               }`}
               title="Card view"
@@ -153,9 +156,7 @@ export const ResultsSection = ({
             onClick={() => setViewMode('compact')}
             className={`rounded-full p-2 transition-all duration-200 ${
               viewMode === 'compact'
-                ? searchMode === 'universal'
-                  ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                  : 'bg-sky-700 text-white hover:bg-sky-800'
+                ? activeViewClasses
                 : 'hover-action text-gray-900 dark:text-gray-100'
             }`}
             title="Compact view"
@@ -179,9 +180,7 @@ export const ResultsSection = ({
             onClick={() => setViewMode('list')}
             className={`rounded-full p-2 transition-all duration-200 ${
               viewMode === 'list'
-                ? searchMode === 'universal'
-                  ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                  : 'bg-sky-700 text-white hover:bg-sky-800'
+                ? activeViewClasses
                 : 'hover-action text-gray-900 dark:text-gray-100'
             }`}
             title="List view"
@@ -322,12 +321,13 @@ const SortControl = ({ value, onChange, metadataSortOptions }: SortControlProps)
   const { searchMode } = useSearchMode();
   // Use different sort options based on search mode
   // For universal mode, use dynamic options from API (with fallback)
-  const sortOptions =
-    searchMode === 'universal'
-      ? metadataSortOptions && metadataSortOptions.length > 0
+  let sortOptions = SORT_OPTIONS;
+  if (searchMode === 'universal') {
+    sortOptions =
+      metadataSortOptions && metadataSortOptions.length > 0
         ? metadataSortOptions
-        : DEFAULT_UNIVERSAL_SORT_OPTIONS
-      : SORT_OPTIONS;
+        : DEFAULT_UNIVERSAL_SORT_OPTIONS;
+  }
   const selected = sortOptions.find((option) => option.value === value) ?? sortOptions[0];
 
   return (
@@ -367,17 +367,18 @@ const SortControl = ({ value, onChange, metadataSortOptions }: SortControlProps)
         <div role="listbox" aria-label="Sort results">
           {sortOptions.map((option) => {
             const isSelected = option.value === selected.value;
+            let selectedClassName = '';
+            if (isSelected) {
+              selectedClassName =
+                searchMode === 'universal'
+                  ? 'font-medium text-emerald-600 dark:text-emerald-400'
+                  : 'font-medium text-sky-600 dark:text-sky-300';
+            }
             return (
               <button
                 type="button"
                 key={option.value || 'default'}
-                className={`hover-surface flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-base ${
-                  isSelected
-                    ? searchMode === 'universal'
-                      ? 'font-medium text-emerald-600 dark:text-emerald-400'
-                      : 'font-medium text-sky-600 dark:text-sky-300'
-                    : ''
-                }`}
+                className={`hover-surface flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-base ${selectedClassName}`}
                 onClick={() => {
                   onChange(option.value);
                   close();

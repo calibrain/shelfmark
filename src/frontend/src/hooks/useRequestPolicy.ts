@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 import { fetchRequestPolicy } from '../services/api';
-import { RequestPolicyMode, RequestPolicyResponse } from '../types';
+import type { RequestPolicyMode, RequestPolicyResponse } from '../types';
 import { policyTrace } from '../utils/policyTrace';
 import {
   DEFAULT_POLICY_TTL_MS,

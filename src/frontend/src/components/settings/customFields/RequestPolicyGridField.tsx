@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 
-import { SelectFieldConfig, TableFieldConfig } from '../../../types/settings';
+import type { SelectFieldConfig, TableFieldConfig } from '../../../types/settings';
 import type { RequestPolicyContentType, RequestPolicyMode } from '../users';
 import {
   RequestPolicyGrid,
@@ -8,7 +8,7 @@ import {
   normalizeRequestPolicyRules,
   parseSourceCapabilitiesFromRulesField,
 } from '../users';
-import { CustomSettingsFieldRendererProps } from './types';
+import type { CustomSettingsFieldRendererProps } from './types';
 
 export const RequestPolicyGridField = ({
   field,

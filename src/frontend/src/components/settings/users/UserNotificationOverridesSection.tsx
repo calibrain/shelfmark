@@ -1,5 +1,5 @@
-import { DeliveryPreferencesResponse } from '../../../services/api';
-import {
+import type { DeliveryPreferencesResponse } from '../../../services/api';
+import type {
   ActionButtonConfig,
   ActionResult,
   HeadingFieldConfig,
@@ -13,7 +13,7 @@ import {
   toNormalizedLowercaseTextValue,
   toTrimmedTextValue,
 } from './fieldHelpers';
-import { PerUserSettings } from './types';
+import type { PerUserSettings } from './types';
 
 interface UserNotificationOverridesSectionProps {
   notificationPreferences: DeliveryPreferencesResponse | null;
@@ -85,11 +85,12 @@ const testNotificationActionField: ActionButtonConfig = {
 };
 
 const normalizeRouteEvents = (rawEventValue: unknown): string[] => {
-  const rawValues = Array.isArray(rawEventValue)
-    ? rawEventValue
-    : rawEventValue === undefined || rawEventValue === null
-      ? []
-      : [rawEventValue];
+  let rawValues: unknown[] = [];
+  if (Array.isArray(rawEventValue)) {
+    rawValues = rawEventValue;
+  } else if (rawEventValue !== undefined && rawEventValue !== null) {
+    rawValues = [rawEventValue];
+  }
 
   const deduped = new Set<string>();
   rawValues.forEach((rawEvent) => {

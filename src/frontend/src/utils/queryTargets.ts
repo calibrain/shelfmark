@@ -1,4 +1,4 @@
-import { MetadataSearchField, QueryTargetOption, SearchMode, TextSearchField } from '../types';
+import type { MetadataSearchField, QueryTargetOption, SearchMode, TextSearchField } from '../types';
 
 const makeDirectField = (
   key: 'isbn' | 'author' | 'title',

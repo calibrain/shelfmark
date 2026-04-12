@@ -1,5 +1,7 @@
-import { createContext, useContext, useEffect, useMemo, useRef, useState, ReactNode } from 'react';
-import { io, Socket } from 'socket.io-client';
+import type { ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import type { Socket } from 'socket.io-client';
+import { io } from 'socket.io-client';
 
 import { withBasePath } from '../utils/basePath';
 

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { useSearchMode } from '../../contexts/SearchModeContext';
-import { Book, ButtonStateInfo } from '../../types';
+import type { Book, ButtonStateInfo } from '../../types';
 import { bookSupportsTargets } from '../../utils/bookTargetLoader';
 import { BookActionButton } from '../BookActionButton';
 import { BookTargetDropdown } from '../BookTargetDropdown';
@@ -39,6 +39,12 @@ export const CardView = ({
   const [imageError, setImageError] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  let zIndex: number | undefined;
+  if (dropdownOpen) {
+    zIndex = 20;
+  } else if (isHovered) {
+    zIndex = 10;
+  }
 
   const handleDetails = async (id: string) => {
     setIsLoadingDetails(true);
@@ -65,7 +71,7 @@ export const CardView = ({
         background: 'var(--bg-soft)',
         borderRadius: '.75rem',
         boxShadow: isHovered || dropdownOpen ? '0 10px 30px rgba(0, 0, 0, 0.15)' : 'none',
-        zIndex: dropdownOpen ? 20 : isHovered ? 10 : undefined,
+        zIndex,
         animationDelay: `${animationDelay}ms`,
         animationFillMode: 'both',
       }}

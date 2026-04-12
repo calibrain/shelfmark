@@ -1,9 +1,10 @@
-import { Fragment, ReactElement } from 'react';
+import type { ReactElement } from 'react';
+import { Fragment } from 'react';
 
-import { DeliveryPreferencesResponse } from '../../../services/api';
-import { ActionResult, SettingsTab } from '../../../types/settings';
+import type { DeliveryPreferencesResponse } from '../../../services/api';
+import type { ActionResult, SettingsTab } from '../../../types/settings';
 import { toTrimmedTextValue } from './fieldHelpers';
-import { PerUserSettings } from './types';
+import type { PerUserSettings } from './types';
 import { UserNotificationOverridesSection } from './UserNotificationOverridesSection';
 import { UserOverridesSection } from './UserOverridesSection';
 import { UserRequestPolicyOverridesSection } from './UserRequestPolicyOverridesSection';

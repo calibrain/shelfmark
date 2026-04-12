@@ -1,4 +1,4 @@
-import { Release } from '../types';
+import type { Release } from '../types';
 import { isRecord, toComparableText } from './objectHelpers';
 import { getReleaseFormats } from './releaseFormats';
 

@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 
 import { getSettings, updateSettings, executeSettingsAction } from '../services/api';
-import {
+import type {
   SettingsResponse,
   SettingsTab,
   SettingsGroup,

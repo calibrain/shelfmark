@@ -1,6 +1,6 @@
-import { DeliveryPreferencesResponse } from '../../../services/api';
+import type { DeliveryPreferencesResponse } from '../../../services/api';
 import { toComparableValue } from './fieldHelpers';
-import { PerUserSettings } from './types';
+import type { PerUserSettings } from './types';
 
 const normalizeComparableValue = (value: unknown): string => {
   return toComparableValue(value);

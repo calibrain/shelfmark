@@ -1,8 +1,8 @@
 import { useCallback, useMemo, useState } from 'react';
 
-import { DeliveryPreferencesResponse } from '../../../services/api';
+import type { DeliveryPreferencesResponse } from '../../../services/api';
 import { buildUserSettingsPayload } from './settingsPayload';
-import { PerUserSettings } from './types';
+import type { PerUserSettings } from './types';
 
 interface UseUserOverridesStateParams {
   preferenceGroups: Array<DeliveryPreferencesResponse | null>;

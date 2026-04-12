@@ -1,4 +1,4 @@
-import { Release } from '../types';
+import type { Release } from '../types';
 
 function normalizeFormatValue(value: unknown): string | null {
   if (typeof value !== 'string') {

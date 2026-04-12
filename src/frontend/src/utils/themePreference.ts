@@ -1,4 +1,4 @@
-import { SelectFieldConfig } from '../types/settings';
+import type { SelectFieldConfig } from '../types/settings';
 
 const THEME_PREFERENCE_KEY = 'preferred-theme';
 const DEFAULT_THEME_PREFERENCE = 'auto';
@@ -25,12 +25,10 @@ export function getStoredThemePreference(): string {
 }
 
 function applyThemePreference(theme: string): void {
-  const effectiveTheme =
-    theme === 'auto'
-      ? window.matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'dark'
-        : 'light'
-      : theme;
+  let effectiveTheme = theme;
+  if (theme === 'auto') {
+    effectiveTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
   document.documentElement.setAttribute('data-theme', effectiveTheme);
   document.documentElement.style.colorScheme = effectiveTheme;
 }

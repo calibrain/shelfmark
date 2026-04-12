@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef } from 'react';
 
-import { SelectFieldConfig } from '../../../types/settings';
+import type { SelectFieldConfig } from '../../../types/settings';
 import { DropdownList } from '../../DropdownList';
 
 interface SelectFieldProps {

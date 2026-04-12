@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 
-import { SettingsTab, SettingsGroup } from '../../types/settings';
+import type { SettingsTab, SettingsGroup } from '../../types/settings';
 
 interface SettingsSidebarProps {
   tabs: SettingsTab[];

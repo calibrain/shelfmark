@@ -1,17 +1,14 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
-import {
+import type {
   SettingsTab,
   SettingsField,
   ActionResult,
   OrderableListItem,
   ShowWhenCondition,
 } from '../../types/settings';
-import {
-  CustomSettingsFieldLayout,
-  getCustomSettingsFieldLayout,
-  renderCustomSettingsField,
-} from './customFields';
+import type { CustomSettingsFieldLayout } from './customFields';
+import { getCustomSettingsFieldLayout, renderCustomSettingsField } from './customFields';
 import {
   TextField,
   PasswordField,

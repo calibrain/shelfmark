@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 
-import { StatusData, ButtonStateInfo } from '../types';
+import type { StatusData, ButtonStateInfo } from '../types';
 
 interface UseDownloadTrackingReturn {
   bookToReleaseMap: Record<string, string[]>;

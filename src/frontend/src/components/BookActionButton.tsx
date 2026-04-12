@@ -1,7 +1,7 @@
-import { CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 
 import { useSearchMode } from '../contexts/SearchModeContext';
-import { Book, ButtonStateInfo } from '../types';
+import type { Book, ButtonStateInfo } from '../types';
 import { BookDownloadButton } from './BookDownloadButton';
 import { BookGetButton } from './BookGetButton';
 

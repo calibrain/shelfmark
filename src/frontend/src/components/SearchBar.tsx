@@ -1,6 +1,5 @@
+import type { InputHTMLAttributes, RefObject } from 'react';
 import {
-  InputHTMLAttributes,
-  RefObject,
   forwardRef,
   startTransition,
   useDeferredValue,
@@ -12,8 +11,9 @@ import {
 } from 'react';
 
 import { useSearchMode } from '../contexts/SearchModeContext';
-import { DynamicFieldOption, fetchFieldOptions } from '../services/api';
-import { ContentType, MetadataSearchField, QueryTargetOption, SortOption } from '../types';
+import type { DynamicFieldOption } from '../services/api';
+import { fetchFieldOptions } from '../services/api';
+import type { ContentType, MetadataSearchField, QueryTargetOption, SortOption } from '../types';
 import { loadDynamicFieldOptions } from '../utils/dynamicFieldOptions';
 import { Tooltip } from './shared/Tooltip';
 
@@ -316,14 +316,14 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       activeQueryField?.type === 'TextSearchField'
         ? (activeQueryField.suggestions_min_query_length ?? 2)
         : 2;
-    const autocompleteEmptyMessage =
-      activeQueryField?.key === 'author'
-        ? 'No authors found'
-        : activeQueryField?.key === 'title'
-          ? 'No titles found'
-          : activeQueryField?.key === 'series'
-            ? 'No series found'
-            : 'No suggestions found';
+    let autocompleteEmptyMessage = 'No suggestions found';
+    if (activeQueryField?.key === 'author') {
+      autocompleteEmptyMessage = 'No authors found';
+    } else if (activeQueryField?.key === 'title') {
+      autocompleteEmptyMessage = 'No titles found';
+    } else if (activeQueryField?.key === 'series') {
+      autocompleteEmptyMessage = 'No series found';
+    }
 
     useEffect(() => {
       if (!dynamicEndpoint) {
@@ -359,12 +359,10 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
         return;
       }
 
-      const nextValue =
-        autocompleteEndpoint && valueLabel && typeof value === 'string' && value.trim() !== ''
-          ? valueLabel
-          : typeof value === 'string'
-            ? value
-            : String(value ?? '');
+      let nextValue = typeof value === 'string' ? value : String(value ?? '');
+      if (autocompleteEndpoint && valueLabel && typeof value === 'string' && value.trim() !== '') {
+        nextValue = valueLabel;
+      }
 
       setTextInputValue(nextValue);
     }, [activeQueryField?.key, activeQueryField?.type, autocompleteEndpoint, value, valueLabel]);
@@ -518,6 +516,10 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
     const renderActiveInput = () => {
       if (!activeQueryField || activeQueryField.type === 'TextSearchField') {
         const inputName = activeQueryField ? `${activeQueryField.key}-search` : 'search-input';
+        let resolvedInputValue = typeof value === 'string' ? value : String(value ?? '');
+        if (autocompleteEndpoint) {
+          resolvedInputValue = textInputValue;
+        }
         return (
           <input
             type="search"
@@ -536,13 +538,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
               .filter(Boolean)
               .join(' ')}
             style={{ color: 'var(--text)' }}
-            value={
-              autocompleteEndpoint
-                ? textInputValue
-                : typeof value === 'string'
-                  ? value
-                  : String(value ?? '')
-            }
+            value={resolvedInputValue}
             onChange={(e) => {
               const nextValue = e.target.value;
               if (autocompleteEndpoint) {
@@ -591,7 +587,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                 .filter(Boolean)
                 .join(' ')}
               style={{ color: 'var(--text)' }}
-              value={typeof value === 'number' ? value : typeof value === 'string' ? value : ''}
+              value={typeof value === 'number' || typeof value === 'string' ? value : ''}
               onChange={(e) => {
                 const raw = e.target.value;
                 if (!raw) {
@@ -612,6 +608,14 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
         case 'DynamicSelectSearchField': {
           const currentValue = typeof value === 'string' ? value : String(value ?? '');
           const selectedOption = selectOptions.find((o) => o.value === currentValue);
+          let selectTriggerContent = (
+            <span className="truncate opacity-50">{effectivePlaceholder}</span>
+          );
+          if (isDynamicLoading) {
+            selectTriggerContent = <span className="truncate opacity-50">Loading…</span>;
+          } else if (selectedOption) {
+            selectTriggerContent = <span className="truncate">{selectedOption.label}</span>;
+          }
           return (
             <button
               ref={selectTriggerRef}
@@ -636,13 +640,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
               aria-haspopup="listbox"
               aria-expanded={isSelectOpen}
             >
-              {isDynamicLoading ? (
-                <span className="truncate opacity-50">Loading…</span>
-              ) : selectedOption ? (
-                <span className="truncate">{selectedOption.label}</span>
-              ) : (
-                <span className="truncate opacity-50">{effectivePlaceholder}</span>
-              )}
+              {selectTriggerContent}
               <svg
                 className={`h-3.5 w-3.5 shrink-0 opacity-40 transition-transform duration-200 ${isSelectOpen ? 'rotate-180' : ''}`}
                 fill="none"
@@ -676,6 +674,16 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
           return null;
       }
     };
+
+    let selectorContentTypeLabel = 'audiobooks';
+    let selectorIcon = <AudiobookIcon />;
+    if (combinedMode) {
+      selectorContentTypeLabel = 'books and audiobooks';
+      selectorIcon = <BothIcon />;
+    } else if (contentType === 'ebook') {
+      selectorContentTypeLabel = 'books';
+      selectorIcon = <BookIcon />;
+    }
 
     return (
       <div
@@ -716,17 +724,11 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
               }}
               className="hover-action flex items-center gap-1.5 rounded-l-full pr-2 pl-5 transition-colors"
               style={{ color: 'var(--text)' }}
-              aria-label={`Searching ${combinedMode ? 'books and audiobooks' : contentType === 'ebook' ? 'books' : 'audiobooks'} by ${activeTarget?.label ?? 'general'}. Click to change.`}
+              aria-label={`Searching ${selectorContentTypeLabel} by ${activeTarget?.label ?? 'general'}. Click to change.`}
               aria-expanded={isSelectorOpen}
               aria-haspopup="dialog"
             >
-              {combinedMode ? (
-                <BothIcon />
-              ) : contentType === 'ebook' ? (
-                <BookIcon />
-              ) : (
-                <AudiobookIcon />
-              )}
+              {selectorIcon}
               {showActiveTargetLabel && (
                 <span className="hidden max-w-24 truncate text-sm font-medium sm:inline">
                   {activeTarget?.label}

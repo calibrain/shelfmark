@@ -1,7 +1,7 @@
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
 import { CONTENT_OPTIONS } from '../data/filterOptions';
-import {
+import type {
   AdvancedFilterState,
   ContentType,
   Language,
@@ -89,7 +89,12 @@ export const AdvancedFilters = ({
   };
 
   const handleFormatsChange = (next: string[] | string) => {
-    const nextFormats = Array.isArray(next) ? next : next ? [next] : [];
+    let nextFormats: string[] = [];
+    if (Array.isArray(next)) {
+      nextFormats = next;
+    } else if (next) {
+      nextFormats = [next];
+    }
     onFiltersChange({ formats: nextFormats });
   };
 
@@ -111,6 +116,13 @@ export const AdvancedFilters = ({
       disabled: !provider.enabled || !provider.available,
     };
   });
+
+  let metadataProviderLabel = 'Book Metadata Provider';
+  if (combinedMode) {
+    metadataProviderLabel = 'Combined Metadata Provider';
+  } else if (contentType === 'audiobook') {
+    metadataProviderLabel = 'Audiobook Metadata Provider';
+  }
 
   if (!visible) return null;
 
@@ -157,13 +169,7 @@ export const AdvancedFilters = ({
 
           {searchMode === 'universal' && (
             <DropdownList
-              label={
-                combinedMode
-                  ? 'Combined Metadata Provider'
-                  : contentType === 'audiobook'
-                    ? 'Audiobook Metadata Provider'
-                    : 'Book Metadata Provider'
-              }
+              label={metadataProviderLabel}
               options={providerOptions}
               value={activeMetadataProvider ?? ''}
               onChange={(value) => {

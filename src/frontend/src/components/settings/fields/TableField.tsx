@@ -1,6 +1,7 @@
-import { useMemo, useEffect, CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
+import { useMemo, useEffect } from 'react';
 
-import {
+import type {
   MultiSelectFieldConfig,
   TableFieldConfig,
   TableFieldColumn,

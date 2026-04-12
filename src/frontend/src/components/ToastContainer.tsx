@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 
-import { Toast } from '../types';
+import type { Toast } from '../types';
 
 interface ToastContainerProps {
   toasts: Toast[];

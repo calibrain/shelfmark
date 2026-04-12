@@ -1,4 +1,4 @@
-import { ContentType, RequestPolicyMode, RequestPolicyResponse } from '../types';
+import type { ContentType, RequestPolicyMode, RequestPolicyResponse } from '../types';
 
 export const DEFAULT_POLICY_TTL_MS = 60_000;
 

@@ -1,4 +1,4 @@
-import { StatusData } from '../types';
+import type { StatusData } from '../types';
 
 const ACTIVE_STATUS_BUCKETS = ['queued', 'resolving', 'locating', 'downloading'] as const;
 const TERMINAL_STATUS_BUCKETS = ['complete', 'error', 'cancelled'] as const;

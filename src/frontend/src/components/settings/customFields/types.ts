@@ -1,4 +1,8 @@
-import { ActionResult, CustomComponentFieldConfig, SettingsTab } from '../../../types/settings';
+import type {
+  ActionResult,
+  CustomComponentFieldConfig,
+  SettingsTab,
+} from '../../../types/settings';
 
 export interface CustomSettingsFieldRendererProps {
   field: CustomComponentFieldConfig;

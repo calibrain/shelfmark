@@ -1,4 +1,4 @@
-import {
+import type {
   Book,
   StatusData,
   AppConfig,
@@ -13,24 +13,31 @@ import {
   MetadataProvidersResponse,
   MetadataSearchConfig,
 } from '../types';
-import { SettingsResponse, ActionResult, UpdateResult, SettingsTab } from '../types/settings';
+import type {
+  ActionResult,
+  SettingsField,
+  SettingsResponse,
+  SettingsTab,
+  UpdateResult,
+} from '../types/settings';
 import { getApiBase, withBasePath } from '../utils/basePath';
+import type { MetadataBookData, SourceRecordData } from '../utils/bookTransformers';
 import {
-  MetadataBookData,
-  SourceRecordData,
   transformMetadataToBook,
   transformReleaseToDirectBook,
   transformSourceRecordToBook,
 } from '../utils/bookTransformers';
 import { isRecord, toStringValue } from '../utils/objectHelpers';
+import type {
+  FulfilAdminRequestBody,
+  RejectAdminRequestBody,
+  RequestListParams,
+} from './requestApiHelpers';
 import {
   buildAdminRequestActionUrl,
   buildFulfilAdminRequestBody,
   buildRejectAdminRequestBody,
   buildRequestListUrl,
-  FulfilAdminRequestBody,
-  RejectAdminRequestBody,
-  RequestListParams,
 } from './requestApiHelpers';
 
 const API_BASE = getApiBase();
@@ -116,12 +123,12 @@ const mapApiErrorToActionResult = (error: unknown): ActionResult | null => {
   }
 
   const payload = error.payload;
-  const message =
-    typeof payload.message === 'string'
-      ? payload.message
-      : typeof payload.error === 'string'
-        ? payload.error
-        : null;
+  let message: string | null = null;
+  if (typeof payload.message === 'string') {
+    message = payload.message;
+  } else if (typeof payload.error === 'string') {
+    message = payload.error;
+  }
   if (!message) {
     return null;
   }
@@ -715,7 +722,7 @@ export interface OnboardingStep {
   id: string;
   title: string;
   tab: string;
-  fields: import('../types/settings').SettingsField[];
+  fields: SettingsField[];
   showWhen?: OnboardingStepCondition[]; // Array of conditions (all must be true)
   optional?: boolean;
 }
@@ -905,7 +912,7 @@ export const getDownloadDefaults = async (): Promise<DownloadDefaults> => {
 export interface DeliveryPreferencesResponse {
   tab: string;
   keys: string[];
-  fields: import('../types/settings').SettingsField[];
+  fields: SettingsField[];
   globalValues: Record<string, unknown>;
   userOverrides: Record<string, unknown>;
   effective: Record<string, { value: unknown; source: string }>;
@@ -938,9 +945,9 @@ export const getAdminNotificationPreferences = async (
 export const testAdminUserNotificationPreferences = async (
   userId: number,
   routes: Array<Record<string, unknown>>,
-): Promise<import('../types/settings').ActionResult> => {
+): Promise<ActionResult> => {
   try {
-    return await fetchJSON<import('../types/settings').ActionResult>(
+    return await fetchJSON<ActionResult>(
       `${API_BASE}/admin/users/${userId}/notification-preferences/test`,
       {
         method: 'POST',
@@ -958,15 +965,12 @@ export const testAdminUserNotificationPreferences = async (
 
 export const testSelfNotificationPreferences = async (
   routes: Array<Record<string, unknown>>,
-): Promise<import('../types/settings').ActionResult> => {
+): Promise<ActionResult> => {
   try {
-    return await fetchJSON<import('../types/settings').ActionResult>(
-      `${API_BASE}/users/me/notification-preferences/test`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ USER_NOTIFICATION_ROUTES: routes }),
-      },
-    );
+    return await fetchJSON<ActionResult>(`${API_BASE}/users/me/notification-preferences/test`, {
+      method: 'POST',
+      body: JSON.stringify({ USER_NOTIFICATION_ROUTES: routes }),
+    });
   } catch (error) {
     const mapped = mapApiErrorToActionResult(error);
     if (mapped) {

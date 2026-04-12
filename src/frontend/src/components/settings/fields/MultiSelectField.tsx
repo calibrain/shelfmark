@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 
-import { MultiSelectFieldConfig } from '../../../types/settings';
+import type { MultiSelectFieldConfig } from '../../../types/settings';
 import { DropdownList } from '../../DropdownList';
 
 interface MultiSelectFieldProps {

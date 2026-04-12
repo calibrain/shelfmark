@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
+import type { AdminUser, DeliveryPreferencesResponse } from '../../services/api';
 import {
-  AdminUser,
-  DeliveryPreferencesResponse,
   getSelfUserEditContext,
   testSelfNotificationPreferences,
   updateSelfUser,
@@ -19,7 +18,7 @@ import {
   normalizeUserOverrideSections,
   UserOverridesSections,
 } from './users';
-import { PerUserSettings } from './users/types';
+import type { PerUserSettings } from './users/types';
 import { UserAccountCardContent, UserEditActions, UserIdentityHeader } from './users/UserCard';
 import { useUserOverridesState } from './users/useUserOverridesState';
 
@@ -293,71 +292,85 @@ export const SelfSettingsModal = ({
         </header>
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          {showInitialLoadingState ? (
-            <div className="flex h-full items-center justify-center text-sm opacity-60">
-              Loading account settings...
-            </div>
-          ) : showInitialLoadErrorState ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-              <p className="text-sm opacity-70">{loadError}</p>
-              <button
-                type="button"
-                onClick={() => {
-                  void loadEditContext();
-                }}
-                className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface)"
-              >
-                Retry
-              </button>
-            </div>
-          ) : editingUser ? (
-            <div className="space-y-5">
-              <FieldWrapper field={THEME_FIELD}>
-                <SelectField
-                  field={THEME_FIELD}
-                  value={themeValue}
-                  onChange={(value) => {
-                    setThemeValue(value);
-                    setThemePreference(value);
-                  }}
-                />
-              </FieldWrapper>
+          {(() => {
+            if (showInitialLoadingState) {
+              return (
+                <div className="flex h-full items-center justify-center text-sm opacity-60">
+                  Loading account settings...
+                </div>
+              );
+            }
 
-              <UserAccountCardContent
-                user={editingUser}
-                onUserChange={setEditingUser}
-                onSave={() => undefined}
-                saving={isSaving}
-                onCancel={handleClose}
-                hideEditActions
-                editPassword={editPassword}
-                onEditPasswordChange={setEditPassword}
-                editPasswordConfirm={editPasswordConfirm}
-                onEditPasswordConfirmChange={setEditPasswordConfirm}
-                preferencesPlacement="after"
-                preferencesPanel={{
-                  hideTitle: true,
-                  children: (
-                    <UserOverridesSections
-                      scope="self"
-                      sections={visibleSections}
-                      deliveryPreferences={deliveryPreferences}
-                      searchPreferences={searchPreferences}
-                      notificationPreferences={notificationPreferences}
-                      isUserOverridable={isUserOverridable}
-                      userSettings={userSettings}
-                      setUserSettings={setUserSettings}
-                      onTestNotificationRoutes={handleTestNotificationRoutes}
+            if (showInitialLoadErrorState) {
+              return (
+                <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                  <p className="text-sm opacity-70">{loadError}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void loadEditContext();
+                    }}
+                    className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface)"
+                  >
+                    Retry
+                  </button>
+                </div>
+              );
+            }
+
+            if (editingUser) {
+              return (
+                <div className="space-y-5">
+                  <FieldWrapper field={THEME_FIELD}>
+                    <SelectField
+                      field={THEME_FIELD}
+                      value={themeValue}
+                      onChange={(value) => {
+                        setThemeValue(value);
+                        setThemePreference(value);
+                      }}
                     />
-                  ),
-                }}
-              />
-            </div>
-          ) : (
-            <div className="flex h-full items-center justify-center text-sm opacity-60">
-              Unable to load account details.
-            </div>
-          )}
+                  </FieldWrapper>
+
+                  <UserAccountCardContent
+                    user={editingUser}
+                    onUserChange={setEditingUser}
+                    onSave={() => undefined}
+                    saving={isSaving}
+                    onCancel={handleClose}
+                    hideEditActions
+                    editPassword={editPassword}
+                    onEditPasswordChange={setEditPassword}
+                    editPasswordConfirm={editPasswordConfirm}
+                    onEditPasswordConfirmChange={setEditPasswordConfirm}
+                    preferencesPlacement="after"
+                    preferencesPanel={{
+                      hideTitle: true,
+                      children: (
+                        <UserOverridesSections
+                          scope="self"
+                          sections={visibleSections}
+                          deliveryPreferences={deliveryPreferences}
+                          searchPreferences={searchPreferences}
+                          notificationPreferences={notificationPreferences}
+                          isUserOverridable={isUserOverridable}
+                          userSettings={userSettings}
+                          setUserSettings={setUserSettings}
+                          onTestNotificationRoutes={handleTestNotificationRoutes}
+                        />
+                      ),
+                    }}
+                  />
+                </div>
+              );
+            }
+
+            return (
+              <div className="flex h-full items-center justify-center text-sm opacity-60">
+                Unable to load account details.
+              </div>
+            );
+          })()}
         </div>
 
         <footer className="flex items-center justify-end gap-3 border-t border-(--border-muted) px-6 py-4">

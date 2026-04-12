@@ -1,4 +1,4 @@
-import { SettingsField } from '../../../types/settings';
+import type { SettingsField } from '../../../types/settings';
 
 export { isRecord } from '../../../utils/objectHelpers';
 

@@ -1,4 +1,4 @@
-import { RequestRecord } from '../../types';
+import type { RequestRecord } from '../../types';
 
 export type ActivityKind = 'download' | 'request';
 

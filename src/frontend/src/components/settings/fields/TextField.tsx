@@ -1,4 +1,4 @@
-import { TextFieldConfig } from '../../../types/settings';
+import type { TextFieldConfig } from '../../../types/settings';
 
 interface TextFieldProps {
   field: TextFieldConfig;

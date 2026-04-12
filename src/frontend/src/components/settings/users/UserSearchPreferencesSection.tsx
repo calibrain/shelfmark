@@ -1,9 +1,9 @@
-import { DeliveryPreferencesResponse } from '../../../services/api';
-import { HeadingFieldConfig, SelectFieldConfig } from '../../../types/settings';
+import type { DeliveryPreferencesResponse } from '../../../services/api';
+import type { HeadingFieldConfig, SelectFieldConfig } from '../../../types/settings';
 import { HeadingField, SelectField } from '../fields';
 import { FieldWrapper } from '../shared';
 import { getFieldByKey, toNormalizedLowercaseTextValue, toTextValue } from './fieldHelpers';
-import { PerUserSettings } from './types';
+import type { PerUserSettings } from './types';
 
 interface UserSearchPreferencesSectionProps {
   searchPreferences: DeliveryPreferencesResponse | null;

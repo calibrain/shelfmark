@@ -1,6 +1,7 @@
-import { useEffect, useState, CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
+import { useEffect, useState } from 'react';
 
-import { ButtonStateInfo } from '../types';
+import type { ButtonStateInfo } from '../types';
 import { CircularProgress } from './shared';
 
 type ButtonSize = 'sm' | 'md';
@@ -80,26 +81,27 @@ export const BookDownloadButton = ({
   const primaryActionIconPath = isRequestAction
     ? 'M12 4.5v15m7.5-7.5h-15'
     : 'M12 4v12m0 0l-4-4m4 4 4-4M6 20h12';
+  let primaryStateClasses = 'bg-sky-700 hover:bg-sky-800';
+  if (isCompleted) {
+    primaryStateClasses = 'bg-green-600 cursor-not-allowed';
+  } else if (hasError) {
+    primaryStateClasses = 'bg-red-600 cursor-not-allowed opacity-75';
+  } else if (isBlocked) {
+    primaryStateClasses = 'bg-gray-500 cursor-not-allowed opacity-70';
+  } else if (isInProgress) {
+    primaryStateClasses = 'bg-gray-500 cursor-not-allowed opacity-75';
+  }
 
-  const primaryStateClasses = isCompleted
-    ? 'bg-green-600 cursor-not-allowed'
-    : hasError
-      ? 'bg-red-600 cursor-not-allowed opacity-75'
-      : isBlocked
-        ? 'bg-gray-500 cursor-not-allowed opacity-70'
-        : isInProgress
-          ? 'bg-gray-500 cursor-not-allowed opacity-75'
-          : 'bg-sky-700 hover:bg-sky-800';
-
-  const iconStateClasses = isCompleted
-    ? 'bg-green-600 text-white cursor-not-allowed'
-    : hasError
-      ? 'bg-red-600 text-white cursor-not-allowed opacity-75'
-      : isBlocked
-        ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-70'
-        : isInProgress
-          ? 'bg-gray-500 text-white cursor-not-allowed opacity-75'
-          : 'text-gray-600 dark:text-gray-200 hover-action';
+  let iconStateClasses = 'text-gray-600 dark:text-gray-200 hover-action';
+  if (isCompleted) {
+    iconStateClasses = 'bg-green-600 text-white cursor-not-allowed';
+  } else if (hasError) {
+    iconStateClasses = 'bg-red-600 text-white cursor-not-allowed opacity-75';
+  } else if (isBlocked) {
+    iconStateClasses = 'text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-70';
+  } else if (isInProgress) {
+    iconStateClasses = 'bg-gray-500 text-white cursor-not-allowed opacity-75';
+  }
 
   const stateClasses = variant === 'icon' ? iconStateClasses : primaryStateClasses;
   const widthClasses = variant === 'primary' && fullWidth ? 'w-full' : '';

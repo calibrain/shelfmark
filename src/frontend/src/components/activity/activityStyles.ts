@@ -1,4 +1,4 @@
-import { ActivityVisualStatus } from './activityTypes';
+import type { ActivityVisualStatus } from './activityTypes';
 
 export const STATUS_ACCENT_CLASSES: Record<ActivityVisualStatus, string> = {
   queued: 'border-l-amber-500',

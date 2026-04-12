@@ -1,5 +1,5 @@
 import { LoginForm } from '../components/LoginForm';
-import { LoginCredentials } from '../types';
+import type { LoginCredentials } from '../types';
 import { withBasePath } from '../utils/basePath';
 
 interface LoginPageProps {

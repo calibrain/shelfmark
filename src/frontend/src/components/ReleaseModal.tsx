@@ -10,7 +10,7 @@ import { createPortal } from 'react-dom';
 
 import { useSocket } from '../contexts/SocketContext';
 import { getReleases, getReleaseSources } from '../services/api';
-import {
+import type {
   Book,
   Release,
   ReleaseSource,
@@ -24,8 +24,8 @@ import {
   SearchStatusData,
   ContentType,
   RequestPolicyMode,
-  isMetadataBook,
 } from '../types';
+import { isMetadataBook } from '../types';
 import { bookSupportsTargets } from '../utils/bookTargetLoader';
 import { getColorStyleFromHint } from '../utils/colorMaps';
 import {
@@ -47,8 +47,8 @@ import {
   getBookAuthorCandidates,
   sortReleasesByBookMatch,
 } from '../utils/releaseScoring';
+import type { SortState } from '../utils/releaseSort';
 import {
-  SortState,
   getSavedSort,
   saveSort,
   clearSort,
@@ -297,36 +297,40 @@ const PhaseChip = ({
   release: Release | null;
   isActive: boolean;
   label: string;
-}) => (
-  <span
-    className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
-      release
-        ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400'
-        : isActive
-          ? 'bg-zinc-100 text-(--text) dark:bg-zinc-800'
-          : 'bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500'
-    }`}
-  >
-    {release ? (
-      <>
-        <svg
-          className="h-3 w-3"
-          fill="none"
-          viewBox="0 0 24 24"
-          strokeWidth="2.5"
-          stroke="currentColor"
-        >
-          <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-        </svg>
-        {release.format?.toUpperCase() || label} · {release.size || '?'}
-      </>
-    ) : (
-      <>
-        {isActive ? '\u25CF' : '\u25CB'} {label}
-      </>
-    )}
-  </span>
-);
+}) => {
+  let phaseChipClassName = 'bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500';
+  if (release) {
+    phaseChipClassName =
+      'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-400';
+  } else if (isActive) {
+    phaseChipClassName = 'bg-zinc-100 text-(--text) dark:bg-zinc-800';
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${phaseChipClassName}`}
+    >
+      {release ? (
+        <>
+          <svg
+            className="h-3 w-3"
+            fill="none"
+            viewBox="0 0 24 24"
+            strokeWidth="2.5"
+            stroke="currentColor"
+          >
+            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+          </svg>
+          {release.format?.toUpperCase() || label} · {release.size || '?'}
+        </>
+      ) : (
+        <>
+          {isActive ? '\u25CF' : '\u25CB'} {label}
+        </>
+      )}
+    </span>
+  );
+};
 
 // Release row component with dynamic columns
 const ReleaseRow = ({
@@ -1596,6 +1600,32 @@ export const ReleaseModal = ({
   const isInitialLoading =
     hasActiveTab &&
     (currentTabLoading || (releasesBySource[activeTab] === undefined && !currentTabError));
+  const coverAspectClassName = book.cover_aspect === 'square' ? 'object-center' : 'object-top';
+
+  let coverSizeClassName = 'h-[120px] w-20';
+  if (book.cover_aspect === 'square') {
+    coverSizeClassName = book.series_name ? 'h-[144px] w-[144px]' : 'h-[120px] w-[120px]';
+  } else if (book.series_name) {
+    coverSizeClassName = 'h-[144px] w-24';
+  }
+
+  let combinedFooterEbookMode = combinedEbookMode;
+  if (combinedPhase === 'ebook') {
+    combinedFooterEbookMode = selectedRelease
+      ? getReleaseActionMode(selectedRelease)
+      : combinedEbookMode;
+  } else if (stagedEbookRelease) {
+    combinedFooterEbookMode = getReleaseActionMode(stagedEbookRelease);
+  }
+
+  let combinedFooterAudiobookMode = combinedAudiobookMode;
+  if (combinedPhase === 'audiobook') {
+    combinedFooterAudiobookMode = selectedRelease
+      ? getReleaseActionMode(selectedRelease)
+      : combinedAudiobookMode;
+  } else if (stagedAudiobookRelease) {
+    combinedFooterAudiobookMode = getReleaseActionMode(stagedAudiobookRelease);
+  }
 
   const modal = (
     <div className="modal-overlay active sm:px-6 sm:py-6">
@@ -1730,11 +1760,11 @@ export const ReleaseModal = ({
                   <img
                     src={book.preview}
                     alt="Book cover"
-                    className={`hidden shrink-0 rounded-lg object-cover shadow-md sm:block ${book.cover_aspect === 'square' ? 'object-center' : 'object-top'} ${book.cover_aspect === 'square' ? (book.series_name ? 'h-[144px] w-[144px]' : 'h-[120px] w-[120px]') : book.series_name ? 'h-[144px] w-24' : 'h-[120px] w-20'}`}
+                    className={`hidden shrink-0 rounded-lg object-cover shadow-md sm:block ${coverAspectClassName} ${coverSizeClassName}`}
                   />
                 ) : (
                   <div
-                    className={`hidden shrink-0 items-center justify-center rounded-lg border border-dashed border-(--border-muted) bg-(--bg)/60 text-[10px] text-zinc-500 sm:flex ${book.cover_aspect === 'square' ? (book.series_name ? 'h-[144px] w-[144px]' : 'h-[120px] w-[120px]') : book.series_name ? 'h-[144px] w-24' : 'h-[120px] w-20'}`}
+                    className={`hidden shrink-0 items-center justify-center rounded-lg border border-dashed border-(--border-muted) bg-(--bg)/60 text-[10px] text-zinc-500 sm:flex ${coverSizeClassName}`}
                   >
                     No cover
                   </div>
@@ -1962,15 +1992,17 @@ export const ReleaseModal = ({
 
             {/* Source tabs + filters - sticky within scroll container */}
             <div className="sticky top-0 z-10 border-b border-(--border-muted) bg-(--bg) sm:bg-(--bg-soft)">
-              {sourcesLoading ? (
+              {sourcesLoading && (
                 <div className="flex gap-1 px-5 py-2">
                   <div className="h-10 w-32 animate-pulse rounded-sm bg-zinc-200 dark:bg-zinc-700" />
                 </div>
-              ) : allTabs.length === 0 ? (
+              )}
+              {!sourcesLoading && allTabs.length === 0 && (
                 <div className="px-5 py-3 text-sm text-zinc-500 dark:text-zinc-400">
                   {sourcesError || 'No release sources are available for this book.'}
                 </div>
-              ) : (
+              )}
+              {!sourcesLoading && allTabs.length > 0 && (
                 <div className="flex items-center justify-between px-5">
                   {/* Tabs - scrollable on narrow screens */}
                   <div className="scrollbar-hide min-w-0 flex-1 overflow-x-auto">
@@ -2340,9 +2372,15 @@ export const ReleaseModal = ({
                                   }))}
                                   multiple
                                   value={indexerFilter}
-                                  onChange={(val) =>
-                                    setIndexerFilter(Array.isArray(val) ? val : val ? [val] : [])
-                                  }
+                                  onChange={(val) => {
+                                    let nextIndexerFilter: string[] = [];
+                                    if (Array.isArray(val)) {
+                                      nextIndexerFilter = val;
+                                    } else if (val) {
+                                      nextIndexerFilter = [val];
+                                    }
+                                    setIndexerFilter(nextIndexerFilter);
+                                  }}
                                   placeholder="All Indexers"
                                 />
                               )}
@@ -2521,98 +2559,111 @@ export const ReleaseModal = ({
 
             {/* Release list content */}
             <div className="min-h-[200px]">
-              {sourcesLoading ? (
-                <ReleaseSkeleton />
-              ) : sourcesError ? (
-                <ErrorState message={sourcesError} />
-              ) : !hasActiveTab ? (
-                <EmptyState message="No release sources are available for this book." />
-              ) : isInitialLoading && filteredReleases.length === 0 ? (
-                <ReleaseSkeleton />
-              ) : currentTabError ? (
-                <ErrorState message={currentTabError} />
-              ) : filteredReleases.length === 0 && !currentTabLoading ? (
-                <>
-                  <EmptyState
-                    message={
-                      formatFilter
-                        ? `No ${formatFilter.toUpperCase()} releases found. Try a different format.`
-                        : 'No releases found for this book.'
-                    }
-                  />
-                  {/* Action button - plugin-defined or default expand search */}
-                  {(columnConfig.action_button ||
-                    (!expandedBySource[activeTab] &&
-                      releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type &&
-                      !['title_author', 'expanded'].includes(
-                        releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type ?? '',
-                      ))) && (
-                    <div className="py-3 text-center">
-                      <button
-                        type="button"
-                        onClick={handleExpandSearch}
-                        className="hover-action rounded-full px-3 py-1.5 text-sm text-zinc-500 transition-all duration-200 dark:text-zinc-400"
-                      >
-                        {columnConfig.action_button?.label ?? 'Expand search'}
-                      </button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <>
-                  {/* Key includes filter to force remount when filter changes */}
-                  <div
-                    key={`releases-${formatFilter}-${languageFilter.join(',')}`}
-                    className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60"
-                  >
-                    {filteredReleases.map((release, index) => (
-                      <ReleaseRow
-                        key={`${release.source}-${release.source_id}`}
-                        release={release}
-                        index={index}
-                        onDownload={() => handleReleaseAction(release)}
-                        buttonState={getButtonState(release)}
-                        columns={columnConfig.columns}
-                        gridTemplate={columnConfig.grid_template}
-                        leadingCell={columnConfig.leading_cell}
-                        onlineServers={columnConfig.online_servers}
-                        showReleaseSourceLinks={showReleaseSourceLinks}
-                        selectionMode={isCombinedMode}
-                        isSelected={
-                          isCombinedMode && selectedRelease?.source_id === release.source_id
+              {(() => {
+                if (sourcesLoading) {
+                  return <ReleaseSkeleton />;
+                }
+                if (sourcesError) {
+                  return <ErrorState message={sourcesError} />;
+                }
+                if (!hasActiveTab) {
+                  return <EmptyState message="No release sources are available for this book." />;
+                }
+                if (isInitialLoading && filteredReleases.length === 0) {
+                  return <ReleaseSkeleton />;
+                }
+                if (currentTabError) {
+                  return <ErrorState message={currentTabError} />;
+                }
+                if (filteredReleases.length === 0 && !currentTabLoading) {
+                  return (
+                    <>
+                      <EmptyState
+                        message={
+                          formatFilter
+                            ? `No ${formatFilter.toUpperCase()} releases found. Try a different format.`
+                            : 'No releases found for this book.'
                         }
-                        onSelect={isCombinedMode ? () => setSelectedRelease(release) : undefined}
                       />
-                    ))}
-                  </div>
-                  {/* Action button - plugin-defined or default expand search */}
-                  {!currentTabLoading &&
-                    (columnConfig.action_button ||
-                      (!expandedBySource[activeTab] &&
-                        releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type &&
-                        !['title_author', 'expanded'].includes(
-                          releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type ?? '',
-                        ))) && (
-                      <div
-                        className="animate-pop-up py-3 text-center will-change-transform"
-                        style={{
-                          animationDelay: `${filteredReleases.length * 30}ms`,
-                          animationFillMode: 'both',
-                        }}
-                      >
-                        <button
-                          type="button"
-                          onClick={handleExpandSearch}
-                          className="hover-action rounded-full px-3 py-1.5 text-sm text-zinc-500 transition-all duration-200 dark:text-zinc-400"
+                      {/* Action button - plugin-defined or default expand search */}
+                      {(columnConfig.action_button ||
+                        (!expandedBySource[activeTab] &&
+                          releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type &&
+                          !['title_author', 'expanded'].includes(
+                            releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type ??
+                              '',
+                          ))) && (
+                        <div className="py-3 text-center">
+                          <button
+                            type="button"
+                            onClick={handleExpandSearch}
+                            className="hover-action rounded-full px-3 py-1.5 text-sm text-zinc-500 transition-all duration-200 dark:text-zinc-400"
+                          >
+                            {columnConfig.action_button?.label ?? 'Expand search'}
+                          </button>
+                        </div>
+                      )}
+                    </>
+                  );
+                }
+
+                return (
+                  <>
+                    {/* Key includes filter to force remount when filter changes */}
+                    <div
+                      key={`releases-${formatFilter}-${languageFilter.join(',')}`}
+                      className="divide-y divide-zinc-200/60 dark:divide-zinc-800/60"
+                    >
+                      {filteredReleases.map((release, index) => (
+                        <ReleaseRow
+                          key={`${release.source}-${release.source_id}`}
+                          release={release}
+                          index={index}
+                          onDownload={() => handleReleaseAction(release)}
+                          buttonState={getButtonState(release)}
+                          columns={columnConfig.columns}
+                          gridTemplate={columnConfig.grid_template}
+                          leadingCell={columnConfig.leading_cell}
+                          onlineServers={columnConfig.online_servers}
+                          showReleaseSourceLinks={showReleaseSourceLinks}
+                          selectionMode={isCombinedMode}
+                          isSelected={
+                            isCombinedMode && selectedRelease?.source_id === release.source_id
+                          }
+                          onSelect={isCombinedMode ? () => setSelectedRelease(release) : undefined}
+                        />
+                      ))}
+                    </div>
+                    {/* Action button - plugin-defined or default expand search */}
+                    {!currentTabLoading &&
+                      (columnConfig.action_button ||
+                        (!expandedBySource[activeTab] &&
+                          releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type &&
+                          !['title_author', 'expanded'].includes(
+                            releasesBySource[activeTab]?.search_info?.[activeTab]?.search_type ??
+                              '',
+                          ))) && (
+                        <div
+                          className="animate-pop-up py-3 text-center will-change-transform"
+                          style={{
+                            animationDelay: `${filteredReleases.length * 30}ms`,
+                            animationFillMode: 'both',
+                          }}
                         >
-                          {columnConfig.action_button?.label ?? 'Expand search'}
-                        </button>
-                      </div>
-                    )}
-                  {/* Expanding search - show skeleton below existing results */}
-                  {currentTabLoading && filteredReleases.length > 0 && <ReleaseSkeleton />}
-                </>
-              )}
+                          <button
+                            type="button"
+                            onClick={handleExpandSearch}
+                            className="hover-action rounded-full px-3 py-1.5 text-sm text-zinc-500 transition-all duration-200 dark:text-zinc-400"
+                          >
+                            {columnConfig.action_button?.label ?? 'Expand search'}
+                          </button>
+                        </div>
+                      )}
+                    {/* Expanding search - show skeleton below existing results */}
+                    {currentTabLoading && filteredReleases.length > 0 && <ReleaseSkeleton />}
+                  </>
+                );
+              })()}
             </div>
 
             {/* Sticky search status indicator - stays at bottom of visible scroll area */}
@@ -2689,20 +2740,8 @@ export const ReleaseModal = ({
                       className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {getCombinedDownloadLabel(
-                        combinedPhase === 'ebook'
-                          ? selectedRelease
-                            ? getReleaseActionMode(selectedRelease)
-                            : combinedEbookMode
-                          : stagedEbookRelease
-                            ? getReleaseActionMode(stagedEbookRelease)
-                            : combinedEbookMode,
-                        combinedPhase === 'audiobook'
-                          ? selectedRelease
-                            ? getReleaseActionMode(selectedRelease)
-                            : combinedAudiobookMode
-                          : stagedAudiobookRelease
-                            ? getReleaseActionMode(stagedAudiobookRelease)
-                            : combinedAudiobookMode,
+                        combinedFooterEbookMode,
+                        combinedFooterAudiobookMode,
                       )}
                     </button>
                   )}

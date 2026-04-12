@@ -1,4 +1,4 @@
-import { Book, Release, ReleasesResponse } from '../types';
+import type { Book, Release, ReleasesResponse } from '../types';
 import { isRecord } from './objectHelpers';
 
 function normalizeMatchText(value: string): string {

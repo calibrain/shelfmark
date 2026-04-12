@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useSocket } from '../contexts/SocketContext';
 import { login, logout, checkAuth } from '../services/api';
-import { LoginCredentials } from '../types';
+import type { LoginCredentials } from '../types';
 import { getReturnToFromSearch } from '../utils/authRedirect';
 
 interface UseAuthOptions {

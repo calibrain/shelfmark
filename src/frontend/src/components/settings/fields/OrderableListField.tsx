@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 
-import {
+import type {
   OrderableListFieldConfig,
   OrderableListItem,
   OrderableListOption,
@@ -214,6 +214,20 @@ export const OrderableListField = ({
         const isPinned = item.isPinned ?? false;
         const showIndicatorBefore = dropGapIndex === index;
 
+        let dragStateClassName = 'cursor-grab';
+        if (isDragging) {
+          dragStateClassName = 'cursor-grabbing opacity-50';
+        } else if (isPinned) {
+          dragStateClassName = 'cursor-default';
+        }
+
+        let hoverStateClassName = '';
+        if (isDisabled) {
+          hoverStateClassName = 'opacity-60';
+        } else if (!isPinned) {
+          hoverStateClassName = 'hover:bg-(--hover-surface)';
+        }
+
         return (
           <div key={item.id} className="relative">
             {/* Drop indicator */}
@@ -228,7 +242,7 @@ export const OrderableListField = ({
               onDragOver={(e) => handleDragOver(e, index)}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
-              className={`flex items-center gap-3 rounded-lg p-3 transition-all duration-150 ${isDragging ? 'cursor-grabbing opacity-50' : isPinned ? 'cursor-default' : 'cursor-grab'} border border-(--border-muted) ${isDisabled ? 'opacity-60' : !isPinned ? 'hover:bg-(--hover-surface)' : ''} `}
+              className={`flex items-center gap-3 rounded-lg border border-(--border-muted) p-3 transition-all duration-150 ${dragStateClassName} ${hoverStateClassName}`}
             >
               {/* Reorder Controls - hidden for pinned items */}
               {!isPinned ? (

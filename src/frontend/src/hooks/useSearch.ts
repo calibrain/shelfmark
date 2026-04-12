@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 
 import { DEFAULT_SUPPORTED_FORMATS } from '../data/languages';
 import { searchBooks, searchMetadata, AuthenticationError } from '../services/api';
-import { Book, AppConfig, AdvancedFilterState, ContentType, SearchMode } from '../types';
+import type { Book, AppConfig, AdvancedFilterState, ContentType, SearchMode } from '../types';
 import { LANGUAGE_OPTION_DEFAULT } from '../utils/languageFilters';
 
 const DEFAULT_FORMAT_SELECTION = DEFAULT_SUPPORTED_FORMATS;

@@ -1,4 +1,4 @@
-import { SortOption } from '../types';
+import type { SortOption } from '../types';
 
 const FALLBACK_SORT = 'relevance';
 

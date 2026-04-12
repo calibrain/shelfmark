@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { setBookTargetState, type BookTargetOption } from '../services/api';
@@ -215,46 +216,45 @@ export const BookTargetDropdown = ({
     [bookId, onShowToast, options, pendingTargets, provider, selectedValues],
   );
 
-  const customTrigger =
-    variant === 'pill'
-      ? ({ toggle }: { isOpen: boolean; toggle: () => void }) => {
-          const count = selectedValues.length;
-          return (
-            <button
-              type="button"
-              onClick={toggle}
-              className={`inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-100 focus:outline-hidden dark:bg-emerald-900/20 dark:text-emerald-400 dark:hover:bg-emerald-900/40`}
-            >
-              <BookmarkIcon className="h-3 w-3" />
-              Hardcover Lists{count > 0 ? ` (${count})` : ''}
-            </button>
-          );
-        }
-      : variant === 'icon'
-        ? ({ toggle }: { isOpen: boolean; toggle: () => void }) => {
-            const count = selectedValues.length;
-            return (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  toggle();
-                }}
-                className={`flex items-center justify-center rounded-full transition-colors duration-200 focus:outline-hidden ${className ?? 'hover-action p-1.5 text-gray-600 sm:p-2 dark:text-gray-200'}`}
-                aria-label="Hardcover Lists"
-                title={
-                  count > 0
-                    ? `On ${count} Hardcover list${count > 1 ? 's' : ''}`
-                    : 'Hardcover Lists'
-                }
-              >
-                <BookmarkIcon
-                  className={`h-4 w-4 sm:h-5 sm:w-5 ${count > 0 ? 'fill-current' : ''}`}
-                />
-              </button>
-            );
-          }
-        : undefined;
+  let customTrigger: ((props: { isOpen: boolean; toggle: () => void }) => ReactNode) | undefined;
+  if (variant === 'pill') {
+    customTrigger = ({ toggle }: { isOpen: boolean; toggle: () => void }) => {
+      const count = selectedValues.length;
+      return (
+        <button
+          type="button"
+          onClick={toggle}
+          className={`inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-100 focus:outline-hidden dark:bg-emerald-900/20 dark:text-emerald-400 dark:hover:bg-emerald-900/40`}
+        >
+          <BookmarkIcon className="h-3 w-3" />
+          Hardcover Lists{count > 0 ? ` (${count})` : ''}
+        </button>
+      );
+    };
+  } else if (variant === 'icon') {
+    customTrigger = ({ toggle }: { isOpen: boolean; toggle: () => void }) => {
+      const count = selectedValues.length;
+      let title = 'Hardcover Lists';
+      if (count > 0) {
+        title = `On ${count} Hardcover list${count > 1 ? 's' : ''}`;
+      }
+
+      return (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggle();
+          }}
+          className={`flex items-center justify-center rounded-full transition-colors duration-200 focus:outline-hidden ${className ?? 'hover-action p-1.5 text-gray-600 sm:p-2 dark:text-gray-200'}`}
+          aria-label="Hardcover Lists"
+          title={title}
+        >
+          <BookmarkIcon className={`h-4 w-4 sm:h-5 sm:w-5 ${count > 0 ? 'fill-current' : ''}`} />
+        </button>
+      );
+    };
+  }
 
   return (
     <DropdownList

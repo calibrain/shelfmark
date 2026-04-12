@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { SettingsTab } from '../types/settings';
+import type { SettingsTab } from '../types/settings';
 import {
   getRestartRequiredFieldKeys,
   mergeFetchedSettingsWithDirtyValues,

@@ -1,4 +1,4 @@
-import { AdminUser } from '../../../services/api';
+import type { AdminUser } from '../../../services/api';
 
 export interface PerUserSettings {
   [key: string]: unknown;

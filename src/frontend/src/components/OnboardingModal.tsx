@@ -1,13 +1,13 @@
 import { useState, useEffect, useCallback, useMemo } from 'react';
 
+import type { OnboardingStep } from '../services/api';
 import {
   getOnboarding,
   saveOnboarding,
   skipOnboarding,
   executeSettingsAction,
-  OnboardingStep,
 } from '../services/api';
-import { SettingsField, ActionResult, ShowWhenCondition } from '../types/settings';
+import type { SettingsField, ActionResult, ShowWhenCondition } from '../types/settings';
 import { toBooleanValue, toStringArray, toStringValue } from '../utils/objectHelpers';
 import {
   TextField,

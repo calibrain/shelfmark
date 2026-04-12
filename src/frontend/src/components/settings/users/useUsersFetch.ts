@@ -1,9 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
 
-import {
+import type {
   AdminUser,
   DeliveryPreferencesResponse,
   DownloadDefaults,
+} from '../../../services/api';
+import {
   getAdminDeliveryPreferences,
   getAdminSearchPreferences,
   getAdminNotificationPreferences,
@@ -12,8 +14,8 @@ import {
   getDownloadDefaults,
   getSettingsTab,
 } from '../../../services/api';
-import { SettingsField } from '../../../types/settings';
-import { PerUserSettings } from './types';
+import type { SettingsField } from '../../../types/settings';
+import type { PerUserSettings } from './types';
 
 interface UseUsersFetchParams {
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;

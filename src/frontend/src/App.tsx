@@ -1,4 +1,5 @@
-import { useState, useEffect, useCallback, useRef, useMemo, CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
+import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { ActivitySidebar } from './components/activity';
@@ -48,7 +49,7 @@ import {
   setBookTargetState,
   type DownloadReleasePayload,
 } from './services/api';
-import {
+import type {
   Book,
   Release,
   RequestRecord,
@@ -65,8 +66,8 @@ import {
   QueuedDownloadResult,
   QueryTargetOption,
   SearchMode,
-  isMetadataBook,
 } from './types';
+import { isMetadataBook } from './types';
 import { formatActingAsUserName } from './utils/actingAsUser';
 import { buildLoginRedirectPath, getReturnToFromSearch } from './utils/authRedirect';
 import { withBasePath } from './utils/basePath';
@@ -2271,11 +2272,12 @@ function App() {
       } else {
         setConfiguredMetadataProvider(provider);
       }
-      const key = combinedMode
-        ? 'METADATA_PROVIDER_COMBINED'
-        : contentType === 'audiobook'
-          ? 'METADATA_PROVIDER_AUDIOBOOK'
-          : 'METADATA_PROVIDER';
+      let key = 'METADATA_PROVIDER';
+      if (combinedMode) {
+        key = 'METADATA_PROVIDER_COMBINED';
+      } else if (contentType === 'audiobook') {
+        key = 'METADATA_PROVIDER_AUDIOBOOK';
+      }
       updateSelfUser({ settings: { [key]: provider } })
         .then(() => loadConfig('settings-saved'))
         .catch((err) => console.error('Failed to save metadata provider:', err));
@@ -2526,13 +2528,15 @@ function App() {
     setReleaseBook(null);
   }, [isBrowseFulfilMode]);
 
-  const pendingOnBehalfTitle = pendingOnBehalfDownload
-    ? pendingOnBehalfDownload.type === 'book'
-      ? pendingOnBehalfDownload.book.title || 'Untitled'
-      : pendingOnBehalfDownload.type === 'combined'
-        ? pendingOnBehalfDownload.book.title || 'Untitled'
-        : pendingOnBehalfDownload.release.title || pendingOnBehalfDownload.book.title || 'Untitled'
-    : '';
+  let pendingOnBehalfTitle = '';
+  if (pendingOnBehalfDownload) {
+    if (pendingOnBehalfDownload.type === 'book' || pendingOnBehalfDownload.type === 'combined') {
+      pendingOnBehalfTitle = pendingOnBehalfDownload.book.title || 'Untitled';
+    } else {
+      pendingOnBehalfTitle =
+        pendingOnBehalfDownload.release.title || pendingOnBehalfDownload.book.title || 'Untitled';
+    }
+  }
   const pendingOnBehalfUserName = pendingOnBehalfDownload
     ? formatActingAsUserName(pendingOnBehalfDownload.actingAsUser)
     : '';

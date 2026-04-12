@@ -1,5 +1,5 @@
-import { RequestPolicyMode } from '../../../types';
-import { TableFieldConfig } from '../../../types/settings';
+import type { RequestPolicyMode } from '../../../types';
+import type { TableFieldConfig } from '../../../types/settings';
 import { isRecord, toNormalizedLowercaseTextValue } from './fieldHelpers';
 
 export type RequestPolicyContentType = 'ebook' | 'audiobook';

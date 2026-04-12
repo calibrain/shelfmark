@@ -1,23 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Socket } from 'socket.io-client';
+import type { Socket } from 'socket.io-client';
 
-import {
-  ActivityDismissTarget,
-  ActivityItem,
-  downloadToActivityItem,
-  requestToActivityItem,
-} from '../components/activity';
+import type { ActivityDismissTarget, ActivityItem } from '../components/activity';
+import { downloadToActivityItem, requestToActivityItem } from '../components/activity';
 import { dedupeHistoryItems } from '../components/activity/activityHistory.js';
+import type { ActivityHistoryItem, ActivityDismissPayload } from '../services/api';
 import {
-  ActivityHistoryItem,
-  ActivityDismissPayload,
   clearActivityHistory,
   dismissActivityItem,
   dismissManyActivityItems,
   getActivitySnapshot,
   listActivityHistory,
 } from '../services/api';
-import { Book, RequestRecord, StatusData } from '../types';
+import type { Book, RequestRecord, StatusData } from '../types';
 import { isRecord } from '../utils/objectHelpers';
 import { getActivityErrorMessage } from './useActivity.helpers.js';
 
@@ -234,24 +229,23 @@ const mapHistoryRowToActivityItem = (
     }
   }
 
-  const visualStatus: ActivityItem['visualStatus'] =
-    row.final_status === 'error'
-      ? 'error'
-      : row.final_status === 'cancelled'
-        ? 'cancelled'
-        : row.final_status === 'rejected'
-          ? 'rejected'
-          : 'complete';
-  const statusLabel =
-    visualStatus === 'error'
-      ? 'Failed'
-      : visualStatus === 'cancelled'
-        ? 'Cancelled'
-        : visualStatus === 'rejected'
-          ? viewerRole === 'admin'
-            ? 'Declined'
-            : 'Not approved'
-          : 'Complete';
+  let visualStatus: ActivityItem['visualStatus'] = 'complete';
+  if (row.final_status === 'error') {
+    visualStatus = 'error';
+  } else if (row.final_status === 'cancelled') {
+    visualStatus = 'cancelled';
+  } else if (row.final_status === 'rejected') {
+    visualStatus = 'rejected';
+  }
+
+  let statusLabel = 'Complete';
+  if (visualStatus === 'error') {
+    statusLabel = 'Failed';
+  } else if (visualStatus === 'cancelled') {
+    statusLabel = 'Cancelled';
+  } else if (visualStatus === 'rejected') {
+    statusLabel = viewerRole === 'admin' ? 'Declined' : 'Not approved';
+  }
 
   return {
     id: `history-${row.id}`,

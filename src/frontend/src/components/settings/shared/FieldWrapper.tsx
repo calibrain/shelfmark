@@ -1,6 +1,6 @@
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
-import { SettingsField } from '../../../types/settings';
+import type { SettingsField } from '../../../types/settings';
 import { Tooltip } from '../../shared/Tooltip';
 import { EnvLockBadge } from './EnvLockBadge';
 

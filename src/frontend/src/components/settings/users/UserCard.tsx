@@ -1,7 +1,7 @@
-import { ReactNode } from 'react';
+import type { ReactNode } from 'react';
 
-import { AdminUser } from '../../../services/api';
-import {
+import type { AdminUser } from '../../../services/api';
+import type {
   PasswordFieldConfig,
   SelectFieldConfig,
   SelectOption,
@@ -11,7 +11,7 @@ import { DropdownList } from '../../DropdownList';
 import { Tooltip } from '../../shared/Tooltip';
 import { PasswordField, SelectField, TextField } from '../fields';
 import { FieldWrapper } from '../shared';
-import { CreateUserFormState } from './types';
+import type { CreateUserFormState } from './types';
 import { UserAuthSourceBadge } from './UserAuthSourceBadge';
 
 const UserCardShell = ({ title, children }: { title: string; children: ReactNode }) => (
@@ -491,11 +491,13 @@ const UserEditFields = ({
     ? 'Display name is managed by the identity provider.'
     : undefined;
 
-  const emailDisabledReason = !canEditEmail
-    ? authSource === 'cwa'
-      ? 'Email is synced from Calibre-Web.'
-      : 'Email is managed by your identity provider.'
-    : undefined;
+  let emailDisabledReason: string | undefined;
+  if (!canEditEmail) {
+    emailDisabledReason =
+      authSource === 'cwa'
+        ? 'Email is synced from Calibre-Web.'
+        : 'Email is managed by your identity provider.';
+  }
 
   return (
     <>

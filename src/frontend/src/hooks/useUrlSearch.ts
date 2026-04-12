@@ -1,7 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-import { parseUrlSearchParams, ParsedUrlSearch } from '../utils/parseUrlSearchParams';
+import type { ParsedUrlSearch } from '../utils/parseUrlSearchParams';
+import { parseUrlSearchParams } from '../utils/parseUrlSearchParams';
 
 interface UseUrlSearchOptions {
   /** Only process URL params after auth check and config are loaded */

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { ActionButtonConfig, ActionResult } from '../../../types/settings';
+import type { ActionButtonConfig, ActionResult } from '../../../types/settings';
 
 interface ActionButtonProps {
   field: ActionButtonConfig;

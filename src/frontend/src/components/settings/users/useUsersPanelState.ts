@@ -1,6 +1,6 @@
 import { useCallback, useState } from 'react';
 
-import { UsersPanelRoute } from './types';
+import type { UsersPanelRoute } from './types';
 
 export const useUsersPanelState = () => {
   const [route, setRoute] = useState<UsersPanelRoute>({ kind: 'list' });

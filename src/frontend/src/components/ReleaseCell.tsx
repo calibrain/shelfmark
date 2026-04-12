@@ -1,4 +1,4 @@
-import { ColumnSchema, Release } from '../types';
+import type { ColumnSchema, Release } from '../types';
 import { getColorStyleFromHint, getProtocolDotColor, getFormatColor } from '../utils/colorMaps';
 import {
   getNestedValue,
@@ -149,11 +149,15 @@ export const ReleaseCell = ({
     }
 
     case 'tags': {
-      const tags = Array.isArray(rawValue)
-        ? rawValue.map((tag) => toComparableText(tag)).filter((tag) => tag.trim())
-        : rawValue !== undefined && rawValue !== null && toComparableText(rawValue).trim()
-          ? [toComparableText(rawValue)]
-          : [];
+      let tags: string[] = [];
+      if (Array.isArray(rawValue)) {
+        tags = rawValue.map((tag) => toComparableText(tag)).filter((tag) => tag.trim());
+      } else if (rawValue !== undefined && rawValue !== null) {
+        const comparableValue = toComparableText(rawValue).trim();
+        if (comparableValue) {
+          tags = [comparableValue];
+        }
+      }
       const isFlags = column.color_hint?.type === 'map' && column.color_hint.value === 'flags';
 
       if (compact) {
@@ -353,8 +357,12 @@ export const ReleaseCell = ({
       // Indexer name with colored dot indicating protocol (torrent/usenet) and peers count
       const protocol = release.protocol as string | undefined;
       const dotColor = getProtocolDotColor(protocol);
-      const protocolLabel =
-        protocol === 'torrent' ? 'Torrent' : protocol === 'nzb' ? 'Usenet' : protocol || 'Unknown';
+      let protocolLabel = protocol || 'Unknown';
+      if (protocol === 'torrent') {
+        protocolLabel = 'Torrent';
+      } else if (protocol === 'nzb') {
+        protocolLabel = 'Usenet';
+      }
       const peers = release.peers;
 
       if (compact) {

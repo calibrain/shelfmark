@@ -1,6 +1,6 @@
-import { CSSProperties } from 'react';
+import type { CSSProperties } from 'react';
 
-import { Book, ButtonStateInfo } from '../types';
+import type { Book, ButtonStateInfo } from '../types';
 import { CircularProgress } from './shared';
 
 type ButtonSize = 'sm' | 'md';
@@ -150,7 +150,12 @@ export const BookGetButton = ({
     }
 
     if (showCircularProgress) {
-      const progressSize = isIconVariant ? (size === 'sm' ? 16 : 20) : size === 'sm' ? 12 : 16;
+      let progressSize: number;
+      if (isIconVariant) {
+        progressSize = size === 'sm' ? 16 : 20;
+      } else {
+        progressSize = size === 'sm' ? 12 : 16;
+      }
       return <CircularProgress progress={buttonState?.progress} size={progressSize} />;
     }
 

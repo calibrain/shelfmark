@@ -9,12 +9,10 @@ export const Footer = ({ buildVersion, releaseVersion, debug }: FooterProps) => 
   const versionDisplay = releaseVersion && releaseVersion !== 'N/A' ? releaseVersion : 'dev';
 
   // Truncate long build versions (e.g., git hashes) to 7 chars
-  const truncatedBuild =
-    buildVersion && buildVersion !== 'N/A'
-      ? buildVersion.length > 7
-        ? buildVersion.slice(0, 7)
-        : buildVersion
-      : null;
+  let truncatedBuild: string | null = null;
+  if (buildVersion && buildVersion !== 'N/A') {
+    truncatedBuild = buildVersion.length > 7 ? buildVersion.slice(0, 7) : buildVersion;
+  }
 
   return (
     <footer

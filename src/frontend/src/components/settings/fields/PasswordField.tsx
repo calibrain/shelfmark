@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import { PasswordFieldConfig } from '../../../types/settings';
+import type { PasswordFieldConfig } from '../../../types/settings';
 
 interface PasswordFieldProps {
   field: PasswordFieldConfig;

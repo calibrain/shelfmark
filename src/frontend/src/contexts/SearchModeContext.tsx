@@ -1,6 +1,7 @@
-import { createContext, useContext, ReactNode, useMemo } from 'react';
+import type { ReactNode } from 'react';
+import { createContext, useContext, useMemo } from 'react';
 
-import { SearchMode } from '../types';
+import type { SearchMode } from '../types';
 
 interface SearchModeContextValue {
   searchMode: SearchMode;

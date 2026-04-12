@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 
-import { StatusData } from '../types/index';
+import type { StatusData } from '../types/index';
 import { wasDownloadQueuedAfterResponseError } from '../utils/downloadRecovery';
 
 describe('wasDownloadQueuedAfterResponseError', () => {

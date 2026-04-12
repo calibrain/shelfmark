@@ -1,4 +1,4 @@
-import { ButtonStateInfo, RequestPolicyMode } from '../types';
+import type { ButtonStateInfo, RequestPolicyMode } from '../types';
 
 export const applyDirectPolicyModeToButtonState = (
   baseState: ButtonStateInfo,

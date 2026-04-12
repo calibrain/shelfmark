@@ -1,4 +1,4 @@
-import { CheckboxFieldConfig } from '../../../types/settings';
+import type { CheckboxFieldConfig } from '../../../types/settings';
 import { ToggleSwitch } from '../../shared';
 
 interface CheckboxFieldProps {

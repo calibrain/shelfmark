@@ -9,18 +9,20 @@ import {
 } from 'react';
 
 import { getAdminUsers } from '../services/api';
-import {
+import type {
   ContentType,
   ActingAsUserSelection,
   MetadataSearchField,
   QueryTargetOption,
 } from '../types';
 import { formatActingAsUserName } from '../utils/actingAsUser';
-import { ActivityStatusCounts, getActivityBadgeState } from '../utils/activityBadge';
+import type { ActivityStatusCounts } from '../utils/activityBadge';
+import { getActivityBadgeState } from '../utils/activityBadge';
 import { withBasePath } from '../utils/basePath';
 import { isRecord } from '../utils/objectHelpers';
 import { DropdownList } from './DropdownList';
-import { SearchBar, SearchBarHandle } from './SearchBar';
+import type { SearchBarHandle } from './SearchBar';
+import { SearchBar } from './SearchBar';
 
 interface HeaderHandle {
   submitSearch: () => void;
@@ -70,12 +72,10 @@ interface HeaderProps {
 }
 
 const applyTheme = (preference: string): void => {
-  const effective =
-    preference === 'auto'
-      ? window.matchMedia('(prefers-color-scheme: dark)').matches
-        ? 'dark'
-        : 'light'
-      : preference;
+  let effective = preference;
+  if (preference === 'auto') {
+    effective = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
 
   document.documentElement.setAttribute('data-theme', effective);
   document.documentElement.style.colorScheme = effective;
@@ -135,6 +135,12 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
     const [isDropdownOpen, setIsDropdownOpen] = useState(false);
     const [isClosing, setIsClosing] = useState(false);
     const [shouldAnimateIn, setShouldAnimateIn] = useState(false);
+    let dropdownAnimationClass = '';
+    if (isClosing) {
+      dropdownAnimationClass = 'animate-fade-out-up';
+    } else if (shouldAnimateIn) {
+      dropdownAnimationClass = 'animate-fade-in-down';
+    }
     const dropdownRef = useRef<HTMLDivElement>(null);
     const [adminUsers, setAdminUsers] = useState<ActingAsUserSelection[]>([]);
     const [isAdminUsersLoading, setIsAdminUsersLoading] = useState(false);
@@ -465,7 +471,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
           {(isDropdownOpen || isClosing) && (
             <div
               className={`absolute right-0 mt-2 ${dropdownPanelWidthClass} z-50 rounded-lg border shadow-lg ${
-                isClosing ? 'animate-fade-out-up' : shouldAnimateIn ? 'animate-fade-in-down' : ''
+                dropdownAnimationClass
               }`}
               style={{
                 background: 'var(--bg)',

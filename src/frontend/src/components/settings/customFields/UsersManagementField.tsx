@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
 
-import { AdminUser, testAdminUserNotificationPreferences } from '../../../services/api';
+import type { AdminUser } from '../../../services/api';
+import { testAdminUserNotificationPreferences } from '../../../services/api';
 import {
   canCreateLocalUsersForAuthMode,
   UserListView,
@@ -10,7 +11,7 @@ import {
   useUsersFetch,
   useUsersPanelState,
 } from '../users';
-import { CustomSettingsFieldRendererProps } from './types';
+import type { CustomSettingsFieldRendererProps } from './types';
 
 export const UsersManagementField = ({
   tab: usersTab,

@@ -1,7 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 
-import { Book, ButtonStateInfo, isMetadataBook } from '../types';
+import type { Book, ButtonStateInfo } from '../types';
+import { isMetadataBook } from '../types';
 import { bookSupportsTargets } from '../utils/bookTargetLoader';
 import { isUserCancelledError } from '../utils/errors';
 import { BookTargetDropdown } from './BookTargetDropdown';
@@ -103,6 +104,12 @@ export const DetailsModal = ({
     isMetadata && buttonState.state === 'download' && buttonState.text === 'Get'
       ? 'Find Downloads'
       : buttonState.text;
+  const downloadButtonClassName = (() => {
+    if (buttonState.state === 'blocked') {
+      return 'bg-gray-500';
+    }
+    return isMetadata ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-sky-700 hover:bg-sky-800';
+  })();
   const publisherInfo = { label: 'Publisher', value: book.publisher || '-' };
 
   // Build metadata grid based on mode
@@ -407,13 +414,7 @@ export const DetailsModal = ({
                     isMetadata ? buttonState.state === 'blocked' : buttonState.state !== 'download'
                   }
                   className={`rounded-lg px-5 py-2 text-sm font-medium text-white transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                    isMetadata
-                      ? buttonState.state === 'blocked'
-                        ? 'bg-gray-500'
-                        : 'bg-emerald-600 hover:bg-emerald-700'
-                      : buttonState.state === 'blocked'
-                        ? 'bg-gray-500'
-                        : 'bg-sky-700 hover:bg-sky-800'
+                    downloadButtonClassName
                   }`}
                 >
                   {isMetadata ? metadataActionText : buttonState.text}

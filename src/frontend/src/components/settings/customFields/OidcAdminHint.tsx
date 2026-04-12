@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 
 import { getAdminUsers } from '../../../services/api';
-import { CustomSettingsFieldRendererProps } from './types';
+import type { CustomSettingsFieldRendererProps } from './types';
 
 const ADMIN_CHECK_KEYS = new Set(['builtin_admin_requirement', 'oidc_admin_requirement']);
 

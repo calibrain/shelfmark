@@ -1,7 +1,7 @@
 import { useState } from 'react';
 
 import { useSearchMode } from '../../contexts/SearchModeContext';
-import { Book, ButtonStateInfo, DisplayField } from '../../types';
+import type { Book, ButtonStateInfo, DisplayField } from '../../types';
 import { bookSupportsTargets } from '../../utils/bookTargetLoader';
 import { getFormatColor, getLanguageColor } from '../../utils/colorMaps';
 import { BookActionButton } from '../BookActionButton';

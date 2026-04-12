@@ -1,7 +1,13 @@
 import { useEffect, useMemo } from 'react';
 
-import { RequestPolicyMode } from '../../../types';
+import type { RequestPolicyMode } from '../../../types';
 import { DropdownList } from '../../DropdownList';
+import type {
+  RequestPolicyContentType,
+  RequestPolicyDefaultsValue,
+  RequestPolicyRuleRow,
+  RequestPolicySourceCapability,
+} from './requestPolicyGridUtils';
 import {
   areRuleSetsEqual,
   getAllowedMatrixModes,
@@ -14,10 +20,6 @@ import {
   normalizeRequestPolicyRules,
   REQUEST_POLICY_DEFAULT_OPTIONS,
   REQUEST_POLICY_MODE_LABELS,
-  RequestPolicyContentType,
-  RequestPolicyDefaultsValue,
-  RequestPolicyRuleRow,
-  RequestPolicySourceCapability,
 } from './requestPolicyGridUtils';
 
 interface RequestPolicyGridProps {

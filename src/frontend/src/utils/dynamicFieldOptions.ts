@@ -1,4 +1,5 @@
-import { DynamicFieldOption, fetchFieldOptions } from '../services/api';
+import type { DynamicFieldOption } from '../services/api';
+import { fetchFieldOptions } from '../services/api';
 
 const optionsCache = new Map<string, DynamicFieldOption[]>();
 const OPTIONS_CACHE_MAX = 50;

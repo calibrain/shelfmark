@@ -1,4 +1,4 @@
-import { Book } from '../types';
+import type { Book } from '../types';
 
 const toOptionalText = (value: unknown): string | undefined => {
   if (typeof value === 'string' && value.trim()) {

@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
 
-import { RequestRecord, StatusData } from '../../types';
+import type { RequestRecord, StatusData } from '../../types';
 import { Dropdown } from '../Dropdown';
 import { ActivityCard } from './ActivityCard';
-import { downloadToActivityItem, DownloadStatusKey } from './activityMappers';
-import { ActivityItem } from './activityTypes';
+import type { DownloadStatusKey } from './activityMappers';
+import { downloadToActivityItem } from './activityMappers';
+import type { ActivityItem } from './activityTypes';
 
 interface ActivitySidebarProps {
   isOpen: boolean;
@@ -442,25 +443,34 @@ export const ActivitySidebar = ({
     return combined.toSorted((a, b) => b.timestamp - a.timestamp);
   }, [mergedDownloadItems, mergedRequestItems]);
 
-  const baseVisibleItems =
-    activeTab === 'all'
-      ? allItems
-      : activeTab === 'requests'
-        ? mergedRequestItems.filter((item) => {
-            const requestStatus = item.requestRecord?.status;
-            if (
-              requestStatus === 'pending' ||
-              requestStatus === 'rejected' ||
-              requestStatus === 'cancelled'
-            ) {
-              return true;
-            }
-            return requestStatus === 'fulfilled' && item.kind === 'request';
-          })
-        : activeTab === 'history'
-          ? historyItems
-          : mergedDownloadItems;
+  let baseVisibleItems = mergedDownloadItems;
+  if (activeTab === 'all') {
+    baseVisibleItems = allItems;
+  } else if (activeTab === 'requests') {
+    baseVisibleItems = mergedRequestItems.filter((item) => {
+      const requestStatus = item.requestRecord?.status;
+      if (
+        requestStatus === 'pending' ||
+        requestStatus === 'rejected' ||
+        requestStatus === 'cancelled'
+      ) {
+        return true;
+      }
+      return requestStatus === 'fulfilled' && item.kind === 'request';
+    });
+  } else if (activeTab === 'history') {
+    baseVisibleItems = historyItems;
+  }
   const isHistoryInitialLoad = activeTab === 'history' && !historyLoaded;
+  let emptyStateMessage = 'No activity';
+  if (activeTab === 'requests') {
+    emptyStateMessage = isRequestsLoading ? 'Loading requests...' : 'No requests';
+  } else if (activeTab === 'history') {
+    emptyStateMessage =
+      historyLoading || isHistoryInitialLoad ? 'Loading history...' : 'No history';
+  } else if (activeTab === 'downloads') {
+    emptyStateMessage = 'No downloads';
+  }
 
   const availableUsers = useMemo(() => {
     const userMap = new Map<string, string>();
@@ -876,40 +886,34 @@ export const ActivitySidebar = ({
         className="flex-1 overflow-y-auto overscroll-y-contain p-4"
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
       >
-        {visibleItems.length === 0 ? (
-          <p className="mt-8 text-center text-sm opacity-70">
-            {activeTab === 'requests'
-              ? isRequestsLoading
-                ? 'Loading requests...'
-                : 'No requests'
-              : activeTab === 'history'
-                ? historyLoading || isHistoryInitialLoad
-                  ? 'Loading history...'
-                  : 'No history'
-                : activeTab === 'downloads'
-                  ? 'No downloads'
-                  : 'No activity'}
-          </p>
-        ) : activeTab === 'history' ? (
-          <div className="divide-y divide-[color-mix(in_srgb,var(--border-muted)_60%,transparent)]">
-            {visibleItems.map((item) => (
-              <ActivityCard key={item.id} item={item} isAdmin={isAdmin} />
-            ))}
-            {historyHasMore && (
-              <div className="pt-3 text-center">
-                <button
-                  type="button"
-                  onClick={onHistoryLoadMore}
-                  disabled={historyLoading}
-                  className="text-sm text-sky-600 hover:underline disabled:opacity-60 dark:text-sky-400"
-                >
-                  {historyLoading ? 'Loading...' : 'Load more'}
-                </button>
+        {(() => {
+          if (visibleItems.length === 0) {
+            return <p className="mt-8 text-center text-sm opacity-70">{emptyStateMessage}</p>;
+          }
+
+          if (activeTab === 'history') {
+            return (
+              <div className="divide-y divide-[color-mix(in_srgb,var(--border-muted)_60%,transparent)]">
+                {visibleItems.map((item) => (
+                  <ActivityCard key={item.id} item={item} isAdmin={isAdmin} />
+                ))}
+                {historyHasMore && (
+                  <div className="pt-3 text-center">
+                    <button
+                      type="button"
+                      onClick={onHistoryLoadMore}
+                      disabled={historyLoading}
+                      className="text-sm text-sky-600 hover:underline disabled:opacity-60 dark:text-sky-400"
+                    >
+                      {historyLoading ? 'Loading...' : 'Load more'}
+                    </button>
+                  </div>
+                )}
               </div>
-            )}
-          </div>
-        ) : (
-          groupedVisibleItems.map((group) => (
+            );
+          }
+
+          return groupedVisibleItems.map((group) => (
             <section key={group.key} className="mb-4 last:mb-0">
               {activeTab !== 'downloads' && (
                 <button
@@ -1031,8 +1035,8 @@ export const ActivitySidebar = ({
                 </div>
               )}
             </section>
-          ))
-        )}
+          ));
+        })()}
       </div>
 
       {(activeTab === 'downloads' || activeTab === 'all') &&

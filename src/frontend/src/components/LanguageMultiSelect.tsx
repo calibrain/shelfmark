@@ -1,10 +1,11 @@
-import { Language } from '../types';
+import type { Language } from '../types';
 import {
   LANGUAGE_OPTION_ALL,
   LANGUAGE_OPTION_DEFAULT,
   normalizeLanguageSelection,
 } from '../utils/languageFilters';
-import { DropdownList, DropdownListOption } from './DropdownList';
+import type { DropdownListOption } from './DropdownList';
+import { DropdownList } from './DropdownList';
 
 interface LanguageMultiSelectProps {
   options: Language[];

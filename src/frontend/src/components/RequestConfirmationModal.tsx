@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { getMetadataBookInfo } from '../services/api';
-import { CreateRequestPayload } from '../types';
+import type { CreateRequestPayload } from '../types';
+import type { RequestConfirmationPreview } from '../utils/requestConfirmation';
 import {
   applyRequestNoteToPayload,
   buildRequestConfirmationPreview,
   enrichPreviewFromBook,
   MAX_REQUEST_NOTE_LENGTH,
-  RequestConfirmationPreview,
   truncateRequestNote,
 } from '../utils/requestConfirmation';
 import { isSourceBackedRequestPayload } from '../utils/requestPayload';

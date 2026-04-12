@@ -1,6 +1,6 @@
-import { RequestRecord } from '../../types';
+import type { RequestRecord } from '../../types';
 import { isActiveDownloadStatus } from './activityStyles.js';
-import { ActivityItem, ActivityVisualStatus } from './activityTypes';
+import type { ActivityItem, ActivityVisualStatus } from './activityTypes';
 
 export type ActivityCardAction =
   | {

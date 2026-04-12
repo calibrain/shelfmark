@@ -1,4 +1,4 @@
-import { DisplayField } from '../../types';
+import type { DisplayField } from '../../types';
 
 interface DisplayFieldIconProps {
   icon?: string;

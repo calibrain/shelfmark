@@ -1,4 +1,4 @@
-import { SettingsField, SettingsTab } from '../types/settings';
+import type { SettingsField, SettingsTab } from '../types/settings';
 
 export type SettingsValues = Record<string, Record<string, unknown>>;
 

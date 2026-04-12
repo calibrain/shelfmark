@@ -1,4 +1,4 @@
-import { AdminUser } from '../../../services/api';
+import type { AdminUser } from '../../../services/api';
 import { AUTH_SOURCE_BADGE_CLASSES, AUTH_SOURCE_LABEL } from './types';
 
 interface UserAuthSourceBadgeProps {

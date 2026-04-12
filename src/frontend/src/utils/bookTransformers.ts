@@ -1,4 +1,4 @@
-import { Book, Release } from '../types';
+import type { Book, Release } from '../types';
 import { isRecord, isStringArray } from './objectHelpers';
 
 /**

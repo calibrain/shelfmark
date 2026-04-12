@@ -1,4 +1,5 @@
-import { ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 // Find the closest scrollable ancestor element
 function getScrollableAncestor(element: HTMLElement | null): HTMLElement | null {
@@ -77,6 +78,24 @@ export const Dropdown = ({
   const [resolvedAlign, setResolvedAlign] = useState<'left' | 'right'>(
     align === 'right' ? 'right' : 'left',
   );
+  let triggerBorderRadius = '0.5rem';
+  if (triggerChrome === 'minimal') {
+    triggerBorderRadius = '0';
+  } else if (isOpen) {
+    triggerBorderRadius = panelDirection === 'down' ? '0.5rem 0.5rem 0 0' : '0 0 0.5rem 0.5rem';
+  }
+
+  let panelOffsetClassName = '';
+  if (panelDirection === 'down') {
+    panelOffsetClassName = renderTrigger ? 'mt-2' : '';
+  } else {
+    panelOffsetClassName = renderTrigger ? 'bottom-full mb-2' : 'bottom-full';
+  }
+
+  let panelBorderRadius = '0.5rem';
+  if (!renderTrigger) {
+    panelBorderRadius = panelDirection === 'down' ? '0 0 0.5rem 0.5rem' : '0.5rem 0.5rem 0 0';
+  }
 
   const toggleOpen = () => {
     if (disabled) return;
@@ -202,15 +221,7 @@ export const Dropdown = ({
               color: 'var(--text)',
               borderColor: triggerChrome === 'minimal' ? 'transparent' : 'var(--border-muted)',
               borderWidth: triggerChrome === 'minimal' ? 0 : undefined,
-              borderRadius: isOpen
-                ? triggerChrome === 'minimal'
-                  ? '0'
-                  : panelDirection === 'down'
-                    ? '0.5rem 0.5rem 0 0'
-                    : '0 0 0.5rem 0.5rem'
-                : triggerChrome === 'minimal'
-                  ? '0'
-                  : '0.5rem',
+              borderRadius: triggerBorderRadius,
             }}
           >
             <span className="min-w-0 flex-1 truncate">
@@ -232,22 +243,12 @@ export const Dropdown = ({
           <div
             ref={panelRef}
             className={`absolute ${resolvedAlign === 'right' ? 'right-0' : 'left-0'} ${
-              panelDirection === 'down'
-                ? renderTrigger
-                  ? 'mt-2'
-                  : ''
-                : renderTrigger
-                  ? 'bottom-full mb-2'
-                  : 'bottom-full'
+              panelOffsetClassName
             } z-20 border ${panelDirection === 'down' ? 'shadow-lg' : ''} ${panelClassName || widthClassName}`}
             style={{
               background: 'var(--bg)',
               borderColor: 'var(--border-muted)',
-              borderRadius: renderTrigger
-                ? '0.5rem'
-                : panelDirection === 'down'
-                  ? '0 0 0.5rem 0.5rem'
-                  : '0.5rem 0.5rem 0 0',
+              borderRadius: panelBorderRadius,
               marginTop: !renderTrigger && panelDirection === 'down' ? '-1px' : undefined,
               marginBottom: !renderTrigger && panelDirection === 'up' ? '-1px' : undefined,
             }}
