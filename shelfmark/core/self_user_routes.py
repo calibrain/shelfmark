@@ -23,7 +23,6 @@ from shelfmark.core.auth_modes import (
 )
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_settings_overrides import (
     build_user_preferences_payload as _build_user_preferences_payload,
 )
@@ -154,8 +153,10 @@ def _normalize_visible_self_settings_sections(raw_sections: object) -> list[str]
 
 
 def _get_visible_self_settings_sections() -> list[str]:
-    users_config = load_config_file("users")
-    raw_sections = users_config.get(_VISIBLE_SELF_SETTINGS_SECTIONS_KEY)
+    raw_sections = app_config.get(
+        _VISIBLE_SELF_SETTINGS_SECTIONS_KEY,
+        list(_DEFAULT_VISIBLE_SELF_SETTINGS_SECTIONS),
+    )
     return _normalize_visible_self_settings_sections(raw_sections)
 
 

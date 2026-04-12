@@ -668,13 +668,16 @@ def migrate_mirror_settings() -> None:
 def migrate_legacy_settings() -> None:
     """Migrate legacy settings to new unified file destination format.
 
-    Maps old settings to new:
-    - PROCESSING_MODE + USE_BOOK_TITLE -> FILE_ORGANIZATION
-    - INGEST_DIR / LIBRARY_PATH -> DESTINATION
-    - LIBRARY_TEMPLATE -> TEMPLATE
+    Maps stable legacy settings to the current download model:
+    - INGEST_DIR -> DESTINATION
+    - USE_BOOK_TITLE -> FILE_ORGANIZATION
     - USE_CONTENT_TYPE_DIRECTORIES -> AA_CONTENT_TYPE_ROUTING
     - INGEST_DIR_* -> AA_CONTENT_TYPE_DIR_*
     - TORRENT_HARDLINK -> HARDLINK_TORRENTS / HARDLINK_TORRENTS_AUDIOBOOK
+
+    Intentionally ignores the short-lived pre-1.0 library-mode settings
+    (`PROCESSING_MODE`, `LIBRARY_PATH`, `LIBRARY_TEMPLATE`, etc.), which were
+    replaced before the first stable release shipped.
     """
     # Load existing downloads config
     downloads_config = load_config_file("downloads")
@@ -685,17 +688,19 @@ def migrate_legacy_settings() -> None:
 
     # Skip migration if no legacy settings exist (fresh install)
     legacy_keys = {
-        "PROCESSING_MODE",
         "INGEST_DIR",
-        "LIBRARY_PATH",
         "USE_BOOK_TITLE",
-        "LIBRARY_TEMPLATE",
-        "PROCESSING_MODE_AUDIOBOOK",
         "INGEST_DIR_AUDIOBOOK",
-        "LIBRARY_PATH_AUDIOBOOK",
-        "LIBRARY_TEMPLATE_AUDIOBOOK",
         "TORRENT_HARDLINK",
         "USE_CONTENT_TYPE_DIRECTORIES",
+        "INGEST_DIR_BOOK_FICTION",
+        "INGEST_DIR_BOOK_NON_FICTION",
+        "INGEST_DIR_BOOK_UNKNOWN",
+        "INGEST_DIR_MAGAZINE",
+        "INGEST_DIR_COMIC_BOOK",
+        "INGEST_DIR_STANDARDS_DOCUMENT",
+        "INGEST_DIR_MUSICAL_SCORE",
+        "INGEST_DIR_OTHER",
     }
     if not any(key in downloads_config for key in legacy_keys):
         return
@@ -703,48 +708,18 @@ def migrate_legacy_settings() -> None:
     migrated_downloads = {}
     migrated_sources = {}
 
-    # === BOOKS MIGRATION ===
-    old_mode = downloads_config.get("PROCESSING_MODE", "ingest")
     old_ingest_dir = downloads_config.get("INGEST_DIR", "/cwa-book-ingest")
-    old_library_path = downloads_config.get("LIBRARY_PATH", "")
     old_use_book_title = downloads_config.get("USE_BOOK_TITLE", True)
-    old_library_template = downloads_config.get("LIBRARY_TEMPLATE", "{Author}/{Title}")
 
-    # Map PROCESSING_MODE + USE_BOOK_TITLE -> FILE_ORGANIZATION
-    if old_mode == "library":
-        migrated_downloads["FILE_ORGANIZATION"] = "organize"
-        migrated_downloads["DESTINATION"] = old_library_path or "/books"
-        migrated_downloads["TEMPLATE"] = old_library_template
+    migrated_downloads["DESTINATION"] = old_ingest_dir
+    if old_use_book_title:
+        migrated_downloads["FILE_ORGANIZATION"] = "rename"
     else:
-        if old_use_book_title:
-            migrated_downloads["FILE_ORGANIZATION"] = "rename"
-            migrated_downloads["TEMPLATE"] = "{Author} - {Title} ({Year})"
-        else:
-            migrated_downloads["FILE_ORGANIZATION"] = "none"
-        migrated_downloads["DESTINATION"] = old_ingest_dir
-
-    # === AUDIOBOOKS MIGRATION ===
-    old_mode_ab = downloads_config.get("PROCESSING_MODE_AUDIOBOOK", "ingest")
-    old_ingest_dir_ab = downloads_config.get("INGEST_DIR_AUDIOBOOK", "")
-    old_library_path_ab = downloads_config.get("LIBRARY_PATH_AUDIOBOOK", "")
-    old_library_template_ab = downloads_config.get("LIBRARY_TEMPLATE_AUDIOBOOK", "{Author}/{Title}")
-
-    if old_mode_ab == "library":
-        migrated_downloads["FILE_ORGANIZATION_AUDIOBOOK"] = "organize"
-        migrated_downloads["DESTINATION_AUDIOBOOK"] = old_library_path_ab or ""
-        migrated_downloads["TEMPLATE_AUDIOBOOK"] = old_library_template_ab
-    else:
-        migrated_downloads["FILE_ORGANIZATION_AUDIOBOOK"] = "rename"
-        migrated_downloads["TEMPLATE_AUDIOBOOK"] = "{Author} - {Title}"
-        if old_ingest_dir_ab:
-            migrated_downloads["DESTINATION_AUDIOBOOK"] = old_ingest_dir_ab
+        migrated_downloads["FILE_ORGANIZATION"] = "none"
 
     # === HARDLINK MIGRATION ===
     old_torrent_hardlink = downloads_config.get("TORRENT_HARDLINK")
     if old_torrent_hardlink is not None:
-        # Books default to False (ingest folder use case)
-        # Audiobooks default to True (library folder use case)
-        # But if explicitly set, apply to both
         migrated_downloads["HARDLINK_TORRENTS"] = old_torrent_hardlink
         migrated_downloads["HARDLINK_TORRENTS_AUDIOBOOK"] = old_torrent_hardlink
 

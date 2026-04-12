@@ -114,7 +114,10 @@ def test_entrypoint_rejects_tor_in_non_root_mode(tmp_path):
 
     assert result.returncode == 1
     assert "USING_TOR=true requires the container to start as root." in result.stderr
-    assert "Non-root mode skips the privileged filesystem and network setup Tor depends on." in result.stderr
+    assert (
+        "Non-root mode skips the privileged filesystem and network setup Tor depends on."
+        in result.stderr
+    )
 
 
 def test_entrypoint_non_root_mode_runs_with_stub_gunicorn(tmp_path):
@@ -142,5 +145,7 @@ def test_entrypoint_non_root_mode_requires_writable_config_dir(tmp_path):
         readonly_config_dir.chmod(0o755)
 
     assert result.returncode == 1
-    assert f"Config directory is not writable in non-root mode: {readonly_config_dir}" in result.stdout
+    assert (
+        f"Config directory is not writable in non-root mode: {readonly_config_dir}" in result.stdout
+    )
     assert "Prepare ownership outside the container" in result.stdout

@@ -1,5 +1,5 @@
-from shelfmark.metadata_providers import BookMetadata
 from shelfmark.core.search_plan import build_release_search_plan
+from shelfmark.metadata_providers import BookMetadata
 
 
 class TestReleaseSearchPlan:

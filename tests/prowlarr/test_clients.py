@@ -6,15 +6,14 @@ import pytest
 import requests
 
 from shelfmark.download.clients import (
-    DownloadStatus,
-    DownloadState,
-    DownloadClient,
-    register_client,
-    get_client,
-    list_configured_clients,
-    get_all_clients,
-    with_retry,
     _CLIENTS,
+    DownloadClient,
+    DownloadState,
+    DownloadStatus,
+    get_all_clients,
+    get_client,
+    register_client,
+    with_retry,
 )
 
 

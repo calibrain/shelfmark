@@ -54,8 +54,10 @@ class MockSession:
 
 def make_config_getter(values):
     """Create a config.get function that returns values from a dict."""
+
     def getter(key, default=""):
         return values.get(key, default)
+
     return getter
 
 
@@ -626,9 +628,7 @@ class TestTransmissionClientRemove:
             result = client.remove("abc123", delete_files=True)
 
             assert result is True
-            mock_client_instance.remove_torrent.assert_called_once_with(
-                "abc123", delete_data=True
-            )
+            mock_client_instance.remove_torrent.assert_called_once_with("abc123", delete_data=True)
 
     def test_remove_failure(self, monkeypatch):
         """Test failed torrent removal."""

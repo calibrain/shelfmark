@@ -544,7 +544,8 @@ def search_mode_settings() -> list[SettingsField]:
 @register_settings("network", "Network", icon="globe", order=10)
 def network_settings() -> list[SettingsField]:
     """Network and connectivity settings."""
-    # Check if Tor is currently enabled.
+    # Avoid querying the live config singleton while settings are still being
+    # registered, which can recurse back into this module during import.
     tor_enabled = env.USING_TOR
 
     # When Tor is enabled, DNS/proxy settings are overridden by iptables rules

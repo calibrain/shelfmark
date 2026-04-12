@@ -14,6 +14,9 @@ uv run pytest tests/ -v -m "not integration and not e2e"
 # Run Python static analysis
 make python-checks
 
+# Run lightweight test lint/type checks
+make python-test-checks
+
 # Run E2E API tests against a running app stack
 uv run pytest tests/e2e/ -v -m e2e
 

@@ -8,16 +8,15 @@ Run with: docker compose -f docker-compose.test-clients.yml exec shelfmark uv ru
 
 import time
 from threading import Event
-from typing import List, Optional, Tuple
+
 import pytest
 
 from shelfmark.core.config import config
-from shelfmark.core.settings_registry import save_config_file
 from shelfmark.core.models import DownloadTask
+from shelfmark.core.settings_registry import save_config_file
+from shelfmark.release_sources.prowlarr.cache import cache_release, get_release, remove_release
 from shelfmark.release_sources.prowlarr.handler import ProwlarrHandler
 from shelfmark.release_sources.prowlarr.utils import get_protocol
-from shelfmark.release_sources.prowlarr.cache import cache_release, get_release, remove_release, _cache
-
 
 # Test magnet link
 TEST_MAGNET = "magnet:?xt=urn:btih:3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0&dn=ubuntu-22.04.3-live-server-amd64.iso"
@@ -25,13 +24,16 @@ TEST_MAGNET = "magnet:?xt=urn:btih:3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0&dn=u
 
 def _setup_transmission_config():
     """Set up Transmission configuration via config files and refresh config."""
-    save_config_file("prowlarr_clients", {
-        "PROWLARR_TORRENT_CLIENT": "transmission",
-        "TRANSMISSION_URL": "http://transmission:9091",
-        "TRANSMISSION_USERNAME": "admin",
-        "TRANSMISSION_PASSWORD": "admin",
-        "TRANSMISSION_CATEGORY": "test",
-    })
+    save_config_file(
+        "prowlarr_clients",
+        {
+            "PROWLARR_TORRENT_CLIENT": "transmission",
+            "TRANSMISSION_URL": "http://transmission:9091",
+            "TRANSMISSION_USERNAME": "admin",
+            "TRANSMISSION_PASSWORD": "admin",
+            "TRANSMISSION_CATEGORY": "test",
+        },
+    )
     config.refresh()
 
 
@@ -40,6 +42,7 @@ def _is_transmission_available():
     _setup_transmission_config()
     try:
         from shelfmark.download.clients.transmission import TransmissionClient
+
         client = TransmissionClient()
         success, _ = client.test_connection()
         return success
@@ -51,25 +54,25 @@ class ProgressRecorder:
     """Records progress and status updates during download."""
 
     def __init__(self):
-        self.progress_values: List[float] = []
-        self.status_updates: List[Tuple[str, Optional[str]]] = []
+        self.progress_values: list[float] = []
+        self.status_updates: list[tuple[str, str | None]] = []
 
     def progress_callback(self, progress: float):
         self.progress_values.append(progress)
 
-    def status_callback(self, status: str, message: Optional[str]):
+    def status_callback(self, status: str, message: str | None):
         self.status_updates.append((status, message))
 
     @property
-    def last_status(self) -> Optional[str]:
+    def last_status(self) -> str | None:
         return self.status_updates[-1][0] if self.status_updates else None
 
     @property
-    def last_message(self) -> Optional[str]:
+    def last_message(self) -> str | None:
         return self.status_updates[-1][1] if self.status_updates else None
 
     @property
-    def statuses(self) -> List[str]:
+    def statuses(self) -> list[str]:
         return [s[0] for s in self.status_updates]
 
 
@@ -131,11 +134,14 @@ class TestHandlerCacheOperations:
         handler = ProwlarrHandler()
 
         task_id = "no-url-release-test"
-        cache_release(task_id, {
-            "protocol": "torrent",
-            "title": "Test Release",
-            # No downloadUrl or magnetUrl
-        })
+        cache_release(
+            task_id,
+            {
+                "protocol": "torrent",
+                "title": "Test Release",
+                # No downloadUrl or magnetUrl
+            },
+        )
 
         try:
             task = DownloadTask(
@@ -186,7 +192,9 @@ class TestHandlerCacheOperations:
 def transmission_available():
     """Check if Transmission is available, skip if not."""
     if not _is_transmission_available():
-        pytest.skip("Transmission not available - ensure docker-compose.test-clients.yml is running")
+        pytest.skip(
+            "Transmission not available - ensure docker-compose.test-clients.yml is running"
+        )
     return True
 
 
@@ -201,11 +209,14 @@ class TestProwlarrHandlerWithTransmission:
 
         # Cache a valid release
         task_id = f"test-cancel-release-{time.time()}"
-        cache_release(task_id, {
-            "protocol": "torrent",
-            "title": "Ubuntu Test ISO",
-            "magnetUrl": TEST_MAGNET,
-        })
+        cache_release(
+            task_id,
+            {
+                "protocol": "torrent",
+                "title": "Ubuntu Test ISO",
+                "magnetUrl": TEST_MAGNET,
+            },
+        )
 
         task = DownloadTask(
             task_id=task_id,
@@ -239,7 +250,11 @@ class TestProwlarrHandlerWithTransmission:
         # Should have some status updates
         assert len(recorder.status_updates) > 0
         # Should see resolving or downloading status (not just error)
-        assert "resolving" in recorder.statuses or "downloading" in recorder.statuses or "cancelled" in recorder.statuses
+        assert (
+            "resolving" in recorder.statuses
+            or "downloading" in recorder.statuses
+            or "cancelled" in recorder.statuses
+        )
 
     def test_handler_sends_to_transmission(self, transmission_available):
         """Test that handler properly sends downloads to Transmission."""
@@ -247,11 +262,14 @@ class TestProwlarrHandlerWithTransmission:
         handler = ProwlarrHandler()
 
         task_id = f"transmission-test-{time.time()}"
-        cache_release(task_id, {
-            "protocol": "torrent",
-            "title": "Integration Test Torrent",
-            "magnetUrl": TEST_MAGNET,
-        })
+        cache_release(
+            task_id,
+            {
+                "protocol": "torrent",
+                "title": "Integration Test Torrent",
+                "magnetUrl": TEST_MAGNET,
+            },
+        )
 
         task = DownloadTask(
             task_id=task_id,

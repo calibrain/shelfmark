@@ -166,7 +166,9 @@ class TestPerUserDestination:
         )
         monkeypatch.setattr(
             "shelfmark.download.postprocess.destination.get_source",
-            lambda _: type("Source", (), {"get_destination_override": staticmethod(lambda task: None)})(),
+            lambda _: type(
+                "Source", (), {"get_destination_override": staticmethod(lambda task: None)}
+            )(),
         )
 
         from shelfmark.download.postprocess.destination import get_final_destination
@@ -199,7 +201,9 @@ class TestPerUserDestination:
         )
         monkeypatch.setattr(
             "shelfmark.download.postprocess.destination.get_source",
-            lambda _: type("Source", (), {"get_destination_override": staticmethod(lambda task: None)})(),
+            lambda _: type(
+                "Source", (), {"get_destination_override": staticmethod(lambda task: None)}
+            )(),
         )
 
         from shelfmark.download.postprocess.destination import get_final_destination
@@ -354,3 +358,17 @@ class TestTaskToDictUsername:
         )
         result = _task_to_dict(task)
         assert result["username"] is None
+
+    def test_task_to_dict_prefers_current_queue_status(self):
+        """Serialized task status should reflect the queue bucket being emitted."""
+        from shelfmark.download.orchestrator import _task_to_dict
+
+        task = DownloadTask(
+            task_id="book1",
+            source="direct_download",
+            title="Test Book",
+            status=QueueStatus.QUEUED,
+        )
+
+        result = _task_to_dict(task, current_status=QueueStatus.COMPLETE)
+        assert result["status"] == QueueStatus.COMPLETE.value

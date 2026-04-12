@@ -45,7 +45,9 @@ def test_download_settings_email_recipient_field_uses_default_label():
     from shelfmark.config.settings import download_settings
 
     fields = download_settings()
-    email_field = next(field for field in fields if getattr(field, "key", None) == "EMAIL_RECIPIENT")
+    email_field = next(
+        field for field in fields if getattr(field, "key", None) == "EMAIL_RECIPIENT"
+    )
 
     assert email_field.label == "Default Email Recipient"
     assert "Optional fallback" in email_field.description
@@ -55,7 +57,9 @@ def test_download_settings_booklore_destination_field_defaults_to_library():
     from shelfmark.config.settings import download_settings
 
     fields = download_settings()
-    destination_field = next(field for field in fields if getattr(field, "key", None) == "BOOKLORE_DESTINATION")
+    destination_field = next(
+        field for field in fields if getattr(field, "key", None) == "BOOKLORE_DESTINATION"
+    )
 
     assert destination_field.default == "library"
     option_values = {option["value"] for option in destination_field.options}
@@ -67,9 +71,15 @@ def test_download_settings_grimmory_copy_is_exposed_in_ui_metadata():
 
     fields = download_settings()
 
-    output_mode_field = next(field for field in fields if getattr(field, "key", None) == "BOOKS_OUTPUT_MODE")
-    grimmory_option = next(option for option in output_mode_field.options if option["value"] == "booklore")
-    heading_field = next(field for field in fields if getattr(field, "key", None) == "booklore_heading")
+    output_mode_field = next(
+        field for field in fields if getattr(field, "key", None) == "BOOKS_OUTPUT_MODE"
+    )
+    grimmory_option = next(
+        option for option in output_mode_field.options if option["value"] == "booklore"
+    )
+    heading_field = next(
+        field for field in fields if getattr(field, "key", None) == "booklore_heading"
+    )
     url_field = next(field for field in fields if getattr(field, "key", None) == "BOOKLORE_HOST")
 
     assert grimmory_option["label"] == "Grimmory (API)"
@@ -83,8 +93,12 @@ def test_download_settings_booklore_library_and_path_depend_on_library_destinati
     from shelfmark.config.settings import download_settings
 
     fields = download_settings()
-    library_field = next(field for field in fields if getattr(field, "key", None) == "BOOKLORE_LIBRARY_ID")
-    path_field = next(field for field in fields if getattr(field, "key", None) == "BOOKLORE_PATH_ID")
+    library_field = next(
+        field for field in fields if getattr(field, "key", None) == "BOOKLORE_LIBRARY_ID"
+    )
+    path_field = next(
+        field for field in fields if getattr(field, "key", None) == "BOOKLORE_PATH_ID"
+    )
 
     assert library_field.show_when == [
         {"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
@@ -100,7 +114,9 @@ def test_download_settings_destination_test_buttons_exist():
     from shelfmark.config.settings import download_settings
 
     fields = download_settings()
-    books_button = next(field for field in fields if getattr(field, "key", None) == "test_destination")
+    books_button = next(
+        field for field in fields if getattr(field, "key", None) == "test_destination"
+    )
     audiobook_button = next(
         field for field in fields if getattr(field, "key", None) == "test_destination_audiobook"
     )
@@ -191,7 +207,9 @@ def test_test_books_destination_requires_value():
     assert result["message"] == "Books destination is required"
 
 
-def test_test_books_destination_uses_persisted_value_when_current_values_missing(monkeypatch, tmp_path):
+def test_test_books_destination_uses_persisted_value_when_current_values_missing(
+    monkeypatch, tmp_path
+):
     from shelfmark.config.download_settings_handlers import check_books_destination
     from shelfmark.core.config import config
 

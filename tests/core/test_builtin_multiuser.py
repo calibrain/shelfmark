@@ -32,8 +32,12 @@ class TestBuiltinMultiUserLogin:
         assert user["role"] == "user"
 
     def test_create_admin_and_regular_user(self, db):
-        db.create_user(username="admin", password_hash=generate_password_hash("admin123"), role="admin")
-        db.create_user(username="user1", password_hash=generate_password_hash("user123"), role="user")
+        db.create_user(
+            username="admin", password_hash=generate_password_hash("admin123"), role="admin"
+        )
+        db.create_user(
+            username="user1", password_hash=generate_password_hash("user123"), role="user"
+        )
         users = db.list_users()
         assert len(users) == 2
         roles = {u["username"]: u["role"] for u in users}
@@ -87,7 +91,9 @@ class TestMigrateBuiltinConfig:
 
     def test_skip_migration_if_users_exist(self, db):
         """Don't re-migrate if users already exist in DB."""
-        db.create_user(username="existing_admin", password_hash=generate_password_hash("pw"), role="admin")
+        db.create_user(
+            username="existing_admin", password_hash=generate_password_hash("pw"), role="admin"
+        )
         # Should have 1 user already, migration should be skipped
         assert len(db.list_users()) == 1
 
@@ -113,7 +119,9 @@ class TestBuiltinLoginLogic:
         }
 
     def test_login_admin(self, db):
-        db.create_user(username="admin", password_hash=generate_password_hash("admin123"), role="admin")
+        db.create_user(
+            username="admin", password_hash=generate_password_hash("admin123"), role="admin"
+        )
         result = self._builtin_login(db, "admin", "admin123")
         assert result is not None
         assert result["is_admin"] is True
@@ -126,7 +134,9 @@ class TestBuiltinLoginLogic:
         assert result["is_admin"] is False
 
     def test_login_wrong_password(self, db):
-        db.create_user(username="user1", password_hash=generate_password_hash("correct"), role="user")
+        db.create_user(
+            username="user1", password_hash=generate_password_hash("correct"), role="user"
+        )
         result = self._builtin_login(db, "user1", "wrong")
         assert result is None
 
@@ -135,6 +145,8 @@ class TestBuiltinLoginLogic:
         assert result is None
 
     def test_login_sets_db_user_id(self, db):
-        user = db.create_user(username="dave", password_hash=generate_password_hash("pw"), role="user")
+        user = db.create_user(
+            username="dave", password_hash=generate_password_hash("pw"), role="user"
+        )
         result = self._builtin_login(db, "dave", "pw")
         assert result["db_user_id"] == user["id"]

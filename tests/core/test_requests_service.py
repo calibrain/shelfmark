@@ -20,9 +20,10 @@ from shelfmark.core.requests_service import (
     RequestServiceError,
     cancel_request,
     create_request,
+    create_requests,
     fulfil_request,
-    reopen_failed_request,
     reject_request,
+    reopen_failed_request,
     sync_delivery_states_from_queue_status,
 )
 from shelfmark.core.user_db import UserDB
@@ -167,6 +168,25 @@ def test_create_request_rejects_duplicate_pending(user_db):
             policy_mode="request_book",
             book_data=_book_data(),
         )
+
+
+def test_create_requests_rejects_duplicate_entries_and_is_atomic(user_db):
+    user = user_db.create_user(username="alice")
+    duplicate_request = {
+        "user_id": user["id"],
+        "source_hint": "direct_download",
+        "content_type": "ebook",
+        "request_level": "book",
+        "policy_mode": "request_book",
+        "book_data": _book_data(),
+    }
+
+    with pytest.raises(RequestServiceError) as exc_info:
+        create_requests(user_db, requests=[duplicate_request, duplicate_request])
+
+    assert exc_info.value.status_code == 409
+    assert exc_info.value.code == "duplicate_pending_request"
+    assert user_db.list_requests(user_id=user["id"]) == []
 
 
 def test_create_request_rejects_when_max_pending_limit_reached(user_db):
@@ -743,6 +763,43 @@ def test_sync_delivery_states_reopens_fulfilled_request_when_error_is_not_retrya
     assert refreshed["last_failure_reason"] == "Staged retry source no longer exists"
 
 
+def test_sync_delivery_states_preserves_retryable_error_state(user_db):
+    user = user_db.create_user(username="alice")
+    fulfilled_request = user_db.create_request(
+        user_id=user["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data={"source": "prowlarr", "source_id": "retryable-rel", "title": "Retryable"},
+        status="fulfilled",
+        delivery_state="queued",
+    )
+
+    updated = sync_delivery_states_from_queue_status(
+        user_db,
+        queue_status={
+            "error": {
+                "retryable-rel": {
+                    "id": "retryable-rel",
+                    "request_id": fulfilled_request["id"],
+                    "retry_available": True,
+                    "status_message": "Temporary daemon failure",
+                },
+            },
+        },
+        user_id=user["id"],
+    )
+
+    assert [row["id"] for row in updated] == [fulfilled_request["id"]]
+    refreshed = user_db.get_request(fulfilled_request["id"])
+    assert refreshed["status"] == "fulfilled"
+    assert refreshed["delivery_state"] == "error"
+    assert refreshed["delivery_updated_at"] is not None
+    assert refreshed["last_failure_reason"] is None
+
+
 # ---------------------------------------------------------------------------
 # book_data validation
 # ---------------------------------------------------------------------------
@@ -1261,6 +1318,51 @@ def test_fulfil_queue_failure_returns_error(user_db):
     assert row["reviewed_by"] is None
     assert row["reviewed_at"] is None
     assert row["last_failure_reason"] == "Torrent client unreachable"
+    assert row["release_data"]["source_id"] == "release-123"
+
+
+def test_fulfil_request_rolls_back_when_queue_raises(user_db):
+    alice = user_db.create_user(username="alice")
+    admin = user_db.create_user(username="admin", role="admin")
+    created = create_request(
+        user_db,
+        user_id=alice["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data=_release_data(),
+    )
+
+    captured: dict[str, object] = {}
+
+    def exploding_queue(release_data, priority, user_id=None, username=None):
+        captured["release_data"] = release_data
+        captured["priority"] = priority
+        captured["user_id"] = user_id
+        captured["username"] = username
+        raise RuntimeError("daemon exploded")
+
+    with pytest.raises(RuntimeError, match="daemon exploded"):
+        fulfil_request(
+            user_db,
+            request_id=created["id"],
+            admin_user_id=admin["id"],
+            queue_release=exploding_queue,
+        )
+
+    assert captured["priority"] == 0
+    assert captured["user_id"] == alice["id"]
+    assert captured["username"] == "alice"
+    assert captured["release_data"]["_request_id"] == created["id"]
+
+    row = user_db.get_request(created["id"])
+    assert row["status"] == "pending"
+    assert row["delivery_state"] == "none"
+    assert row["reviewed_by"] is None
+    assert row["reviewed_at"] is None
+    assert row["last_failure_reason"] == "Queue dispatch raised an exception"
     assert row["release_data"]["source_id"] == "release-123"
 
 

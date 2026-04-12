@@ -70,7 +70,9 @@ def test_merge_request_policy_settings_overlays_user_rules_on_global_rules():
 
     merged = merge_request_policy_settings(global_settings, user_settings)
 
-    assert sorted(merged["REQUEST_POLICY_RULES"], key=lambda row: (row["source"], row["content_type"])) == [
+    assert sorted(
+        merged["REQUEST_POLICY_RULES"], key=lambda row: (row["source"], row["content_type"])
+    ) == [
         {"source": "direct_download", "content_type": "ebook", "mode": "blocked"},
         {"source": "prowlarr", "content_type": "ebook", "mode": "request_release"},
     ]
@@ -120,29 +122,41 @@ def test_resolve_policy_mode_uses_wildcard_precedence():
     }
 
     # (prowlarr, ebook) exact match → download
-    assert resolve_policy_mode(
-        source="prowlarr",
-        content_type="ebook",
-        global_settings=settings,
-    ) == PolicyMode.DOWNLOAD
+    assert (
+        resolve_policy_mode(
+            source="prowlarr",
+            content_type="ebook",
+            global_settings=settings,
+        )
+        == PolicyMode.DOWNLOAD
+    )
     # (prowlarr, audiobook) → matches (prowlarr, *) → request_release
-    assert resolve_policy_mode(
-        source="prowlarr",
-        content_type="audiobook",
-        global_settings=settings,
-    ) == PolicyMode.REQUEST_RELEASE
+    assert (
+        resolve_policy_mode(
+            source="prowlarr",
+            content_type="audiobook",
+            global_settings=settings,
+        )
+        == PolicyMode.REQUEST_RELEASE
+    )
     # (irc, ebook) → matches (*, ebook) → request_release
-    assert resolve_policy_mode(
-        source="irc",
-        content_type="ebook",
-        global_settings=settings,
-    ) == PolicyMode.REQUEST_RELEASE
+    assert (
+        resolve_policy_mode(
+            source="irc",
+            content_type="ebook",
+            global_settings=settings,
+        )
+        == PolicyMode.REQUEST_RELEASE
+    )
     # (irc, audiobook) → matches (*, *) → blocked
-    assert resolve_policy_mode(
-        source="irc",
-        content_type="audiobook",
-        global_settings=settings,
-    ) == PolicyMode.BLOCKED
+    assert (
+        resolve_policy_mode(
+            source="irc",
+            content_type="audiobook",
+            global_settings=settings,
+        )
+        == PolicyMode.BLOCKED
+    )
 
 
 def test_resolve_policy_mode_uses_content_default_when_no_rule_matches():
@@ -152,16 +166,22 @@ def test_resolve_policy_mode_uses_content_default_when_no_rule_matches():
         "REQUEST_POLICY_RULES": [],
     }
 
-    assert resolve_policy_mode(
-        source="direct_download",
-        content_type="ebook",
-        global_settings=settings,
-    ) == PolicyMode.DOWNLOAD
-    assert resolve_policy_mode(
-        source="direct_download",
-        content_type="audiobook",
-        global_settings=settings,
-    ) == PolicyMode.BLOCKED
+    assert (
+        resolve_policy_mode(
+            source="direct_download",
+            content_type="ebook",
+            global_settings=settings,
+        )
+        == PolicyMode.DOWNLOAD
+    )
+    assert (
+        resolve_policy_mode(
+            source="direct_download",
+            content_type="audiobook",
+            global_settings=settings,
+        )
+        == PolicyMode.BLOCKED
+    )
 
 
 def test_resolve_policy_mode_caps_at_content_type_default_ceiling():
@@ -176,23 +196,32 @@ def test_resolve_policy_mode_caps_at_content_type_default_ceiling():
     }
 
     # prowlarr/ebook rule says download, but ceiling is request_release → capped
-    assert resolve_policy_mode(
-        source="prowlarr",
-        content_type="ebook",
-        global_settings=settings,
-    ) == PolicyMode.REQUEST_RELEASE
+    assert (
+        resolve_policy_mode(
+            source="prowlarr",
+            content_type="ebook",
+            global_settings=settings,
+        )
+        == PolicyMode.REQUEST_RELEASE
+    )
     # irc/ebook rule says blocked, which is more restrictive than ceiling → stays blocked
-    assert resolve_policy_mode(
-        source="irc",
-        content_type="ebook",
-        global_settings=settings,
-    ) == PolicyMode.BLOCKED
+    assert (
+        resolve_policy_mode(
+            source="irc",
+            content_type="ebook",
+            global_settings=settings,
+        )
+        == PolicyMode.BLOCKED
+    )
     # no rule for direct_download → falls to ceiling
-    assert resolve_policy_mode(
-        source="direct_download",
-        content_type="ebook",
-        global_settings=settings,
-    ) == PolicyMode.REQUEST_RELEASE
+    assert (
+        resolve_policy_mode(
+            source="direct_download",
+            content_type="ebook",
+            global_settings=settings,
+        )
+        == PolicyMode.REQUEST_RELEASE
+    )
 
 
 def test_resolve_policy_mode_request_book_ceiling_overrides_all_rules():
@@ -207,23 +236,32 @@ def test_resolve_policy_mode_request_book_ceiling_overrides_all_rules():
     }
 
     # Prowlarr rule tries to upgrade beyond request_book → capped
-    assert resolve_policy_mode(
-        source="prowlarr",
-        content_type="ebook",
-        global_settings=settings,
-    ) == PolicyMode.REQUEST_BOOK
+    assert (
+        resolve_policy_mode(
+            source="prowlarr",
+            content_type="ebook",
+            global_settings=settings,
+        )
+        == PolicyMode.REQUEST_BOOK
+    )
     # Direct-download requests are concrete releases, so request_book normalizes to request_release.
-    assert resolve_policy_mode(
-        source="direct_download",
-        content_type="ebook",
-        global_settings=settings,
-    ) == PolicyMode.REQUEST_RELEASE
+    assert (
+        resolve_policy_mode(
+            source="direct_download",
+            content_type="ebook",
+            global_settings=settings,
+        )
+        == PolicyMode.REQUEST_RELEASE
+    )
     # audiobook default is blocked → even more restrictive ceiling
-    assert resolve_policy_mode(
-        source="prowlarr",
-        content_type="audiobook",
-        global_settings=settings,
-    ) == PolicyMode.BLOCKED
+    assert (
+        resolve_policy_mode(
+            source="prowlarr",
+            content_type="audiobook",
+            global_settings=settings,
+        )
+        == PolicyMode.BLOCKED
+    )
 
 
 def test_resolve_policy_mode_falls_back_to_request_book_when_unset():
@@ -233,16 +271,22 @@ def test_resolve_policy_mode_falls_back_to_request_book_when_unset():
         "REQUEST_POLICY_RULES": [],
     }
 
-    assert resolve_policy_mode(
-        source="direct_download",
-        content_type="ebook",
-        global_settings=settings,
-    ) == PolicyMode.REQUEST_RELEASE
-    assert resolve_policy_mode(
-        source="prowlarr",
-        content_type="audiobook",
-        global_settings=settings,
-    ) == PolicyMode.REQUEST_BOOK
+    assert (
+        resolve_policy_mode(
+            source="direct_download",
+            content_type="ebook",
+            global_settings=settings,
+        )
+        == PolicyMode.REQUEST_RELEASE
+    )
+    assert (
+        resolve_policy_mode(
+            source="prowlarr",
+            content_type="audiobook",
+            global_settings=settings,
+        )
+        == PolicyMode.REQUEST_BOOK
+    )
 
 
 def test_resolve_policy_mode_ignores_invalid_rule_rows():

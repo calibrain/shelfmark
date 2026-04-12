@@ -17,7 +17,6 @@ circular imports (`archive` is used by the pipeline).
 from __future__ import annotations
 
 import shelfmark.core.config as core_config
-from shelfmark.core.request_helpers import coerce_bool
 
 
 def _normalize_format_list(value: object, default: list[str]) -> list[str]:
@@ -53,23 +52,11 @@ def get_file_organization(*, is_audiobook: bool) -> str:
     """Get the file organization mode for the content type."""
     key = "FILE_ORGANIZATION_AUDIOBOOK" if is_audiobook else "FILE_ORGANIZATION"
     mode = _config_text(core_config.config.get(key, "rename")).strip().lower()
-
-    # Handle legacy settings migration
-    if mode not in ("none", "rename", "organize"):
-        legacy_key = "PROCESSING_MODE_AUDIOBOOK" if is_audiobook else "PROCESSING_MODE"
-        legacy_mode = _config_text(core_config.config.get(legacy_key, "ingest")).strip().lower()
-        if legacy_mode == "library":
-            return "organize"
-        if coerce_bool(core_config.config.get("USE_BOOK_TITLE", True), default=True):
-            return "rename"
-        return "none"
-
-    return mode
+    return mode if mode in ("none", "rename", "organize") else "rename"
 
 
 def get_template(*, is_audiobook: bool, organization_mode: str) -> str:
     """Get the template for the content type and organization mode."""
-    # Determine the correct key based on content type and organization mode
     if is_audiobook:
         if organization_mode == "organize":
             key = "TEMPLATE_AUDIOBOOK_ORGANIZE"
@@ -79,15 +66,6 @@ def get_template(*, is_audiobook: bool, organization_mode: str) -> str:
         key = "TEMPLATE_ORGANIZE" if organization_mode == "organize" else "TEMPLATE_RENAME"
 
     template = _config_text(core_config.config.get(key, ""))
-
-    # Fallback to legacy keys if new keys are empty
-    if not template:
-        legacy_key = "TEMPLATE_AUDIOBOOK" if is_audiobook else "TEMPLATE"
-        template = _config_text(core_config.config.get(legacy_key, ""))
-
-    if not template:
-        legacy_key = "LIBRARY_TEMPLATE_AUDIOBOOK" if is_audiobook else "LIBRARY_TEMPLATE"
-        template = _config_text(core_config.config.get(legacy_key, ""))
 
     if not template:
         if organization_mode == "organize":

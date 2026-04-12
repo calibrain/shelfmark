@@ -66,4 +66,3 @@ def test_extract_archive_files_runs_extract_via_run_blocking_io(tmp_path, monkey
     )
 
     assert extract_called, "Expected extract_archive_files to call extract_archive"
-

@@ -233,6 +233,7 @@ Log level is configurable via Settings or `LOG_LEVEL` environment variable.
 # Python tooling
 make install-python-dev  # Sync Python runtime + dev tools with uv
 make python-checks       # Run Ruff, BasedPyright, and Vulture
+make python-test-checks  # Run lightweight lint/type checks for tests
 
 # Frontend development
 make install     # Install dependencies

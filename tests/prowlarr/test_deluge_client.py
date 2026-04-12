@@ -42,7 +42,9 @@ class TestDelugeClientAddDownload:
         monkeypatch.setattr(client, "_try_set_label", mock_try_set_label)
 
         magnet = "magnet:?xt=urn:btih:ABCDEF1234567890ABCDEF1234567890ABCDEF12&dn=test"
-        with patch("shelfmark.download.clients.deluge.extract_torrent_info", autospec=True) as mock_extract:
+        with patch(
+            "shelfmark.download.clients.deluge.extract_torrent_info", autospec=True
+        ) as mock_extract:
             mock_extract.return_value = TorrentInfo(
                 info_hash="abcdef1234567890abcdef1234567890abcdef12",
                 torrent_data=None,
@@ -84,7 +86,9 @@ class TestDelugeClientAddDownload:
         monkeypatch.setattr(client, "_try_set_label", MagicMock())
 
         magnet = "magnet:?xt=urn:btih:ABCDEF1234567890ABCDEF1234567890ABCDEF12&dn=test"
-        with patch("shelfmark.download.clients.deluge.extract_torrent_info", autospec=True) as mock_extract:
+        with patch(
+            "shelfmark.download.clients.deluge.extract_torrent_info", autospec=True
+        ) as mock_extract:
             mock_extract.return_value = TorrentInfo(
                 info_hash="abcdef1234567890abcdef1234567890abcdef12",
                 torrent_data=None,
@@ -118,7 +122,9 @@ class TestDelugeClientErrors:
         from shelfmark.download.clients.deluge import DelugeClient
 
         client = DelugeClient()
-        monkeypatch.setattr(client, "_ensure_connected", MagicMock(side_effect=RuntimeError("offline")))
+        monkeypatch.setattr(
+            client, "_ensure_connected", MagicMock(side_effect=RuntimeError("offline"))
+        )
 
         success, message = client.test_connection()
 
@@ -143,7 +149,9 @@ class TestDelugeClientErrors:
 
         client = DelugeClient()
         monkeypatch.setattr(client, "_ensure_connected", lambda: None)
-        monkeypatch.setattr(client, "_rpc_call", MagicMock(side_effect=RuntimeError("status failed")))
+        monkeypatch.setattr(
+            client, "_rpc_call", MagicMock(side_effect=RuntimeError("status failed"))
+        )
 
         status = client.get_status("torrent-id")
 
@@ -167,7 +175,9 @@ class TestDelugeClientErrors:
 
         client = DelugeClient()
         monkeypatch.setattr(client, "_ensure_connected", lambda: None)
-        monkeypatch.setattr(client, "_rpc_call", MagicMock(side_effect=RuntimeError("remove failed")))
+        monkeypatch.setattr(
+            client, "_rpc_call", MagicMock(side_effect=RuntimeError("remove failed"))
+        )
 
         assert client.remove("torrent-id") is False
 
@@ -189,10 +199,14 @@ class TestDelugeClientErrors:
         client._authenticated = True
         client._connected = True
         monkeypatch.setattr(client, "_ensure_connected", lambda: None)
-        monkeypatch.setattr(client, "_rpc_call", MagicMock(side_effect=RuntimeError("lookup failed")))
+        monkeypatch.setattr(
+            client, "_rpc_call", MagicMock(side_effect=RuntimeError("lookup failed"))
+        )
 
         magnet = "magnet:?xt=urn:btih:ABCDEF1234567890ABCDEF1234567890ABCDEF12&dn=test"
-        with patch("shelfmark.download.clients.deluge.extract_torrent_info", autospec=True) as mock_extract:
+        with patch(
+            "shelfmark.download.clients.deluge.extract_torrent_info", autospec=True
+        ) as mock_extract:
             mock_extract.return_value = TorrentInfo(
                 info_hash="abcdef1234567890abcdef1234567890abcdef12",
                 torrent_data=None,

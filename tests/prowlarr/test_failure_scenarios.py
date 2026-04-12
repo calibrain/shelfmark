@@ -7,23 +7,21 @@ They use real clients where possible, with injected failures for edge cases.
 Run with: uv run pytest tests/prowlarr/test_failure_scenarios.py -v
 """
 
+import tempfile
 import time
 from pathlib import Path
 from threading import Event, Thread
-from typing import List, Optional, Tuple
-from unittest.mock import MagicMock, patch, PropertyMock
-import tempfile
+from unittest.mock import patch
 
 import pytest
 
 from shelfmark.core.models import DownloadTask
-from shelfmark.release_sources.prowlarr.handler import ProwlarrHandler
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadState,
     DownloadStatus,
 )
-
+from shelfmark.release_sources.prowlarr.handler import ProwlarrHandler
 
 # =============================================================================
 # Test Fixtures and Helpers
@@ -34,25 +32,25 @@ class ProgressRecorder:
     """Records progress and status updates during download."""
 
     def __init__(self):
-        self.progress_values: List[float] = []
-        self.status_updates: List[Tuple[str, Optional[str]]] = []
+        self.progress_values: list[float] = []
+        self.status_updates: list[tuple[str, str | None]] = []
 
     def progress_callback(self, progress: float):
         self.progress_values.append(progress)
 
-    def status_callback(self, status: str, message: Optional[str]):
+    def status_callback(self, status: str, message: str | None):
         self.status_updates.append((status, message))
 
     @property
-    def last_status(self) -> Optional[str]:
+    def last_status(self) -> str | None:
         return self.status_updates[-1][0] if self.status_updates else None
 
     @property
-    def last_message(self) -> Optional[str]:
+    def last_message(self) -> str | None:
         return self.status_updates[-1][1] if self.status_updates else None
 
     @property
-    def statuses(self) -> List[str]:
+    def statuses(self) -> list[str]:
         return [s[0] for s in self.status_updates]
 
     @property
@@ -79,15 +77,15 @@ class MockClient(DownloadClient):
     def is_configured() -> bool:
         return True
 
-    def test_connection(self) -> Tuple[bool, str]:
+    def test_connection(self) -> tuple[bool, str]:
         return True, "Mock client connected"
 
     def add_download(
         self,
         url: str,
         name: str,
-        category: Optional[str] = None,
-        expected_hash: Optional[str] = None,
+        category: str | None = None,
+        expected_hash: str | None = None,
         **kwargs,
     ) -> str:
         if self.add_download_error:
@@ -122,12 +120,12 @@ class MockClient(DownloadClient):
         self.remove_with_delete = delete_files
         return True
 
-    def get_download_path(self, download_id: str) -> Optional[str]:
+    def get_download_path(self, download_id: str) -> str | None:
         return "/downloads/test-file.epub"
 
     def find_existing(
-        self, url: str, category: Optional[str] = None
-    ) -> Optional[Tuple[str, DownloadStatus]]:
+        self, url: str, category: str | None = None
+    ) -> tuple[str, DownloadStatus] | None:
         return None
 
 
@@ -208,12 +206,15 @@ class TestClientErrorStates:
             ),
         ]
 
-        with patch(
-            "shelfmark.release_sources.prowlarr.handler.get_release",
-            return_value=sample_release,
-        ), patch(
-            "shelfmark.release_sources.prowlarr.handler.get_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value=sample_release,
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_client",
+                return_value=mock_client,
+            ),
         ):
             result = handler.download(
                 task=sample_task,
@@ -241,12 +242,15 @@ class TestClientErrorStates:
             ),
         ]
 
-        with patch(
-            "shelfmark.release_sources.prowlarr.handler.get_release",
-            return_value=sample_release,
-        ), patch(
-            "shelfmark.release_sources.prowlarr.handler.get_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value=sample_release,
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_client",
+                return_value=mock_client,
+            ),
         ):
             result = handler.download(
                 task=sample_task,
@@ -274,12 +278,15 @@ class TestClientErrorStates:
             ),
         ]
 
-        with patch(
-            "shelfmark.release_sources.prowlarr.handler.get_release",
-            return_value=sample_release,
-        ), patch(
-            "shelfmark.release_sources.prowlarr.handler.get_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value=sample_release,
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_client",
+                return_value=mock_client,
+            ),
         ):
             result = handler.download(
                 task=sample_task,
@@ -308,12 +315,15 @@ class TestConnectionFailures:
         """Handler should report error when add_download throws."""
         mock_client.add_download_error = ConnectionError("Connection refused")
 
-        with patch(
-            "shelfmark.release_sources.prowlarr.handler.get_release",
-            return_value=sample_release,
-        ), patch(
-            "shelfmark.release_sources.prowlarr.handler.get_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value=sample_release,
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_client",
+                return_value=mock_client,
+            ),
         ):
             result = handler.download(
                 task=sample_task,
@@ -347,12 +357,15 @@ class TestConnectionFailures:
 
         mock_client.get_status = failing_get_status
 
-        with patch(
-            "shelfmark.release_sources.prowlarr.handler.get_release",
-            return_value=sample_release,
-        ), patch(
-            "shelfmark.release_sources.prowlarr.handler.get_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value=sample_release,
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_client",
+                return_value=mock_client,
+            ),
         ):
             result = handler.download(
                 task=sample_task,
@@ -369,15 +382,19 @@ class TestConnectionFailures:
         self, handler, recorder, cancel_flag, sample_task, sample_release
     ):
         """Handler should report helpful error when no client is configured."""
-        with patch(
-            "shelfmark.release_sources.prowlarr.handler.get_release",
-            return_value=sample_release,
-        ), patch(
-            "shelfmark.release_sources.prowlarr.handler.get_client",
-            return_value=None,
-        ), patch(
-            "shelfmark.release_sources.prowlarr.handler.list_configured_clients",
-            return_value=[],
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value=sample_release,
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_client",
+                return_value=None,
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.list_configured_clients",
+                return_value=[],
+            ),
         ):
             result = handler.download(
                 task=sample_task,
@@ -424,15 +441,19 @@ class TestCancellation:
         cancel_thread = Thread(target=cancel_after_delay)
         cancel_thread.start()
 
-        with patch(
-            "shelfmark.release_sources.prowlarr.handler.get_release",
-            return_value=sample_release,
-        ), patch(
-            "shelfmark.release_sources.prowlarr.handler.get_client",
-            return_value=mock_client,
-        ), patch(
-            "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
-            0.1,
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value=sample_release,
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
+                0.1,
+            ),
         ):
             result = handler.download(
                 task=sample_task,
@@ -454,12 +475,15 @@ class TestCancellation:
         cancel_flag = Event()
         cancel_flag.set()  # Already cancelled
 
-        with patch(
-            "shelfmark.release_sources.prowlarr.handler.get_release",
-            return_value=sample_release,
-        ), patch(
-            "shelfmark.release_sources.prowlarr.handler.get_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value=sample_release,
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_client",
+                return_value=mock_client,
+            ),
         ):
             result = handler.download(
                 task=sample_task,
@@ -498,9 +522,7 @@ class TestCacheFailures:
         assert recorder.had_error
         assert "not found in cache" in recorder.last_message.lower()
 
-    def test_release_missing_download_url(
-        self, handler, recorder, cancel_flag, sample_task
-    ):
+    def test_release_missing_download_url(self, handler, recorder, cancel_flag, sample_task):
         """Handler should error when release has no download URL."""
         release_no_url = {
             "guid": "test-task-123",
@@ -572,12 +594,15 @@ class TestFileHandlingFailures:
         ]
         mock_client.get_download_path = lambda x: None  # No path available
 
-        with patch(
-            "shelfmark.release_sources.prowlarr.handler.get_release",
-            return_value=sample_release,
-        ), patch(
-            "shelfmark.release_sources.prowlarr.handler.get_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value=sample_release,
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_client",
+                return_value=mock_client,
+            ),
         ):
             result = handler.download(
                 task=sample_task,
@@ -617,19 +642,25 @@ class TestFileHandlingFailures:
 
             mock_client.get_download_path = lambda x: str(source_file)
 
-            with patch(
-                "shelfmark.release_sources.prowlarr.handler.get_release",
-                return_value=usenet_release,
-            ), patch(
-                "shelfmark.release_sources.prowlarr.handler.get_client",
-                return_value=mock_client,
-            ), patch(
-                "shelfmark.release_sources.prowlarr.handler.remove_release",
-            ), patch(
-                "shelfmark.download.staging.get_staging_dir",
-            ) as mock_get_staging, patch(
-                "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
-                0.01,
+            with (
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.get_release",
+                    return_value=usenet_release,
+                ),
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.get_client",
+                    return_value=mock_client,
+                ),
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.remove_release",
+                ),
+                patch(
+                    "shelfmark.download.staging.get_staging_dir",
+                ) as mock_get_staging,
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
+                    0.01,
+                ),
             ):
                 result = handler.download(
                     task=sample_task,
@@ -674,18 +705,23 @@ class TestProgressCallbacks:
 
             mock_client.get_download_path = lambda x: str(source_file)
 
-            with patch(
-                "shelfmark.release_sources.prowlarr.handler.get_release",
-                return_value=sample_release,
-            ), patch(
-                "shelfmark.release_sources.prowlarr.handler.get_client",
-                return_value=mock_client,
-            ), patch(
-                "shelfmark.download.staging.get_staging_dir",
-                return_value=staging_dir,
-            ), patch(
-                "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
-                0.01,
+            with (
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.get_release",
+                    return_value=sample_release,
+                ),
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.get_client",
+                    return_value=mock_client,
+                ),
+                patch(
+                    "shelfmark.download.staging.get_staging_dir",
+                    return_value=staging_dir,
+                ),
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
+                    0.01,
+                ),
             ):
                 result = handler.download(
                     task=sample_task,
@@ -760,18 +796,23 @@ class TestStatusMessages:
 
             mock_client.get_download_path = lambda x: str(source_file)
 
-            with patch(
-                "shelfmark.release_sources.prowlarr.handler.get_release",
-                return_value=sample_release,
-            ), patch(
-                "shelfmark.release_sources.prowlarr.handler.get_client",
-                return_value=mock_client,
-            ), patch(
-                "shelfmark.download.staging.get_staging_dir",
-                return_value=staging_dir,
-            ), patch(
-                "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
-                0.01,
+            with (
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.get_release",
+                    return_value=sample_release,
+                ),
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.get_client",
+                    return_value=mock_client,
+                ),
+                patch(
+                    "shelfmark.download.staging.get_staging_dir",
+                    return_value=staging_dir,
+                ),
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
+                    0.01,
+                ),
             ):
                 handler.download(
                     task=sample_task,
@@ -819,18 +860,23 @@ class TestStatusMessages:
 
             mock_client.get_download_path = lambda x: str(source_file)
 
-            with patch(
-                "shelfmark.release_sources.prowlarr.handler.get_release",
-                return_value=sample_release,
-            ), patch(
-                "shelfmark.release_sources.prowlarr.handler.get_client",
-                return_value=mock_client,
-            ), patch(
-                "shelfmark.download.staging.get_staging_dir",
-                return_value=staging_dir,
-            ), patch(
-                "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
-                0.01,
+            with (
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.get_release",
+                    return_value=sample_release,
+                ),
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.get_client",
+                    return_value=mock_client,
+                ),
+                patch(
+                    "shelfmark.download.staging.get_staging_dir",
+                    return_value=staging_dir,
+                ),
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
+                    0.01,
+                ),
             ):
                 handler.download(
                     task=sample_task,
@@ -875,15 +921,19 @@ class TestErrorCleanup:
 
         mock_client.get_status = exploding_get_status
 
-        with patch(
-            "shelfmark.release_sources.prowlarr.handler.get_release",
-            return_value=sample_release,
-        ), patch(
-            "shelfmark.release_sources.prowlarr.handler.get_client",
-            return_value=mock_client,
-        ), patch(
-            "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
-            0.01,
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value=sample_release,
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.POLL_INTERVAL",
+                0.01,
+            ),
         ):
             result = handler.download(
                 task=sample_task,
@@ -922,12 +972,15 @@ class TestErrorCleanup:
         usenet_release["protocol"] = "usenet"
         usenet_release["downloadUrl"] = "https://indexer.example.com/download/123"
 
-        with patch(
-            "shelfmark.release_sources.prowlarr.handler.get_release",
-            return_value=usenet_release,
-        ), patch(
-            "shelfmark.release_sources.prowlarr.handler.get_client",
-            return_value=mock_client,
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value=usenet_release,
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_client",
+                return_value=mock_client,
+            ),
         ):
             # Should not raise, even though remove() fails
             result = handler.download(

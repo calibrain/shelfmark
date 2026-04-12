@@ -5,11 +5,10 @@ These tests mock the xmlrpc library to test the client logic
 without requiring a running rTorrent instance.
 """
 
-from unittest.mock import MagicMock, patch
-import pytest
 import sys
+from unittest.mock import MagicMock, patch
 
-from shelfmark.download.clients import DownloadStatus
+import pytest
 
 
 def make_config_getter(values):
@@ -247,9 +246,7 @@ class TestRTorrentClientAddDownload:
                 return_value=mock_torrent_info,
             ):
                 if "shelfmark.download.clients.rtorrent" in sys.modules:
-                    del sys.modules[
-                        "shelfmark.download.clients.rtorrent"
-                    ]
+                    del sys.modules["shelfmark.download.clients.rtorrent"]
 
                 from shelfmark.download.clients.rtorrent import (
                     RTorrentClient,
@@ -298,18 +295,14 @@ class TestRTorrentClientAddDownload:
                 return_value=mock_torrent_info,
             ):
                 if "shelfmark.download.clients.rtorrent" in sys.modules:
-                    del sys.modules[
-                        "shelfmark.download.clients.rtorrent"
-                    ]
+                    del sys.modules["shelfmark.download.clients.rtorrent"]
 
                 from shelfmark.download.clients.rtorrent import (
                     RTorrentClient,
                 )
 
                 client = RTorrentClient()
-                result_hash = client.add_download(
-                    "http://example.com/test.torrent", "Test Torrent"
-                )
+                result_hash = client.add_download("http://example.com/test.torrent", "Test Torrent")
 
                 assert result_hash == "abc123def456"
                 mock_rpc.load.raw_start.assert_called_once()
@@ -343,9 +336,7 @@ class TestRTorrentClientAddDownload:
                 return_value=mock_torrent_info,
             ):
                 if "shelfmark.download.clients.rtorrent" in sys.modules:
-                    del sys.modules[
-                        "shelfmark.download.clients.rtorrent"
-                    ]
+                    del sys.modules["shelfmark.download.clients.rtorrent"]
 
                 from shelfmark.download.clients.rtorrent import (
                     RTorrentClient,

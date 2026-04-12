@@ -89,3 +89,23 @@ def test_download_url_ignores_zlib_cookie_refresh_failure(monkeypatch):
     )
 
     assert result is None
+
+
+def test_get_bypassed_page_uses_external_bypasser_when_enabled(monkeypatch):
+    import shelfmark.download.http as http
+
+    calls: list[tuple] = []
+
+    class FakeExternalBypasser:
+        def get_bypassed_page(self, url, selector, cancel_flag):
+            calls.append((url, selector, cancel_flag))
+            return "EXT"
+
+    monkeypatch.setattr(http, "_is_using_external_bypasser", lambda: True)
+    monkeypatch.setattr(http, "_get_external_bypasser", lambda: FakeExternalBypasser())
+
+    selector = object()
+    cancel_flag = object()
+
+    assert http.get_bypassed_page("https://example.com", selector, cancel_flag) == "EXT"
+    assert calls == [("https://example.com", selector, cancel_flag)]

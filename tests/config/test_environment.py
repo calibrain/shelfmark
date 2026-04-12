@@ -7,15 +7,13 @@ configuration settings, environment variables, and Docker setups.
 Run with: uv run pytest tests/config/test_environment.py -v
 """
 
-import json
+import importlib
 import os
-import shutil
 import tempfile
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
-
 
 # =============================================================================
 # Directory Setup Tests
@@ -57,13 +55,9 @@ class TestDirectorySetup:
         from shelfmark.download.staging import get_staging_path
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch(
-                "shelfmark.config.env.TMP_DIR", Path(tmpdir)
-            ):
+            with patch("shelfmark.config.env.TMP_DIR", Path(tmpdir)):
                 # Task ID with URL-like characters
-                path = get_staging_path(
-                    "https://example.com/book?id=123&format=epub", "epub"
-                )
+                path = get_staging_path("https://example.com/book?id=123&format=epub", "epub")
 
                 assert path.suffix == ".epub"
                 assert path.parent == Path(tmpdir)
@@ -77,9 +71,7 @@ class TestDirectorySetup:
         from shelfmark.download.staging import get_staging_path
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch(
-                "shelfmark.config.env.TMP_DIR", Path(tmpdir)
-            ):
+            with patch("shelfmark.config.env.TMP_DIR", Path(tmpdir)):
                 path1 = get_staging_path("task1", "epub")
                 path2 = get_staging_path("task1", ".epub")
 
@@ -98,6 +90,7 @@ class TestSupportedFormats:
     def test_default_supported_formats(self):
         """Default formats should include common ebook formats."""
         from shelfmark.core.config import config
+
         # Ensure settings are refreshed to pick up defaults
         config.refresh()
 
@@ -110,6 +103,7 @@ class TestSupportedFormats:
     def test_format_list_is_lowercase(self):
         """Format list should be normalized to lowercase."""
         from shelfmark.core.config import config
+
         # Ensure settings are refreshed to pick up defaults
         config.refresh()
 
@@ -121,6 +115,7 @@ class TestSupportedFormats:
     def test_config_supported_formats_is_list(self):
         """Config should have SUPPORTED_FORMATS as a list."""
         from shelfmark.core.config import config
+
         # Ensure settings are refreshed to pick up defaults
         config.refresh()
 
@@ -140,7 +135,7 @@ class TestContentTypeRouting:
 
     def test_get_ingest_dir_returns_path(self):
         """get_ingest_dir should return a Path for all content types."""
-        from shelfmark.core.utils import get_ingest_dir, CONTENT_TYPES
+        from shelfmark.core.utils import CONTENT_TYPES, get_ingest_dir
 
         # Default (no content type) should return a Path
         default_path = get_ingest_dir()
@@ -190,14 +185,12 @@ class TestSettingsSystem:
     def test_save_and_load_config(self):
         """Settings should persist to JSON files."""
         from shelfmark.core.settings_registry import (
-            save_config_file,
             load_config_file,
+            save_config_file,
         )
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch(
-                "shelfmark.config.env.CONFIG_DIR", Path(tmpdir)
-            ):
+            with patch("shelfmark.config.env.CONFIG_DIR", Path(tmpdir)):
                 test_data = {"key1": "value1", "key2": 123, "key3": True}
                 save_config_file("test_plugin", test_data)
 
@@ -210,9 +203,7 @@ class TestSettingsSystem:
         from shelfmark.core.settings_registry import load_config_file
 
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch(
-                "shelfmark.config.env.CONFIG_DIR", Path(tmpdir)
-            ):
+            with patch("shelfmark.config.env.CONFIG_DIR", Path(tmpdir)):
                 loaded = load_config_file("nonexistent_plugin")
 
                 assert loaded == {}
@@ -222,13 +213,8 @@ class TestSettingsSystem:
         from shelfmark.core.config import config
         from shelfmark.core.settings_registry import save_config_file
 
-        # Get initial value
-        initial = config.get("TEST_REFRESH_KEY", "default")
-
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch(
-                "shelfmark.config.env.CONFIG_DIR", Path(tmpdir)
-            ):
+            with patch("shelfmark.config.env.CONFIG_DIR", Path(tmpdir)):
                 save_config_file("test", {"TEST_REFRESH_KEY": "new_value"})
                 config.refresh()
 
@@ -314,16 +300,22 @@ class TestArchiveHandling:
 class TestConfigValidation:
     """Tests for configuration validation and error handling."""
 
-    def test_invalid_number_env_var_uses_default(self):
-        """Invalid numeric env vars should fall back to defaults."""
-        # Test that int() parsing handles invalid values gracefully
-        # The env.py module uses int() which will raise ValueError
-        # This tests the expected behavior
+    def test_invalid_flask_port_env_var_raises_value_error_on_reload(self, monkeypatch):
+        """Invalid FLASK_PORT values should fail fast when env.py reloads."""
+        import shelfmark.config.env as env_module
 
-        with patch.dict(os.environ, {"MAX_RETRY": "not_a_number"}):
-            # Importing with invalid env var should use default or raise
-            # This depends on implementation - test documents behavior
-            pass  # Currently env.py will crash on invalid int
+        original_port = os.environ.get("FLASK_PORT")
+
+        try:
+            monkeypatch.setenv("FLASK_PORT", "not_a_number")
+            with pytest.raises(ValueError, match="invalid literal for int"):
+                importlib.reload(env_module)
+        finally:
+            if original_port is None:
+                monkeypatch.delenv("FLASK_PORT", raising=False)
+            else:
+                monkeypatch.setenv("FLASK_PORT", original_port)
+            importlib.reload(env_module)
 
     def test_missing_required_directory_handling(self):
         """Application should handle missing directories gracefully."""
@@ -333,17 +325,14 @@ class TestConfigValidation:
             # Use a path that doesn't exist yet
             nonexistent = Path(tmpdir) / "deeply" / "nested" / "path"
 
-            with patch(
-                "shelfmark.config.env.TMP_DIR", nonexistent
-            ):
-                result = get_staging_dir()
+            with patch("shelfmark.config.env.TMP_DIR", nonexistent):
+                get_staging_dir()
 
             # Should have created the directory
             assert nonexistent.exists()
 
     @pytest.mark.skipif(
-        os.geteuid() == 0,
-        reason="Test skipped when running as root (chmod has no effect)"
+        os.geteuid() == 0, reason="Test skipped when running as root (chmod has no effect)"
     )
     def test_config_dir_not_writable(self):
         """Application should handle read-only config directory."""
@@ -355,9 +344,7 @@ class TestConfigValidation:
             os.chmod(readonly_dir, 0o444)  # Read-only
 
             try:
-                with patch(
-                    "shelfmark.config.env.CONFIG_DIR", readonly_dir
-                ):
+                with patch("shelfmark.config.env.CONFIG_DIR", readonly_dir):
                     result = _is_config_dir_writable()
                     assert result is False
             finally:
@@ -442,12 +429,28 @@ class TestDebugConfiguration:
         assert string_to_bool("true") is True
         assert string_to_bool("false") is False
 
-    def test_log_level_derived_from_debug(self):
-        """LOG_LEVEL should be derived from DEBUG setting."""
-        # When DEBUG is True, LOG_LEVEL should be "DEBUG"
-        # When DEBUG is False, LOG_LEVEL should be "INFO"
-        # This is tested by checking the module logic
-        pass  # The logic is in env.py: LOG_LEVEL = "DEBUG" if DEBUG else "INFO"
+    def test_log_level_derived_from_debug(self, monkeypatch):
+        """LOG_LEVEL should follow the effective DEBUG value on reload."""
+        import shelfmark.config.env as env_module
+
+        original_debug = os.environ.get("DEBUG")
+
+        try:
+            monkeypatch.setenv("DEBUG", "true")
+            importlib.reload(env_module)
+            assert env_module.DEBUG is True
+            assert env_module.LOG_LEVEL == "DEBUG"
+
+            monkeypatch.setenv("DEBUG", "false")
+            importlib.reload(env_module)
+            assert env_module.DEBUG is False
+            assert env_module.LOG_LEVEL == "INFO"
+        finally:
+            if original_debug is None:
+                monkeypatch.delenv("DEBUG", raising=False)
+            else:
+                monkeypatch.setenv("DEBUG", original_debug)
+            importlib.reload(env_module)
 
 
 # =============================================================================
@@ -461,6 +464,7 @@ class TestNetworkConfiguration:
     def test_proxy_settings_default(self):
         """Proxy settings should have sensible defaults."""
         from shelfmark.core.config import config
+
         config.refresh()
 
         # Default proxy mode should be 'none' (no proxy)
@@ -486,6 +490,7 @@ class TestConcurrencyConfiguration:
     def test_max_concurrent_downloads_default(self):
         """MAX_CONCURRENT_DOWNLOADS should have a sensible default."""
         from shelfmark.core.config import config
+
         config.refresh()
 
         max_downloads = config.get("MAX_CONCURRENT_DOWNLOADS", 3)
@@ -495,6 +500,7 @@ class TestConcurrencyConfiguration:
     def test_download_progress_interval_default(self):
         """DOWNLOAD_PROGRESS_UPDATE_INTERVAL should have a sensible default."""
         from shelfmark.core.config import config
+
         config.refresh()
 
         interval = config.get("DOWNLOAD_PROGRESS_UPDATE_INTERVAL", 1)
@@ -513,6 +519,7 @@ class TestCacheConfiguration:
     def test_metadata_cache_ttl_defaults(self):
         """Metadata cache TTLs should have sensible defaults."""
         from shelfmark.core.config import config
+
         config.refresh()
 
         search_ttl = config.get("METADATA_CACHE_SEARCH_TTL", 300)
@@ -555,9 +562,7 @@ class TestFileCollisionHandling:
             # Create existing file with same name in staging
             (staging / "book.epub").write_text("existing")
 
-            with patch(
-                "shelfmark.config.env.TMP_DIR", staging
-            ):
+            with patch("shelfmark.config.env.TMP_DIR", staging):
                 result = stage_file(source, "task1", copy=True)
 
             # Should have created a new file with suffix
@@ -576,9 +581,7 @@ class TestFileCollisionHandling:
             source1 = Path(tmpdir) / "book1.epub"
             source1.write_text("content1")
 
-            with patch(
-                "shelfmark.config.env.TMP_DIR", staging
-            ):
+            with patch("shelfmark.config.env.TMP_DIR", staging):
                 result1 = stage_file(source1, "task1", copy=True)
 
             assert source1.exists()  # Original still exists
@@ -588,9 +591,7 @@ class TestFileCollisionHandling:
             source2 = Path(tmpdir) / "book2.epub"
             source2.write_text("content2")
 
-            with patch(
-                "shelfmark.config.env.TMP_DIR", staging
-            ):
+            with patch("shelfmark.config.env.TMP_DIR", staging):
                 result2 = stage_file(source2, "task2", copy=False)
 
             assert not source2.exists()  # Original moved
