@@ -358,7 +358,6 @@ export const ActivityCard = ({
   useEffect(() => {
     if (!isRequestDetailsOpen) {
       setIsReviewSubmitting(false);
-      return;
     }
   }, [isRequestDetailsOpen, reviewRecord?.id, reviewRecord?.updated_at]);
 

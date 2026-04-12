@@ -1343,7 +1343,7 @@ function App() {
             showToast(`Removed from ${listName || 'list'}`, 'info');
           }
         })
-        .catch(() => {});
+        .catch(() => undefined);
     },
     [config?.hardcover_auto_remove_on_download, showToast],
   );

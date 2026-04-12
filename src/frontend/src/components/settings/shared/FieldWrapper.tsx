@@ -201,7 +201,7 @@ export const FieldWrapper = ({
 }: FieldWrapperProps) => {
   // Action buttons and headings handle their own layout
   if (field.type === 'ActionButton' || field.type === 'HeadingField') {
-    return <>{children}</>;
+    return children;
   }
 
   // At this point, field is a regular input field with standard properties

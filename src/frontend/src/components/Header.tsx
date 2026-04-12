@@ -18,6 +18,7 @@ import {
 import { formatActingAsUserName } from '../utils/actingAsUser';
 import { ActivityStatusCounts, getActivityBadgeState } from '../utils/activityBadge';
 import { withBasePath } from '../utils/basePath';
+import { isRecord } from '../utils/objectHelpers';
 import { DropdownList } from './DropdownList';
 import { SearchBar, SearchBarHandle } from './SearchBar';
 
@@ -559,11 +560,12 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
                           if (loadingToastId) onRemoveToast?.(loadingToastId);
 
                           if (!response.ok) {
-                            const errorData = await response.json().catch(() => ({}));
-                            onShowToast?.(
-                              `Debug download failed: ${errorData.error || response.statusText}`,
-                              'error',
-                            );
+                            const errorData: unknown = await response.json().catch(() => null);
+                            const errorMessage =
+                              isRecord(errorData) && typeof errorData.error === 'string'
+                                ? errorData.error
+                                : response.statusText;
+                            onShowToast?.(`Debug download failed: ${errorMessage}`, 'error');
                             return;
                           }
 

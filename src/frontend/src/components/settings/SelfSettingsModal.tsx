@@ -326,7 +326,7 @@ export const SelfSettingsModal = ({
               <UserAccountCardContent
                 user={editingUser}
                 onUserChange={setEditingUser}
-                onSave={() => {}}
+                onSave={() => undefined}
                 saving={isSaving}
                 onCancel={handleClose}
                 hideEditActions

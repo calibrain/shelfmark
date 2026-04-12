@@ -162,7 +162,7 @@ export function Tooltip({
   }, []);
 
   if (!hasContent && !alwaysWrap) {
-    return <>{children}</>;
+    return children;
   }
 
   // Transform classes to center tooltip relative to the anchor point

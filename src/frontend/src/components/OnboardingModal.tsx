@@ -12,6 +12,7 @@ import { toBooleanValue, toStringArray, toStringValue } from '../utils/objectHel
 import {
   TextField,
   PasswordField,
+  NumberField,
   CheckboxField,
   SelectField,
   MultiSelectField,
@@ -100,6 +101,15 @@ const renderField = (
           disabled={isDisabled}
         />
       );
+    case 'NumberField':
+      return (
+        <NumberField
+          field={field}
+          value={typeof value === 'number' ? value : field.value}
+          onChange={onChange}
+          disabled={isDisabled}
+        />
+      );
     case 'CheckboxField':
       return (
         <CheckboxField
@@ -140,6 +150,10 @@ const renderField = (
       return <ActionButton field={field} onAction={onAction} disabled={isDisabled} />;
     case 'HeadingField':
       return <HeadingField field={field} />;
+    case 'OrderableListField':
+    case 'TableField':
+    case 'CustomComponentField':
+      return <div>Unsupported onboarding field type: {field.type}</div>;
     default:
       return <div>Unknown field type</div>;
   }

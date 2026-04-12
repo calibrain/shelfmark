@@ -211,6 +211,7 @@ async function fetchJSON<T>(
       });
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return -- fetch() returns untyped JSON; callers provide the expected response shape at the boundary
     return res.json();
   } catch (error) {
     // Handle abort/timeout errors

@@ -1,8 +1,7 @@
 import { Fragment, ReactElement } from 'react';
 
 import { DeliveryPreferencesResponse } from '../../../services/api';
-import { ActionResult } from '../../../types/settings';
-import { SettingsTab } from '../../../types/settings';
+import { ActionResult, SettingsTab } from '../../../types/settings';
 import { toTrimmedTextValue } from './fieldHelpers';
 import { PerUserSettings } from './types';
 import { UserNotificationOverridesSection } from './UserNotificationOverridesSection';

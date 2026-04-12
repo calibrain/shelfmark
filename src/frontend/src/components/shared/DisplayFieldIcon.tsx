@@ -7,6 +7,8 @@ interface DisplayFieldIconProps {
 
 export function DisplayFieldIcon({ icon, className = 'w-3 h-3' }: DisplayFieldIconProps) {
   switch (icon) {
+    case undefined:
+      return null;
     case 'star':
       return (
         <svg className={className} fill="currentColor" viewBox="0 0 20 20">

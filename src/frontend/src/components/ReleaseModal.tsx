@@ -1567,7 +1567,6 @@ export const ReleaseModal = ({
           await onRequestRelease(book, release, contentType);
           handleClose();
         }
-        return;
       }
     },
     [

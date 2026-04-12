@@ -313,6 +313,8 @@ const renderField = (
         />
       );
     }
+    case 'CustomComponentField':
+      return null;
     default:
       return <div>Unknown field type</div>;
   }
