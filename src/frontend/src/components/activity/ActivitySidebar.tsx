@@ -263,28 +263,21 @@ export const ActivitySidebar = ({
   const dismissedKeySet = useMemo(() => new Set(dismissedItemKeys), [dismissedItemKeys]);
   const handleTabChange = useCallback(
     (nextTab: ActivityTabKey) => {
+      if (nextTab === 'downloads') {
+        setRejectingRequest(null);
+        setReviewingRequestId(null);
+      }
       setActiveTab(nextTab);
       onActiveTabChange?.(nextTab);
     },
     [onActiveTabChange],
   );
 
-  useEffect(() => {
-    if (activeTab === 'downloads') {
-      setRejectingRequest(null);
-      setReviewingRequestId(null);
-    }
-  }, [activeTab]);
-
   const isPinnedOpen = isOpen && isDesktop && isPinned;
   const effectiveActiveTab = !showRequestsTab && activeTab === 'requests' ? 'all' : activeTab;
   if (effectiveActiveTab !== activeTab) {
     setActiveTab(effectiveActiveTab);
   }
-
-  useEffect(() => {
-    onPinnedOpenChange?.(isPinnedOpen);
-  }, [isPinnedOpen, onPinnedOpenChange]);
 
   useEscapeKey(isOpen && !isPinnedOpen, onClose);
 
@@ -566,6 +559,7 @@ export const ActivitySidebar = ({
   const handleTogglePinned = () => {
     const next = !isPinned;
     setIsPinned(next);
+    onPinnedOpenChange?.(next);
     try {
       window.localStorage.setItem(ACTIVITY_SIDEBAR_PINNED_STORAGE_KEY, next ? '1' : '0');
     } catch {

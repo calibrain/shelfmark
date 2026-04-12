@@ -2,12 +2,13 @@ import { useMemo } from 'react';
 
 import type { SelectFieldConfig, TableFieldConfig } from '../../../types/settings';
 import type { RequestPolicyContentType, RequestPolicyMode } from '../users';
+import { RequestPolicyGrid } from '../users';
 import {
-  RequestPolicyGrid,
+  normalizeExplicitRulesForPersistence,
   normalizeRequestPolicyDefaults,
   normalizeRequestPolicyRules,
   parseSourceCapabilitiesFromRulesField,
-} from '../users';
+} from '../users/requestPolicyGridUtils';
 import type { CustomSettingsFieldRendererProps } from './types';
 
 export const RequestPolicyGridField = ({
@@ -76,7 +77,17 @@ export const RequestPolicyGridField = ({
   ) => {
     const key =
       contentType === 'ebook' ? 'REQUEST_POLICY_DEFAULT_EBOOK' : 'REQUEST_POLICY_DEFAULT_AUDIOBOOK';
+    const nextDefaultModes = {
+      ...globalRequestDefaults,
+      [contentType]: mode,
+    };
+    const normalizedRules = normalizeExplicitRulesForPersistence({
+      explicitRules: explicitGlobalRules,
+      defaultModes: nextDefaultModes,
+      sourceCapabilities: requestSourceCapabilities,
+    });
     onChange(key, mode);
+    onChange('REQUEST_POLICY_RULES', normalizedRules);
   };
 
   const onGlobalRulesChange = (
@@ -86,7 +97,12 @@ export const RequestPolicyGridField = ({
       mode: 'download' | 'request_release' | 'blocked';
     }>,
   ) => {
-    onChange('REQUEST_POLICY_RULES', rules);
+    const normalizedRules = normalizeExplicitRulesForPersistence({
+      explicitRules: rules,
+      defaultModes: globalRequestDefaults,
+      sourceCapabilities: requestSourceCapabilities,
+    });
+    onChange('REQUEST_POLICY_RULES', normalizedRules);
   };
 
   return (

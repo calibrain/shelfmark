@@ -15,6 +15,7 @@ import { RequestConfirmationModal } from './components/RequestConfirmationModal'
 import { ResultsSection } from './components/ResultsSection';
 import { SearchSection } from './components/SearchSection';
 import { SelfSettingsModal, SettingsModal } from './components/settings';
+import { primeUsersCache } from './components/settings/users/useUsersFetch';
 import { ToastContainer } from './components/ToastContainer';
 import { SearchModeProvider } from './contexts/SearchModeContext';
 import { useSocket } from './contexts/SocketContext';
@@ -26,6 +27,7 @@ import {
 import { useActivity } from './hooks/useActivity';
 import { useAuth } from './hooks/useAuth';
 import { useDownloadTracking } from './hooks/useDownloadTracking';
+import { useMediaQuery } from './hooks/useMediaQuery';
 import { useRealtimeStatus } from './hooks/useRealtimeStatus';
 import { useRequestPolicy } from './hooks/useRequestPolicy';
 import { useRequests } from './hooks/useRequests';
@@ -102,6 +104,7 @@ import {
 import './styles.css';
 
 const CONTENT_TYPE_STORAGE_KEY = 'preferred-content-type';
+const ACTIVITY_SIDEBAR_PINNED_STORAGE_KEY = 'activity-sidebar-pinned';
 const ADVANCED_FILTER_VISIBILITY_KEYS = ['content', 'lang', 'formats'] as const;
 
 declare global {
@@ -123,6 +126,19 @@ const getInitialContentType = (): { contentType: ContentType; combinedMode: bool
     // localStorage may be unavailable in private browsing
   }
   return { contentType: 'ebook', combinedMode: false };
+};
+
+const getInitialPinnedPreference = (): boolean => {
+  if (typeof window === 'undefined') {
+    return false;
+  }
+
+  try {
+    const value = window.localStorage.getItem(ACTIVITY_SIDEBAR_PINNED_STORAGE_KEY);
+    return value === '1' || value?.toLowerCase() === 'true';
+  } catch {
+    return false;
+  }
 };
 
 const POLICY_GUARD_ERROR_CODES = new Set(['policy_requires_request', 'policy_blocked']);
@@ -636,15 +652,36 @@ function App() {
   );
   const [activeQueryTarget, setActiveQueryTarget] = useState('general');
   const [downloadsSidebarOpen, setDownloadsSidebarOpen] = useState(false);
-  const [sidebarPinnedOpen, setSidebarPinnedOpen] = useState(false);
+  const [sidebarPinnedOpen, setSidebarPinnedOpen] = useState<boolean>(() =>
+    getInitialPinnedPreference(),
+  );
   const [headerHeight, setHeaderHeight] = useState(0);
   const headerObserverRef = useRef<ResizeObserver | null>(null);
-  useEffect(() => {
-    if (!downloadsSidebarOpen) {
+  const isDesktopViewport = useMediaQuery('(min-width: 1024px)');
+  const openDownloadsSidebar = useCallback(() => {
+    setDownloadsSidebarOpen(true);
+    prefetchActivityHistory();
+  }, [prefetchActivityHistory]);
+  const toggleDownloadsSidebar = useCallback(() => {
+    if (downloadsSidebarOpen) {
+      setDownloadsSidebarOpen(false);
       return;
     }
+    setDownloadsSidebarOpen(true);
     prefetchActivityHistory();
   }, [downloadsSidebarOpen, prefetchActivityHistory]);
+  const handleSettingsClick = useCallback(() => {
+    if (config?.settings_enabled) {
+      if (authIsAdmin) {
+        void primeUsersCache();
+        setSettingsOpen(true);
+      } else {
+        setSelfSettingsOpen(true);
+      }
+      return;
+    }
+    setConfigBannerOpen(true);
+  }, [authIsAdmin, config?.settings_enabled]);
 
   const headerRef = useCallback((el: HTMLDivElement | null) => {
     if (headerObserverRef.current) {
@@ -747,16 +784,20 @@ function App() {
       // Check for new items in queue
       const prevQueued = prev.queued || {};
       const currQueued = curr.queued || {};
+      let shouldOpenDownloadsSidebar = false;
       Object.keys(currQueued).forEach((bookId) => {
         if (!prevQueued[bookId]) {
           const book = currQueued[bookId];
           showToast(`${book.title || 'Book'} added to queue`, 'info');
           // Auto-open downloads sidebar if enabled
           if (config?.auto_open_downloads_sidebar !== false) {
-            setDownloadsSidebarOpen(true);
+            shouldOpenDownloadsSidebar = true;
           }
         }
       });
+      if (shouldOpenDownloadsSidebar) {
+        openDownloadsSidebar();
+      }
 
       // Check for items that started downloading
       const prevDownloading = prev.downloading || {};
@@ -807,7 +848,7 @@ function App() {
         }
       });
     },
-    [showToast, bookToReleaseMap, markBookCompleted, config],
+    [showToast, bookToReleaseMap, markBookCompleted, config, openDownloadsSidebar],
   );
 
   // Detect status changes when currentStatus updates
@@ -1919,10 +1960,6 @@ function App() {
     [openRequestConfirmation, refreshRequestPolicy],
   );
 
-  const handleReleaseModalPolicyRefresh = useCallback(() => {
-    return refreshRequestPolicy({ force: true });
-  }, [refreshRequestPolicy]);
-
   // Combined mode callbacks
   const handleCombinedNext = useCallback(
     (release: Release) => {
@@ -2054,8 +2091,16 @@ function App() {
         book: bookFromRequestData(record.book_data),
         contentType: record.content_type,
       });
+      void refreshRequestPolicy({ force: true });
     },
-    [requestRoleIsAdmin, fulfilSidebarRequest, showToast, fetchStatus, refreshActivitySnapshot],
+    [
+      requestRoleIsAdmin,
+      fulfilSidebarRequest,
+      showToast,
+      fetchStatus,
+      refreshActivitySnapshot,
+      refreshRequestPolicy,
+    ],
   );
 
   const handleBrowseFulfilDownload = useCallback(
@@ -2553,7 +2598,8 @@ function App() {
   const combinedHasPreviousStep = effectiveCombinedState
     ? combinedSelectionPhases.indexOf(effectiveCombinedState.phase) > 0
     : false;
-  const usePinnedMainScrollContainer = sidebarPinnedOpen;
+  const usePinnedMainScrollContainer =
+    downloadsSidebarOpen && isDesktopViewport && sidebarPinnedOpen;
 
   const handleReleaseModalClose = useCallback(() => {
     if (isBrowseFulfilMode) {
@@ -2594,18 +2640,8 @@ function App() {
           searchInput={activeQueryValue}
           searchInputLabel={activeQueryValueLabel}
           onSearchChange={handleActiveQueryValueChange}
-          onDownloadsClick={() => setDownloadsSidebarOpen((prev) => !prev)}
-          onSettingsClick={() => {
-            if (config?.settings_enabled) {
-              if (authIsAdmin) {
-                setSettingsOpen(true);
-              } else {
-                setSelfSettingsOpen(true);
-              }
-            } else {
-              setConfigBannerOpen(true);
-            }
-          }}
+          onDownloadsClick={toggleDownloadsSidebar}
+          onSettingsClick={handleSettingsClick}
           isAdmin={requestRoleIsAdmin}
           canAccessSettings={isAuthenticated}
           username={username}
@@ -2803,7 +2839,6 @@ function App() {
               getPolicyModeForSource={
                 isBrowseFulfilMode ? () => 'download' : (source, ct) => getSourceMode(source, ct)
               }
-              onPolicyRefresh={handleReleaseModalPolicyRefresh}
               supportedFormats={supportedFormats}
               supportedAudiobookFormats={config?.supported_audiobook_formats || []}
               contentType={activeReleaseContentType}
@@ -2939,6 +2974,7 @@ function App() {
         onContinue={() => {
           setConfigBannerOpen(false);
           if (authIsAdmin) {
+            void primeUsersCache();
             setSettingsOpen(true);
           } else {
             setSelfSettingsOpen(true);

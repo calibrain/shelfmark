@@ -139,7 +139,6 @@ interface ReleaseModalProps {
   onRequestRelease?: (book: Book, release: Release, contentType: ContentType) => Promise<void>;
   onRequestBook?: (book: Book, contentType: ContentType) => Promise<void>;
   getPolicyModeForSource?: (source: string, contentType: ContentType) => RequestPolicyMode;
-  onPolicyRefresh?: () => Promise<unknown>;
   supportedFormats: string[];
   supportedAudiobookFormats?: string[]; // Audiobook formats (m4b, mp3)
   contentType: ContentType; // 'ebook' or 'audiobook'
@@ -683,7 +682,6 @@ export const ReleaseModal = ({
   onRequestRelease,
   onRequestBook,
   getPolicyModeForSource,
-  onPolicyRefresh,
   supportedFormats,
   supportedAudiobookFormats = [],
   contentType = 'ebook',
@@ -850,13 +848,37 @@ export const ReleaseModal = ({
     });
   }
 
-  useEffect(() => {
-    if (!activeBookId || !onPolicyRefresh) {
-      return undefined;
-    }
-    void onPolicyRefresh();
-    return undefined;
-  }, [activeBookId, onPolicyRefresh]);
+  const clearSearchStatusForTab = useCallback((tabName: string) => {
+    setSearchStatus((current) => (current?.source === tabName ? null : current));
+  }, []);
+
+  const initializeIndexerFilterForTab = useCallback(
+    (tabName: string, response: ReleasesResponse | null | undefined) => {
+      if (!response?.column_config) {
+        return;
+      }
+
+      if (indexerFilterInitializedRef.current.has(tabName)) {
+        return;
+      }
+
+      const defaultIndexers = response.column_config.default_indexers;
+      if (defaultIndexers && defaultIndexers.length > 0) {
+        setIndexerFilter(defaultIndexers);
+      }
+      indexerFilterInitializedRef.current.add(tabName);
+    },
+    [],
+  );
+
+  const acceptReleasesResponse = useCallback(
+    (tabName: string, provider: string, bookId: string, response: ReleasesResponse) => {
+      setCachedReleases(provider, bookId, tabName, contentType, response);
+      setReleasesBySource((prev) => ({ ...prev, [tabName]: response }));
+      initializeIndexerFilterForTab(tabName, response);
+    },
+    [contentType, initializeIndexerFilterForTab],
+  );
 
   // Close handler with animation
   const handleClose = useCallback(() => {
@@ -920,14 +942,6 @@ export const ReleaseModal = ({
     book?.author,
   ]);
 
-  useEffect(() => {
-    if (isCombinedMode) {
-      return;
-    }
-
-    setSelectedRelease(null);
-  }, [activeBookId, isCombinedMode]);
-
   // Set up WebSocket listener for search status updates
   useEffect(() => {
     if (!book || !socket) {
@@ -977,29 +991,6 @@ export const ReleaseModal = ({
       }
     };
   }, [book, socket, activeTab]);
-
-  // Clear search status when loading finishes
-  useEffect(() => {
-    if (!loadingBySource[activeTab]) {
-      setSearchStatus(null);
-    }
-  }, [loadingBySource, activeTab]);
-
-  // Initialize indexer filter from default_indexers when results first load for a tab
-  useEffect(() => {
-    const response = releasesBySource[activeTab];
-    if (!response?.column_config) return;
-
-    // Only initialize once per tab per book
-    if (indexerFilterInitializedRef.current.has(activeTab)) return;
-
-    const defaultIndexers = response.column_config.default_indexers;
-    if (defaultIndexers && defaultIndexers.length > 0) {
-      setIndexerFilter(defaultIndexers);
-    }
-    // Mark as initialized even if no default_indexers (to avoid re-checking)
-    indexerFilterInitializedRef.current.add(activeTab);
-  }, [releasesBySource, activeTab]);
 
   // Check if description text overflows (needs "more" button)
   useEffect(() => {
@@ -1081,6 +1072,8 @@ export const ReleaseModal = ({
     const cached = getCachedReleases(provider, bookId, activeTab, contentType);
     if (cached) {
       setReleasesBySource((prev) => ({ ...prev, [activeTab]: cached }));
+      initializeIndexerFilterForTab(activeTab, cached);
+      clearSearchStatusForTab(activeTab);
       return undefined;
     }
 
@@ -1100,19 +1093,30 @@ export const ReleaseModal = ({
           contentType,
           manualQuery.trim() || undefined,
         );
-        setCachedReleases(provider, bookId, activeTab, contentType, response);
-        setReleasesBySource((prev) => ({ ...prev, [activeTab]: response }));
+        acceptReleasesResponse(activeTab, provider, bookId, response);
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Failed to fetch releases';
         setErrorBySource((prev) => ({ ...prev, [activeTab]: message }));
       } finally {
         setLoadingBySource((prev) => ({ ...prev, [activeTab]: false }));
+        clearSearchStatusForTab(activeTab);
       }
     };
 
     void fetchReleases();
     return undefined;
-  }, [book, activeTab, releasesBySource, loadingBySource, errorBySource, contentType, manualQuery]);
+  }, [
+    acceptReleasesResponse,
+    activeTab,
+    book,
+    clearSearchStatusForTab,
+    contentType,
+    errorBySource,
+    initializeIndexerFilterForTab,
+    loadingBySource,
+    manualQuery,
+    releasesBySource,
+  ]);
 
   // Handler for expanding search (title+author instead of ISBN)
   // Fetches additional results and merges with existing ISBN results
@@ -1172,21 +1176,25 @@ export const ReleaseModal = ({
           },
         };
       });
+      initializeIndexerFilterForTab(activeTab, expandedResponse);
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to expand search';
       setErrorBySource((prev) => ({ ...prev, [activeTab]: message }));
     } finally {
       setLoadingBySource((prev) => ({ ...prev, [activeTab]: false }));
+      clearSearchStatusForTab(activeTab);
     }
   }, [
     activeTab,
     book,
+    clearSearchStatusForTab,
     languageFilter,
     bookLanguages,
     defaultLanguages,
     contentType,
     manualQuery,
     indexerFilter,
+    initializeIndexerFilterForTab,
     releasesBySource,
   ]);
 
@@ -2427,6 +2435,7 @@ export const ReleaseModal = ({
                                         ...prev,
                                         [activeTab]: response,
                                       }));
+                                      initializeIndexerFilterForTab(activeTab, response);
                                     } catch (err) {
                                       const message =
                                         err instanceof Error
@@ -2441,6 +2450,7 @@ export const ReleaseModal = ({
                                         ...prev,
                                         [activeTab]: false,
                                       }));
+                                      clearSearchStatusForTab(activeTab);
                                     }
                                   })();
                                 }}
@@ -2501,14 +2511,14 @@ export const ReleaseModal = ({
                           contentType,
                           q,
                         );
-                        setCachedReleases(provider, bookId, activeTab, contentType, response);
-                        setReleasesBySource((prev) => ({ ...prev, [activeTab]: response }));
+                        acceptReleasesResponse(activeTab, provider, bookId, response);
                       } catch (err) {
                         const message =
                           err instanceof Error ? err.message : 'Failed to fetch releases';
                         setErrorBySource((prev) => ({ ...prev, [activeTab]: message }));
                       } finally {
                         setLoadingBySource((prev) => ({ ...prev, [activeTab]: false }));
+                        clearSearchStatusForTab(activeTab);
                       }
                     })();
                   }}

@@ -9,7 +9,6 @@ import { getAdminSettingsOverridesSummary, getSettingsTab } from '../../services
 import { SettingsContent } from './SettingsContent';
 import { SettingsHeader } from './SettingsHeader';
 import { SettingsSidebar } from './SettingsSidebar';
-import { primeUsersCache } from './users/useUsersFetch';
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -76,6 +75,8 @@ export const SettingsModal = ({
   const overrideSummaryRequestIdRef = useRef(0);
 
   const handleClose = useCallback(() => {
+    setShowMobileDetail(false);
+    setTabOverrideSummaries({});
     setIsClosing(true);
     setTimeout(() => {
       onClose();
@@ -94,16 +95,6 @@ export const SettingsModal = ({
 
   useBodyScrollLock(isOpen);
   useEscapeKey(isOpen, handleEscape);
-
-  // Reset mobile detail view when modal opens
-  useEffect(() => {
-    if (isOpen) {
-      setShowMobileDetail(false);
-      setIsClosing(false);
-      setTabOverrideSummaries({});
-      void primeUsersCache();
-    }
-  }, [isOpen]);
 
   useEffect(() => {
     if (!isOpen || selectedTab !== 'security') {

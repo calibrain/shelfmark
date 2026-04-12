@@ -261,27 +261,6 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       };
     }, []);
 
-    // Auto-open select dropdown only when transitioning into a select field.
-    // Initialise the ref to the current key so that mounting with an already-
-    // active select field (e.g. the Header SearchBar after first search)
-    // doesn't count as a field change. Using `if (fieldChanged)` instead of
-    // always calling setIsSelectOpen avoids StrictMode's second effect
-    // invocation resetting the state set by the first.
-    const prevFieldKeyRef = useRef(activeQueryField?.key);
-    useEffect(() => {
-      const isSelect =
-        activeQueryField?.type === 'SelectSearchField' ||
-        activeQueryField?.type === 'DynamicSelectSearchField';
-      const fieldChanged = activeQueryField?.key !== prevFieldKeyRef.current;
-      prevFieldKeyRef.current = activeQueryField?.key;
-
-      if (fieldChanged) {
-        setIsSelectOpen(isSelect);
-      }
-      setIsAutocompleteOpen(false);
-      setAutocompleteOptions([]);
-    }, [activeQueryField?.key, activeQueryField?.type]);
-
     // Load dynamic options when a DynamicSelectSearchField is active
     const dynamicEndpoint =
       activeQueryField?.type === 'DynamicSelectSearchField'
@@ -481,7 +460,15 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
     };
 
     const handleQueryTargetSelect = (targetKey: string) => {
+      const nextTarget = queryTargets.find((target) => target.key === targetKey);
+      const nextField = nextTarget?.field;
+      const shouldOpenSelect =
+        nextField?.type === 'SelectSearchField' || nextField?.type === 'DynamicSelectSearchField';
+
       onQueryTargetChange?.(targetKey);
+      setIsSelectOpen(shouldOpenSelect);
+      setIsAutocompleteOpen(false);
+      setAutocompleteOptions([]);
       setIsSelectorOpen(false);
     };
 

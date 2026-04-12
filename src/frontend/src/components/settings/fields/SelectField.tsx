@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef } from 'react';
+import { useMemo } from 'react';
 
 import type { SelectFieldConfig } from '../../../types/settings';
 import { DropdownList } from '../../DropdownList';
@@ -20,8 +20,6 @@ export const SelectField = ({
 }: SelectFieldProps) => {
   const isDisabled = disabled ?? false;
 
-  const prevFilterValue = useRef(filterValue);
-
   const normalizedOptions = useMemo(
     () =>
       field.options.map((opt) => ({
@@ -41,17 +39,6 @@ export const SelectField = ({
     // Filter to options that belong to the selected parent or have no parent
     return normalizedOptions.filter((opt) => !opt.childOf || opt.childOf === filterValue);
   }, [normalizedOptions, filterValue]);
-
-  // Clear selection when filter value changes and current value is not in filtered options
-  useEffect(() => {
-    if (prevFilterValue.current !== filterValue && filterValue !== undefined) {
-      const currentValueInOptions = filteredOptions.some((opt) => opt.value === value);
-      if (!currentValueInOptions && value) {
-        onChange('');
-      }
-    }
-    prevFilterValue.current = filterValue;
-  }, [filterValue, filteredOptions, value, onChange]);
 
   // Use field's default value as fallback when value is empty
   const effectiveValue = value || field.default || '';

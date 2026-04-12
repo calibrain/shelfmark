@@ -215,6 +215,10 @@ export const UserOverridesSection = ({
     });
   };
 
+  const resetBookloreLibrary = () => {
+    resetKeys(['BOOKLORE_LIBRARY_ID', 'BOOKLORE_PATH_ID']);
+  };
+
   const readValue = (key: DeliverySettingKey, fallback = ''): string => {
     if (isOverridden(key)) {
       return toStringValue(userSettings[key]);
@@ -342,7 +346,7 @@ export const UserOverridesSection = ({
             isOverridden('BOOKLORE_LIBRARY_ID')
               ? {
                   disabled: Boolean(bookloreLibraryField.fromEnv),
-                  onClick: () => resetKeys(['BOOKLORE_LIBRARY_ID']),
+                  onClick: resetBookloreLibrary,
                 }
               : undefined
           }

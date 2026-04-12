@@ -48,6 +48,7 @@ export const UsersManagementField = ({
     userSettings,
     setUserSettings,
     hasUserSettingsChanges,
+    hasUserSettingsChangesFor,
     beginEditing,
     applyUserEditContext,
     resetEditContext,
@@ -117,6 +118,9 @@ export const UsersManagementField = ({
   const handleBackToList = () => {
     onUiStateChange('routeKind', 'list');
     invalidateEditContextRequest();
+    onUiStateChange('hasChanges', false);
+    onUiStateChange('isSaving', false);
+    onUiStateChange('onSave', undefined);
     clearEditState();
     backToList();
   };
@@ -139,9 +143,46 @@ export const UsersManagementField = ({
     }
   };
 
+  const handleSaveUserEdit = useCallback(async () => {
+    const ok = await saveEditedUser({ includeSettings: false });
+    if (ok) {
+      onRefreshOverrideSummary?.();
+      backToList();
+    }
+  }, [backToList, onRefreshOverrideSummary, saveEditedUser]);
+
+  const handleSaveUserOverrides = useCallback(async () => {
+    onUiStateChange('isSaving', true);
+    const ok = await saveEditedUser({
+      includeProfile: false,
+      includePassword: false,
+      includeSettings: true,
+    });
+    onUiStateChange('isSaving', false);
+    if (ok) {
+      onUiStateChange('hasChanges', false);
+      onUiStateChange('onSave', undefined);
+      onSettingsSaved?.();
+      onRefreshOverrideSummary?.();
+      backToList();
+    }
+  }, [backToList, onRefreshOverrideSummary, onSettingsSaved, onUiStateChange, saveEditedUser]);
+
+  const handleSaveUserOverridesRef = useRef(handleSaveUserOverrides);
+  useEffect(() => {
+    handleSaveUserOverridesRef.current = handleSaveUserOverrides;
+  }, [handleSaveUserOverrides]);
+
+  const triggerSaveUserOverrides = useCallback(async () => {
+    await handleSaveUserOverridesRef.current();
+  }, []);
+
   const handleOpenOverrides = () => {
     if (editingUser) {
       onUiStateChange('routeKind', 'edit-overrides');
+      onUiStateChange('hasChanges', hasUserSettingsChanges);
+      onUiStateChange('isSaving', saving);
+      onUiStateChange('onSave', triggerSaveUserOverrides);
       openEditOverrides(editingUser.id);
     }
   };
@@ -162,46 +203,22 @@ export const UsersManagementField = ({
   const handleBackToEdit = () => {
     if (editingUser) {
       onUiStateChange('routeKind', 'edit');
+      onUiStateChange('hasChanges', false);
+      onUiStateChange('isSaving', false);
+      onUiStateChange('onSave', undefined);
       openEdit(editingUser.id);
       return;
     }
     onUiStateChange('routeKind', 'list');
+    onUiStateChange('hasChanges', false);
+    onUiStateChange('isSaving', false);
+    onUiStateChange('onSave', undefined);
     backToList();
   };
 
   useLayoutEffect(() => {
     onUiStateChange('routeKind', effectiveRouteKind);
   }, [effectiveRouteKind, onUiStateChange]);
-
-  const handleSaveUserEdit = useCallback(async () => {
-    const ok = await saveEditedUser({ includeSettings: false });
-    if (ok) {
-      onRefreshOverrideSummary?.();
-      backToList();
-    }
-  }, [backToList, onRefreshOverrideSummary, saveEditedUser]);
-
-  const handleSaveUserOverrides = useCallback(async () => {
-    const ok = await saveEditedUser({
-      includeProfile: false,
-      includePassword: false,
-      includeSettings: true,
-    });
-    if (ok) {
-      onSettingsSaved?.();
-      onRefreshOverrideSummary?.();
-      backToList();
-    }
-  }, [backToList, onRefreshOverrideSummary, onSettingsSaved, saveEditedUser]);
-
-  const handleSaveUserOverridesRef = useRef(handleSaveUserOverrides);
-  useEffect(() => {
-    handleSaveUserOverridesRef.current = handleSaveUserOverrides;
-  }, [handleSaveUserOverrides]);
-
-  const triggerSaveUserOverrides = useCallback(async () => {
-    await handleSaveUserOverridesRef.current();
-  }, []);
 
   const handleTestNotificationRoutes = useCallback(
     async (routes: Array<Record<string, unknown>>) => {
@@ -225,18 +242,16 @@ export const UsersManagementField = ({
     [deleteUser, onRefreshAuth, onRefreshOverrideSummary],
   );
 
-  useEffect(() => {
-    if (route.kind !== 'edit-overrides') {
-      onUiStateChange('hasChanges', false);
-      onUiStateChange('isSaving', false);
-      onUiStateChange('onSave', undefined);
-      return;
-    }
-
-    onUiStateChange('hasChanges', hasUserSettingsChanges);
-    onUiStateChange('isSaving', saving);
-    onUiStateChange('onSave', triggerSaveUserOverrides);
-  }, [hasUserSettingsChanges, onUiStateChange, route.kind, saving, triggerSaveUserOverrides]);
+  const setUserSettingsWithSaveBarSync = useCallback(
+    (updater: (prev: typeof userSettings) => typeof userSettings) => {
+      setUserSettings((prev) => {
+        const next = updater(prev);
+        onUiStateChange('hasChanges', hasUserSettingsChangesFor(next));
+        return next;
+      });
+    },
+    [hasUserSettingsChangesFor, onUiStateChange, setUserSettings],
+  );
 
   if (route.kind === 'edit-overrides') {
     if (!editingUser || editingUser.id !== route.userId) {
@@ -257,7 +272,7 @@ export const UsersManagementField = ({
         notificationPreferences={notificationPreferences}
         isUserOverridable={isUserOverridable}
         userSettings={userSettings}
-        setUserSettings={(updater) => setUserSettings(updater)}
+        setUserSettings={setUserSettingsWithSaveBarSync}
         usersTab={usersTab}
         globalUsersSettingsValues={values}
         onTestNotificationRoutes={handleTestNotificationRoutes}

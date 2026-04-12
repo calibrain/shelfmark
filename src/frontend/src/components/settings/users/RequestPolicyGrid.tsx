@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useMemo } from 'react';
 
 import type { RequestPolicyMode } from '../../../types';
 import { DropdownList } from '../../DropdownList';
@@ -9,7 +9,6 @@ import type {
   RequestPolicySourceCapability,
 } from './requestPolicyGridUtils';
 import {
-  areRuleSetsEqual,
   getAllowedMatrixModes,
   getEffectiveCellMode,
   getInheritedCellMode,
@@ -86,12 +85,6 @@ export const RequestPolicyGrid = ({
       }),
     [explicitRules, baseRules, defaultModes, sourceCapabilities],
   );
-
-  useEffect(() => {
-    if (!areRuleSetsEqual(normalizedExplicitRules, normalizeRequestPolicyRules(explicitRules))) {
-      onExplicitRulesChange(normalizedExplicitRules);
-    }
-  }, [normalizedExplicitRules, explicitRules, onExplicitRulesChange]);
 
   const explicitRuleMap = useMemo(() => {
     const map = new Map<string, RequestPolicyRuleRow>();

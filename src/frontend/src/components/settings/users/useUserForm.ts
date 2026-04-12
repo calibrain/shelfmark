@@ -32,6 +32,7 @@ export const useUserForm = () => {
     userOverridableSettings,
     isUserOverridable,
     hasUserSettingsChanges,
+    hasUserSettingsChangesFor,
     applyUserOverridesContext,
     resetUserOverridesState,
   } = useUserOverridesState({ preferenceGroups });
@@ -92,6 +93,7 @@ export const useUserForm = () => {
     userSettings,
     setUserSettings,
     hasUserSettingsChanges,
+    hasUserSettingsChangesFor,
     userOverridableSettings,
     isUserOverridable,
   };

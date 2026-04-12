@@ -63,6 +63,18 @@ export const useUserOverridesState = ({ preferenceGroups }: UseUserOverridesStat
     [originalUserSettings, preferenceGroups, userOverridableSettings],
   );
 
+  const hasUserSettingsChangesFor = useCallback(
+    (nextSettings: PerUserSettings) => {
+      const nextSettingsPayload = buildUserSettingsPayload(
+        nextSettings,
+        userOverridableSettings,
+        preferenceGroups,
+      );
+      return JSON.stringify(nextSettingsPayload) !== JSON.stringify(originalSettingsPayload);
+    },
+    [originalSettingsPayload, preferenceGroups, userOverridableSettings],
+  );
+
   const hasUserSettingsChanges =
     JSON.stringify(currentSettingsPayload) !== JSON.stringify(originalSettingsPayload);
 
@@ -74,6 +86,7 @@ export const useUserOverridesState = ({ preferenceGroups }: UseUserOverridesStat
     isUserOverridable,
     currentSettingsPayload,
     hasUserSettingsChanges,
+    hasUserSettingsChangesFor,
     applyUserOverridesContext,
     resetUserOverridesState,
   };
