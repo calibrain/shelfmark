@@ -622,14 +622,14 @@ def network_settings() -> list[SettingsField]:
             description=(
                 "All traffic is routed through Tor. Requires container restart to change."
                 if tor_enabled
-                else "Route all traffic through Tor for enhanced privacy."
+                else "Route all traffic through Tor for enhanced privacy. Requires root startup."
             ),
             default=tor_enabled,  # Reflects actual state from env var
             disabled=True,  # Tor state requires container restart
             disabled_reason=(
                 "Tor routing is active. Set USING_TOR=false and restart to disable."
                 if tor_enabled
-                else "Set USING_TOR=true env var and restart with NET_ADMIN/NET_RAW capabilities."
+                else "Set USING_TOR=true env var and restart as root."
             ),
         ),
         SelectField(

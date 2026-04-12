@@ -44,9 +44,11 @@ Notes:
 - Point `/books` to your library ingest folder (Calibre-Web, Booklore, Audiobookshelf, etc) for automatic import.
 - If you set Books Output Mode to Booklore (API), books are uploaded via API instead of written to `/books`. Audiobooks still use a destination folder.
 - Ensure `PUID`/`PGID` (or legacy `UID`/`GID`) match the owner of the host directories.
-- For non-root mode, start the container as `1000:1000`; `PUID`/`PGID` keep the default root startup flow.
+- For non-root mode, start the container as `1000:1000`.
+- On Kubernetes, set `runAsUser: 1000`, `runAsGroup: 1000`, and `runAsNonRoot: true` together.
+- `PUID`/`PGID` keep the default root startup flow.
 - In non-root mode, mounted paths must already be writable by `1000:1000`.
-- `USING_TOR=true` still requires starting the container as root.
+- `USING_TOR=true` requires root startup.
 
 ## Torrent / Usenet Setup
 

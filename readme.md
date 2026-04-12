@@ -77,10 +77,11 @@ volumes:
 
 ### Non-root container mode
 
-- Start the container as `1000:1000` with Docker `user: "1000:1000"`, `docker run --user 1000:1000`, or Kubernetes `runAsUser: 1000` / `runAsNonRoot: true`.
+- Start the container as `1000:1000` with Docker `user: "1000:1000"` or `docker run --user 1000:1000`.
+- For Kubernetes, set `runAsUser: 1000`, `runAsGroup: 1000`, and `runAsNonRoot: true` together.
 - `PUID`/`PGID` keep the default root startup flow.
 - Mounted paths must already be writable by `1000:1000`.
-- `USING_TOR=true` still requires root startup.
+- `USING_TOR=true` requires root startup.
 
 ## ⚙️ Configuration
 
@@ -108,7 +109,7 @@ Environment variables work for initial setup and Docker deployments. They serve 
 | `TZ` | Container timezone | `UTC` |
 | `PUID` / `PGID` | Runtime user/group for the default root-startup flow (also supports legacy `UID`/`GID`) | `1000` / `1000` |
 | `SEARCH_MODE` | `direct` or `universal` | `direct` |
-| `USING_TOR` | Enable Tor routing (requires `NET_ADMIN` capability) | `false` |
+| `USING_TOR` | Enable Tor routing (requires root startup) | `false` |
 
 See the full [Environment Variables Reference](docs/environment-variables.md) for all available options.
 
@@ -140,6 +141,7 @@ docker compose -f docker-compose.tor.yml up -d
 ```
 
 **Notes:**
+- Requires root startup
 - Requires `NET_ADMIN` and `NET_RAW` capabilities
 - Timezone is auto-detected from Tor exit node
 - Custom DNS/proxy settings are ignored when Tor is active
