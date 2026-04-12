@@ -4,6 +4,7 @@ import type { SettingsTab } from '../types/settings';
 import {
   getRestartRequiredFieldKeys,
   mergeFetchedSettingsWithDirtyValues,
+  normalizeDependentSelectValues,
   settingsTabMatchesSavedValues,
 } from '../utils/settingsValues';
 
@@ -129,5 +130,120 @@ describe('settings save verification helpers', () => {
         USE_SSL: true,
       }),
     ).toEqual(['USE_SSL']);
+  });
+});
+
+describe('normalizeDependentSelectValues', () => {
+  it('clears an invalid child select when its parent changes', () => {
+    const fields: SettingsTab['fields'] = [
+      {
+        key: 'OUTPUT_MODE',
+        label: 'Output Mode',
+        type: 'SelectField',
+        value: 'folder',
+        options: [
+          { value: 'folder', label: 'Folder' },
+          { value: 'email', label: 'Email' },
+        ],
+      },
+      {
+        key: 'EMAIL_FORMAT',
+        label: 'Email Format',
+        type: 'SelectField',
+        value: 'epub',
+        filterByField: 'OUTPUT_MODE',
+        options: [
+          { value: 'epub', label: 'EPUB', childOf: 'email' },
+          { value: 'pdf', label: 'PDF', childOf: 'email' },
+        ],
+      },
+    ];
+
+    expect(
+      normalizeDependentSelectValues(fields, {
+        OUTPUT_MODE: 'folder',
+        EMAIL_FORMAT: 'epub',
+      }),
+    ).toEqual({
+      OUTPUT_MODE: 'folder',
+      EMAIL_FORMAT: '',
+    });
+  });
+
+  it('preserves a dependent select when it remains valid for the parent', () => {
+    const fields: SettingsTab['fields'] = [
+      {
+        key: 'LIBRARY_ID',
+        label: 'Library',
+        type: 'SelectField',
+        value: '1',
+        options: [
+          { value: '1', label: 'Main' },
+          { value: '2', label: 'Audio' },
+        ],
+      },
+      {
+        key: 'PATH_ID',
+        label: 'Path',
+        type: 'SelectField',
+        value: '10',
+        filterByField: 'LIBRARY_ID',
+        options: [
+          { value: '10', label: '/books', childOf: '1' },
+          { value: '11', label: '/more-books', childOf: '1' },
+          { value: '20', label: '/audio', childOf: '2' },
+        ],
+      },
+    ];
+
+    const values = {
+      LIBRARY_ID: '1',
+      PATH_ID: '10',
+    };
+
+    expect(normalizeDependentSelectValues(fields, values)).toEqual(values);
+  });
+
+  it('clears cascading descendants after an intermediate select becomes invalid', () => {
+    const fields: SettingsTab['fields'] = [
+      {
+        key: 'PROVIDER',
+        label: 'Provider',
+        type: 'SelectField',
+        value: 'manual',
+        options: [
+          { value: 'manual', label: 'Manual' },
+          { value: 'remote', label: 'Remote' },
+        ],
+      },
+      {
+        key: 'REMOTE_TYPE',
+        label: 'Remote Type',
+        type: 'SelectField',
+        value: 'sftp',
+        filterByField: 'PROVIDER',
+        options: [{ value: 'sftp', label: 'SFTP', childOf: 'remote' }],
+      },
+      {
+        key: 'REMOTE_REGION',
+        label: 'Region',
+        type: 'SelectField',
+        value: 'eu',
+        filterByField: 'REMOTE_TYPE',
+        options: [{ value: 'eu', label: 'Europe', childOf: 'sftp' }],
+      },
+    ];
+
+    expect(
+      normalizeDependentSelectValues(fields, {
+        PROVIDER: 'manual',
+        REMOTE_TYPE: 'sftp',
+        REMOTE_REGION: 'eu',
+      }),
+    ).toEqual({
+      PROVIDER: 'manual',
+      REMOTE_TYPE: '',
+      REMOTE_REGION: '',
+    });
   });
 });

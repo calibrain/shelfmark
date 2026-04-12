@@ -14,6 +14,7 @@ import {
   getRestartRequiredFieldKeys,
   getValueBearingFields,
   mergeFetchedSettingsWithDirtyValues,
+  normalizeDependentSelectValues,
   settingsTabMatchesSavedValues,
   type SettingsValues,
 } from '../utils/settingsValues';
@@ -135,28 +136,36 @@ export function useSettings(): UseSettingsReturn {
     void fetchSettings();
   }, [fetchSettings]);
 
-  const updateValue = useCallback((tabName: string, key: string, value: unknown) => {
-    // Apply theme immediately when changed (no save button needed)
-    if (key === '_THEME' && typeof value === 'string') {
-      setThemePreference(value);
-      // Also update original value so it doesn't show as pending change
-      setOriginalValues((prev) => ({
-        ...prev,
-        [tabName]: {
+  const updateValue = useCallback(
+    (tabName: string, key: string, value: unknown) => {
+      if (key === '_THEME' && typeof value === 'string') {
+        setThemePreference(value);
+        setOriginalValues((prev) => ({
+          ...prev,
+          [tabName]: {
+            ...prev[tabName],
+            [key]: value,
+          },
+        }));
+      }
+
+      setValues((prev) => {
+        const tab = tabs.find((entry) => entry.name === tabName);
+        const nextTabValues = {
           ...prev[tabName],
           [key]: value,
-        },
-      }));
-    }
+        };
 
-    setValues((prev) => ({
-      ...prev,
-      [tabName]: {
-        ...prev[tabName],
-        [key]: value,
-      },
-    }));
-  }, []);
+        return {
+          ...prev,
+          [tabName]: tab
+            ? normalizeDependentSelectValues(tab.fields, nextTabValues)
+            : nextTabValues,
+        };
+      });
+    },
+    [tabs],
+  );
 
   const hasChanges = useCallback(
     (tabName: string) => {

@@ -39,6 +39,86 @@ export const SettingsModal = ({
   onSettingsSaved,
   onRefreshAuth,
 }: SettingsModalProps) => {
+  const isMobile = useMediaQuery('(max-width: 767px)');
+  const [isClosing, setIsClosing] = useState(false);
+  const [sessionVersion, setSessionVersion] = useState(0);
+  const mobileDetailStateRef = useRef<{
+    isOpen: boolean;
+    closeDetail: (() => void) | null;
+  }>({
+    isOpen: false,
+    closeDetail: null,
+  });
+
+  const registerMobileDetailState = useCallback(
+    (detailOpen: boolean, closeDetail: (() => void) | null) => {
+      mobileDetailStateRef.current = { isOpen: detailOpen, closeDetail };
+    },
+    [],
+  );
+
+  const handleClose = useCallback(() => {
+    setIsClosing(true);
+    setTimeout(() => {
+      onClose();
+      setIsClosing(false);
+      setSessionVersion((current) => current + 1);
+    }, 150);
+  }, [onClose]);
+
+  const handleEscape = useCallback(() => {
+    if (isMobile && mobileDetailStateRef.current.isOpen) {
+      mobileDetailStateRef.current.closeDetail?.();
+      return;
+    }
+
+    handleClose();
+  }, [handleClose, isMobile]);
+
+  useBodyScrollLock(isOpen);
+  useEscapeKey(isOpen, handleEscape);
+
+  if (!isOpen && !isClosing) return null;
+
+  return (
+    <SettingsModalSession
+      key={sessionVersion}
+      isOpen={isOpen}
+      isClosing={isClosing}
+      isMobile={isMobile}
+      authMode={authMode}
+      onClose={handleClose}
+      onShowToast={onShowToast}
+      onSettingsSaved={onSettingsSaved}
+      onRefreshAuth={onRefreshAuth}
+      onMobileDetailChange={registerMobileDetailState}
+    />
+  );
+};
+
+interface SettingsModalSessionProps {
+  isOpen: boolean;
+  isClosing: boolean;
+  isMobile: boolean;
+  authMode: string;
+  onClose: () => void;
+  onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+  onSettingsSaved?: () => void;
+  onRefreshAuth?: () => Promise<void>;
+  onMobileDetailChange: (isOpen: boolean, closeDetail: (() => void) | null) => void;
+}
+
+const SettingsModalSession = ({
+  isOpen,
+  isClosing,
+  isMobile,
+  authMode,
+  onClose,
+  onShowToast,
+  onSettingsSaved,
+  onRefreshAuth,
+  onMobileDetailChange,
+}: SettingsModalSessionProps) => {
   const {
     tabs,
     groups,
@@ -55,10 +135,8 @@ export const SettingsModal = ({
   } = useSettings();
 
   const { isUniversalMode } = useSearchMode();
-  const isMobile = useMediaQuery('(max-width: 767px)');
 
   const [showMobileDetail, setShowMobileDetail] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
   const [securityAccessError, setSecurityAccessError] = useState<string | null>(null);
   const [tabOverrideSummaries, setTabOverrideSummaries] = useState<
     Record<
@@ -69,32 +147,13 @@ export const SettingsModal = ({
       >
     >
   >({});
-
-  // Track previous isOpen state to detect modal open transition
-  const prevIsOpenRef = useRef(false);
   const overrideSummaryRequestIdRef = useRef(0);
 
   const handleClose = useCallback(() => {
     setShowMobileDetail(false);
-    setTabOverrideSummaries({});
-    setIsClosing(true);
-    setTimeout(() => {
-      onClose();
-      setIsClosing(false);
-    }, 150);
-  }, [onClose]);
-
-  const handleEscape = useCallback(() => {
-    if (isMobile && showMobileDetail) {
-      setShowMobileDetail(false);
-      return;
-    }
-
-    handleClose();
-  }, [handleClose, isMobile, showMobileDetail]);
-
-  useBodyScrollLock(isOpen);
-  useEscapeKey(isOpen, handleEscape);
+    onMobileDetailChange(false, null);
+    onClose();
+  }, [onClose, onMobileDetailChange]);
 
   useEffect(() => {
     if (!isOpen || selectedTab !== 'security') {
@@ -152,30 +211,21 @@ export const SettingsModal = ({
     void refreshOverrideSummaryForTab(selectedTab);
   }, [isOpen, selectedTab, refreshOverrideSummaryForTab]);
 
-  // Reset to first tab when modal transitions from closed to open
-  useEffect(() => {
-    const justOpened = isOpen && !prevIsOpenRef.current;
-    prevIsOpenRef.current = isOpen;
-
-    // On desktop, select first tab when modal opens (reset on each open)
-    if (justOpened && !isMobile && tabs.length > 0) {
-      setSelectedTab(tabs[0].name);
-    }
-  }, [isOpen, isMobile, tabs, setSelectedTab]);
+  const handleBack = useCallback(() => {
+    setShowMobileDetail(false);
+    onMobileDetailChange(false, null);
+  }, [onMobileDetailChange]);
 
   const handleSelectTab = useCallback(
     (tabName: string) => {
       setSelectedTab(tabName);
       if (isMobile) {
         setShowMobileDetail(true);
+        onMobileDetailChange(true, handleBack);
       }
     },
-    [isMobile, setSelectedTab],
+    [handleBack, isMobile, onMobileDetailChange, setSelectedTab],
   );
-
-  const handleBack = useCallback(() => {
-    setShowMobileDetail(false);
-  }, []);
 
   const handleRefreshCurrentTabOverrideSummary = useCallback(() => {
     if (!selectedTab) {
@@ -190,9 +240,7 @@ export const SettingsModal = ({
     if (result.success) {
       void refreshOverrideSummaryForTab(selectedTab);
       onShowToast?.(result.message, 'success');
-      // Notify parent that settings were saved so it can refresh config
       onSettingsSaved?.();
-      // Show additional toast if some settings require restart
       if (result.requiresRestart) {
         setTimeout(() => {
           onShowToast?.('Some settings require a container restart to take effect', 'info');
@@ -213,6 +261,7 @@ export const SettingsModal = ({
         setSelectedTab('users');
         if (isMobile) {
           setShowMobileDetail(true);
+          onMobileDetailChange(true, handleBack);
         }
         return { success: true, message: 'Opening Users tab...' };
       }
@@ -222,16 +271,22 @@ export const SettingsModal = ({
       }
       return result;
     },
-    [selectedTab, executeAction, isMobile, setSelectedTab, refreshOverrideSummaryForTab],
+    [
+      handleBack,
+      isMobile,
+      onMobileDetailChange,
+      refreshOverrideSummaryForTab,
+      executeAction,
+      selectedTab,
+      setSelectedTab,
+    ],
   );
 
-  // Memoize the field change handler to prevent creating new functions on every render
   const handleFieldChange = useCallback(
     (key: string, value: unknown) => {
       if (!selectedTab) return;
       updateValue(selectedTab, key, value);
 
-      // Auto-manage OIDC scopes when admin group settings change
       if (selectedTab === 'security') {
         const tabValues = values[selectedTab] || {};
         const currentScopes = getStringArrayValue(tabValues['OIDC_SCOPES']);
@@ -265,8 +320,6 @@ export const SettingsModal = ({
     [selectedTab, updateValue, values],
   );
 
-  // Memoize hasChanges to avoid expensive JSON.stringify comparisons on every render
-  // Must be before early returns to satisfy React's rules of hooks
   const currentTabHasChanges = useMemo(
     () => (selectedTab ? hasChanges(selectedTab) : false),
     [selectedTab, hasChanges],
@@ -305,7 +358,6 @@ export const SettingsModal = ({
     )
   ) : null;
 
-  // Loading state
   if (isLoading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -345,7 +397,6 @@ export const SettingsModal = ({
     );
   }
 
-  // Error state
   if (error) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center">
@@ -392,7 +443,6 @@ export const SettingsModal = ({
     );
   }
 
-  // Mobile layout
   if (isMobile) {
     return (
       <div
@@ -400,7 +450,6 @@ export const SettingsModal = ({
         style={{ background: 'var(--bg)' }}
       >
         {!showMobileDetail ? (
-          // Category list view
           <>
             <SettingsHeader title="Settings" onClose={handleClose} />
             <SettingsSidebar
@@ -412,7 +461,6 @@ export const SettingsModal = ({
             />
           </>
         ) : (
-          // Detail view
           <>
             <SettingsHeader
               title={currentTabDisplayName}
@@ -427,10 +475,8 @@ export const SettingsModal = ({
     );
   }
 
-  // Desktop layout
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      {/* Backdrop */}
       <button
         type="button"
         className={`absolute inset-0 bg-black/50 backdrop-blur-[2px] transition-opacity duration-150 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
@@ -440,7 +486,6 @@ export const SettingsModal = ({
         aria-label="Close settings"
       />
 
-      {/* Modal */}
       <div
         className={`relative flex h-[85vh] max-h-[750px] w-full max-w-4xl flex-col overflow-hidden rounded-xl border border-(--border-muted) shadow-2xl ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         style={{ background: 'var(--bg)' }}

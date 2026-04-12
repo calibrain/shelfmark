@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import type { RequestRecord } from '../../types';
 import { withBasePath } from '../../utils/basePath';
@@ -258,6 +258,219 @@ const DetailField = ({ label, value }: { label: string; value: string }) => (
   </div>
 );
 
+interface ReviewInlinePanelProps {
+  reviewRecord: RequestRecord;
+  showSourceField: boolean;
+  requestedAt: string;
+  requestType: string;
+  sourceLabel: string;
+  hasAttachedRelease: boolean;
+  missingAttachedReleaseMessage: string;
+  approveLabel: string;
+  canMarkAsApprovedWithoutRelease: boolean;
+  canBrowseAlternatives: boolean;
+  fileTitle: string;
+  fileSize: string;
+  fileFormat: string;
+  requiresBrowseBeforeApprove: boolean;
+  reviewApproveHandler: RequestApproveHandler;
+}
+
+const ReviewInlinePanel = ({
+  reviewRecord,
+  showSourceField,
+  requestedAt,
+  requestType,
+  sourceLabel,
+  hasAttachedRelease,
+  missingAttachedReleaseMessage,
+  approveLabel,
+  canMarkAsApprovedWithoutRelease,
+  canBrowseAlternatives,
+  fileTitle,
+  fileSize,
+  fileFormat,
+  requiresBrowseBeforeApprove,
+  reviewApproveHandler,
+}: ReviewInlinePanelProps) => {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleReviewApprove = async () => {
+    if (isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      if (requiresBrowseBeforeApprove) {
+        await reviewApproveHandler(reviewRecord.id, reviewRecord, { browseOnly: true });
+        return;
+      }
+
+      await reviewApproveHandler(reviewRecord.id, reviewRecord);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleReviewBrowseAlternatives = async () => {
+    if (isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await reviewApproveHandler(reviewRecord.id, reviewRecord, { browseOnly: true });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const handleReviewManualApproval = async () => {
+    if (isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await reviewApproveHandler(reviewRecord.id, reviewRecord, { manualApproval: true });
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="animate-fade-in -mx-4 mt-2 space-y-3 px-4 pb-2">
+      <div
+        className={`grid grid-cols-1 ${showSourceField ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-x-3 gap-y-1`}
+      >
+        <DetailField label="Requested" value={requestedAt} />
+        <DetailField label="Type" value={requestType} />
+        {showSourceField && <DetailField label="Source" value={sourceLabel} />}
+      </div>
+
+      {hasAttachedRelease ? (
+        <div className="space-y-2">
+          <p className="text-[11px] font-medium tracking-wide uppercase opacity-70">
+            Attached File
+          </p>
+          <div className="grid grid-cols-1 gap-x-3 gap-y-1">
+            <DetailField label="Title" value={fileTitle} />
+          </div>
+          <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+            <DetailField label="Size" value={fileSize} />
+            <DetailField label="Format" value={fileFormat.toUpperCase()} />
+          </div>
+        </div>
+      ) : (
+        <p className="text-xs opacity-70">{missingAttachedReleaseMessage}</p>
+      )}
+
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          onClick={() => void handleReviewApprove()}
+          disabled={isSubmitting}
+          className="rounded-md bg-green-600 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-60"
+        >
+          {isSubmitting ? 'Working...' : approveLabel}
+        </button>
+        {canMarkAsApprovedWithoutRelease && (
+          <button
+            type="button"
+            onClick={() => void handleReviewManualApproval()}
+            disabled={isSubmitting}
+            className="rounded-md border border-(--border-muted) px-2.5 py-1.5 text-xs transition-colors hover:bg-(--hover-surface) disabled:opacity-50"
+          >
+            {isSubmitting ? 'Working...' : 'Manually Mark as Approved'}
+          </button>
+        )}
+        {canBrowseAlternatives && hasAttachedRelease && (
+          <button
+            type="button"
+            onClick={() => void handleReviewBrowseAlternatives()}
+            disabled={isSubmitting}
+            className="rounded-md border border-(--border-muted) px-2.5 py-1.5 text-xs transition-colors hover:bg-(--hover-surface) disabled:opacity-50"
+          >
+            Browse Alternatives
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
+interface RejectInlinePanelProps {
+  requestId: number;
+  itemTitle: string;
+  onRequestRejectClose?: () => void;
+  onRequestRejectConfirm: (requestId: number, adminNote?: string) => Promise<void> | void;
+}
+
+const RejectInlinePanel = ({
+  requestId,
+  itemTitle,
+  onRequestRejectClose,
+  onRequestRejectConfirm,
+}: RejectInlinePanelProps) => {
+  const [rejectNote, setRejectNote] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleInlineRejectConfirm = async () => {
+    if (isSubmitting) {
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      const trimmed = rejectNote.trim();
+      await onRequestRejectConfirm(requestId, trimmed || undefined);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <div className="animate-fade-in -mx-4 mt-2 space-y-3 px-4 pb-2">
+      <p className="text-xs font-medium">
+        Reject request for <span className="opacity-80">{itemTitle || 'Untitled request'}</span>
+      </p>
+      <textarea
+        value={rejectNote}
+        onChange={(event) => setRejectNote(event.target.value.slice(0, MAX_ADMIN_NOTE_LENGTH))}
+        rows={3}
+        maxLength={MAX_ADMIN_NOTE_LENGTH}
+        placeholder="Optional note shown to the user"
+        className="min-h-[72px] w-full resize-y rounded-md border border-(--border-muted) bg-(--bg) px-2.5 py-2 text-xs focus:border-red-500 focus:ring-2 focus:ring-red-500/30 focus:outline-hidden"
+        disabled={isSubmitting}
+      />
+      <div className="flex items-center justify-between">
+        <span className="text-[11px] opacity-60">
+          {rejectNote.length}/{MAX_ADMIN_NOTE_LENGTH}
+        </span>
+        <div className="inline-flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onRequestRejectClose}
+            disabled={isSubmitting}
+            className="rounded-md px-2.5 py-1.5 text-xs transition-colors hover:bg-(--hover-surface) disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => void handleInlineRejectConfirm()}
+            disabled={isSubmitting}
+            className="rounded-md bg-red-600 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-60"
+          >
+            {isSubmitting ? 'Rejecting...' : 'Reject'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const MAX_ADMIN_NOTE_LENGTH = 1000;
 
 export const ActivityCard = ({
@@ -286,9 +499,6 @@ export const ActivityCard = ({
   const titleLineRef = useRef<HTMLParagraphElement | null>(null);
   const [badgeOverflow, setBadgeOverflow] = useState<Record<string, boolean>>({});
   const [titleOverflow, setTitleOverflow] = useState(false);
-  const [isReviewSubmitting, setIsReviewSubmitting] = useState(false);
-  const [rejectNote, setRejectNote] = useState('');
-  const [isRejectSubmitting, setIsRejectSubmitting] = useState(false);
 
   useLayoutEffect(() => {
     const measureBadgeOverflow = () => {
@@ -356,21 +566,6 @@ export const ActivityCard = ({
   const reviewRecord = item.requestRecord;
   const reviewApproveHandler = onRequestReviewApprove || onRequestApprove;
   const isDetailsExpanded = isRequestDetailsOpen || isRequestRejectOpen;
-
-  useEffect(() => {
-    if (!isRequestDetailsOpen) {
-      setIsReviewSubmitting(false);
-    }
-  }, [isRequestDetailsOpen, reviewRecord?.id, reviewRecord?.updated_at]);
-
-  useEffect(() => {
-    if (!isRequestRejectOpen) {
-      setRejectNote('');
-      setIsRejectSubmitting(false);
-      return;
-    }
-    setRejectNote('');
-  }, [isRequestRejectOpen, reviewRecord?.id, reviewRecord?.updated_at]);
 
   const runAction = (action: ActivityCardAction) => {
     switch (action.kind) {
@@ -465,55 +660,7 @@ export const ActivityCard = ({
   const providerId = toOptionalText(bookData.provider_id);
   const canBrowseAlternatives = Boolean(provider && providerId);
 
-  const handleReviewApprove = async () => {
-    if (!reviewRecord || !reviewApproveHandler || isReviewSubmitting) {
-      return;
-    }
-
-    setIsReviewSubmitting(true);
-    try {
-      if (requiresBrowseBeforeApprove) {
-        await reviewApproveHandler(reviewRecord.id, reviewRecord, { browseOnly: true });
-        return;
-      }
-
-      await reviewApproveHandler(reviewRecord.id, reviewRecord);
-    } finally {
-      setIsReviewSubmitting(false);
-    }
-  };
-
-  const handleReviewBrowseAlternatives = async () => {
-    if (!reviewRecord || !reviewApproveHandler || isReviewSubmitting) {
-      return;
-    }
-
-    setIsReviewSubmitting(true);
-    try {
-      await reviewApproveHandler(reviewRecord.id, reviewRecord, { browseOnly: true });
-    } finally {
-      setIsReviewSubmitting(false);
-    }
-  };
-
-  const handleReviewManualApproval = async () => {
-    if (!reviewRecord || !reviewApproveHandler || isReviewSubmitting) {
-      return;
-    }
-
-    setIsReviewSubmitting(true);
-    try {
-      await reviewApproveHandler(reviewRecord.id, reviewRecord, { manualApproval: true });
-    } finally {
-      setIsReviewSubmitting(false);
-    }
-  };
-
-  const canShowInlineReview = Boolean(isRequestDetailsOpen && reviewRecord && reviewApproveHandler);
   const rejectConfirmHandler = onRequestRejectConfirm || onRequestReject;
-  const canShowInlineReject = Boolean(
-    isRequestRejectOpen && item.requestId && rejectConfirmHandler,
-  );
   const requestedAt = reviewRecord ? formatDateTime(reviewRecord.created_at) : '';
   const requestType = reviewRecord?.content_type === 'audiobook' ? 'Audiobook' : 'Book';
   const titleAuthorLine = item.author ? `${item.title} — ${item.author}` : item.title;
@@ -550,20 +697,6 @@ export const ActivityCard = ({
     ) : (
       item.title
     );
-
-  const handleInlineRejectConfirm = async () => {
-    if (!item.requestId || !rejectConfirmHandler || isRejectSubmitting) {
-      return;
-    }
-
-    setIsRejectSubmitting(true);
-    try {
-      const trimmed = rejectNote.trim();
-      await rejectConfirmHandler(item.requestId, trimmed || undefined);
-    } finally {
-      setIsRejectSubmitting(false);
-    }
-  };
 
   return (
     <div className={`-mx-4 cursor-default px-4 py-2 ${isSelected ? 'relative' : 'hover-row'}`}>
@@ -715,108 +848,36 @@ export const ActivityCard = ({
             })}
           </div>
 
-          {canShowInlineReview && (
-            <div className="animate-fade-in -mx-4 mt-2 space-y-3 px-4 pb-2">
-              <div
-                className={`grid grid-cols-1 ${showSourceField ? 'sm:grid-cols-3' : 'sm:grid-cols-2'} gap-x-3 gap-y-1`}
-              >
-                <DetailField label="Requested" value={requestedAt} />
-                <DetailField label="Type" value={requestType} />
-                {showSourceField && <DetailField label="Source" value={sourceLabel} />}
-              </div>
+          {isRequestDetailsOpen && reviewRecord && reviewApproveHandler ? (
+            <ReviewInlinePanel
+              key={`review-${reviewRecord.id}-${reviewRecord.updated_at ?? 'unknown'}`}
+              reviewRecord={reviewRecord}
+              showSourceField={showSourceField}
+              requestedAt={requestedAt}
+              requestType={requestType}
+              sourceLabel={sourceLabel}
+              hasAttachedRelease={hasAttachedRelease}
+              missingAttachedReleaseMessage={missingAttachedReleaseMessage}
+              approveLabel={approveLabel}
+              canMarkAsApprovedWithoutRelease={canMarkAsApprovedWithoutRelease}
+              canBrowseAlternatives={canBrowseAlternatives}
+              fileTitle={fileTitle}
+              fileSize={fileSize}
+              fileFormat={fileFormat}
+              requiresBrowseBeforeApprove={requiresBrowseBeforeApprove}
+              reviewApproveHandler={reviewApproveHandler}
+            />
+          ) : null}
 
-              {hasAttachedRelease ? (
-                <div className="space-y-2">
-                  <p className="text-[11px] font-medium tracking-wide uppercase opacity-70">
-                    Attached File
-                  </p>
-                  <div className="grid grid-cols-1 gap-x-3 gap-y-1">
-                    <DetailField label="Title" value={fileTitle} />
-                  </div>
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1">
-                    <DetailField label="Size" value={fileSize} />
-                    <DetailField label="Format" value={fileFormat.toUpperCase()} />
-                  </div>
-                </div>
-              ) : (
-                <p className="text-xs opacity-70">{missingAttachedReleaseMessage}</p>
-              )}
-
-              <div className="flex flex-wrap items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => void handleReviewApprove()}
-                  disabled={isReviewSubmitting}
-                  className="rounded-md bg-green-600 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-green-700 disabled:opacity-60"
-                >
-                  {isReviewSubmitting ? 'Working...' : approveLabel}
-                </button>
-                {canMarkAsApprovedWithoutRelease && (
-                  <button
-                    type="button"
-                    onClick={() => void handleReviewManualApproval()}
-                    disabled={isReviewSubmitting}
-                    className="rounded-md border border-(--border-muted) px-2.5 py-1.5 text-xs transition-colors hover:bg-(--hover-surface) disabled:opacity-50"
-                  >
-                    {isReviewSubmitting ? 'Working...' : 'Manually Mark as Approved'}
-                  </button>
-                )}
-                {canBrowseAlternatives && hasAttachedRelease && (
-                  <button
-                    type="button"
-                    onClick={() => void handleReviewBrowseAlternatives()}
-                    disabled={isReviewSubmitting}
-                    className="rounded-md border border-(--border-muted) px-2.5 py-1.5 text-xs transition-colors hover:bg-(--hover-surface) disabled:opacity-50"
-                  >
-                    Browse Alternatives
-                  </button>
-                )}
-              </div>
-            </div>
-          )}
-
-          {canShowInlineReject && (
-            <div className="animate-fade-in -mx-4 mt-2 space-y-3 px-4 pb-2">
-              <p className="text-xs font-medium">
-                Reject request for{' '}
-                <span className="opacity-80">{item.title || 'Untitled request'}</span>
-              </p>
-              <textarea
-                value={rejectNote}
-                onChange={(event) =>
-                  setRejectNote(event.target.value.slice(0, MAX_ADMIN_NOTE_LENGTH))
-                }
-                rows={3}
-                maxLength={MAX_ADMIN_NOTE_LENGTH}
-                placeholder="Optional note shown to the user"
-                className="min-h-[72px] w-full resize-y rounded-md border border-(--border-muted) bg-(--bg) px-2.5 py-2 text-xs focus:border-red-500 focus:ring-2 focus:ring-red-500/30 focus:outline-hidden"
-                disabled={isRejectSubmitting}
-              />
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] opacity-60">
-                  {rejectNote.length}/{MAX_ADMIN_NOTE_LENGTH}
-                </span>
-                <div className="inline-flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={onRequestRejectClose}
-                    disabled={isRejectSubmitting}
-                    className="rounded-md px-2.5 py-1.5 text-xs transition-colors hover:bg-(--hover-surface) disabled:opacity-50"
-                  >
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void handleInlineRejectConfirm()}
-                    disabled={isRejectSubmitting}
-                    className="rounded-md bg-red-600 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-60"
-                  >
-                    {isRejectSubmitting ? 'Rejecting...' : 'Reject'}
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
+          {isRequestRejectOpen && typeof item.requestId === 'number' && rejectConfirmHandler ? (
+            <RejectInlinePanel
+              key={`reject-${item.requestId}-${reviewRecord?.id ?? 'none'}-${reviewRecord?.updated_at ?? 'unknown'}`}
+              requestId={item.requestId}
+              itemTitle={item.title}
+              onRequestRejectClose={onRequestRejectClose}
+              onRequestRejectConfirm={rejectConfirmHandler}
+            />
+          ) : null}
         </div>
       </div>
     </div>

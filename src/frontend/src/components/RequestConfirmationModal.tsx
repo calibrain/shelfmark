@@ -25,6 +25,17 @@ interface RequestConfirmationModalProps {
   onClose: () => void;
 }
 
+interface RequestConfirmationModalSessionProps {
+  payload: CreateRequestPayload;
+  extraPayloads?: CreateRequestPayload[];
+  allowNotes: boolean;
+  onConfirm: (
+    payload: CreateRequestPayload,
+    extraPayloads?: CreateRequestPayload[],
+  ) => Promise<boolean>;
+  onClose: () => void;
+}
+
 const getRequestConfirmationPreviewSignature = (
   preview: RequestConfirmationPreview,
   payload: CreateRequestPayload,
@@ -41,13 +52,47 @@ const getRequestConfirmationPreviewSignature = (
   ].join('|');
 };
 
-export const RequestConfirmationModal = ({
+const getRequestConfirmationSessionKey = (payload: CreateRequestPayload): string => {
+  return [
+    payload.context.source,
+    payload.context.content_type,
+    payload.context.request_level,
+    JSON.stringify(payload.book_data),
+    JSON.stringify(payload.release_data ?? null),
+    String(payload.on_behalf_of_user_id ?? ''),
+  ].join('|');
+};
+
+export function RequestConfirmationModal({
   payload,
   extraPayloads = [],
   allowNotes,
   onConfirm,
   onClose,
-}: RequestConfirmationModalProps) => {
+}: RequestConfirmationModalProps) {
+  if (!payload) {
+    return null;
+  }
+
+  return (
+    <RequestConfirmationModalSession
+      key={getRequestConfirmationSessionKey(payload)}
+      payload={payload}
+      extraPayloads={extraPayloads}
+      allowNotes={allowNotes}
+      onConfirm={onConfirm}
+      onClose={onClose}
+    />
+  );
+}
+
+function RequestConfirmationModalSession({
+  payload,
+  extraPayloads = [],
+  allowNotes,
+  onConfirm,
+  onClose,
+}: RequestConfirmationModalSessionProps) {
   const [note, setNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
@@ -57,22 +102,13 @@ export const RequestConfirmationModal = ({
       return;
     }
     setIsClosing(true);
-    setTimeout(() => {
+    window.setTimeout(() => {
       onClose();
-      setIsClosing(false);
     }, 150);
   }, [isSubmitting, onClose]);
 
   useBodyScrollLock(Boolean(payload));
   useEscapeKey(Boolean(payload), handleClose);
-
-  useEffect(() => {
-    if (payload) {
-      setNote('');
-      setIsSubmitting(false);
-      setIsClosing(false);
-    }
-  }, [payload]);
 
   const basePreview = useMemo(() => {
     return payload ? buildRequestConfirmationPreview(payload) : null;
@@ -99,9 +135,6 @@ export const RequestConfirmationModal = ({
   const enrichRef = useRef(0);
 
   useEffect(() => {
-    setEnriched(null);
-    if (!payload) return;
-
     const bookData = payload.book_data || {};
     const currentBasePreview = basePreview;
     if (!currentBasePreview) {
@@ -137,8 +170,6 @@ export const RequestConfirmationModal = ({
 
   const preview = enriched ?? basePreview;
 
-  if (!payload && !isClosing) return null;
-  if (!payload) return null;
   if (!preview) return null;
 
   const titleId = 'request-confirmation-modal-title';
@@ -333,4 +364,4 @@ export const RequestConfirmationModal = ({
       </div>
     </div>
   );
-};
+}

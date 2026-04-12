@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { useEscapeKey } from '../hooks/useEscapeKey';
@@ -34,14 +34,6 @@ export const OnBehalfConfirmationModal = ({
 
   useBodyScrollLock(isOpen);
   useEscapeKey(isOpen, handleClose);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    setIsSubmitting(false);
-    setIsClosing(false);
-  }, [isOpen]);
 
   if (!isOpen && !isClosing) return null;
   if (!isOpen) return null;

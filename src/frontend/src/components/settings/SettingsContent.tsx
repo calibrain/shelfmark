@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import type {
   SettingsTab,
@@ -317,7 +317,11 @@ const renderField = (
   }
 };
 
-export const SettingsContent = ({
+export const SettingsContent = (props: SettingsContentProps) => (
+  <SettingsContentPanel key={props.tab.name} {...props} />
+);
+
+function SettingsContentPanel({
   tab,
   values,
   onChange,
@@ -329,7 +333,7 @@ export const SettingsContent = ({
   overrideSummary,
   embedded = false,
   customFieldContext,
-}: SettingsContentProps) => {
+}: SettingsContentProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [customFieldUiState, setCustomFieldUiState] = useState<
     Record<string, Record<string, unknown>>
@@ -344,10 +348,6 @@ export const SettingsContent = ({
       scrollRef.current.scrollTop = 0;
     }
   }, [embedded, tab.name]);
-
-  useEffect(() => {
-    setCustomFieldUiState({});
-  }, [tab.name]);
 
   const updateCustomFieldUiState = useCallback((fieldKey: string, key: string, value: unknown) => {
     setCustomFieldUiState((prev) => {
@@ -550,4 +550,4 @@ export const SettingsContent = ({
       )}
     </div>
   );
-};
+}

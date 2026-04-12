@@ -158,6 +158,18 @@ interface ReleaseModalProps {
 
 const STAR_POSITIONS = [0, 1, 2, 3, 4] as const;
 
+function getDefaultManualQuery(book: Book): string {
+  const baseTitle = book.search_title || book.title || '';
+  const baseAuthor = book.search_author || book.author || '';
+  return `${baseTitle} ${baseAuthor}`.trim();
+}
+
+interface ReleaseModalSessionProps extends Omit<ReleaseModalProps, 'book' | 'onClose'> {
+  book: Book;
+  isClosing: boolean;
+  onClose: () => void;
+}
+
 // 5-star rating display with partial fill support
 function StarRating({ rating, maxRating = 5 }: { rating: number; maxRating?: number }) {
   // Normalize rating to 0-5 scale if needed
@@ -675,7 +687,7 @@ function ErrorState({ message }: { message: string }) {
   );
 }
 
-export const ReleaseModal = ({
+const ReleaseModalSession = ({
   book,
   onClose,
   onDownload,
@@ -696,7 +708,8 @@ export const ReleaseModal = ({
   showReleaseSourceLinks = true,
   onShowToast,
   combinedMode = null,
-}: ReleaseModalProps) => {
+  isClosing,
+}: ReleaseModalSessionProps) => {
   // Use audiobook formats when in audiobook mode
   const effectiveFormats =
     contentType === 'audiobook' && supportedAudiobookFormats.length > 0
@@ -706,7 +719,6 @@ export const ReleaseModal = ({
     contentType === 'audiobook'
       ? defaultAudiobookReleaseSource || defaultReleaseSource
       : defaultReleaseSource;
-  const [isClosing, setIsClosing] = useState(false);
   const [isRequestingBook, setIsRequestingBook] = useState(false);
   const [selectedRelease, setSelectedRelease] = useState<Release | null>(null);
   const isCombinedMode = combinedMode != null;
@@ -725,6 +737,8 @@ export const ReleaseModal = ({
   const onCombinedNext = combinedMode?.onNext;
   const onCombinedBack = combinedMode?.onBack;
   const onCombinedDownload = combinedMode?.onDownload;
+
+  const handleClose = onClose;
 
   // Available sources from plugin registry
   const [availableSources, setAvailableSources] = useState<ReleaseSource[]>([]);
@@ -804,8 +818,9 @@ export const ReleaseModal = ({
   const [indexerFilter, setIndexerFilter] = useState<string[]>([]);
   // Track which tabs have had indexer filter initialized (to avoid overriding user changes)
   const indexerFilterInitializedRef = useRef(new Set<string>());
-  const [manualQuery, setManualQuery] = useState('');
-  const [showManualQuery, setShowManualQuery] = useState(false);
+  const defaultManualQuery = getDefaultManualQuery(book);
+  const [manualQuery, setManualQuery] = useState(defaultShowManualQuery ? defaultManualQuery : '');
+  const [showManualQuery, setShowManualQuery] = useState(defaultShowManualQuery);
 
   // Sort state - keyed by source name, persisted to localStorage
   // null means "Default" (best title match), undefined means "not set yet"
@@ -880,18 +895,6 @@ export const ReleaseModal = ({
     [contentType, initializeIndexerFilterForTab],
   );
 
-  // Close handler with animation
-  const handleClose = useCallback(() => {
-    setIsClosing(true);
-    setTimeout(() => {
-      onClose();
-      setIsClosing(false);
-    }, 150);
-  }, [onClose]);
-
-  useBodyScrollLock(Boolean(book));
-  useEscapeKey(Boolean(book), handleClose);
-
   const handleRequestBook = useCallback(async (): Promise<void> => {
     if (!book || !onRequestBook || isRequestingBook) {
       return;
@@ -904,43 +907,6 @@ export const ReleaseModal = ({
       setIsRequestingBook(false);
     }
   }, [book, onRequestBook, isRequestingBook, contentType, handleClose]);
-
-  // Reset modal state when book changes to prevent stale data
-  useEffect(() => {
-    setDescriptionExpanded(false);
-    setDescriptionOverflows(false);
-    setShowHeaderThumb(false);
-    setReleasesBySource({});
-    setLoadingBySource({});
-    setErrorBySource({});
-    setExpandedBySource({});
-    setFormatFilter('');
-    setLanguageFilter([LANGUAGE_OPTION_DEFAULT]);
-    setIndexerFilter([]);
-    indexerFilterInitializedRef.current = new Set();
-    // Don't clear selectedRelease here — combined-mode selection is restored
-    // during render from the current staged phase release when needed.
-    const baseTitle = book?.search_title || book?.title || '';
-    const baseAuthor = book?.search_author || book?.author || '';
-    const defaultQuery = `${baseTitle} ${baseAuthor}`.trim();
-    setManualQuery(defaultShowManualQuery ? defaultQuery : '');
-    setShowManualQuery(defaultShowManualQuery);
-    setSearchStatus(null);
-    lastStatusTimeRef.current = 0;
-    pendingStatusRef.current = null;
-    if (statusTimeoutRef.current) {
-      clearTimeout(statusTimeoutRef.current);
-      statusTimeoutRef.current = null;
-    }
-  }, [
-    book?.id,
-    contentType,
-    defaultShowManualQuery,
-    book?.search_title,
-    book?.title,
-    book?.search_author,
-    book?.author,
-  ]);
 
   // Set up WebSocket listener for search status updates
   useEffect(() => {
@@ -1558,9 +1524,6 @@ export const ReleaseModal = ({
     ],
   );
 
-  if (!book && !isClosing) return null;
-  if (!book) return null;
-
   const titleId = `release-modal-title-${book.id}`;
   const providerDisplay =
     book.provider_display_name ||
@@ -2021,10 +1984,7 @@ export const ReleaseModal = ({
                         setShowManualQuery((prev) => {
                           const next = !prev;
                           if (next && !manualQuery.trim()) {
-                            const baseTitle = book?.search_title || book?.title || '';
-                            const baseAuthor = book?.search_author || book?.author || '';
-                            const defaultQuery = `${baseTitle} ${baseAuthor}`.trim();
-                            setManualQuery(defaultQuery);
+                            setManualQuery(defaultManualQuery);
                           }
                           return next;
                         });
@@ -2754,4 +2714,42 @@ export const ReleaseModal = ({
   }
 
   return createPortal(modal, document.body);
+};
+
+export const ReleaseModal = ({ book, onClose, ...rest }: ReleaseModalProps) => {
+  const [isClosing, setIsClosing] = useState(false);
+
+  const handleClose = useCallback(() => {
+    setIsClosing(true);
+    setTimeout(() => {
+      onClose();
+      setIsClosing(false);
+    }, 150);
+  }, [onClose]);
+
+  useBodyScrollLock(Boolean(book));
+  useEscapeKey(Boolean(book), handleClose);
+
+  if (!book && !isClosing) return null;
+  if (!book) return null;
+
+  const sessionKey = [
+    book.id,
+    rest.contentType,
+    rest.defaultShowManualQuery ? 'manual' : 'auto',
+    book.search_title || '',
+    book.title || '',
+    book.search_author || '',
+    book.author || '',
+  ].join('|');
+
+  return (
+    <ReleaseModalSession
+      key={sessionKey}
+      book={book}
+      onClose={handleClose}
+      isClosing={isClosing}
+      {...rest}
+    />
+  );
 };
