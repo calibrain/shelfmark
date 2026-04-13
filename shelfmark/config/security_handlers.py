@@ -34,6 +34,7 @@ def on_save_security(
         normalized_values["OIDC_DISCOVERY_URL"] = normalize_http_url(
             str(discovery_url),
             default_scheme="https",
+            strip_trailing_slash=False,
         )
 
     proxy_logout_url = normalized_values.get("PROXY_AUTH_LOGOUT_URL")

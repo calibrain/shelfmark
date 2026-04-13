@@ -435,7 +435,9 @@ class TestSecurityOnSave:
 
         assert result["error"] is False
 
-    def test_on_save_normalizes_oidc_discovery_url(self, tmp_path, monkeypatch):
+    def test_on_save_normalizes_oidc_discovery_url_without_stripping_trailing_slash(
+        self, tmp_path, monkeypatch
+    ):
         from shelfmark.config.security import _on_save_security
 
         monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
@@ -446,7 +448,7 @@ class TestSecurityOnSave:
         assert result["error"] is False
         assert (
             result["values"]["OIDC_DISCOVERY_URL"]
-            == "https://auth.example.com/.well-known/openid-configuration"
+            == "https://auth.example.com/.well-known/openid-configuration/"
         )
 
     def test_on_save_normalizes_proxy_logout_url(self, tmp_path, monkeypatch):
