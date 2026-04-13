@@ -8,7 +8,7 @@ import type { ParsedUrlSearch } from '@/utils/parseUrlSearchParams';
 
 const ADVANCED_FILTER_VISIBILITY_KEYS = ['content', 'lang', 'formats'] as const;
 
-interface UrlSearchBootstrapSessionProps {
+interface UrlSearchBootstrapMountProps {
   parsedParams: ParsedUrlSearch;
   config: AppConfig;
   contentType: ContentType;
@@ -28,7 +28,7 @@ interface UrlSearchBootstrapSessionProps {
   onComplete: () => void;
 }
 
-export const UrlSearchBootstrapSession = ({
+export const UrlSearchBootstrapMount = ({
   parsedParams,
   config,
   contentType,
@@ -42,7 +42,7 @@ export const UrlSearchBootstrapSession = ({
   setActiveQueryTarget,
   runSearchWithPolicyRefresh,
   onComplete,
-}: UrlSearchBootstrapSessionProps) => {
+}: UrlSearchBootstrapMountProps) => {
   useMountEffect(() => {
     onComplete();
 

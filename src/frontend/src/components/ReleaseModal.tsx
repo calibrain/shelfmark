@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { useDescriptionOverflow } from '../hooks/releaseModal/useDescriptionOverflow';
 import { useHeaderThumbOnScroll } from '../hooks/releaseModal/useHeaderThumbOnScroll';
 import { useReleaseSearchSession } from '../hooks/releaseModal/useReleaseSearchSession';
-import { useTabIndicator } from '../hooks/releaseModal/useTabIndicator';
+import { useTabIndicator } from '../hooks/ui/useTabIndicator';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 import type {

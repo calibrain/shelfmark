@@ -65,7 +65,7 @@
           {
             "name": "react",
             "importNames": ["useEffect"],
-            "message": "Import useMountEffect or a named sync hook instead of useEffect."
+            "message": "Direct useEffect is not allowed. Derive state during render, use event handlers, reset with key, or use useMountEffect / a named sync hook for external system sync. See hooks/useMountEffect.ts and the React docs: https://react.dev/learn/you-might-not-need-an-effect"
           }
         ]
       }

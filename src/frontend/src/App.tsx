@@ -17,7 +17,7 @@ import { ResultsSection } from './components/ResultsSection';
 import { SearchSection } from './components/SearchSection';
 import { SelfSettingsModal, SettingsModal } from './components/settings';
 import { ToastContainer } from './components/ToastContainer';
-import { UrlSearchBootstrapSession } from './components/UrlSearchBootstrapSession';
+import { UrlSearchBootstrapMount } from './components/UrlSearchBootstrapMount';
 import { SearchModeProvider } from './contexts/SearchModeContext';
 import { useSocket } from './contexts/SocketContext';
 import { DEFAULT_LANGUAGES, DEFAULT_SUPPORTED_FORMATS } from './data/languages';
@@ -2738,9 +2738,9 @@ function App() {
       loadConfig={loadConfig}
     />
   ) : null;
-  const urlSearchBootstrap =
+  const urlSearchBootstrapMount =
     wasProcessed && parsedParams && config && !hasExecutedUrlSearchBootstrap ? (
-      <UrlSearchBootstrapSession
+      <UrlSearchBootstrapMount
         parsedParams={parsedParams}
         config={config}
         contentType={contentType}
@@ -2777,7 +2777,7 @@ function App() {
       <>
         {authenticatedBootstrap}
         {metadataConfigSession}
-        {urlSearchBootstrap}
+        {urlSearchBootstrapMount}
         <div aria-live="polite" style={visuallyHiddenStyle}>
           Checking authentication…
         </div>
@@ -2791,7 +2791,7 @@ function App() {
       <>
         {authenticatedBootstrap}
         {metadataConfigSession}
-        {urlSearchBootstrap}
+        {urlSearchBootstrapMount}
         <div aria-live="polite" style={visuallyHiddenStyle}>
           Loading configuration…
         </div>
@@ -2809,7 +2809,7 @@ function App() {
     <>
       {authenticatedBootstrap}
       {metadataConfigSession}
-      {urlSearchBootstrap}
+      {urlSearchBootstrapMount}
       <Routes>
         <Route
           path="/login"
