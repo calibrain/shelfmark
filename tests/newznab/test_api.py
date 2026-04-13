@@ -97,7 +97,11 @@ class TestTestConnection:
 
     def test_generic_exception_returns_false(self):
         client = NewznabClient("http://nzbhydra:5076", "key")
-        with patch.object(client, "_get", side_effect=Exception("oops")):
+        with patch.object(
+            client,
+            "_get",
+            side_effect=requests.exceptions.Timeout("oops"),
+        ):
             ok, msg = client.test_connection()
         assert ok is False
         assert "oops" in msg.lower()
