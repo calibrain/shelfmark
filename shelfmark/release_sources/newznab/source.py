@@ -194,8 +194,8 @@ class NewznabSource(ReleaseSource):
         )
 
     def _get_client(self) -> NewznabClient | None:
-        raw_url = config.get("NEWZNAB_URL", "")
-        api_key = config.get("NEWZNAB_API_KEY", "")
+        raw_url = str(config.get("NEWZNAB_URL", "") or "")
+        api_key = str(config.get("NEWZNAB_API_KEY", "") or "")
 
         if not raw_url:
             return None
@@ -306,5 +306,5 @@ class NewznabSource(ReleaseSource):
     def is_available(self) -> bool:
         if not config.get("NEWZNAB_ENABLED", False):
             return False
-        url = normalize_http_url(config.get("NEWZNAB_URL", ""))
+        url = normalize_http_url(str(config.get("NEWZNAB_URL", "") or ""))
         return bool(url)

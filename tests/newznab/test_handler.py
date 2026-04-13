@@ -1,43 +1,44 @@
 """Unit tests for the Newznab download handler."""
 
 from threading import Event
-from typing import List, Optional, Tuple
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import patch
 
 from shelfmark.core.models import DownloadTask
-from shelfmark.download.clients import DownloadState, DownloadStatus
-from shelfmark.release_sources.newznab.handler import NewznabHandler, _get_protocol, _get_download_url
-
+from shelfmark.release_sources.newznab.handler import (
+    NewznabHandler,
+    _get_download_url,
+    _get_protocol,
+)
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
+
 class ProgressRecorder:
     def __init__(self):
-        self.progress_values: List[float] = []
-        self.status_updates: List[Tuple[str, Optional[str]]] = []
+        self.progress_values: list[float] = []
+        self.status_updates: list[tuple[str, str | None]] = []
 
     def progress_callback(self, v: float):
         self.progress_values.append(v)
 
-    def status_callback(self, status: str, message: Optional[str]):
+    def status_callback(self, status: str, message: str | None):
         self.status_updates.append((status, message))
 
     @property
-    def last_status(self) -> Optional[str]:
+    def last_status(self) -> str | None:
         return self.status_updates[-1][0] if self.status_updates else None
 
     @property
-    def last_message(self) -> Optional[str]:
+    def last_message(self) -> str | None:
         return self.status_updates[-1][1] if self.status_updates else None
 
     @property
-    def statuses(self) -> List[str]:
+    def statuses(self) -> list[str]:
         return [s[0] for s in self.status_updates]
 
 
 # ── _get_protocol ────────────────────────────────────────────────────────────────
+
 
 class TestGetProtocol:
     def test_explicit_usenet(self):
@@ -65,6 +66,7 @@ class TestGetProtocol:
 
 # ── _get_download_url ──────────────────────────────────────────────────────────
 
+
 class TestGetDownloadUrl:
     def test_usenet_prefers_download_url(self):
         result = {
@@ -91,6 +93,7 @@ class TestGetDownloadUrl:
 
 
 # ── error paths ────────────────────────────────────────────────────────────────
+
 
 class TestHandlerErrors:
     def test_cache_miss_returns_error(self):
@@ -127,17 +130,19 @@ class TestHandlerErrors:
         assert "url" in (recorder.last_message or "").lower()
 
     def test_no_client_configured_returns_error(self):
-        with patch(
-            "shelfmark.release_sources.newznab.handler.get_release",
-            return_value={
-                "protocol": "usenet",
-                "downloadUrl": "https://example.com/nzb/1",
-            },
-        ), patch(
-            "shelfmark.release_sources.newznab.handler.get_client", return_value=None
-        ), patch(
-            "shelfmark.release_sources.newznab.handler.list_configured_clients",
-            return_value=[],
+        with (
+            patch(
+                "shelfmark.release_sources.newznab.handler.get_release",
+                return_value={
+                    "protocol": "usenet",
+                    "downloadUrl": "https://example.com/nzb/1",
+                },
+            ),
+            patch("shelfmark.release_sources.newznab.handler.get_client", return_value=None),
+            patch(
+                "shelfmark.release_sources.newznab.handler.list_configured_clients",
+                return_value=[],
+            ),
         ):
             handler = NewznabHandler()
             task = DownloadTask(task_id="no-client", source="newznab", title="Book")
@@ -155,11 +160,10 @@ class TestHandlerErrors:
 
 # ── cancel ─────────────────────────────────────────────────────────────────────
 
+
 class TestHandlerCancel:
     def test_cancel_removes_from_cache(self):
-        with patch(
-            "shelfmark.release_sources.newznab.handler.remove_release"
-        ) as mock_remove:
+        with patch("shelfmark.release_sources.newznab.handler.remove_release") as mock_remove:
             result = NewznabHandler().cancel("task-123")
         assert result is True
         mock_remove.assert_called_once_with("task-123")

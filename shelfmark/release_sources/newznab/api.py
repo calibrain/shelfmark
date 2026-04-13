@@ -88,7 +88,7 @@ class NewznabClient:
             if e.response is not None and e.response.status_code == 401:
                 return False, "Invalid API key"
             return False, f"HTTP error {status}"
-        except Exception as e:
+        except requests.exceptions.RequestException as e:
             return False, f"Connection failed: {e!s}"
         else:
             return True, f"Connected to {title}"

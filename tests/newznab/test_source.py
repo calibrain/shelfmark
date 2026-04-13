@@ -1,9 +1,8 @@
 """Unit tests for the Newznab release source."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
-import pytest
-
+from shelfmark.core.search_plan import ReleaseSearchPlan, ReleaseSearchVariant
 from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources import ReleaseProtocol
 from shelfmark.release_sources.newznab.source import (
@@ -11,16 +10,16 @@ from shelfmark.release_sources.newznab.source import (
     _newznab_result_to_release,
 )
 
-
 # ── fixtures / helpers ─────────────────────────────────────────────────────────
 
+
 def _make_book(**kwargs) -> BookMetadata:
-    defaults = dict(
-        provider="hardcover",
-        provider_id="1",
-        title="Dune",
-        authors=["Frank Herbert"],
-    )
+    defaults = {
+        "provider": "hardcover",
+        "provider_id": "1",
+        "title": "Dune",
+        "authors": ["Frank Herbert"],
+    }
     defaults.update(kwargs)
     return BookMetadata(**defaults)
 
@@ -42,12 +41,14 @@ def _make_result(**kwargs) -> dict:
     return base
 
 
-def _make_plan(book: BookMetadata, *, manual_query: str = None):
+def _make_plan(book: BookMetadata, *, manual_query: str | None = None):
     from shelfmark.core.search_plan import build_release_search_plan
+
     return build_release_search_plan(book, languages=["en"], manual_query=manual_query)
 
 
 # ── _newznab_result_to_release ─────────────────────────────────────────────────
+
 
 class TestResultToRelease:
     def test_basic_usenet_result(self):
@@ -98,16 +99,12 @@ class TestResultToRelease:
         assert "VIP" in r.extra["indexer_flags"]
 
     def test_duplicate_flags_deduplicated(self):
-        r = _newznab_result_to_release(
-            _make_result(indexerFlags=["FreeLeech", "freeleech", "FL"])
-        )
+        r = _newznab_result_to_release(_make_result(indexerFlags=["FreeLeech", "freeleech", "FL"]))
         lower_flags = [f.lower() for f in r.extra["indexer_flags"]]
         assert lower_flags.count("freeleech") == 1
 
     def test_seeders_only_set_for_torrents(self):
-        usenet = _newznab_result_to_release(
-            _make_result(protocol="usenet", seeders=10)
-        )
+        usenet = _newznab_result_to_release(_make_result(protocol="usenet", seeders=10))
         assert usenet.seeders is None
 
         torrent = _newznab_result_to_release(
@@ -140,6 +137,7 @@ class TestResultToRelease:
 
 # ── NewznabSource.is_available ─────────────────────────────────────────────────
 
+
 class TestIsAvailable:
     def _config(self, **overrides):
         values = {
@@ -151,21 +149,25 @@ class TestIsAvailable:
 
     def test_available_when_enabled_and_url_set(self, monkeypatch):
         import shelfmark.release_sources.newznab.source as mod
+
         monkeypatch.setattr(mod.config, "get", self._config())
         assert NewznabSource().is_available() is True
 
     def test_unavailable_when_disabled(self, monkeypatch):
         import shelfmark.release_sources.newznab.source as mod
+
         monkeypatch.setattr(mod.config, "get", self._config(NEWZNAB_ENABLED=False))
         assert NewznabSource().is_available() is False
 
     def test_unavailable_when_no_url(self, monkeypatch):
         import shelfmark.release_sources.newznab.source as mod
+
         monkeypatch.setattr(mod.config, "get", self._config(NEWZNAB_URL=""))
         assert NewznabSource().is_available() is False
 
 
 # ── NewznabSource.search ───────────────────────────────────────────────────────
+
 
 class TestSearch:
     def _fake_config(self, **overrides):
@@ -177,6 +179,7 @@ class TestSearch:
 
     def _patched_source(self, monkeypatch, client, config_overrides=None):
         import shelfmark.release_sources.newznab.source as mod
+
         monkeypatch.setattr(mod.config, "get", self._fake_config(**(config_overrides or {})))
         src = NewznabSource()
         monkeypatch.setattr(src, "_get_client", lambda: client)
@@ -184,6 +187,7 @@ class TestSearch:
 
     def test_returns_empty_when_no_client(self, monkeypatch):
         import shelfmark.release_sources.newznab.source as mod
+
         monkeypatch.setattr(mod.config, "get", self._fake_config())
         src = NewznabSource()
         monkeypatch.setattr(src, "_get_client", lambda: None)
@@ -197,6 +201,7 @@ class TestSearch:
         src = self._patched_source(monkeypatch, client)
         book = BookMetadata(provider="test", provider_id="1", title="", authors=[])
         from shelfmark.core.search_plan import ReleaseSearchPlan
+
         empty_plan = ReleaseSearchPlan(
             languages=["en"],
             isbn_candidates=[],
@@ -243,7 +248,6 @@ class TestSearch:
         client.search.side_effect = [[dup], [dup]]  # two queries, same result each
         book = _make_book()
         src = self._patched_source(monkeypatch, client)
-        from shelfmark.core.search_plan import ReleaseSearchVariant, ReleaseSearchPlan
         plan_two = ReleaseSearchPlan(
             languages=["en"],
             isbn_candidates=[],
@@ -273,7 +277,7 @@ class TestSearch:
         results = src.search(book, _make_plan(book), content_type="ebook")
 
         assert [7000] in calls  # first call with category
-        assert None in calls    # auto-expanded call without
+        assert None in calls  # auto-expanded call without
         assert len(results) == 1
 
     def test_no_auto_expand_when_disabled(self, monkeypatch):
@@ -312,6 +316,7 @@ class TestSearch:
         src = self._patched_source(monkeypatch, client)
         book = _make_book()
         from shelfmark.core.search_plan import ReleaseSearchPlan
+
         isbn_plan = ReleaseSearchPlan(
             languages=["en"],
             isbn_candidates=["9780441013593"],

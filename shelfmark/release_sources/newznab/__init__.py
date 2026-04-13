@@ -9,17 +9,23 @@ Includes:
 - NewznabHandler: Download handling via configured usenet/torrent client
 """
 
+from importlib import import_module
+
 # Import submodules to trigger decorator registration
 from shelfmark.release_sources.newznab import (
-    handler,
-    settings,
-    source,
+    handler as handler,
+)
+from shelfmark.release_sources.newznab import (
+    settings as settings,
+)
+from shelfmark.release_sources.newznab import (
+    source as source,
 )
 
 # Import shared download clients/settings to trigger registration.
 try:
-    from shelfmark.download import clients
-    from shelfmark.download.clients import settings as client_settings 
+    import_module("shelfmark.download.clients")
+    import_module("shelfmark.download.clients.settings")
 except ImportError as e:
     import logging
 

@@ -21,8 +21,8 @@ def _test_newznab_connection(current_values: dict[str, Any] | None = None) -> di
 
     current_values = current_values or {}
 
-    raw_url = current_values.get("NEWZNAB_URL") or config.get("NEWZNAB_URL", "")
-    api_key = current_values.get("NEWZNAB_API_KEY") or config.get("NEWZNAB_API_KEY", "")
+    raw_url = str(current_values.get("NEWZNAB_URL") or config.get("NEWZNAB_URL", "") or "")
+    api_key = str(current_values.get("NEWZNAB_API_KEY") or config.get("NEWZNAB_API_KEY", "") or "")
 
     if not raw_url:
         return {"success": False, "message": "Newznab URL is required"}
@@ -34,7 +34,7 @@ def _test_newznab_connection(current_values: dict[str, Any] | None = None) -> di
     try:
         client = NewznabClient(url, api_key)
         success, message = client.test_connection()
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001 — surface any unexpected error to the UI
         return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": success, "message": message}

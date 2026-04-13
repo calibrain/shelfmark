@@ -1,11 +1,10 @@
 """Unit tests for the Newznab API client."""
 
 from unittest.mock import MagicMock, patch
-import pytest
+
 import requests
 
 from shelfmark.release_sources.newznab.api import NewznabClient
-
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -41,13 +40,12 @@ def _make_response(text: str, status: int = 200) -> MagicMock:
     r.ok = status < 400
     r.raise_for_status = MagicMock()
     if status >= 400:
-        r.raise_for_status.side_effect = requests.exceptions.HTTPError(
-            response=r
-        )
+        r.raise_for_status.side_effect = requests.exceptions.HTTPError(response=r)
     return r
 
 
 # ── URL construction ────────────────────────────────────────────────────────────
+
 
 class TestApiUrl:
     def test_appends_api_path(self):
@@ -64,6 +62,7 @@ class TestApiUrl:
 
 
 # ── test_connection ─────────────────────────────────────────────────────────────
+
 
 class TestTestConnection:
     def test_success_returns_true_with_title(self):
@@ -113,6 +112,7 @@ class TestTestConnection:
 
 
 # ── search ──────────────────────────────────────────────────────────────────────
+
 
 class TestSearch:
     def test_empty_query_returns_empty(self):
@@ -170,9 +170,7 @@ class TestSearch:
 
     def test_returns_empty_on_malformed_xml(self):
         client = NewznabClient("http://nzbhydra:5076", "key")
-        with patch.object(
-            client, "_get", return_value=_make_response("not xml at all")
-        ):
+        with patch.object(client, "_get", return_value=_make_response("not xml at all")):
             results = client.search(query="book")
         assert results == []
 
@@ -180,8 +178,6 @@ class TestSearch:
         """The apikey is injected by _get() into the outgoing HTTP request."""
         client = NewznabClient("http://nzbhydra:5076", "mykey")
         captured_params: list = []
-
-        orig_get = client._session.get
 
         def fake_session_get(url, params=None, **kwargs):
             captured_params.append(dict(params or {}))
