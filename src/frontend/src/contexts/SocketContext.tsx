@@ -1,8 +1,9 @@
 import type { ReactNode } from 'react';
-import { createContext, useContext, useEffect, useMemo, useState } from 'react';
+import { createContext, useContext, useMemo, useState } from 'react';
 import type { Socket } from 'socket.io-client';
 import { io } from 'socket.io-client';
 
+import { useMountEffect } from '../hooks/useMountEffect';
 import { withBasePath } from '../utils/basePath';
 
 interface SocketContextValue {
@@ -22,7 +23,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
   const [connected, setConnected] = useState(false);
   const [socket, setSocket] = useState<Socket | null>(null);
 
-  useEffect(() => {
+  useMountEffect(() => {
     // Always connect via current origin so dev proxy and session cookies stay aligned.
     const wsUrl = window.location.origin;
     const socketPath = withBasePath('/socket.io');
@@ -56,7 +57,7 @@ export const SocketProvider = ({ children }: SocketProviderProps) => {
       console.log('SocketProvider: Disconnecting');
       nextSocket.disconnect();
     };
-  }, []);
+  });
 
   const contextValue = useMemo(() => ({ socket, connected }), [socket, connected]);
 

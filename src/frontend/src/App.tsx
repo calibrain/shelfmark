@@ -15,18 +15,13 @@ import { RequestConfirmationModal } from './components/RequestConfirmationModal'
 import { ResultsSection } from './components/ResultsSection';
 import { SearchSection } from './components/SearchSection';
 import { SelfSettingsModal, SettingsModal } from './components/settings';
-import { primeUsersCache } from './components/settings/users/useUsersFetch';
 import { ToastContainer } from './components/ToastContainer';
 import { SearchModeProvider } from './contexts/SearchModeContext';
 import { useSocket } from './contexts/SocketContext';
 import { DEFAULT_LANGUAGES, DEFAULT_SUPPORTED_FORMATS } from './data/languages';
 import { useActiveMetadataConfigLoader } from './hooks/app/useActiveMetadataConfigLoader';
-import { useAppStartupStatusFetch } from './hooks/app/useAppStartupStatusFetch';
-import { useAuthEstablishedStatusRefresh } from './hooks/app/useAuthEstablishedStatusRefresh';
 import { useBookTargetDeselectSync } from './hooks/app/useBookTargetDeselectSync';
-import { useConfigBootstrapOnAuth } from './hooks/app/useConfigBootstrapOnAuth';
 import { useContentTypePreferences } from './hooks/app/useContentTypePreferences';
-import { useRealtimeTransportLog } from './hooks/app/useRealtimeTransportLog';
 import { useShowOnboardingDebug } from './hooks/app/useShowOnboardingDebug';
 import { useStatusChangeNotifications } from './hooks/app/useStatusChangeNotifications';
 import { useUrlSearchBootstrap } from './hooks/app/useUrlSearchBootstrap';
@@ -38,12 +33,14 @@ import { useActivity } from './hooks/useActivity';
 import { useAuth } from './hooks/useAuth';
 import { useDownloadTracking } from './hooks/useDownloadTracking';
 import { useMediaQuery } from './hooks/useMediaQuery';
+import { useMountEffect } from './hooks/useMountEffect';
 import { useRealtimeStatus } from './hooks/useRealtimeStatus';
 import { useRequestPolicy } from './hooks/useRequestPolicy';
 import { useRequests } from './hooks/useRequests';
 import { useSearch } from './hooks/useSearch';
 import { useToast } from './hooks/useToast';
 import { useUrlSearch } from './hooks/useUrlSearch';
+import { primeUsersCache } from './hooks/useUsersFetch';
 import { LoginPage } from './pages/LoginPage';
 import {
   getSourceRecordInfo,
@@ -228,6 +225,29 @@ type PendingOnBehalfDownload =
       actingAsUser: ActingAsUserSelection;
     };
 
+interface AuthenticatedAppBootstrapProps {
+  refreshStatus: () => Promise<void>;
+  refreshRequestPolicy: (options?: { force?: boolean }) => Promise<unknown>;
+  refreshActivitySnapshot: () => Promise<void>;
+  loadConfig: (mode?: 'initial' | 'settings-saved') => void | Promise<void>;
+}
+
+const AuthenticatedAppBootstrap = ({
+  refreshStatus,
+  refreshRequestPolicy,
+  refreshActivitySnapshot,
+  loadConfig,
+}: AuthenticatedAppBootstrapProps) => {
+  useMountEffect(() => {
+    void refreshStatus();
+    void refreshRequestPolicy({ force: true });
+    void refreshActivitySnapshot();
+    void loadConfig('initial');
+  });
+
+  return null;
+};
+
 function App() {
   const location = useLocation();
   const { toasts, showToast, removeToast } = useToast();
@@ -235,15 +255,9 @@ function App() {
 
   // Realtime status with WebSocket and polling fallback
   // Socket connection is managed by SocketProvider in main.tsx
-  const {
-    status: currentStatus,
-    isUsingWebSocket,
-    forceRefresh: fetchStatus,
-  } = useRealtimeStatus({
+  const { status: currentStatus, forceRefresh: fetchStatus } = useRealtimeStatus({
     pollInterval: 5000,
   });
-  useAppStartupStatusFetch(fetchStatus);
-  useRealtimeTransportLog(isUsingWebSocket);
 
   // Download tracking for universal mode
   const {
@@ -276,14 +290,6 @@ function App() {
     handleLogout,
   } = useAuth({
     showToast,
-  });
-
-  useAuthEstablishedStatusRefresh({
-    authChecked,
-    isAuthenticated,
-    isAdmin: authIsAdmin,
-    username,
-    refreshStatus: fetchStatus,
   });
 
   // Content type state (ebook vs audiobook) - defined before useSearch since it's passed to it
@@ -327,13 +333,11 @@ function App() {
   );
 
   const {
-    isLoading: isRequestsLoading,
     cancelRequest: cancelUserRequest,
     fulfilRequest: fulfilSidebarRequest,
     rejectRequest: rejectSidebarRequest,
   } = useRequests({
     isAdmin: requestRoleIsAdmin,
-    enabled: isAuthenticated,
   });
 
   const {
@@ -837,11 +841,6 @@ function App() {
       setAdvancedFilters,
     ],
   );
-
-  useConfigBootstrapOnAuth({
-    isAuthenticated,
-    loadConfig,
-  });
 
   const effectiveSearchMode: SearchMode = config?.search_mode ?? 'direct';
 
@@ -2669,7 +2668,7 @@ function App() {
         onActiveTabChange={handleActivityTabChange}
         pendingRequestCount={pendingRequestCount}
         showRequestsTab={showRequestsTab}
-        isRequestsLoading={isRequestsLoading || isActivitySnapshotLoading}
+        isRequestsLoading={isActivitySnapshotLoading}
         onRequestCancel={showRequestsTab ? handleRequestCancel : undefined}
         onRequestApprove={requestRoleIsAdmin ? handleRequestApprove : undefined}
         onRequestReject={requestRoleIsAdmin ? handleRequestReject : undefined}
@@ -2737,21 +2736,38 @@ function App() {
     whiteSpace: 'nowrap',
     border: 0,
   };
+  const authenticatedBootstrapKey =
+    authChecked && isAuthenticated ? `${username ?? 'authenticated'}:${String(authIsAdmin)}` : null;
+  const authenticatedBootstrap = authenticatedBootstrapKey ? (
+    <AuthenticatedAppBootstrap
+      key={authenticatedBootstrapKey}
+      refreshStatus={fetchStatus}
+      refreshRequestPolicy={refreshRequestPolicy}
+      refreshActivitySnapshot={refreshActivitySnapshot}
+      loadConfig={loadConfig}
+    />
+  ) : null;
 
   if (!authChecked) {
     return (
-      <div aria-live="polite" style={visuallyHiddenStyle}>
-        Checking authentication…
-      </div>
+      <>
+        {authenticatedBootstrap}
+        <div aria-live="polite" style={visuallyHiddenStyle}>
+          Checking authentication…
+        </div>
+      </>
     );
   }
 
   // Wait for config to load before rendering main UI to prevent flicker
   if (isAuthenticated && !config) {
     return (
-      <div aria-live="polite" style={visuallyHiddenStyle}>
-        Loading configuration…
-      </div>
+      <>
+        {authenticatedBootstrap}
+        <div aria-live="polite" style={visuallyHiddenStyle}>
+          Loading configuration…
+        </div>
+      </>
     );
   }
 
@@ -2762,29 +2778,32 @@ function App() {
     authRequired && !isAuthenticated ? <Navigate to={loginRedirectPath} replace /> : mainAppContent;
 
   return (
-    <Routes>
-      <Route
-        path="/login"
-        element={
-          shouldRedirectFromLogin ? (
-            <Navigate to={postLoginPath} replace />
-          ) : (
-            <LoginPage
-              onLogin={(credentials) => {
-                void handleLogin(credentials);
-              }}
-              error={loginError}
-              isLoading={isLoggingIn}
-              authMode={authMode}
-              oidcButtonLabel={oidcButtonLabel}
-              hideLocalAuth={hideLocalAuth}
-              oidcAutoRedirect={oidcAutoRedirect}
-            />
-          )
-        }
-      />
-      <Route path="/*" element={appElement} />
-    </Routes>
+    <>
+      {authenticatedBootstrap}
+      <Routes>
+        <Route
+          path="/login"
+          element={
+            shouldRedirectFromLogin ? (
+              <Navigate to={postLoginPath} replace />
+            ) : (
+              <LoginPage
+                onLogin={(credentials) => {
+                  void handleLogin(credentials);
+                }}
+                error={loginError}
+                isLoading={isLoggingIn}
+                authMode={authMode}
+                oidcButtonLabel={oidcButtonLabel}
+                hideLocalAuth={hideLocalAuth}
+                oidcAutoRedirect={oidcAutoRedirect}
+              />
+            )
+          }
+        />
+        <Route path="/*" element={appElement} />
+      </Routes>
+    </>
   );
 }
 

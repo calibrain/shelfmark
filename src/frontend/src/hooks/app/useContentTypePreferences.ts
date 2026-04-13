@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 
 import type { ContentType } from '../../types';
@@ -27,16 +27,52 @@ export const useContentTypePreferences = (): {
   setCombinedMode: Dispatch<SetStateAction<boolean>>;
 } => {
   const initialPreference = readInitialPreference();
-  const [contentType, setContentType] = useState<ContentType>(() => initialPreference.contentType);
-  const [combinedMode, setCombinedMode] = useState<boolean>(() => initialPreference.combinedMode);
+  const [contentType, setContentTypeState] = useState<ContentType>(
+    () => initialPreference.contentType,
+  );
+  const [combinedMode, setCombinedModeState] = useState<boolean>(
+    () => initialPreference.combinedMode,
+  );
+  const contentTypeRef = useRef(contentType);
+  const combinedModeRef = useRef(combinedMode);
+  contentTypeRef.current = contentType;
+  combinedModeRef.current = combinedMode;
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(CONTENT_TYPE_STORAGE_KEY, combinedMode ? 'combined' : contentType);
-    } catch {
-      // localStorage may be unavailable in private browsing
-    }
-  }, [contentType, combinedMode]);
+  const persistPreference = useCallback(
+    (nextContentType: ContentType, nextCombinedMode: boolean) => {
+      try {
+        localStorage.setItem(
+          CONTENT_TYPE_STORAGE_KEY,
+          nextCombinedMode ? 'combined' : nextContentType,
+        );
+      } catch {
+        // localStorage may be unavailable in private browsing
+      }
+    },
+    [],
+  );
+
+  const setContentType: Dispatch<SetStateAction<ContentType>> = useCallback(
+    (value) => {
+      setContentTypeState((current) => {
+        const nextContentType = typeof value === 'function' ? value(current) : value;
+        persistPreference(nextContentType, combinedModeRef.current);
+        return nextContentType;
+      });
+    },
+    [persistPreference],
+  );
+
+  const setCombinedMode: Dispatch<SetStateAction<boolean>> = useCallback(
+    (value) => {
+      setCombinedModeState((current) => {
+        const nextCombinedMode = typeof value === 'function' ? value(current) : value;
+        persistPreference(contentTypeRef.current, nextCombinedMode);
+        return nextCombinedMode;
+      });
+    },
+    [persistPreference],
+  );
 
   return {
     contentType,

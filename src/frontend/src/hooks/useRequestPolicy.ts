@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import { fetchRequestPolicy } from '../services/api';
 import type { RequestPolicyMode, RequestPolicyResponse } from '../types';
@@ -71,29 +71,22 @@ export function useRequestPolicy({
     [cache, enabled, isAdmin],
   );
 
-  useEffect(() => {
-    if (!enabled) {
-      cache.reset();
-      setPolicy(null);
-      return;
-    }
-    void fetchPolicy(true);
-  }, [cache, enabled, fetchPolicy]);
-
   const getDefaultMode = useCallback(
     (contentType: string): RequestPolicyMode => {
-      const effectiveIsAdmin = policy ? policy.is_admin : isAdmin;
-      return resolveDefaultModeFromPolicy(policy, effectiveIsAdmin, contentType);
+      const effectivePolicy = enabled ? policy : null;
+      const effectiveIsAdmin = effectivePolicy ? effectivePolicy.is_admin : isAdmin;
+      return resolveDefaultModeFromPolicy(effectivePolicy, effectiveIsAdmin, contentType);
     },
-    [policy, isAdmin],
+    [enabled, policy, isAdmin],
   );
 
   const getSourceMode = useCallback(
     (source: string, contentType: string): RequestPolicyMode => {
-      const effectiveIsAdmin = policy ? policy.is_admin : isAdmin;
-      return resolveSourceModeFromPolicy(policy, effectiveIsAdmin, source, contentType);
+      const effectivePolicy = enabled ? policy : null;
+      const effectiveIsAdmin = effectivePolicy ? effectivePolicy.is_admin : isAdmin;
+      return resolveSourceModeFromPolicy(effectivePolicy, effectiveIsAdmin, source, contentType);
     },
-    [policy, isAdmin],
+    [enabled, policy, isAdmin],
   );
 
   const refresh = useCallback(
@@ -104,11 +97,11 @@ export function useRequestPolicy({
   );
 
   return {
-    policy,
-    isLoading,
-    isAdmin: policy ? policy.is_admin : isAdmin,
-    requestsEnabled: policy?.requests_enabled ?? false,
-    allowNotes: policy?.allow_notes ?? true,
+    policy: enabled ? policy : null,
+    isLoading: enabled ? isLoading : false,
+    isAdmin: enabled && policy ? policy.is_admin : isAdmin,
+    requestsEnabled: enabled ? (policy?.requests_enabled ?? false) : false,
+    allowNotes: enabled ? (policy?.allow_notes ?? true) : true,
     getDefaultMode,
     getSourceMode,
     refresh,

@@ -10,17 +10,12 @@ allowed_files=(
   "src/hooks/useEscapeKey.ts"
   "src/hooks/useDismiss.ts"
   "src/hooks/useMediaQuery.ts"
-  "src/hooks/useUrlSearch.ts"
-  "src/hooks/app/**"
+  "src/hooks/app/useActiveMetadataConfigLoader.ts"
+  "src/hooks/app/useStatusChangeNotifications.ts"
+  "src/hooks/app/useUrlSearchBootstrap.ts"
   "src/hooks/searchBar/**"
-  "src/contexts/SocketContext.tsx"
-  "src/hooks/useRequests.ts"
   "src/hooks/useRealtimeStatus.ts"
-  "src/hooks/useRequestPolicy.ts"
   "src/hooks/useActivity.ts"
-  "src/hooks/useAuth.ts"
-  "src/hooks/useSettings.ts"
-  "src/hooks/useUsersFetch.ts"
 )
 
 rg_args=(

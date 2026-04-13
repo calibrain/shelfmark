@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, useCallback } from 'react';
 import { useSocket } from '../contexts/SocketContext';
 import { getStatus } from '../services/api';
 import type { StatusData } from '../types';
+import { useMountEffect } from './useMountEffect';
 
 interface UseRealtimeStatusOptions {
   pollInterval?: number;
@@ -118,15 +119,6 @@ export const useRealtimeStatus = ({
     };
   }, [socket, connected, startPolling, stopPolling]);
 
-  // Handle connection state changes
-  useEffect(() => {
-    if (connected) {
-      stopPolling();
-    } else {
-      startPolling();
-    }
-  }, [connected, startPolling, stopPolling]);
-
   // Force refresh function
   const forceRefresh = useCallback(async () => {
     if (socket?.connected) {
@@ -137,11 +129,11 @@ export const useRealtimeStatus = ({
   }, [socket, pollStatus]);
 
   // Cleanup polling on unmount
-  useEffect(() => {
+  useMountEffect(() => {
     return () => {
       stopPolling();
     };
-  }, [stopPolling]);
+  });
 
   return {
     status,

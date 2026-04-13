@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useRef } from 'react';
 
 import { getSettings, updateSettings, executeSettingsAction } from '../services/api';
 import type {
@@ -23,6 +23,7 @@ import {
   setThemePreference,
   THEME_FIELD,
 } from '../utils/themePreference';
+import { useMountEffect } from './useMountEffect';
 
 interface FetchSettingsOptions {
   silent?: boolean;
@@ -127,9 +128,9 @@ export function useSettings(): UseSettingsReturn {
     [applySettingsResponse],
   );
 
-  useEffect(() => {
+  useMountEffect(() => {
     void fetchSettings();
-  }, [fetchSettings]);
+  });
 
   const updateValue = useCallback(
     (tabName: string, key: string, value: unknown) => {

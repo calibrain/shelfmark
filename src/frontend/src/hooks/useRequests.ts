@@ -1,33 +1,16 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback } from 'react';
 
-import { useSocket } from '../contexts/SocketContext';
 import {
   cancelRequest as cancelUserRequest,
   fulfilAdminRequest,
-  isApiResponseError,
-  listAdminRequests,
-  listRequests,
   rejectAdminRequest,
 } from '../services/api';
-import type { RequestRecord } from '../types';
-import {
-  applyRequestUpdateEvent,
-  normalizeRequestUpdatePayload,
-  upsertRequestRecord,
-} from './useRequests.helpers';
 
 interface UseRequestsOptions {
   isAdmin: boolean;
-  enabled: boolean;
-  pollIntervalMs?: number;
 }
 
 interface UseRequestsReturn {
-  requests: RequestRecord[];
-  pendingCount: number;
-  isLoading: boolean;
-  error: string | null;
-  refresh: () => Promise<void>;
   cancelRequest: (id: number) => Promise<void>;
   fulfilRequest: (
     id: number,
@@ -45,177 +28,15 @@ const toErrorMessage = (error: unknown, fallback: string): string => {
   return fallback;
 };
 
-const shouldFallbackToUserRequestList = (error: unknown): boolean => {
-  return isApiResponseError(error) && (error.status === 401 || error.status === 403);
-};
-
-export const useRequests = ({
-  isAdmin,
-  enabled,
-  pollIntervalMs = 10_000,
-}: UseRequestsOptions): UseRequestsReturn => {
-  const { socket, connected } = useSocket();
-  const [requests, setRequests] = useState<RequestRecord[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
-
-  const refresh = useCallback(async () => {
-    if (!enabled) {
-      return;
-    }
-
-    setIsLoading(true);
+export const useRequests = ({ isAdmin }: UseRequestsOptions): UseRequestsReturn => {
+  const cancelRequest = useCallback(async (id: number) => {
     try {
-      let rows: RequestRecord[];
-      if (isAdmin) {
-        try {
-          rows = await listAdminRequests();
-        } catch (err) {
-          // Role/session state can momentarily desync between tabs.
-          // If admin list is unauthorized, fall back to user-scoped list.
-          if (shouldFallbackToUserRequestList(err)) {
-            rows = await listRequests();
-          } else {
-            throw err;
-          }
-        }
-      } else {
-        rows = await listRequests();
-      }
-      setRequests(rows);
-      setError(null);
+      await cancelUserRequest(id);
     } catch (err) {
-      setError(toErrorMessage(err, 'Failed to load requests'));
-    } finally {
-      setIsLoading(false);
-    }
-  }, [enabled, isAdmin]);
-
-  const startPolling = useCallback(() => {
-    if (pollIntervalRef.current || !enabled) {
-      return;
-    }
-    pollIntervalRef.current = setInterval(() => {
-      void refresh();
-    }, pollIntervalMs);
-  }, [enabled, refresh, pollIntervalMs]);
-
-  const stopPolling = useCallback(() => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
+      const message = toErrorMessage(err, 'Failed to cancel request');
+      throw new Error(message, { cause: err });
     }
   }, []);
-
-  useEffect(() => {
-    if (!enabled) {
-      setRequests([]);
-      setError(null);
-      setIsLoading(false);
-      stopPolling();
-      return undefined;
-    }
-
-    void refresh();
-    return undefined;
-  }, [enabled, refresh, stopPolling]);
-
-  useEffect(() => {
-    if (!enabled) {
-      stopPolling();
-      return undefined;
-    }
-
-    if (!socket) {
-      startPolling();
-      return undefined;
-    }
-
-    const handleNewRequest = () => {
-      void refresh();
-    };
-
-    const handleRequestUpdate = (rawPayload: unknown) => {
-      const payload = normalizeRequestUpdatePayload(rawPayload);
-      if (!payload) {
-        void refresh();
-        return;
-      }
-
-      let found = false;
-      setRequests((prev) => {
-        const result = applyRequestUpdateEvent(prev, payload);
-        found = result.found;
-        return result.records;
-      });
-
-      if (!found) {
-        void refresh();
-        return;
-      }
-
-      // Ensure we pick up full record updates (e.g. admin_note) after status transitions.
-      void refresh();
-    };
-
-    socket.on('new_request', handleNewRequest);
-    socket.on('request_update', handleRequestUpdate);
-
-    if (connected) {
-      stopPolling();
-    } else {
-      startPolling();
-    }
-
-    return () => {
-      socket.off('new_request', handleNewRequest);
-      socket.off('request_update', handleRequestUpdate);
-    };
-  }, [enabled, socket, connected, refresh, startPolling, stopPolling]);
-
-  useEffect(() => {
-    if (!enabled) {
-      stopPolling();
-      return undefined;
-    }
-
-    if (connected) {
-      stopPolling();
-    } else {
-      startPolling();
-    }
-    return undefined;
-  }, [enabled, connected, startPolling, stopPolling]);
-
-  useEffect(() => {
-    return () => {
-      stopPolling();
-    };
-  }, [stopPolling]);
-
-  const cancelRequest = useCallback(
-    async (id: number) => {
-      const previous = requests;
-      setRequests((prev) => {
-        const result = applyRequestUpdateEvent(prev, { request_id: id, status: 'cancelled' });
-        return result.records;
-      });
-
-      try {
-        const updated = await cancelUserRequest(id);
-        setRequests((prev) => upsertRequestRecord(prev, updated));
-        setError(null);
-      } catch (err) {
-        setRequests(previous);
-        const message = toErrorMessage(err, 'Failed to cancel request');
-        setError(message);
-        throw new Error(message, { cause: err });
-      }
-    },
-    [requests],
-  );
 
   const fulfilRequest = useCallback(
     async (
@@ -228,28 +49,18 @@ export const useRequests = ({
         throw new Error('Admin access required');
       }
 
-      const previous = requests;
-      setRequests((prev) => {
-        const result = applyRequestUpdateEvent(prev, { request_id: id, status: 'fulfilled' });
-        return result.records;
-      });
-
       try {
-        const updated = await fulfilAdminRequest(id, {
+        await fulfilAdminRequest(id, {
           release_data: releaseData,
           admin_note: adminNote,
           manual_approval: manualApproval,
         });
-        setRequests((prev) => upsertRequestRecord(prev, updated));
-        setError(null);
       } catch (err) {
-        setRequests(previous);
         const message = toErrorMessage(err, 'Failed to fulfil request');
-        setError(message);
         throw new Error(message, { cause: err });
       }
     },
-    [isAdmin, requests],
+    [isAdmin],
   );
 
   const rejectRequest = useCallback(
@@ -258,39 +69,19 @@ export const useRequests = ({
         throw new Error('Admin access required');
       }
 
-      const previous = requests;
-      setRequests((prev) => {
-        const result = applyRequestUpdateEvent(prev, { request_id: id, status: 'rejected' });
-        return result.records;
-      });
-
       try {
-        const updated = await rejectAdminRequest(id, {
+        await rejectAdminRequest(id, {
           admin_note: adminNote,
         });
-        setRequests((prev) => upsertRequestRecord(prev, updated));
-        setError(null);
       } catch (err) {
-        setRequests(previous);
         const message = toErrorMessage(err, 'Failed to reject request');
-        setError(message);
         throw new Error(message, { cause: err });
       }
     },
-    [isAdmin, requests],
-  );
-
-  const pendingCount = useMemo(
-    () => requests.filter((record) => record.status === 'pending').length,
-    [requests],
+    [isAdmin],
   );
 
   return {
-    requests,
-    pendingCount,
-    isLoading,
-    error,
-    refresh,
     cancelRequest,
     fulfilRequest,
     rejectRequest,

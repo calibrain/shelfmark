@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useRef } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 
 import type { Book } from '../../types';
 import { onBookTargetChange } from '../../utils/bookTargetEvents';
+import { useMountEffect } from '../useMountEffect';
 
 interface UseBookTargetDeselectSyncOptions {
   activeListValue: string | number | boolean | null | undefined;
@@ -16,12 +17,12 @@ export const useBookTargetDeselectSync = ({
   const activeListValueRef = useRef(activeListValue);
   activeListValueRef.current = activeListValue;
 
-  useEffect(() => {
+  useMountEffect(() => {
     return onBookTargetChange((event) => {
       if (event.selected) return;
       const currentValue = activeListValueRef.current;
       if (!currentValue || String(currentValue) !== event.target) return;
       setBooks((prev) => prev.filter((book) => book.provider_id !== event.bookId));
     });
-  }, [setBooks]);
+  });
 };

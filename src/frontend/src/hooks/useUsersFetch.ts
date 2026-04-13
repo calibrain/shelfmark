@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import type { PerUserSettings } from '../components/settings/users/types';
 import type { AdminUser, DeliveryPreferencesResponse, DownloadDefaults } from '../services/api';
@@ -12,6 +12,7 @@ import {
   getSettingsTab,
 } from '../services/api';
 import type { SettingsField } from '../types/settings';
+import { useMountEffect } from './useMountEffect';
 
 interface UseUsersFetchParams {
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
@@ -131,9 +132,9 @@ export const useUsersFetch = ({ onShowToast }: UseUsersFetchParams) => {
     [onShowToast],
   );
 
-  useEffect(() => {
+  useMountEffect(() => {
     void fetchUsers();
-  }, [fetchUsers]);
+  });
 
   const fetchUserEditContext = useCallback(async (userId: number): Promise<UserEditContext> => {
     const [fullUser, defaults] = await Promise.all([getAdminUser(userId), getDownloadDefaults()]);

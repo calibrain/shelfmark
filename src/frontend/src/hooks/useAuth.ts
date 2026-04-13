@@ -1,10 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useSocket } from '../contexts/SocketContext';
 import { login, logout, checkAuth } from '../services/api';
 import type { LoginCredentials } from '../types';
 import { getReturnToFromSearch } from '../utils/authRedirect';
+import { useMountEffect } from './useMountEffect';
 
 interface UseAuthOptions {
   onLogoutSuccess?: () => void;
@@ -73,7 +74,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
   }, [socket]);
 
   // Check authentication on mount
-  useEffect(() => {
+  useMountEffect(() => {
     const verifyAuth = async () => {
       try {
         applyAuthResponse(await checkAuth());
@@ -87,11 +88,11 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
       }
     };
     void verifyAuth();
-  }, [applyAuthResponse]);
+  });
 
   // Re-sync auth when returning to the tab, so role/session changes in
   // another tab/profile don't leave stale local auth state.
-  useEffect(() => {
+  useMountEffect(() => {
     const verifyAuthOnFocus = async () => {
       try {
         applyAuthResponse(await checkAuth());
@@ -116,7 +117,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [applyAuthResponse]);
+  });
 
   const refreshAuth = useCallback(async () => {
     try {

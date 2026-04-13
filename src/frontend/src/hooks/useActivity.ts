@@ -406,10 +406,6 @@ export const useActivity = ({
   }, [activityHistoryHasMore, activityHistoryLoading, activityHistoryOffset, isAuthenticated]);
 
   useEffect(() => {
-    void refreshActivitySnapshot();
-  }, [refreshActivitySnapshot]);
-
-  useEffect(() => {
     if (!socket || !isAuthenticated) {
       return undefined;
     }

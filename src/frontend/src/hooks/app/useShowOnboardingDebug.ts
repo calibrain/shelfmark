@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useMountEffect } from '../useMountEffect';
 
 interface UseShowOnboardingDebugOptions {
   setOnboardingOpen: (value: boolean) => void;
@@ -13,10 +13,10 @@ declare global {
 export const useShowOnboardingDebug = ({
   setOnboardingOpen,
 }: UseShowOnboardingDebugOptions): void => {
-  useEffect(() => {
+  useMountEffect(() => {
     window.showOnboarding = () => setOnboardingOpen(true);
     return () => {
       delete window.showOnboarding;
     };
-  }, [setOnboardingOpen]);
+  });
 };
