@@ -1,6 +1,8 @@
 import type { ReactNode } from 'react';
-import { useState, useRef, useEffect } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+
+import { useMountEffect } from '../../hooks/useMountEffect';
 
 interface TooltipProps {
   content: ReactNode;
@@ -105,7 +107,7 @@ export function Tooltip({
     setCoords(null);
   };
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!isVisible || !coords || !tooltipRef.current) {
       return;
     }
@@ -149,11 +151,11 @@ export function Tooltip({
     }
   }, [coords, isVisible]);
 
-  useEffect(() => {
+  useMountEffect(() => {
     return () => {
       if (timeoutRef.current) clearTimeout(timeoutRef.current);
     };
-  }, []);
+  });
 
   if (!hasContent && !alwaysWrap) {
     return children;

@@ -28,11 +28,10 @@ interface UseUrlSearchReturn {
  *   enabled: isAuthenticated && config !== null,
  * });
  *
- * useEffect(() => {
- *   if (wasProcessed && parsedParams?.hasSearchParams) {
- *     // Trigger search with parsed params
- *   }
- * }, [wasProcessed, parsedParams]);
+ * // React to the parsed params once processing is complete.
+ * if (wasProcessed && parsedParams?.hasSearchParams) {
+ *   // Trigger search with parsed params
+ * }
  */
 export function useUrlSearch({ enabled }: UseUrlSearchOptions): UseUrlSearchReturn {
   const [searchParams] = useSearchParams();

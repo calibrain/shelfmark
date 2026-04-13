@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { useEscapeKey } from '../hooks/useEscapeKey';
+import { useMountEffect } from '../hooks/useMountEffect';
 import type { Book, ButtonStateInfo } from '../types';
 import { isMetadataBook } from '../types';
 import { bookSupportsTargets } from '../utils/bookTargetLoader';
@@ -19,6 +20,21 @@ interface DetailsModalProps {
   showReleaseSourceLinks?: boolean;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
+
+interface DetailsModalAutoCloseProps {
+  clearQueuing: () => void;
+  closeModal: () => void;
+}
+
+const DetailsModalAutoClose = ({ clearQueuing, closeModal }: DetailsModalAutoCloseProps) => {
+  useMountEffect(() => {
+    clearQueuing();
+    const timer = window.setTimeout(closeModal, 500);
+    return () => window.clearTimeout(timer);
+  });
+
+  return null;
+};
 
 export const DetailsModal = ({
   book,
@@ -43,18 +59,6 @@ export const DetailsModal = ({
 
   useBodyScrollLock(Boolean(book));
   useEscapeKey(Boolean(book), handleClose);
-
-  // Clear queuing state and close modal once button state changes from download
-  useEffect(() => {
-    if (!isQueuing || buttonState.state === 'download') {
-      return undefined;
-    }
-
-    setIsQueuing(false);
-    // Close modal after status has updated
-    const timer = setTimeout(handleClose, 500);
-    return () => clearTimeout(timer);
-  }, [buttonState.state, isQueuing, handleClose]);
 
   const hasBookTargets = Boolean(book && isMetadataBook(book) && bookSupportsTargets(book));
 
@@ -147,6 +151,9 @@ export const DetailsModal = ({
 
   const modal = (
     <div className="modal-overlay active sm:px-6 sm:py-6">
+      {isQueuing && buttonState.state !== 'download' && (
+        <DetailsModalAutoClose clearQueuing={() => setIsQueuing(false)} closeModal={handleClose} />
+      )}
       <button
         type="button"
         className="absolute inset-0 border-0 bg-transparent p-0"

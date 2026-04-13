@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
+import { useMountEffect } from '../hooks/useMountEffect';
 import { setBookTargetState, type BookTargetOption } from '../services/api';
 import { emitBookTargetChange, onBookTargetChange } from '../utils/bookTargetEvents';
 import { loadBookTargets } from '../utils/bookTargetLoader';
@@ -78,12 +79,37 @@ export const BookTargetDropdown = ({
   className,
   onOpenChange,
 }: BookTargetDropdownProps) => {
+  return (
+    <BookTargetDropdownSession
+      key={`${provider}:${bookId}`}
+      provider={provider}
+      bookId={bookId}
+      onShowToast={onShowToast}
+      widthClassName={widthClassName}
+      variant={variant}
+      align={align}
+      className={className}
+      onOpenChange={onOpenChange}
+    />
+  );
+};
+
+const BookTargetDropdownSession = ({
+  provider,
+  bookId,
+  onShowToast,
+  widthClassName = 'w-full sm:w-56',
+  variant = 'default',
+  align = 'auto',
+  className,
+  onOpenChange,
+}: BookTargetDropdownProps) => {
   const [options, setOptions] = useState<BookTargetOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pendingTargets, setPendingTargets] = useState(new Set<string>());
 
-  useEffect(() => {
+  useMountEffect(() => {
     let isMounted = true;
 
     const run = async () => {
@@ -112,15 +138,15 @@ export const BookTargetDropdown = ({
     return () => {
       isMounted = false;
     };
-  }, [provider, bookId]);
+  });
 
   // Sync from changes made by other BookTargetDropdown instances for the same book
-  useEffect(() => {
+  useMountEffect(() => {
     return onBookTargetChange((event) => {
       if (event.provider !== provider || event.bookId !== bookId) return;
       setOptions((prev) => updateOptionChecked(prev, event.target, event.selected));
     });
-  }, [provider, bookId]);
+  });
 
   const selectedValues = useMemo(
     () => options.filter((option) => option.checked).map((option) => option.value),

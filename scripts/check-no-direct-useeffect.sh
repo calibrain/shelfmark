@@ -20,18 +20,7 @@ allowed_files=(
   "src/hooks/useActivity.ts"
   "src/hooks/useAuth.ts"
   "src/hooks/useSettings.ts"
-  "src/components/settings/users/useUsersFetch.ts"
-  "src/components/BookTargetDropdown.tsx"
-  "src/components/DetailsModal.tsx"
-  "src/components/Header.tsx"
-  "src/components/OnboardingModal.tsx"
-  "src/components/RequestConfirmationModal.tsx"
-  "src/components/activity/ActivitySidebar.tsx"
-  "src/components/shared/Tooltip.tsx"
-  "src/components/settings/SettingsModal.tsx"
-  "src/components/settings/SelfSettingsModal.tsx"
-  "src/components/settings/customFields/UsersManagementField.tsx"
-  "src/components/settings/fields/MultiSelectField.tsx"
+  "src/hooks/useUsersFetch.ts"
 )
 
 rg_args=(

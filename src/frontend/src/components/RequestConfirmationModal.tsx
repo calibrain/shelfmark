@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { useEscapeKey } from '../hooks/useEscapeKey';
+import { useMountEffect } from '../hooks/useMountEffect';
 import { getMetadataBookInfo } from '../services/api';
 import type { CreateRequestPayload } from '../types';
 import type { RequestConfirmationPreview } from '../utils/requestConfirmation';
@@ -134,7 +135,7 @@ function RequestConfirmationModalSession({
   const [enriched, setEnriched] = useState<RequestConfirmationPreview | null>(null);
   const enrichRef = useRef(0);
 
-  useEffect(() => {
+  useMountEffect(() => {
     const bookData = payload.book_data || {};
     const currentBasePreview = basePreview;
     if (!currentBasePreview) {
@@ -166,7 +167,7 @@ function RequestConfirmationModalSession({
       .catch(() => {
         // Enrichment is best-effort; ignore failures
       });
-  }, [payload, basePreview]);
+  });
 
   const preview = enriched ?? basePreview;
 

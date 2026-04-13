@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
+import { useState, useRef, useMemo, forwardRef, useImperativeHandle } from 'react';
 
 import { useDismiss } from '../hooks/useDismiss';
+import { useMountEffect } from '../hooks/useMountEffect';
 import type {
   ContentType,
   ActingAsUserSelection,
@@ -163,7 +164,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
     const selectedActingAsValue = actingAsUser ? String(actingAsUser.id) : '';
     const dropdownPanelWidthClass = 'w-48';
 
-    useEffect(() => {
+    useMountEffect(() => {
       const saved = localStorage.getItem('preferred-theme') || 'auto';
       applyTheme(saved);
 
@@ -173,9 +174,9 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
         document.documentElement.classList.remove('preload');
         document.getElementById('theme-init')?.remove();
       });
-    }, []);
+    });
 
-    useEffect(() => {
+    useMountEffect(() => {
       const mq = window.matchMedia('(prefers-color-scheme: dark)');
       const handler = (e: MediaQueryListEvent) => {
         if (localStorage.getItem('preferred-theme') === 'auto') {
@@ -186,7 +187,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
       };
       mq.addEventListener('change', handler);
       return () => mq.removeEventListener('change', handler);
-    }, []);
+    });
 
     // Helper function to close dropdown with animation
     const closeDropdown = () => {

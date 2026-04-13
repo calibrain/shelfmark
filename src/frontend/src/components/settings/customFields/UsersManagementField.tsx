@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
+import { useCallback, useLayoutEffect, useRef } from 'react';
 
+import { useMountEffect } from '../../../hooks/useMountEffect';
 import type { AdminUser } from '../../../services/api';
 import { testAdminUserNotificationPreferences } from '../../../services/api';
 import {
@@ -86,11 +87,11 @@ export const UsersManagementField = ({
     activeEditRequestIdRef.current += 1;
   }, []);
 
-  useEffect(() => {
+  useMountEffect(() => {
     return () => {
       invalidateEditContextRequest();
     };
-  }, [invalidateEditContextRequest]);
+  });
 
   const startEditing = async (user: AdminUser) => {
     const requestId = activeEditRequestIdRef.current + 1;
@@ -169,9 +170,7 @@ export const UsersManagementField = ({
   }, [backToList, onRefreshOverrideSummary, onSettingsSaved, onUiStateChange, saveEditedUser]);
 
   const handleSaveUserOverridesRef = useRef(handleSaveUserOverrides);
-  useEffect(() => {
-    handleSaveUserOverridesRef.current = handleSaveUserOverrides;
-  }, [handleSaveUserOverrides]);
+  handleSaveUserOverridesRef.current = handleSaveUserOverrides;
 
   const triggerSaveUserOverrides = useCallback(async () => {
     await handleSaveUserOverridesRef.current();

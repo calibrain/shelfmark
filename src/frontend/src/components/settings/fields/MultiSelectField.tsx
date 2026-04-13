@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useLayoutEffect, useRef, useState } from 'react';
 
 import type { MultiSelectFieldConfig } from '../../../types/settings';
 import { DropdownList } from '../../DropdownList';
@@ -243,7 +243,7 @@ export const MultiSelectField = ({
   const sortedOptions = optionOrderState.sortedOptions;
 
   // Verify collapse need after render (handles edge cases where few options still fit)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (containerRef.current) {
       if (field.options.length > COLLAPSE_THRESHOLD_OPTIONS) {
         const scrollHeight = containerRef.current.scrollHeight;

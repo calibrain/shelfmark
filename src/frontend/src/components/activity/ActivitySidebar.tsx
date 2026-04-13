@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
+import { useCallback, useMemo, useRef, useState, type WheelEvent } from 'react';
 
+import { useTabIndicator } from '../../hooks/ui/useTabIndicator';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import type { RequestRecord, StatusData } from '../../types';
@@ -569,24 +570,7 @@ export const ActivitySidebar = ({
 
   // Tab indicator (sliding underline, same pattern as ReleaseModal)
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const [tabIndicatorStyle, setTabIndicatorStyle] = useState({ left: 0, width: 0 });
-
-  useEffect(() => {
-    const activeButton = tabRefs.current[effectiveActiveTab];
-    if (!activeButton) {
-      setTabIndicatorStyle({ left: 0, width: 0 });
-      return;
-    }
-
-    const containerRect = activeButton.parentElement?.getBoundingClientRect();
-    const buttonRect = activeButton.getBoundingClientRect();
-    if (containerRect) {
-      setTabIndicatorStyle({
-        left: buttonRect.left - containerRect.left,
-        width: buttonRect.width,
-      });
-    }
-  }, [effectiveActiveTab, showRequestsTab]);
+  const tabIndicatorStyle = useTabIndicator(tabRefs, effectiveActiveTab, showRequestsTab);
 
   const panel = (
     <>

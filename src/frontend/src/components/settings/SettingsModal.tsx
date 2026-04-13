@@ -1,9 +1,10 @@
-import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 
 import { useSearchMode } from '../../contexts/SearchModeContext';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { useMountEffect } from '../../hooks/useMountEffect';
 import { useSettings } from '../../hooks/useSettings';
 import { getAdminSettingsOverridesSummary, getSettingsTab } from '../../services/api';
 import { SettingsContent } from './SettingsContent';
@@ -108,6 +109,54 @@ interface SettingsModalSessionProps {
   onMobileDetailChange: (isOpen: boolean, closeDetail: (() => void) | null) => void;
 }
 
+interface SettingsModalTabSyncProps {
+  selectedTab: string;
+  refreshOverrideSummaryForTab: (tabName: string) => Promise<void>;
+  setSecurityAccessError: (message: string | null) => void;
+}
+
+const SettingsModalTabSync = ({
+  selectedTab,
+  refreshOverrideSummaryForTab,
+  setSecurityAccessError,
+}: SettingsModalTabSyncProps) => {
+  useMountEffect(() => {
+    let cancelled = false;
+
+    void refreshOverrideSummaryForTab(selectedTab);
+
+    if (selectedTab !== 'security') {
+      setSecurityAccessError(null);
+    } else {
+      void getSettingsTab('security')
+        .then(() => {
+          if (!cancelled) {
+            setSecurityAccessError(null);
+          }
+        })
+        .catch((err) => {
+          if (cancelled) {
+            return;
+          }
+
+          const message = err instanceof Error ? err.message : 'Failed to load security settings';
+          if (message.toLowerCase().includes('admin access required')) {
+            setSecurityAccessError(message);
+            return;
+          }
+
+          setSecurityAccessError(null);
+        });
+    }
+
+    return () => {
+      cancelled = true;
+    };
+  });
+
+  return null;
+};
+
 const SettingsModalSession = ({
   isOpen,
   isClosing,
@@ -155,33 +204,6 @@ const SettingsModalSession = ({
     onClose();
   }, [onClose, onMobileDetailChange]);
 
-  useEffect(() => {
-    if (!isOpen || selectedTab !== 'security') {
-      setSecurityAccessError(null);
-      return undefined;
-    }
-
-    let cancelled = false;
-    getSettingsTab('security')
-      .then(() => {
-        if (cancelled) return;
-        setSecurityAccessError(null);
-      })
-      .catch((err) => {
-        if (cancelled) return;
-        const message = err instanceof Error ? err.message : 'Failed to load security settings';
-        if (message.toLowerCase().includes('admin access required')) {
-          setSecurityAccessError(message);
-          return;
-        }
-        setSecurityAccessError(null);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [isOpen, selectedTab]);
-
   const refreshOverrideSummaryForTab = useCallback(async (tabName: string) => {
     const requestId = ++overrideSummaryRequestIdRef.current;
     try {
@@ -203,13 +225,6 @@ const SettingsModalSession = ({
       }));
     }
   }, []);
-
-  useEffect(() => {
-    if (!isOpen || !selectedTab) {
-      return;
-    }
-    void refreshOverrideSummaryForTab(selectedTab);
-  }, [isOpen, selectedTab, refreshOverrideSummaryForTab]);
 
   const handleBack = useCallback(() => {
     setShowMobileDetail(false);
@@ -329,6 +344,15 @@ const SettingsModalSession = ({
 
   const currentTab = tabs.find((t) => t.name === selectedTab);
   const currentTabDisplayName = currentTab?.displayName || 'Settings';
+  const selectedTabSyncKey = isOpen && selectedTab ? selectedTab : null;
+  const tabSync = selectedTabSyncKey ? (
+    <SettingsModalTabSync
+      key={selectedTabSyncKey}
+      selectedTab={selectedTabSyncKey}
+      refreshOverrideSummaryForTab={refreshOverrideSummaryForTab}
+      setSecurityAccessError={setSecurityAccessError}
+    />
+  ) : null;
   const selectedAuthMethod = values.security?.AUTH_METHOD;
   const usersAuthMode = typeof selectedAuthMethod === 'string' ? selectedAuthMethod : authMode;
   const currentTabContent = currentTab ? (
@@ -361,6 +385,7 @@ const SettingsModalSession = ({
   if (isLoading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center">
+        {tabSync}
         <button
           type="button"
           className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
@@ -400,6 +425,7 @@ const SettingsModalSession = ({
   if (error) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center">
+        {tabSync}
         <button
           type="button"
           className="absolute inset-0 bg-black/50 backdrop-blur-[2px]"
@@ -445,38 +471,42 @@ const SettingsModalSession = ({
 
   if (isMobile) {
     return (
-      <div
-        className={`fixed inset-0 z-50 flex flex-col ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
-        style={{ background: 'var(--bg)' }}
-      >
-        {!showMobileDetail ? (
-          <>
-            <SettingsHeader title="Settings" onClose={handleClose} />
-            <SettingsSidebar
-              tabs={tabs}
-              groups={groups}
-              selectedTab={selectedTab}
-              onSelectTab={handleSelectTab}
-              mode="list"
-            />
-          </>
-        ) : (
-          <>
-            <SettingsHeader
-              title={currentTabDisplayName}
-              showBack
-              onBack={handleBack}
-              onClose={handleClose}
-            />
-            {currentTabContent}
-          </>
-        )}
-      </div>
+      <>
+        {tabSync}
+        <div
+          className={`fixed inset-0 z-50 flex flex-col ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
+          style={{ background: 'var(--bg)' }}
+        >
+          {!showMobileDetail ? (
+            <>
+              <SettingsHeader title="Settings" onClose={handleClose} />
+              <SettingsSidebar
+                tabs={tabs}
+                groups={groups}
+                selectedTab={selectedTab}
+                onSelectTab={handleSelectTab}
+                mode="list"
+              />
+            </>
+          ) : (
+            <>
+              <SettingsHeader
+                title={currentTabDisplayName}
+                showBack
+                onBack={handleBack}
+                onClose={handleClose}
+              />
+              {currentTabContent}
+            </>
+          )}
+        </div>
+      </>
     );
   }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+      {tabSync}
       <button
         type="button"
         className={`absolute inset-0 bg-black/50 backdrop-blur-[2px] transition-opacity duration-150 ${isClosing ? 'opacity-0' : 'opacity-100'}`}

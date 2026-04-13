@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
 
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { useEscapeKey } from '../hooks/useEscapeKey';
+import { useMountEffect } from '../hooks/useMountEffect';
 import type { OnboardingStep } from '../services/api';
 import {
   getOnboarding,
@@ -167,18 +168,55 @@ export const OnboardingModal = ({
   onComplete,
   onShowToast,
 }: OnboardingModalProps) => {
+  const [isClosing, setIsClosing] = useState(false);
+  const [sessionVersion, setSessionVersion] = useState(0);
+
+  const handleClose = useCallback(() => {
+    setIsClosing(true);
+    setTimeout(() => {
+      onClose();
+      setIsClosing(false);
+      setSessionVersion((current) => current + 1);
+    }, 150);
+  }, [onClose]);
+
+  useBodyScrollLock(isOpen);
+  useEscapeKey(isOpen, handleClose);
+
+  if (!isOpen && !isClosing) return null;
+
+  return (
+    <OnboardingModalSession
+      key={sessionVersion}
+      isClosing={isClosing}
+      handleClose={handleClose}
+      onComplete={onComplete}
+      onShowToast={onShowToast}
+    />
+  );
+};
+
+interface OnboardingModalSessionProps {
+  isClosing: boolean;
+  handleClose: () => void;
+  onComplete: () => void;
+  onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+}
+
+const OnboardingModalSession = ({
+  isClosing,
+  handleClose,
+  onComplete,
+  onShowToast,
+}: OnboardingModalSessionProps) => {
   const [steps, setSteps] = useState<OnboardingStep[]>([]);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch onboarding config on mount
-  useEffect(() => {
-    if (!isOpen) return;
-
+  useMountEffect(() => {
     const fetchOnboarding = async () => {
       try {
         setIsLoading(true);
@@ -195,7 +233,7 @@ export const OnboardingModal = ({
     };
 
     void fetchOnboarding();
-  }, [isOpen]);
+  });
 
   // Get visible steps based on current values
   const visibleSteps = useMemo(() => {
@@ -229,18 +267,6 @@ export const OnboardingModal = ({
       setCurrentStepIndex(currentStepIndex - 1);
     }
   }, [currentStepIndex]);
-
-  // Handle close with animation
-  const handleClose = useCallback(() => {
-    setIsClosing(true);
-    setTimeout(() => {
-      setIsClosing(false);
-      onClose();
-    }, 150);
-  }, [onClose]);
-
-  useBodyScrollLock(isOpen);
-  useEscapeKey(isOpen, handleClose);
 
   // Handle skip
   const handleSkip = useCallback(async () => {
@@ -296,8 +322,6 @@ export const OnboardingModal = ({
     },
     [currentStep, values],
   );
-
-  if (!isOpen && !isClosing) return null;
 
   // Loading state
   if (isLoading) {

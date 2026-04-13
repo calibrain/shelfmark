@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { useMountEffect } from '../../hooks/useMountEffect';
 import type { AdminUser, DeliveryPreferencesResponse } from '../../services/api';
 import {
   getSelfUserEditContext,
@@ -60,6 +61,50 @@ export const SelfSettingsModal = ({
   onSettingsSaved,
 }: SelfSettingsModalProps) => {
   const [isClosing, setIsClosing] = useState(false);
+  const [sessionVersion, setSessionVersion] = useState(0);
+
+  const handleRequestClose = useCallback(() => {
+    setIsClosing(true);
+    setTimeout(() => {
+      onClose();
+      setIsClosing(false);
+      setSessionVersion((current) => current + 1);
+    }, 150);
+  }, [onClose]);
+
+  useBodyScrollLock(isOpen);
+
+  if (!isOpen && !isClosing) {
+    return null;
+  }
+
+  return (
+    <SelfSettingsModalSession
+      key={sessionVersion}
+      isOpen={isOpen}
+      isClosing={isClosing}
+      onRequestClose={handleRequestClose}
+      onShowToast={onShowToast}
+      onSettingsSaved={onSettingsSaved}
+    />
+  );
+};
+
+interface SelfSettingsModalSessionProps {
+  isOpen: boolean;
+  isClosing: boolean;
+  onRequestClose: () => void;
+  onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+  onSettingsSaved?: () => void;
+}
+
+const SelfSettingsModalSession = ({
+  isOpen,
+  isClosing,
+  onRequestClose,
+  onShowToast,
+  onSettingsSaved,
+}: SelfSettingsModalSessionProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -120,26 +165,17 @@ export const SelfSettingsModal = ({
     }
   }, [applyUserOverridesContext]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    setIsClosing(false);
+  useMountEffect(() => {
     void loadEditContext();
-  }, [isOpen, loadEditContext]);
+  });
 
   const handleClose = useCallback(() => {
     if (isSaving) {
       return;
     }
-    setIsClosing(true);
-    setTimeout(() => {
-      onClose();
-      setIsClosing(false);
-    }, 150);
-  }, [isSaving, onClose]);
+    onRequestClose();
+  }, [isSaving, onRequestClose]);
 
-  useBodyScrollLock(isOpen);
   useEscapeKey(isOpen, handleClose);
 
   const hasProfileChanges = Boolean(
