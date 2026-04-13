@@ -174,24 +174,7 @@ class TestMetadataSearch:
         if not providers:
             pytest.skip("No providers available")
 
-<<<<<<< HEAD
-        # Response shape: {"providers": [...], "configured_provider": ...}
-        # or a plain list of provider dicts
-        if isinstance(providers_data, dict):
-            providers_list = providers_data.get("providers") or []
-        else:
-            providers_list = providers_data
-
-        if not providers_list:
-            pytest.skip("No providers available")
-
-        provider_name = providers_list[0].get("name") if providers_list else None
-
-        if not provider_name:
-            pytest.skip("Could not determine provider name")
-=======
         provider_name = providers[0]["name"]
->>>>>>> upstream/main
 
         resp = protected_api_client.get(
             "/api/metadata/search",
