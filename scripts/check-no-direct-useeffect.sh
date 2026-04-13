@@ -9,11 +9,7 @@ allowed_files=(
   "src/hooks/useBodyScrollLock.ts"
   "src/hooks/useEscapeKey.ts"
   "src/hooks/useDismiss.ts"
-  "src/hooks/useMediaQuery.ts"
-  "src/hooks/app/useActiveMetadataConfigLoader.ts"
   "src/hooks/app/useStatusChangeNotifications.ts"
-  "src/hooks/app/useUrlSearchBootstrap.ts"
-  "src/hooks/searchBar/**"
   "src/hooks/useRealtimeStatus.ts"
   "src/hooks/useActivity.ts"
 )

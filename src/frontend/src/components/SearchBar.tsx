@@ -3,10 +3,12 @@ import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'reac
 
 import { useSearchMode } from '../contexts/SearchModeContext';
 import { useSearchBarAutocomplete } from '../hooks/searchBar/useSearchBarAutocomplete';
-import { useSearchBarDynamicOptions } from '../hooks/searchBar/useSearchBarDynamicOptions';
 import { useSearchBarHoverTimeout } from '../hooks/searchBar/useSearchBarHoverTimeout';
 import { useDismiss } from '../hooks/useDismiss';
+import type { DynamicFieldOption } from '../services/api';
 import type { ContentType, MetadataSearchField, QueryTargetOption, SortOption } from '../types';
+import { SearchBarAutocompleteSession } from './SearchBarAutocompleteSession';
+import { SearchBarDynamicOptionsSession } from './SearchBarDynamicOptionsSession';
 import { Tooltip } from './shared/Tooltip';
 
 interface SearchBarProps {
@@ -43,6 +45,9 @@ interface SearchBarProps {
 export interface SearchBarHandle {
   submit: () => void;
 }
+
+const EMPTY_SORT_OPTIONS: SortOption[] = [];
+const EMPTY_AUTOCOMPLETE_OPTIONS: DynamicFieldOption[] = [];
 
 const BookIcon = () => (
   <svg
@@ -225,13 +230,20 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       activeQueryField?.type === 'DynamicSelectSearchField'
         ? activeQueryField.options_endpoint
         : null;
+    const [dynamicOptionsState, setDynamicOptionsState] = useState<{
+      endpoint: string;
+      options: SortOption[];
+    } | null>(null);
+    const [autocompleteRequestState, setAutocompleteRequestState] = useState<{
+      requestKey: string;
+      options: DynamicFieldOption[];
+      isLoading: boolean;
+    } | null>(null);
     const textSearchField = activeQueryField?.type === 'TextSearchField' ? activeQueryField : null;
     const {
       autocompleteEndpoint,
       autocompleteMinQueryLength,
       textInputValue: autocompleteTextInputValue,
-      autocompleteOptions,
-      isAutocompleteLoading,
       autocompleteEmptyMessage,
       setAutocompleteDraftValue,
       setAutocompleteSelection,
@@ -240,13 +252,32 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       field: textSearchField,
       value,
       valueLabel,
-      isOpen: isAutocompleteOpen,
     });
-    const { dynamicOptions, isDynamicLoading } = useSearchBarDynamicOptions(dynamicEndpoint);
+    const dynamicOptions =
+      dynamicEndpoint && dynamicOptionsState?.endpoint === dynamicEndpoint
+        ? dynamicOptionsState.options
+        : EMPTY_SORT_OPTIONS;
+    const isDynamicLoading =
+      dynamicEndpoint !== null && dynamicOptionsState?.endpoint !== dynamicEndpoint;
     let textInputValue = autocompleteTextInputValue;
     if (!autocompleteEndpoint) {
       textInputValue = typeof value === 'string' ? value : String(value ?? '');
     }
+    const normalizedAutocompleteQuery = textInputValue.trim();
+    const autocompleteRequestKey =
+      autocompleteEndpoint &&
+      isAutocompleteOpen &&
+      normalizedAutocompleteQuery.length >= autocompleteMinQueryLength
+        ? `${autocompleteEndpoint}::${normalizedAutocompleteQuery.toLowerCase()}`
+        : null;
+    const autocompleteOptions =
+      autocompleteRequestKey && autocompleteRequestState?.requestKey === autocompleteRequestKey
+        ? autocompleteRequestState.options
+        : EMPTY_AUTOCOMPLETE_OPTIONS;
+    const isAutocompleteLoading =
+      autocompleteRequestKey !== null &&
+      (autocompleteRequestState?.requestKey !== autocompleteRequestKey ||
+        autocompleteRequestState.isLoading);
 
     // Resolve options for any select-type field
     const selectOptions: SortOption[] = useMemo(() => {
@@ -510,91 +541,282 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       selectorIcon = <BookIcon />;
     }
 
-    return (
-      <div
-        className={wrapperClasses}
-        style={{
-          background: disabled ? 'var(--bg)' : 'var(--bg-soft)',
-          borderColor: 'var(--border-muted)',
+    const dynamicOptionsSession = dynamicEndpoint ? (
+      <SearchBarDynamicOptionsSession
+        key={dynamicEndpoint}
+        dynamicEndpoint={dynamicEndpoint}
+        onResolved={(options) => {
+          setDynamicOptionsState({
+            endpoint: dynamicEndpoint,
+            options,
+          });
         }}
-      >
-        {showQueryTargetSelector && (
-          <div
-            className="relative flex shrink-0 self-stretch"
-            ref={selectorRef}
-            onPointerEnter={(e) => {
-              if (e.pointerType !== 'mouse') return;
-              clearHoverTimeout();
-              setIsSelectorOpen(true);
-              setIsSelectOpen(false);
-              setIsAutocompleteOpen(false);
-            }}
-            onPointerLeave={(e) => {
-              if (e.pointerType !== 'mouse') return;
-              clearHoverTimeout();
-              selectorHoverTimeout.current = setTimeout(() => {
-                setIsSelectorOpen(false);
-                selectorHoverTimeout.current = null;
-              }, 150);
-            }}
-          >
-            <button
-              type="button"
-              onClick={() => {
-                setIsSelectorOpen((prev) => !prev);
+      />
+    ) : null;
+    const autocompleteSession =
+      autocompleteEndpoint && autocompleteRequestKey ? (
+        <SearchBarAutocompleteSession
+          key={autocompleteRequestKey}
+          autocompleteEndpoint={autocompleteEndpoint}
+          query={textInputValue}
+          minQueryLength={autocompleteMinQueryLength}
+          onLoading={(requestKey) => {
+            setAutocompleteRequestState({
+              requestKey,
+              options: EMPTY_AUTOCOMPLETE_OPTIONS,
+              isLoading: true,
+            });
+          }}
+          onResolved={(requestKey, options) => {
+            setAutocompleteRequestState({
+              requestKey,
+              options,
+              isLoading: false,
+            });
+          }}
+        />
+      ) : null;
+
+    return (
+      <>
+        {autocompleteSession}
+        {dynamicOptionsSession}
+        <div
+          className={wrapperClasses}
+          style={{
+            background: disabled ? 'var(--bg)' : 'var(--bg-soft)',
+            borderColor: 'var(--border-muted)',
+          }}
+        >
+          {showQueryTargetSelector && (
+            <div
+              className="relative flex shrink-0 self-stretch"
+              ref={selectorRef}
+              onPointerEnter={(e) => {
+                if (e.pointerType !== 'mouse') return;
+                clearHoverTimeout();
+                setIsSelectorOpen(true);
                 setIsSelectOpen(false);
                 setIsAutocompleteOpen(false);
               }}
-              className="hover-action flex items-center gap-1.5 rounded-l-full pr-2 pl-5 transition-colors"
-              style={{ color: 'var(--text)' }}
-              aria-label={`Searching ${selectorContentTypeLabel} by ${activeTarget?.label ?? 'general'}. Click to change.`}
-              aria-expanded={isSelectorOpen}
-              aria-haspopup="dialog"
+              onPointerLeave={(e) => {
+                if (e.pointerType !== 'mouse') return;
+                clearHoverTimeout();
+                selectorHoverTimeout.current = setTimeout(() => {
+                  setIsSelectorOpen(false);
+                  selectorHoverTimeout.current = null;
+                }, 150);
+              }}
             >
-              {selectorIcon}
-              {showActiveTargetLabel && (
-                <span className="hidden max-w-24 truncate text-sm font-medium sm:inline">
-                  {activeTarget?.label}
-                </span>
-              )}
-              <svg
-                className={`h-3 w-3 opacity-50 transition-transform duration-200 ${isSelectorOpen ? 'rotate-180' : ''}`}
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                strokeWidth="2.5"
-                aria-hidden="true"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
-              </svg>
-            </button>
-
-            <div
-              className="absolute top-1/2 right-0 h-6 w-px -translate-y-1/2"
-              style={{ background: 'var(--border-muted)' }}
-            />
-
-            {isSelectorOpen && (
-              <div
-                className="animate-fade-in-down absolute top-full left-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border shadow-2xl"
-                style={{
-                  background: 'var(--bg)',
-                  borderColor: 'var(--border-muted)',
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSelectorOpen((prev) => !prev);
+                  setIsSelectOpen(false);
+                  setIsAutocompleteOpen(false);
                 }}
-                role="dialog"
-                aria-label="Search context"
+                className="hover-action flex items-center gap-1.5 rounded-l-full pr-2 pl-5 transition-colors"
+                style={{ color: 'var(--text)' }}
+                aria-label={`Searching ${selectorContentTypeLabel} by ${activeTarget?.label ?? 'general'}. Click to change.`}
+                aria-expanded={isSelectorOpen}
+                aria-haspopup="dialog"
               >
-                <div className="max-h-[min(24rem,calc(100vh-8rem))] overflow-y-auto p-3">
-                  {showContentTypeSelector && (
-                    <div
-                      className={`border-b ${onCombinedModeChange ? 'pb-0' : 'pb-3'}`}
-                      style={{ borderColor: 'var(--border-muted)' }}
-                    >
-                      <div className="flex items-center justify-between px-1 pb-2">
+                {selectorIcon}
+                {showActiveTargetLabel && (
+                  <span className="hidden max-w-24 truncate text-sm font-medium sm:inline">
+                    {activeTarget?.label}
+                  </span>
+                )}
+                <svg
+                  className={`h-3 w-3 opacity-50 transition-transform duration-200 ${isSelectorOpen ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  strokeWidth="2.5"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m19.5 8.25-7.5 7.5-7.5-7.5"
+                  />
+                </svg>
+              </button>
+
+              <div
+                className="absolute top-1/2 right-0 h-6 w-px -translate-y-1/2"
+                style={{ background: 'var(--border-muted)' }}
+              />
+
+              {isSelectorOpen && (
+                <div
+                  className="animate-fade-in-down absolute top-full left-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border shadow-2xl"
+                  style={{
+                    background: 'var(--bg)',
+                    borderColor: 'var(--border-muted)',
+                  }}
+                  role="dialog"
+                  aria-label="Search context"
+                >
+                  <div className="max-h-[min(24rem,calc(100vh-8rem))] overflow-y-auto p-3">
+                    {showContentTypeSelector && (
+                      <div
+                        className={`border-b ${onCombinedModeChange ? 'pb-0' : 'pb-3'}`}
+                        style={{ borderColor: 'var(--border-muted)' }}
+                      >
+                        <div className="flex items-center justify-between px-1 pb-2">
+                          <span className="text-xs font-medium tracking-wide uppercase opacity-60">
+                            Content
+                          </span>
+                          {onAdvancedToggle && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setIsSelectorOpen(false);
+                                onAdvancedToggle();
+                              }}
+                              className={`-mt-1.5 -mr-1 -mb-0.5 flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-medium transition-colors ${
+                                isAdvancedActive ? 'bg-emerald-600 text-white' : 'hover-surface'
+                              }`}
+                              style={
+                                isAdvancedActive
+                                  ? { borderColor: 'rgb(16 185 129 / 0.7)' }
+                                  : { color: 'var(--text-muted)' }
+                              }
+                            >
+                              <svg
+                                className="h-3.5 w-3.5"
+                                xmlns="http://www.w3.org/2000/svg"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                strokeWidth="1.5"
+                                stroke="currentColor"
+                                aria-hidden="true"
+                              >
+                                <path
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                  d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"
+                                />
+                              </svg>
+                              Options
+                            </button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => handleContentTypeSelect('ebook')}
+                            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                              contentType === 'ebook' || combinedMode
+                                ? 'bg-emerald-600 text-white'
+                                : 'hover-surface'
+                            }`}
+                            style={
+                              contentType === 'ebook' || combinedMode
+                                ? { borderColor: 'rgb(16 185 129 / 0.7)' }
+                                : { color: 'var(--text)', borderColor: 'var(--border-muted)' }
+                            }
+                          >
+                            {contentType === 'ebook' || combinedMode ? <CheckIcon /> : <BookIcon />}
+                            <span>Books</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleContentTypeSelect('audiobook')}
+                            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                              contentType === 'audiobook' || combinedMode
+                                ? 'bg-emerald-600 text-white'
+                                : 'hover-surface'
+                            }`}
+                            style={
+                              contentType === 'audiobook' || combinedMode
+                                ? { borderColor: 'rgb(16 185 129 / 0.7)' }
+                                : { color: 'var(--text)', borderColor: 'var(--border-muted)' }
+                            }
+                          >
+                            {contentType === 'audiobook' || combinedMode ? (
+                              <CheckIcon />
+                            ) : (
+                              <AudiobookIcon />
+                            )}
+                            <span>Audiobooks</span>
+                          </button>
+                        </div>
+                        {onCombinedModeChange &&
+                          (() => {
+                            const lineColor = combinedMode
+                              ? 'bg-emerald-500'
+                              : 'bg-(--border-muted) group-hover:bg-zinc-400 dark:group-hover:bg-zinc-500';
+                            return (
+                              <Tooltip
+                                content="Combined search"
+                                position="bottom"
+                                triggerClassName="w-full"
+                              >
+                                <button
+                                  type="button"
+                                  onClick={handleCombinedModeSelect}
+                                  className="group w-full"
+                                  aria-label="Combined search"
+                                >
+                                  {/* Bracket connector: vertical drops + horizontal bar with icon */}
+                                  <div className="relative flex h-7 items-end">
+                                    {/* Left vertical */}
+                                    <div
+                                      className={`absolute top-1.5 bottom-[11px] left-[25%] w-px transition-colors ${lineColor}`}
+                                    />
+                                    {/* Right vertical */}
+                                    <div
+                                      className={`absolute top-1.5 right-[25%] bottom-[11px] w-px transition-colors ${lineColor}`}
+                                    />
+                                    {/* Horizontal bar – left segment */}
+                                    <div
+                                      className={`absolute bottom-[11px] left-[25%] h-px transition-colors ${lineColor}`}
+                                      style={{ width: 'calc(25% - 16px)' }}
+                                    />
+                                    {/* Horizontal bar – right segment */}
+                                    <div
+                                      className={`absolute right-[25%] bottom-[11px] h-px transition-colors ${lineColor}`}
+                                      style={{ width: 'calc(25% - 16px)' }}
+                                    />
+                                    {/* Chain icon centered at bottom */}
+                                    <div
+                                      className={`relative z-10 mx-auto rounded-full p-1 transition-colors ${
+                                        combinedMode
+                                          ? 'bg-emerald-600 text-white'
+                                          : 'bg-(--bg) text-zinc-400 group-hover:bg-zinc-200 group-hover:text-zinc-600 dark:text-zinc-500 dark:group-hover:bg-zinc-700 dark:group-hover:text-zinc-300'
+                                      }`}
+                                    >
+                                      <svg
+                                        className="h-3.5 w-3.5"
+                                        fill="none"
+                                        viewBox="0 0 24 24"
+                                        strokeWidth="2"
+                                        stroke="currentColor"
+                                        aria-hidden="true"
+                                      >
+                                        <path
+                                          strokeLinecap="round"
+                                          strokeLinejoin="round"
+                                          d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"
+                                        />
+                                      </svg>
+                                    </div>
+                                  </div>
+                                </button>
+                              </Tooltip>
+                            );
+                          })()}
+                      </div>
+                    )}
+
+                    <div className={showContentTypeSelector ? 'pt-2' : ''}>
+                      <div className="flex items-center justify-between px-1 pb-1.5">
                         <span className="text-xs font-medium tracking-wide uppercase opacity-60">
-                          Content
+                          Search By
                         </span>
-                        {onAdvancedToggle && (
+                        {!showContentTypeSelector && onAdvancedToggle && (
                           <button
                             type="button"
                             onClick={() => {
@@ -602,11 +824,18 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                               onAdvancedToggle();
                             }}
                             className={`-mt-1.5 -mr-1 -mb-0.5 flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-medium transition-colors ${
-                              isAdvancedActive ? 'bg-emerald-600 text-white' : 'hover-surface'
+                              isAdvancedActive
+                                ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white`
+                                : 'hover-surface'
                             }`}
                             style={
                               isAdvancedActive
-                                ? { borderColor: 'rgb(16 185 129 / 0.7)' }
+                                ? {
+                                    borderColor:
+                                      searchMode === 'direct'
+                                        ? 'rgb(3 105 161 / 0.7)'
+                                        : 'rgb(16 185 129 / 0.7)',
+                                  }
                                 : { color: 'var(--text-muted)' }
                             }
                           >
@@ -630,377 +859,223 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                         )}
                       </div>
                       <div className="grid grid-cols-2 gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleContentTypeSelect('ebook')}
-                          className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                            contentType === 'ebook' || combinedMode
-                              ? 'bg-emerald-600 text-white'
-                              : 'hover-surface'
-                          }`}
-                          style={
-                            contentType === 'ebook' || combinedMode
-                              ? { borderColor: 'rgb(16 185 129 / 0.7)' }
-                              : { color: 'var(--text)', borderColor: 'var(--border-muted)' }
-                          }
-                        >
-                          {contentType === 'ebook' || combinedMode ? <CheckIcon /> : <BookIcon />}
-                          <span>Books</span>
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleContentTypeSelect('audiobook')}
-                          className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                            contentType === 'audiobook' || combinedMode
-                              ? 'bg-emerald-600 text-white'
-                              : 'hover-surface'
-                          }`}
-                          style={
-                            contentType === 'audiobook' || combinedMode
-                              ? { borderColor: 'rgb(16 185 129 / 0.7)' }
-                              : { color: 'var(--text)', borderColor: 'var(--border-muted)' }
-                          }
-                        >
-                          {contentType === 'audiobook' || combinedMode ? (
-                            <CheckIcon />
-                          ) : (
-                            <AudiobookIcon />
-                          )}
-                          <span>Audiobooks</span>
-                        </button>
-                      </div>
-                      {onCombinedModeChange &&
-                        (() => {
-                          const lineColor = combinedMode
-                            ? 'bg-emerald-500'
-                            : 'bg-(--border-muted) group-hover:bg-zinc-400 dark:group-hover:bg-zinc-500';
+                        {queryTargets.map((target) => {
+                          const isActive = target.key === activeTarget?.key;
                           return (
-                            <Tooltip
-                              content="Combined search"
-                              position="bottom"
-                              triggerClassName="w-full"
+                            <button
+                              type="button"
+                              key={target.key}
+                              onClick={() => handleQueryTargetSelect(target.key)}
+                              title={target.description || target.label}
+                              aria-label={target.label}
+                              className={`flex min-w-0 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                                isActive
+                                  ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white`
+                                  : 'hover-surface'
+                              }`}
+                              style={
+                                isActive
+                                  ? {
+                                      borderColor:
+                                        searchMode === 'direct'
+                                          ? 'rgb(3 105 161 / 0.7)'
+                                          : 'rgb(16 185 129 / 0.7)',
+                                    }
+                                  : { color: 'var(--text)', borderColor: 'var(--border-muted)' }
+                              }
                             >
-                              <button
-                                type="button"
-                                onClick={handleCombinedModeSelect}
-                                className="group w-full"
-                                aria-label="Combined search"
-                              >
-                                {/* Bracket connector: vertical drops + horizontal bar with icon */}
-                                <div className="relative flex h-7 items-end">
-                                  {/* Left vertical */}
-                                  <div
-                                    className={`absolute top-1.5 bottom-[11px] left-[25%] w-px transition-colors ${lineColor}`}
-                                  />
-                                  {/* Right vertical */}
-                                  <div
-                                    className={`absolute top-1.5 right-[25%] bottom-[11px] w-px transition-colors ${lineColor}`}
-                                  />
-                                  {/* Horizontal bar – left segment */}
-                                  <div
-                                    className={`absolute bottom-[11px] left-[25%] h-px transition-colors ${lineColor}`}
-                                    style={{ width: 'calc(25% - 16px)' }}
-                                  />
-                                  {/* Horizontal bar – right segment */}
-                                  <div
-                                    className={`absolute right-[25%] bottom-[11px] h-px transition-colors ${lineColor}`}
-                                    style={{ width: 'calc(25% - 16px)' }}
-                                  />
-                                  {/* Chain icon centered at bottom */}
-                                  <div
-                                    className={`relative z-10 mx-auto rounded-full p-1 transition-colors ${
-                                      combinedMode
-                                        ? 'bg-emerald-600 text-white'
-                                        : 'bg-(--bg) text-zinc-400 group-hover:bg-zinc-200 group-hover:text-zinc-600 dark:text-zinc-500 dark:group-hover:bg-zinc-700 dark:group-hover:text-zinc-300'
-                                    }`}
-                                  >
-                                    <svg
-                                      className="h-3.5 w-3.5"
-                                      fill="none"
-                                      viewBox="0 0 24 24"
-                                      strokeWidth="2"
-                                      stroke="currentColor"
-                                      aria-hidden="true"
-                                    >
-                                      <path
-                                        strokeLinecap="round"
-                                        strokeLinejoin="round"
-                                        d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"
-                                      />
-                                    </svg>
-                                  </div>
-                                </div>
-                              </button>
-                            </Tooltip>
+                              {isActive && <CheckIcon />}
+                              <span className="block truncate">{target.label}</span>
+                            </button>
                           );
-                        })()}
+                        })}
+                      </div>
                     </div>
-                  )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
 
-                  <div className={showContentTypeSelector ? 'pt-2' : ''}>
-                    <div className="flex items-center justify-between px-1 pb-1.5">
-                      <span className="text-xs font-medium tracking-wide uppercase opacity-60">
-                        Search By
-                      </span>
-                      {!showContentTypeSelector && onAdvancedToggle && (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsSelectorOpen(false);
-                            onAdvancedToggle();
-                          }}
-                          className={`-mt-1.5 -mr-1 -mb-0.5 flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-medium transition-colors ${
-                            isAdvancedActive
-                              ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white`
-                              : 'hover-surface'
-                          }`}
-                          style={
-                            isAdvancedActive
-                              ? {
-                                  borderColor:
-                                    searchMode === 'direct'
-                                      ? 'rgb(3 105 161 / 0.7)'
-                                      : 'rgb(16 185 129 / 0.7)',
-                                }
-                              : { color: 'var(--text-muted)' }
-                          }
-                        >
+          <div className="min-w-0 flex-1">{renderActiveInput()}</div>
+
+          <div className={controlsClasses}>
+            {hasSearchQuery && (
+              <button
+                type="button"
+                onClick={handleClearSearch}
+                className="hover-action flex items-center justify-center rounded-full p-2 transition-colors"
+                aria-label={clearButtonLabel}
+                title={clearButtonTitle}
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth="1.5"
+                  stroke="currentColor"
+                  className="h-5 w-5"
+                  style={{ color: 'var(--text)' }}
+                  aria-hidden="true"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            )}
+            <button
+              ref={buttonRef}
+              type="button"
+              onClick={onSubmit}
+              className={`search-bar-button my-2 flex items-center justify-center rounded-full p-2 text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                searchMode === 'universal'
+                  ? 'bg-emerald-600 hover:bg-emerald-700'
+                  : 'bg-sky-700 hover:bg-sky-800'
+              }`}
+              aria-label={searchButtonLabel}
+              title={searchButtonTitle}
+              disabled={isLoading}
+            >
+              {!isLoading && (
+                <svg
+                  className="search-bar-icon h-5 w-5"
+                  xmlns="http://www.w3.org/2000/svg"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  strokeWidth="2"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
+                  />
+                </svg>
+              )}
+              {isLoading && (
+                <div className="spinner search-bar-spinner h-5 w-5 border-2 border-white border-t-transparent" />
+              )}
+            </button>
+          </div>
+
+          {selectDropdownOpen && (
+            <div
+              ref={selectPanelRef}
+              className="animate-fade-in-down absolute top-full right-0 left-0 z-50 mt-2 overflow-hidden rounded-2xl border shadow-xl"
+              style={{ background: 'var(--bg)', borderColor: 'var(--border-muted)' }}
+              role="listbox"
+              aria-label={effectiveInputAriaLabel}
+            >
+              <div className="max-h-64 overflow-y-auto py-1.5">
+                {selectOptions.map((option, index) => {
+                  const currentValue = typeof value === 'string' ? value : String(value ?? '');
+                  const isSelected = option.value === currentValue;
+                  const showGroupHeader =
+                    option.group != null &&
+                    (index === 0 || option.group !== selectOptions[index - 1]?.group);
+                  return (
+                    <div key={option.value}>
+                      {showGroupHeader && (
+                        <div className="px-5 pt-2 pb-1 text-xs font-medium tracking-wide uppercase opacity-60 select-none">
+                          {option.group}
+                        </div>
+                      )}
+                      <button
+                        type="button"
+                        role="option"
+                        aria-selected={isSelected}
+                        onClick={() => {
+                          onChange(option.value, option.label);
+                          setIsSelectOpen(false);
+                          setTimeout(() => onSubmitRef.current(), 0);
+                        }}
+                        className={`flex w-full items-center gap-3 px-5 py-2.5 text-left text-sm transition-colors ${
+                          isSelected ? '' : 'hover-surface'
+                        }`}
+                        style={{ color: 'var(--text)' }}
+                      >
+                        <span className={`flex-1 truncate ${isSelected ? 'font-medium' : ''}`}>
+                          {option.label}
+                        </span>
+                        {isSelected && (
                           <svg
-                            className="h-3.5 w-3.5"
-                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4 shrink-0 text-emerald-500"
                             fill="none"
                             viewBox="0 0 24 24"
-                            strokeWidth="1.5"
+                            strokeWidth="2.5"
                             stroke="currentColor"
                             aria-hidden="true"
                           >
                             <path
                               strokeLinecap="round"
                               strokeLinejoin="round"
-                              d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"
+                              d="m4.5 12.75 6 6 9-13.5"
                             />
                           </svg>
-                          Options
-                        </button>
-                      )}
+                        )}
+                      </button>
                     </div>
-                    <div className="grid grid-cols-2 gap-2">
-                      {queryTargets.map((target) => {
-                        const isActive = target.key === activeTarget?.key;
-                        return (
-                          <button
-                            type="button"
-                            key={target.key}
-                            onClick={() => handleQueryTargetSelect(target.key)}
-                            title={target.description || target.label}
-                            aria-label={target.label}
-                            className={`flex min-w-0 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                              isActive
-                                ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white`
-                                : 'hover-surface'
-                            }`}
-                            style={
-                              isActive
-                                ? {
-                                    borderColor:
-                                      searchMode === 'direct'
-                                        ? 'rgb(3 105 161 / 0.7)'
-                                        : 'rgb(16 185 129 / 0.7)',
-                                  }
-                                : { color: 'var(--text)', borderColor: 'var(--border-muted)' }
-                            }
-                          >
-                            {isActive && <CheckIcon />}
-                            <span className="block truncate">{target.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        <div className="min-w-0 flex-1">{renderActiveInput()}</div>
-
-        <div className={controlsClasses}>
-          {hasSearchQuery && (
-            <button
-              type="button"
-              onClick={handleClearSearch}
-              className="hover-action flex items-center justify-center rounded-full p-2 transition-colors"
-              aria-label={clearButtonLabel}
-              title={clearButtonTitle}
-            >
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth="1.5"
-                stroke="currentColor"
-                className="h-5 w-5"
-                style={{ color: 'var(--text)' }}
-                aria-hidden="true"
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-              </svg>
-            </button>
-          )}
-          <button
-            ref={buttonRef}
-            type="button"
-            onClick={onSubmit}
-            className={`search-bar-button my-2 flex items-center justify-center rounded-full p-2 text-white transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-              searchMode === 'universal'
-                ? 'bg-emerald-600 hover:bg-emerald-700'
-                : 'bg-sky-700 hover:bg-sky-800'
-            }`}
-            aria-label={searchButtonLabel}
-            title={searchButtonTitle}
-            disabled={isLoading}
-          >
-            {!isLoading && (
-              <svg
-                className="search-bar-icon h-5 w-5"
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                strokeWidth="2"
-                stroke="currentColor"
-                aria-hidden="true"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="m21 21-5.197-5.197m0 0A7.5 7.5 0 1 0 5.196 5.196a7.5 7.5 0 0 0 10.607 10.607Z"
-                />
-              </svg>
-            )}
-            {isLoading && (
-              <div className="spinner search-bar-spinner h-5 w-5 border-2 border-white border-t-transparent" />
-            )}
-          </button>
-        </div>
-
-        {selectDropdownOpen && (
-          <div
-            ref={selectPanelRef}
-            className="animate-fade-in-down absolute top-full right-0 left-0 z-50 mt-2 overflow-hidden rounded-2xl border shadow-xl"
-            style={{ background: 'var(--bg)', borderColor: 'var(--border-muted)' }}
-            role="listbox"
-            aria-label={effectiveInputAriaLabel}
-          >
-            <div className="max-h-64 overflow-y-auto py-1.5">
-              {selectOptions.map((option, index) => {
-                const currentValue = typeof value === 'string' ? value : String(value ?? '');
-                const isSelected = option.value === currentValue;
-                const showGroupHeader =
-                  option.group != null &&
-                  (index === 0 || option.group !== selectOptions[index - 1]?.group);
-                return (
-                  <div key={option.value}>
-                    {showGroupHeader && (
-                      <div className="px-5 pt-2 pb-1 text-xs font-medium tracking-wide uppercase opacity-60 select-none">
-                        {option.group}
-                      </div>
-                    )}
-                    <button
-                      type="button"
-                      role="option"
-                      aria-selected={isSelected}
-                      onClick={() => {
-                        onChange(option.value, option.label);
-                        setIsSelectOpen(false);
-                        setTimeout(() => onSubmitRef.current(), 0);
-                      }}
-                      className={`flex w-full items-center gap-3 px-5 py-2.5 text-left text-sm transition-colors ${
-                        isSelected ? '' : 'hover-surface'
-                      }`}
-                      style={{ color: 'var(--text)' }}
-                    >
-                      <span className={`flex-1 truncate ${isSelected ? 'font-medium' : ''}`}>
-                        {option.label}
-                      </span>
-                      {isSelected && (
-                        <svg
-                          className="h-4 w-4 shrink-0 text-emerald-500"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          strokeWidth="2.5"
-                          stroke="currentColor"
-                          aria-hidden="true"
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="m4.5 12.75 6 6 9-13.5"
-                          />
-                        </svg>
-                      )}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {autocompleteDropdownOpen && (
-          <div
-            ref={autocompletePanelRef}
-            className="animate-fade-in-down absolute top-full right-0 left-0 z-50 mt-2 overflow-hidden rounded-2xl border shadow-xl"
-            style={{ background: 'var(--bg)', borderColor: 'var(--border-muted)' }}
-            role="listbox"
-            aria-label={`${effectiveInputAriaLabel} suggestions`}
-          >
-            <div className="max-h-72 overflow-y-auto py-1.5">
-              {isAutocompleteLoading && (
-                <div className="px-5 py-3 text-sm opacity-70" style={{ color: 'var(--text)' }}>
-                  Searching…
-                </div>
-              )}
-
-              {!isAutocompleteLoading && autocompleteOptions.length === 0 && (
-                <div className="px-5 py-3 text-sm opacity-70" style={{ color: 'var(--text)' }}>
-                  {autocompleteEmptyMessage}
-                </div>
-              )}
-
-              {!isAutocompleteLoading &&
-                autocompleteOptions.map((option) => {
-                  const currentValue = typeof value === 'string' ? value : String(value ?? '');
-                  const isSelected = option.value === currentValue;
-
-                  return (
-                    <button
-                      type="button"
-                      key={option.value}
-                      role="option"
-                      aria-selected={isSelected}
-                      onClick={() => {
-                        setAutocompleteSelection(option.value, option.label);
-                        onChange(option.value, option.label);
-                        setIsAutocompleteOpen(false);
-                        setTimeout(() => onSubmitRef.current(), 0);
-                      }}
-                      className="hover-surface w-full px-5 py-3 text-left text-sm transition-colors"
-                      style={{ color: 'var(--text)' }}
-                    >
-                      <div className="truncate font-medium">{option.label}</div>
-                      {option.description && (
-                        <div className="mt-0.5 truncate text-xs opacity-70">
-                          {option.description}
-                        </div>
-                      )}
-                    </button>
                   );
                 })}
+              </div>
             </div>
-          </div>
-        )}
-      </div>
+          )}
+
+          {autocompleteDropdownOpen && (
+            <div
+              ref={autocompletePanelRef}
+              className="animate-fade-in-down absolute top-full right-0 left-0 z-50 mt-2 overflow-hidden rounded-2xl border shadow-xl"
+              style={{ background: 'var(--bg)', borderColor: 'var(--border-muted)' }}
+              role="listbox"
+              aria-label={`${effectiveInputAriaLabel} suggestions`}
+            >
+              <div className="max-h-72 overflow-y-auto py-1.5">
+                {isAutocompleteLoading && (
+                  <div className="px-5 py-3 text-sm opacity-70" style={{ color: 'var(--text)' }}>
+                    Searching…
+                  </div>
+                )}
+
+                {!isAutocompleteLoading && autocompleteOptions.length === 0 && (
+                  <div className="px-5 py-3 text-sm opacity-70" style={{ color: 'var(--text)' }}>
+                    {autocompleteEmptyMessage}
+                  </div>
+                )}
+
+                {!isAutocompleteLoading &&
+                  autocompleteOptions.map((option) => {
+                    const currentValue = typeof value === 'string' ? value : String(value ?? '');
+                    const isSelected = option.value === currentValue;
+
+                    return (
+                      <button
+                        type="button"
+                        key={option.value}
+                        role="option"
+                        aria-selected={isSelected}
+                        onClick={() => {
+                          setAutocompleteSelection(option.value, option.label);
+                          onChange(option.value, option.label);
+                          setIsAutocompleteOpen(false);
+                          setTimeout(() => onSubmitRef.current(), 0);
+                        }}
+                        className="hover-surface w-full px-5 py-3 text-left text-sm transition-colors"
+                        style={{ color: 'var(--text)' }}
+                      >
+                        <div className="truncate font-medium">{option.label}</div>
+                        {option.description && (
+                          <div className="mt-0.5 truncate text-xs opacity-70">
+                            {option.description}
+                          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
+        </div>
+      </>
     );
   },
 );

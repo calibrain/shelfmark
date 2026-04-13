@@ -1,12 +1,13 @@
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useEffectEvent, useRef, type RefObject } from 'react';
 
 export const useDismiss = (
   isOpen: boolean,
   refs: RefObject<HTMLElement | null>[],
   onClose: () => void,
 ) => {
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+  const handleClose = useEffectEvent(() => {
+    onClose();
+  });
 
   const refsRef = useRef(refs);
   refsRef.current = refs;
@@ -26,12 +27,12 @@ export const useDismiss = (
         return;
       }
 
-      onCloseRef.current();
+      handleClose();
     };
 
     const handleEscape = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        onCloseRef.current();
+        handleClose();
       }
     };
 

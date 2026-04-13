@@ -1,8 +1,9 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useEffectEvent } from 'react';
 
 export function useEscapeKey(enabled: boolean, onEscape: () => void): void {
-  const onEscapeRef = useRef(onEscape);
-  onEscapeRef.current = onEscape;
+  const handleEscape = useEffectEvent(() => {
+    onEscape();
+  });
 
   useEffect(() => {
     if (!enabled) {
@@ -11,7 +12,7 @@ export function useEscapeKey(enabled: boolean, onEscape: () => void): void {
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
-        onEscapeRef.current();
+        handleEscape();
       }
     };
 

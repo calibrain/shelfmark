@@ -1,4 +1,6 @@
-import { useCallback, useEffect, useRef } from 'react';
+import { useCallback, useRef } from 'react';
+
+import { useMountEffect } from '@/hooks/useMountEffect';
 
 export const useSearchBarHoverTimeout = () => {
   const hoverTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -10,11 +12,11 @@ export const useSearchBarHoverTimeout = () => {
     }
   }, []);
 
-  useEffect(() => {
+  useMountEffect(() => {
     return () => {
       clearHoverTimeout();
     };
-  }, [clearHoverTimeout]);
+  });
 
   return {
     hoverTimeoutRef,

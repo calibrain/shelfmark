@@ -8,6 +8,7 @@ import { ConfigSetupBanner } from './components/ConfigSetupBanner';
 import { DetailsModal } from './components/DetailsModal';
 import { Footer } from './components/Footer';
 import { Header } from './components/Header';
+import { MetadataConfigSession } from './components/MetadataConfigSession';
 import { OnBehalfConfirmationModal } from './components/OnBehalfConfirmationModal';
 import { OnboardingModal } from './components/OnboardingModal';
 import { ReleaseModal } from './components/ReleaseModal';
@@ -16,15 +17,14 @@ import { ResultsSection } from './components/ResultsSection';
 import { SearchSection } from './components/SearchSection';
 import { SelfSettingsModal, SettingsModal } from './components/settings';
 import { ToastContainer } from './components/ToastContainer';
+import { UrlSearchBootstrapSession } from './components/UrlSearchBootstrapSession';
 import { SearchModeProvider } from './contexts/SearchModeContext';
 import { useSocket } from './contexts/SocketContext';
 import { DEFAULT_LANGUAGES, DEFAULT_SUPPORTED_FORMATS } from './data/languages';
-import { useActiveMetadataConfigLoader } from './hooks/app/useActiveMetadataConfigLoader';
 import { useBookTargetDeselectSync } from './hooks/app/useBookTargetDeselectSync';
 import { useContentTypePreferences } from './hooks/app/useContentTypePreferences';
 import { useShowOnboardingDebug } from './hooks/app/useShowOnboardingDebug';
 import { useStatusChangeNotifications } from './hooks/app/useStatusChangeNotifications';
-import { useUrlSearchBootstrap } from './hooks/app/useUrlSearchBootstrap';
 import {
   resolveDefaultModeFromPolicy,
   resolveSourceModeFromPolicy,
@@ -680,6 +680,7 @@ function App() {
   // URL-based search: parse URL params for automatic search on page load
   const urlSearchEnabled = isAuthenticated && config !== null;
   const { parsedParams, wasProcessed } = useUrlSearch({ enabled: urlSearchEnabled });
+  const [hasExecutedUrlSearchBootstrap, setHasExecutedUrlSearchBootstrap] = useState(false);
 
   const prevSearchModeRef = useRef<string | undefined>(undefined);
 
@@ -865,12 +866,18 @@ function App() {
         });
   const effectiveMetadataProvider =
     effectiveSearchMode === 'universal' ? defaultMetadataProviderForContentType || null : null;
-  const activeMetadataConfig = useActiveMetadataConfigLoader({
-    isAuthenticated,
-    effectiveSearchMode,
-    effectiveContentType,
-    effectiveMetadataProvider,
-  });
+  const metadataConfigSessionKey =
+    isAuthenticated && effectiveSearchMode === 'universal'
+      ? `${effectiveContentType}:${effectiveMetadataProvider ?? ''}`
+      : null;
+  const [activeMetadataConfigState, setActiveMetadataConfigState] = useState<{
+    sessionKey: string;
+    config: MetadataSearchConfig | null;
+  } | null>(null);
+  const activeMetadataConfig =
+    metadataConfigSessionKey && activeMetadataConfigState?.sessionKey === metadataConfigSessionKey
+      ? activeMetadataConfigState.config
+      : null;
   const resolvedMetadataSortOptions = useMemo(
     () => activeMetadataConfig?.sort_options ?? config?.metadata_sort_options ?? [],
     [activeMetadataConfig?.sort_options, config?.metadata_sort_options],
@@ -914,22 +921,6 @@ function App() {
     },
     [refreshRequestPolicy, handleSearch, config],
   );
-
-  useUrlSearchBootstrap({
-    parsedParams,
-    wasProcessed,
-    config,
-    contentType,
-    advancedFilters,
-    resolvedMetadataDefaultSort,
-    resolvedMetadataSortOptions,
-    setContentType,
-    setSearchInput,
-    setAdvancedFilters,
-    setShowAdvanced,
-    setActiveQueryTarget,
-    runSearchWithPolicyRefresh,
-  });
 
   const handleSettingsSaved = useCallback(() => {
     void loadConfig('settings-saved');
@@ -2747,11 +2738,46 @@ function App() {
       loadConfig={loadConfig}
     />
   ) : null;
+  const urlSearchBootstrap =
+    wasProcessed && parsedParams && config && !hasExecutedUrlSearchBootstrap ? (
+      <UrlSearchBootstrapSession
+        parsedParams={parsedParams}
+        config={config}
+        contentType={contentType}
+        advancedFilters={advancedFilters}
+        resolvedMetadataDefaultSort={resolvedMetadataDefaultSort}
+        resolvedMetadataSortOptions={resolvedMetadataSortOptions}
+        setContentType={setContentType}
+        setSearchInput={setSearchInput}
+        setAdvancedFilters={setAdvancedFilters}
+        setShowAdvanced={setShowAdvanced}
+        setActiveQueryTarget={setActiveQueryTarget}
+        runSearchWithPolicyRefresh={runSearchWithPolicyRefresh}
+        onComplete={() => {
+          setHasExecutedUrlSearchBootstrap(true);
+        }}
+      />
+    ) : null;
+  const metadataConfigSession = metadataConfigSessionKey ? (
+    <MetadataConfigSession
+      key={metadataConfigSessionKey}
+      contentType={effectiveContentType}
+      metadataProvider={effectiveMetadataProvider}
+      onResolved={(nextConfig) => {
+        setActiveMetadataConfigState({
+          sessionKey: metadataConfigSessionKey,
+          config: nextConfig,
+        });
+      }}
+    />
+  ) : null;
 
   if (!authChecked) {
     return (
       <>
         {authenticatedBootstrap}
+        {metadataConfigSession}
+        {urlSearchBootstrap}
         <div aria-live="polite" style={visuallyHiddenStyle}>
           Checking authentication…
         </div>
@@ -2764,6 +2790,8 @@ function App() {
     return (
       <>
         {authenticatedBootstrap}
+        {metadataConfigSession}
+        {urlSearchBootstrap}
         <div aria-live="polite" style={visuallyHiddenStyle}>
           Loading configuration…
         </div>
@@ -2780,6 +2808,8 @@ function App() {
   return (
     <>
       {authenticatedBootstrap}
+      {metadataConfigSession}
+      {urlSearchBootstrap}
       <Routes>
         <Route
           path="/login"
