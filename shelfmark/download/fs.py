@@ -44,7 +44,11 @@ def _get_io_threadpool() -> ThreadPool:
     global _IO_THREADPOOL
     if _IO_THREADPOOL is None:
         pool_size = max(2, min(8, os.cpu_count() or 2))
-        _IO_THREADPOOL = _GeventThreadPool(pool_size)
+        threadpool_cls = _GeventThreadPool
+        if threadpool_cls is None:
+            msg = "gevent threadpool is unavailable"
+            raise RuntimeError(msg)
+        _IO_THREADPOOL = threadpool_cls(pool_size)
     return _IO_THREADPOOL
 
 
@@ -53,7 +57,14 @@ def _call_and_capture[T](
 ) -> tuple[bool, T | Exception]:
     try:
         return True, func(*args, **kwargs)
-    except Exception as exc:
+    except (
+        AttributeError,
+        OSError,
+        RuntimeError,
+        TypeError,
+        ValueError,
+        subprocess.SubprocessError,
+    ) as exc:
         return False, exc
 
 
@@ -118,10 +129,11 @@ def _verify_transfer_size(
 
     actual_size = run_blocking_io(dest.stat).st_size
     if actual_size != expected_size:
-        raise OSError(
+        msg = (
             f"File {action} incomplete, data loss may have occurred. "
             f"'{dest}' was {actual_size} bytes instead of expected {expected_size}."
         )
+        raise OSError(msg)
 
 
 def _is_stale_handle_error(error: Exception) -> bool:
@@ -206,7 +218,8 @@ def atomic_write(dest_path: Path, data: bytes, max_attempts: int = 100) -> Path:
         else:
             return try_path
 
-    raise RuntimeError(f"Could not write file after {max_attempts} attempts: {dest_path}")
+    msg = f"Could not write file after {max_attempts} attempts: {dest_path}"
+    raise RuntimeError(msg)
 
 
 def _is_permission_error(e: Exception) -> bool:
@@ -521,7 +534,8 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
         else:
             return try_path
 
-    raise RuntimeError(f"Could not move file after {max_attempts} attempts: {dest_path}")
+    msg = f"Could not move file after {max_attempts} attempts: {dest_path}"
+    raise RuntimeError(msg)
 
 
 def atomic_hardlink(source_path: Path, dest_path: Path, max_attempts: int = 100) -> Path:
@@ -572,7 +586,8 @@ def atomic_hardlink(source_path: Path, dest_path: Path, max_attempts: int = 100)
         else:
             return try_path
 
-    raise RuntimeError(f"Could not create hardlink after {max_attempts} attempts: {dest_path}")
+    msg = f"Could not create hardlink after {max_attempts} attempts: {dest_path}"
+    raise RuntimeError(msg)
 
 
 def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> Path:
@@ -665,4 +680,5 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
         else:
             return try_path
 
-    raise RuntimeError(f"Could not copy file after {max_attempts} attempts: {dest_path}")
+    msg = f"Could not copy file after {max_attempts} attempts: {dest_path}"
+    raise RuntimeError(msg)

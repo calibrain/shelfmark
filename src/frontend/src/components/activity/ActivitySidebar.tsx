@@ -1,9 +1,14 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type WheelEvent } from 'react';
-import { RequestRecord, StatusData } from '../../types';
-import { downloadToActivityItem, DownloadStatusKey } from './activityMappers';
-import { ActivityItem } from './activityTypes';
-import { ActivityCard } from './ActivityCard';
+import { useCallback, useMemo, useRef, useState, type WheelEvent } from 'react';
+
+import { useTabIndicator } from '../../hooks/ui/useTabIndicator';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
+import type { RequestRecord, StatusData } from '../../types';
 import { Dropdown } from '../Dropdown';
+import { ActivityCard } from './ActivityCard';
+import type { DownloadStatusKey } from './activityMappers';
+import { downloadToActivityItem } from './activityMappers';
+import type { ActivityItem } from './activityTypes';
 
 interface ActivitySidebarProps {
   isOpen: boolean;
@@ -33,7 +38,7 @@ interface ActivitySidebarProps {
     options?: {
       browseOnly?: boolean;
       manualApproval?: boolean;
-    }
+    },
   ) => Promise<void> | void;
   onRequestReject?: (requestId: number, adminNote?: string) => Promise<void> | void;
   onRequestDismiss?: (requestId: number) => void;
@@ -46,7 +51,7 @@ export interface ActivityDismissTarget {
   itemKey: string;
 }
 
-export const ACTIVITY_SIDEBAR_PINNED_STORAGE_KEY = 'activity-sidebar-pinned';
+const ACTIVITY_SIDEBAR_PINNED_STORAGE_KEY = 'activity-sidebar-pinned';
 
 const DOWNLOAD_STATUS_KEYS: DownloadStatusKey[] = [
   'downloading',
@@ -58,19 +63,12 @@ const DOWNLOAD_STATUS_KEYS: DownloadStatusKey[] = [
   'cancelled',
 ];
 
-type ActivityCategoryKey =
-  | 'needs_review'
-  | 'in_progress'
-  | 'complete'
-  | 'failed';
+type ActivityCategoryKey = 'needs_review' | 'in_progress' | 'complete' | 'failed';
 
 type ActivityTabKey = 'all' | 'downloads' | 'requests' | 'history';
 const ALL_USERS_FILTER = '__all_users__';
 
-const getCategoryLabel = (
-  key: ActivityCategoryKey,
-  isAdmin: boolean
-): string => {
+const getCategoryLabel = (key: ActivityCategoryKey, isAdmin: boolean): string => {
   if (key === 'needs_review') {
     return isAdmin ? 'Needs Review' : 'Waiting';
   }
@@ -83,9 +81,7 @@ const getCategoryLabel = (
   return 'Failed';
 };
 
-const getVisibleCategoryOrder = (
-  tab: ActivityTabKey
-): ActivityCategoryKey[] => {
+const getVisibleCategoryOrder = (tab: ActivityTabKey): ActivityCategoryKey[] => {
   if (tab === 'downloads') {
     return ['in_progress', 'complete', 'failed'];
   }
@@ -160,7 +156,7 @@ const getLinkedDownloadIdFromRequestItem = (item: ActivityItem): string | null =
     return null;
   }
 
-  const sourceId = (releaseData as Record<string, unknown>).source_id;
+  const sourceId = releaseData.source_id;
   if (typeof sourceId !== 'string') {
     return null;
   }
@@ -171,7 +167,7 @@ const getLinkedDownloadIdFromRequestItem = (item: ActivityItem): string | null =
 
 const mergeRequestWithDownload = (
   requestItem: ActivityItem,
-  downloadItem: ActivityItem
+  downloadItem: ActivityItem,
 ): ActivityItem => {
   return {
     ...downloadItem,
@@ -229,13 +225,6 @@ const getInitialPinnedPreference = (): boolean => {
   }
 };
 
-const getInitialDesktopState = (): boolean => {
-  if (typeof window === 'undefined') {
-    return false;
-  }
-  return window.matchMedia('(min-width: 1024px)').matches;
-};
-
 export const ActivitySidebar = ({
   isOpen,
   onClose,
@@ -265,70 +254,33 @@ export const ActivitySidebar = ({
   pinnedTopOffset = 0,
 }: ActivitySidebarProps) => {
   const [isPinned, setIsPinned] = useState<boolean>(() => getInitialPinnedPreference());
-  const [isDesktop, setIsDesktop] = useState<boolean>(() => getInitialDesktopState());
+  const isDesktop = useMediaQuery('(min-width: 1024px)');
   const [activeTab, setActiveTab] = useState<ActivityTabKey>('all');
-  const [selectedUser, setSelectedUser] = useState<string>(ALL_USERS_FILTER);
+  const [selectedUser, setSelectedUser] = useState(ALL_USERS_FILTER);
   const [rejectingRequest, setRejectingRequest] = useState<{ requestId: number } | null>(null);
   const [reviewingRequestId, setReviewingRequestId] = useState<number | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
-  const dismissedKeySet = useMemo(
-    () => new Set(dismissedItemKeys),
-    [dismissedItemKeys]
+  const dismissedKeySet = useMemo(() => new Set(dismissedItemKeys), [dismissedItemKeys]);
+  const handleTabChange = useCallback(
+    (nextTab: ActivityTabKey) => {
+      if (nextTab === 'downloads') {
+        setRejectingRequest(null);
+        setReviewingRequestId(null);
+      }
+      setActiveTab(nextTab);
+      onActiveTabChange?.(nextTab);
+    },
+    [onActiveTabChange],
   );
-  const handleTabChange = useCallback((nextTab: ActivityTabKey) => {
-    setActiveTab(nextTab);
-    onActiveTabChange?.(nextTab);
-  }, [onActiveTabChange]);
-
-  useEffect(() => {
-    const mediaQuery = window.matchMedia('(min-width: 1024px)');
-
-    const handleMediaChange = (event: MediaQueryListEvent) => {
-      setIsDesktop(event.matches);
-    };
-
-    setIsDesktop(mediaQuery.matches);
-    mediaQuery.addEventListener('change', handleMediaChange);
-
-    return () => {
-      mediaQuery.removeEventListener('change', handleMediaChange);
-    };
-  }, []);
-
-  useEffect(() => {
-    if (!showRequestsTab && activeTab === 'requests') {
-      handleTabChange('all');
-    }
-  }, [showRequestsTab, activeTab, handleTabChange]);
-
-  useEffect(() => {
-    if (activeTab === 'downloads') {
-      setRejectingRequest(null);
-      setReviewingRequestId(null);
-    }
-  }, [activeTab]);
 
   const isPinnedOpen = isOpen && isDesktop && isPinned;
+  const effectiveActiveTab = !showRequestsTab && activeTab === 'requests' ? 'all' : activeTab;
+  if (effectiveActiveTab !== activeTab) {
+    setActiveTab(effectiveActiveTab);
+  }
 
-  useEffect(() => {
-    onPinnedOpenChange?.(isPinnedOpen);
-  }, [isPinnedOpen, onPinnedOpenChange]);
-
-  useEffect(() => {
-    if (!isOpen || isPinnedOpen) {
-      return;
-    }
-
-    const onEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-
-    document.addEventListener('keydown', onEscape);
-    return () => document.removeEventListener('keydown', onEscape);
-  }, [isOpen, isPinnedOpen, onClose]);
+  useEscapeKey(isOpen && !isPinnedOpen, onClose);
 
   const downloadItems = useMemo(() => {
     const items: ActivityItem[] = [];
@@ -349,7 +301,7 @@ export const ActivitySidebar = ({
       });
     });
 
-    return items.sort((left, right) => right.timestamp - left.timestamp);
+    return items.toSorted((left, right) => right.timestamp - left.timestamp);
   }, [dismissedKeySet, status]);
 
   const visibleRequestItems = useMemo(
@@ -360,7 +312,7 @@ export const ActivitySidebar = ({
         }
         return !dismissedKeySet.has(`request:${item.requestId}`);
       }),
-    [dismissedKeySet, requestItems]
+    [dismissedKeySet, requestItems],
   );
 
   const { mergedRequestItems, mergedDownloadItems } = useMemo(() => {
@@ -407,22 +359,24 @@ export const ActivitySidebar = ({
       return merged;
     });
 
-    const nextDownloadItems = downloadItems.map((downloadItem) => {
-      const downloadId = downloadItem.downloadBookId;
-      if (!downloadId) {
-        return downloadItem;
-      }
-      return mergedByDownloadId.get(downloadId) || downloadItem;
-    }).filter((downloadItem) => {
-      if (
-        typeof downloadItem.requestId === 'number' &&
-        reopenedRequestIds.has(downloadItem.requestId) &&
-        (downloadItem.visualStatus === 'error' || downloadItem.visualStatus === 'cancelled')
-      ) {
-        return false;
-      }
-      return true;
-    });
+    const nextDownloadItems = downloadItems
+      .map((downloadItem) => {
+        const downloadId = downloadItem.downloadBookId;
+        if (!downloadId) {
+          return downloadItem;
+        }
+        return mergedByDownloadId.get(downloadId) || downloadItem;
+      })
+      .filter((downloadItem) => {
+        if (
+          typeof downloadItem.requestId === 'number' &&
+          reopenedRequestIds.has(downloadItem.requestId) &&
+          (downloadItem.visualStatus === 'error' || downloadItem.visualStatus === 'cancelled')
+        ) {
+          return false;
+        }
+        return true;
+      });
 
     return {
       mergedRequestItems: nextRequestItems,
@@ -434,30 +388,46 @@ export const ActivitySidebar = ({
     () =>
       mergedDownloadItems.some(
         (item) =>
-          item.visualStatus === 'complete' || item.visualStatus === 'error' || item.visualStatus === 'cancelled'
+          item.visualStatus === 'complete' ||
+          item.visualStatus === 'error' ||
+          item.visualStatus === 'cancelled',
       ),
-    [mergedDownloadItems]
+    [mergedDownloadItems],
   );
 
   const allItems = useMemo(() => {
     const combined = dedupeById([...mergedDownloadItems, ...mergedRequestItems]);
-    return combined.sort((a, b) => b.timestamp - a.timestamp);
+    return combined.toSorted((a, b) => b.timestamp - a.timestamp);
   }, [mergedDownloadItems, mergedRequestItems]);
 
-  const baseVisibleItems = activeTab === 'all'
-    ? allItems
-    : activeTab === 'requests'
-      ? mergedRequestItems.filter((item) => {
-          const requestStatus = item.requestRecord?.status;
-          if (requestStatus === 'pending' || requestStatus === 'rejected' || requestStatus === 'cancelled') {
-            return true;
-          }
-          return requestStatus === 'fulfilled' && item.kind === 'request';
-        })
-        : activeTab === 'history'
-          ? historyItems
-          : mergedDownloadItems;
-  const isHistoryInitialLoad = activeTab === 'history' && !historyLoaded;
+  let baseVisibleItems = mergedDownloadItems;
+  if (effectiveActiveTab === 'all') {
+    baseVisibleItems = allItems;
+  } else if (effectiveActiveTab === 'requests') {
+    baseVisibleItems = mergedRequestItems.filter((item) => {
+      const requestStatus = item.requestRecord?.status;
+      if (
+        requestStatus === 'pending' ||
+        requestStatus === 'rejected' ||
+        requestStatus === 'cancelled'
+      ) {
+        return true;
+      }
+      return requestStatus === 'fulfilled' && item.kind === 'request';
+    });
+  } else if (effectiveActiveTab === 'history') {
+    baseVisibleItems = historyItems;
+  }
+  const isHistoryInitialLoad = effectiveActiveTab === 'history' && !historyLoaded;
+  let emptyStateMessage = 'No activity';
+  if (effectiveActiveTab === 'requests') {
+    emptyStateMessage = isRequestsLoading ? 'Loading requests...' : 'No requests';
+  } else if (effectiveActiveTab === 'history') {
+    emptyStateMessage =
+      historyLoading || isHistoryInitialLoad ? 'Loading history...' : 'No history';
+  } else if (effectiveActiveTab === 'downloads') {
+    emptyStateMessage = 'No downloads';
+  }
 
   const availableUsers = useMemo(() => {
     const userMap = new Map<string, string>();
@@ -472,60 +442,52 @@ export const ActivitySidebar = ({
       }
     });
 
-    return Array.from(userMap.values()).sort((left, right) => left.localeCompare(right));
+    return Array.from(userMap.values()).toSorted((left, right) => left.localeCompare(right));
   }, [baseVisibleItems]);
 
-  useEffect(() => {
-    if (selectedUser === ALL_USERS_FILTER) {
-      return;
-    }
-    if (!availableUsers.includes(selectedUser)) {
-      setSelectedUser(ALL_USERS_FILTER);
-    }
-  }, [availableUsers, selectedUser]);
+  const effectiveSelectedUser =
+    selectedUser === ALL_USERS_FILTER || availableUsers.includes(selectedUser)
+      ? selectedUser
+      : ALL_USERS_FILTER;
+  if (effectiveSelectedUser !== selectedUser) {
+    setSelectedUser(ALL_USERS_FILTER);
+  }
 
   const visibleItems = useMemo(() => {
-    if (selectedUser === ALL_USERS_FILTER) {
+    if (effectiveSelectedUser === ALL_USERS_FILTER) {
       return baseVisibleItems;
     }
-    return baseVisibleItems.filter((item) => getItemUsername(item) === selectedUser);
-  }, [baseVisibleItems, selectedUser]);
+    return baseVisibleItems.filter((item) => getItemUsername(item) === effectiveSelectedUser);
+  }, [baseVisibleItems, effectiveSelectedUser]);
 
-  useEffect(() => {
-    if (reviewingRequestId === null) {
-      return;
-    }
-
-    const hasMatchingPendingRequest = visibleItems.some((item) => {
-      return (
+  const visiblePendingRequestIds = useMemo(() => {
+    const ids = new Set<number>();
+    visibleItems.forEach((item) => {
+      if (
         item.kind === 'request' &&
-        item.requestId === reviewingRequestId &&
-        item.requestRecord?.status === 'pending'
-      );
+        item.requestRecord?.status === 'pending' &&
+        typeof item.requestId === 'number'
+      ) {
+        ids.add(item.requestId);
+      }
     });
+    return ids;
+  }, [visibleItems]);
 
-    if (!hasMatchingPendingRequest) {
-      setReviewingRequestId(null);
-    }
-  }, [reviewingRequestId, visibleItems]);
-
-  useEffect(() => {
-    if (rejectingRequest === null) {
-      return;
-    }
-
-    const hasMatchingPendingRequest = visibleItems.some((item) => {
-      return (
-        item.kind === 'request' &&
-        item.requestId === rejectingRequest.requestId &&
-        item.requestRecord?.status === 'pending'
-      );
-    });
-
-    if (!hasMatchingPendingRequest) {
-      setRejectingRequest(null);
-    }
-  }, [rejectingRequest, visibleItems]);
+  const effectiveReviewingRequestId =
+    reviewingRequestId !== null && visiblePendingRequestIds.has(reviewingRequestId)
+      ? reviewingRequestId
+      : null;
+  const effectiveRejectingRequest =
+    rejectingRequest !== null && visiblePendingRequestIds.has(rejectingRequest.requestId)
+      ? rejectingRequest
+      : null;
+  if (effectiveReviewingRequestId !== reviewingRequestId) {
+    setReviewingRequestId(null);
+  }
+  if (effectiveRejectingRequest === null && rejectingRequest !== null) {
+    setRejectingRequest(null);
+  }
 
   const hasUserFilter = isAdmin && availableUsers.length > 1;
 
@@ -536,7 +498,9 @@ export const ActivitySidebar = ({
     visibleItems.forEach((item) => {
       const isTerminalDownload =
         item.kind === 'download' &&
-        (item.visualStatus === 'complete' || item.visualStatus === 'error' || item.visualStatus === 'cancelled');
+        (item.visualStatus === 'complete' ||
+          item.visualStatus === 'error' ||
+          item.visualStatus === 'cancelled');
 
       if (!isTerminalDownload || !item.downloadBookId) {
         return;
@@ -561,12 +525,12 @@ export const ActivitySidebar = ({
   }, [visibleItems]);
 
   const visibleCategoryOrder = useMemo(
-    () => getVisibleCategoryOrder(activeTab),
-    [activeTab]
+    () => getVisibleCategoryOrder(effectiveActiveTab),
+    [effectiveActiveTab],
   );
 
   const groupedVisibleItems = useMemo(() => {
-    if (activeTab === 'history') {
+    if (effectiveActiveTab === 'history') {
       return [];
     }
 
@@ -578,21 +542,25 @@ export const ActivitySidebar = ({
       if (!grouped.has(category)) {
         grouped.set(category, []);
       }
-      grouped.get(category)!.push(item);
+      const bucket = grouped.get(category);
+      if (bucket) {
+        bucket.push(item);
+      }
     });
 
     return visibleCategoryOrder
       .map((key) => ({
         key,
         label: getCategoryLabel(key, isAdmin),
-        items: (grouped.get(key) || []).sort((left, right) => right.timestamp - left.timestamp),
+        items: (grouped.get(key) ?? []).toSorted((left, right) => right.timestamp - left.timestamp),
       }))
       .filter((group) => group.items.length > 0);
-  }, [activeTab, isAdmin, visibleItems, visibleCategoryOrder]);
+  }, [effectiveActiveTab, isAdmin, visibleItems, visibleCategoryOrder]);
 
   const handleTogglePinned = () => {
     const next = !isPinned;
     setIsPinned(next);
+    onPinnedOpenChange?.(next);
     try {
       window.localStorage.setItem(ACTIVITY_SIDEBAR_PINNED_STORAGE_KEY, next ? '1' : '0');
     } catch {
@@ -602,24 +570,7 @@ export const ActivitySidebar = ({
 
   // Tab indicator (sliding underline, same pattern as ReleaseModal)
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
-  const [tabIndicatorStyle, setTabIndicatorStyle] = useState({ left: 0, width: 0 });
-
-  useEffect(() => {
-    const activeButton = tabRefs.current[activeTab];
-    if (!activeButton) {
-      setTabIndicatorStyle({ left: 0, width: 0 });
-      return;
-    }
-
-    const containerRect = activeButton.parentElement?.getBoundingClientRect();
-    const buttonRect = activeButton.getBoundingClientRect();
-    if (containerRect) {
-      setTabIndicatorStyle({
-        left: buttonRect.left - containerRect.left,
-        width: buttonRect.width,
-      });
-    }
-  }, [activeTab, showRequestsTab]);
+  const tabIndicatorStyle = useTabIndicator(tabRefs, effectiveActiveTab, showRequestsTab);
 
   const panel = (
     <>
@@ -632,21 +583,34 @@ export const ActivitySidebar = ({
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold">{activeTab === 'history' ? 'History' : 'Activity'}</h2>
+            <h2 className="text-lg font-semibold">
+              {effectiveActiveTab === 'history' ? 'History' : 'Activity'}
+            </h2>
             <button
               type="button"
               onClick={handleTogglePinned}
-              className="hidden lg:inline-flex h-9 w-9 items-center justify-center rounded-full hover-action transition-colors"
+              className="hover-action hidden h-9 w-9 items-center justify-center rounded-full transition-colors lg:inline-flex"
               title={isPinned ? 'Unpin activity sidebar' : 'Pin activity sidebar'}
               aria-label={isPinned ? 'Unpin activity sidebar' : 'Pin activity sidebar'}
             >
               {isPinned ? (
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+                <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
                   <path d="M15.804 2.276a.75.75 0 0 0-.336.195l-2 2a.75.75 0 0 0 0 1.062l.47.469-3.572 3.571c-.83-.534-1.773-.808-2.709-.691-1.183.148-2.32.72-3.187 1.587a.75.75 0 0 0 0 1.063L7.938 15l-5.467 5.467a.75.75 0 0 0 0 1.062.75.75 0 0 0 1.062 0L9 16.062l3.468 3.468a.75.75 0 0 0 1.062 0c.868-.868 1.44-2.004 1.588-3.187.117-.935-.158-1.879-.692-2.708L18 10.063l.469.469a.75.75 0 0 0 1.062 0l2-2a.75.75 0 0 0 0-1.062l-5-4.999a.75.75 0 0 0-.726-.195z" />
                 </svg>
               ) : (
-                <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
-                  <path strokeLinecap="round" strokeLinejoin="round" d="m9 15-6 6M15 6l-1-1 2-2 5 5-2 2-1-1-4.5 4.5c1.5 1.5 1 4-.5 5.5l-8-8c1.5-1.5 4-2 5.5-.5z" />
+                <svg
+                  className="h-4 w-4"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m9 15-6 6M15 6l-1-1 2-2 5 5-2 2-1-1-4.5 4.5c1.5 1.5 1 4-.5 5.5l-8-8c1.5-1.5 4-2 5.5-.5z"
+                  />
                 </svg>
               )}
             </button>
@@ -658,19 +622,40 @@ export const ActivitySidebar = ({
                 align="right"
                 widthClassName="w-auto"
                 panelClassName="min-w-44"
-                renderTrigger={({ isOpen, toggle }) => (
+                renderTrigger={({ isOpen: isDropdownOpen, toggle }) => (
                   <button
                     type="button"
                     onClick={toggle}
-                    className={`h-9 w-9 inline-flex items-center justify-center rounded-full hover-action transition-colors ${
-                      isOpen || selectedUser !== ALL_USERS_FILTER ? 'text-sky-600 dark:text-sky-400' : ''
+                    className={`hover-action inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
+                      isDropdownOpen || effectiveSelectedUser !== ALL_USERS_FILTER
+                        ? 'text-sky-600 dark:text-sky-400'
+                        : ''
                     }`}
-                    title={selectedUser === ALL_USERS_FILTER ? 'Filter by user' : `Filtered: ${selectedUser}`}
-                    aria-label={selectedUser === ALL_USERS_FILTER ? 'Filter by user' : `Filtered by user ${selectedUser}`}
-                    aria-expanded={isOpen}
+                    title={
+                      effectiveSelectedUser === ALL_USERS_FILTER
+                        ? 'Filter by user'
+                        : `Filtered: ${effectiveSelectedUser}`
+                    }
+                    aria-label={
+                      effectiveSelectedUser === ALL_USERS_FILTER
+                        ? 'Filter by user'
+                        : `Filtered by user ${effectiveSelectedUser}`
+                    }
+                    aria-expanded={isDropdownOpen}
                   >
-                    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" strokeWidth="1.75" stroke="currentColor" aria-hidden="true">
-                      <path strokeLinecap="round" strokeLinejoin="round" d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z" />
+                    <svg
+                      className="h-5 w-5"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      strokeWidth="1.75"
+                      stroke="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="M12 3c2.755 0 5.455.232 8.083.678.533.09.917.556.917 1.096v1.044a2.25 2.25 0 0 1-.659 1.591l-5.432 5.432a2.25 2.25 0 0 0-.659 1.591v2.927a2.25 2.25 0 0 1-1.244 2.013L9.75 21v-6.568a2.25 2.25 0 0 0-.659-1.591L3.659 7.409A2.25 2.25 0 0 1 3 5.818V4.774c0-.54.384-1.006.917-1.096A48.32 48.32 0 0 1 12 3Z"
+                      />
                     </svg>
                   </button>
                 )}
@@ -678,13 +663,13 @@ export const ActivitySidebar = ({
                 {({ close }) => (
                   <div role="listbox">
                     {[ALL_USERS_FILTER, ...availableUsers].map((value) => {
-                      const isSelected = selectedUser === value;
+                      const isSelected = effectiveSelectedUser === value;
                       const label = value === ALL_USERS_FILTER ? 'All users' : value;
                       return (
                         <button
                           type="button"
                           key={value}
-                          className={`w-full px-3 py-2 text-left text-sm hover-surface flex items-center justify-between ${
+                          className={`hover-surface flex w-full items-center justify-between px-3 py-2 text-left text-sm ${
                             isSelected ? 'text-sky-600 dark:text-sky-400' : ''
                           }`}
                           onClick={() => {
@@ -694,8 +679,18 @@ export const ActivitySidebar = ({
                         >
                           <span>{label}</span>
                           {isSelected && (
-                            <svg className="w-4 h-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                              <path strokeLinecap="round" strokeLinejoin="round" d="m5 13 4 4L19 7" />
+                            <svg
+                              className="h-4 w-4"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
+                              <path
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                d="m5 13 4 4L19 7"
+                              />
                             </svg>
                           )}
                         </button>
@@ -705,37 +700,55 @@ export const ActivitySidebar = ({
                 )}
               </Dropdown>
             )}
-              <button
-                type="button"
-                onClick={() => handleTabChange(activeTab === 'history' ? 'all' : 'history')}
-                className={`relative h-9 w-9 inline-flex items-center justify-center rounded-full hover-action transition-colors ${
-                  activeTab === 'history' ? 'text-sky-600 dark:text-sky-400' : ''
-                }`}
-              title={activeTab === 'history' ? 'Back to activity' : 'Open history'}
-              aria-label={activeTab === 'history' ? 'Back to activity' : 'Open history'}
-              aria-pressed={activeTab === 'history'}
+            <button
+              type="button"
+              onClick={() => handleTabChange(effectiveActiveTab === 'history' ? 'all' : 'history')}
+              className={`hover-action relative inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
+                effectiveActiveTab === 'history' ? 'text-sky-600 dark:text-sky-400' : ''
+              }`}
+              title={effectiveActiveTab === 'history' ? 'Back to activity' : 'Open history'}
+              aria-label={effectiveActiveTab === 'history' ? 'Back to activity' : 'Open history'}
+              aria-pressed={effectiveActiveTab === 'history'}
             >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+              <svg
+                className="h-5 w-5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                aria-hidden="true"
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l3.75 2.25" />
                 <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v4.5h4.5" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 12a8.25 8.25 0 1 0 3.37-6.63" />
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3.75 12a8.25 8.25 0 1 0 3.37-6.63"
+                />
               </svg>
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="h-9 w-9 inline-flex items-center justify-center rounded-full hover-action transition-colors"
+              className="hover-action inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors"
               aria-label="Close activity sidebar"
             >
-              <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.75" aria-hidden="true">
+              <svg
+                className="h-5 w-5"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.75"
+                aria-hidden="true"
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
           </div>
         </div>
 
-        {activeTab !== 'history' && (
-          <div className="mt-2 border-b border-(--border-muted) -mx-4 px-4">
+        {effectiveActiveTab !== 'history' && (
+          <div className="-mx-4 mt-2 border-b border-(--border-muted) px-4">
             <div className="relative flex gap-1">
               {/* Sliding indicator */}
               <div
@@ -747,31 +760,35 @@ export const ActivitySidebar = ({
               />
               <button
                 type="button"
-                ref={(el) => { tabRefs.current.all = el; }}
+                ref={(el) => {
+                  tabRefs.current.all = el;
+                }}
                 onClick={() => handleTabChange('all')}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 border-transparent transition-colors whitespace-nowrap ${
-                  activeTab === 'all'
+                className={`border-b-2 border-transparent px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
+                  effectiveActiveTab === 'all'
                     ? 'text-sky-600 dark:text-sky-400'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
                 }`}
-                aria-current={activeTab === 'all' ? 'page' : undefined}
+                aria-current={effectiveActiveTab === 'all' ? 'page' : undefined}
               >
                 All
               </button>
               <button
                 type="button"
-                ref={(el) => { tabRefs.current.downloads = el; }}
+                ref={(el) => {
+                  tabRefs.current.downloads = el;
+                }}
                 onClick={() => handleTabChange('downloads')}
-                className={`px-4 py-2.5 text-sm font-medium border-b-2 border-transparent transition-colors whitespace-nowrap ${
-                  activeTab === 'downloads'
+                className={`border-b-2 border-transparent px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
+                  effectiveActiveTab === 'downloads'
                     ? 'text-sky-600 dark:text-sky-400'
-                    : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                    : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
                 }`}
-                aria-current={activeTab === 'downloads' ? 'page' : undefined}
+                aria-current={effectiveActiveTab === 'downloads' ? 'page' : undefined}
               >
                 Downloads
                 {mergedDownloadItems.length > 0 && (
-                  <span className="ml-1.5 text-[11px] h-[18px] min-w-[18px] px-1 rounded-full bg-sky-500/15 text-sky-700 dark:text-sky-300 inline-flex items-center justify-center leading-none">
+                  <span className="ml-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-sky-500/15 px-1 text-[11px] leading-none text-sky-700 dark:text-sky-300">
                     {mergedDownloadItems.length}
                   </span>
                 )}
@@ -779,18 +796,20 @@ export const ActivitySidebar = ({
               {showRequestsTab && (
                 <button
                   type="button"
-                  ref={(el) => { tabRefs.current.requests = el; }}
+                  ref={(el) => {
+                    tabRefs.current.requests = el;
+                  }}
                   onClick={() => handleTabChange('requests')}
-                  className={`px-4 py-2.5 text-sm font-medium border-b-2 border-transparent transition-colors whitespace-nowrap ${
-                    activeTab === 'requests'
+                  className={`border-b-2 border-transparent px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
+                    effectiveActiveTab === 'requests'
                       ? 'text-sky-600 dark:text-sky-400'
-                      : 'text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-200'
+                      : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200'
                   }`}
-                  aria-current={activeTab === 'requests' ? 'page' : undefined}
+                  aria-current={effectiveActiveTab === 'requests' ? 'page' : undefined}
                 >
                   Requests
                   {pendingRequestCount > 0 && (
-                    <span className="ml-1.5 text-[11px] h-[18px] min-w-[18px] px-1 rounded-full bg-amber-500/15 text-amber-700 dark:text-amber-300 inline-flex items-center justify-center leading-none">
+                    <span className="ml-1.5 inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-amber-500/15 px-1 text-[11px] leading-none text-amber-700 dark:text-amber-300">
                       {pendingRequestCount}
                     </span>
                   )}
@@ -806,180 +825,189 @@ export const ActivitySidebar = ({
         className="flex-1 overflow-y-auto overscroll-y-contain p-4"
         style={{ paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
       >
-        {visibleItems.length === 0 ? (
-          <p className="text-center text-sm opacity-70 mt-8">
-            {activeTab === 'requests'
-              ? isRequestsLoading ? 'Loading requests...' : 'No requests'
-              : activeTab === 'history'
-                ? (historyLoading || isHistoryInitialLoad) ? 'Loading history...' : 'No history'
-              : activeTab === 'downloads'
-                ? 'No downloads'
-                : 'No activity'}
-          </p>
-        ) : (
-          activeTab === 'history' ? (
-            <div className="divide-y divide-[color-mix(in_srgb,var(--border-muted)_60%,transparent)]">
-              {visibleItems.map((item) => (
-                <ActivityCard
-                  key={item.id}
-                  item={item}
-                  isAdmin={isAdmin}
-                />
-              ))}
-              {historyHasMore && (
-                <div className="pt-3 text-center">
-                  <button
-                    type="button"
-                    onClick={onHistoryLoadMore}
-                    disabled={historyLoading}
-                    className="text-sm text-sky-600 dark:text-sky-400 hover:underline disabled:opacity-60"
-                  >
-                    {historyLoading ? 'Loading...' : 'Load more'}
-                  </button>
-                </div>
-              )}
-            </div>
-          ) : (
-          groupedVisibleItems.map((group) => (
+        {(() => {
+          if (visibleItems.length === 0) {
+            return <p className="mt-8 text-center text-sm opacity-70">{emptyStateMessage}</p>;
+          }
+
+          if (effectiveActiveTab === 'history') {
+            return (
+              <div className="divide-y divide-[color-mix(in_srgb,var(--border-muted)_60%,transparent)]">
+                {visibleItems.map((item) => (
+                  <ActivityCard key={item.id} item={item} isAdmin={isAdmin} />
+                ))}
+                {historyHasMore && (
+                  <div className="pt-3 text-center">
+                    <button
+                      type="button"
+                      onClick={() => void onHistoryLoadMore?.()}
+                      disabled={historyLoading}
+                      className="text-sm text-sky-600 hover:underline disabled:opacity-60 dark:text-sky-400"
+                    >
+                      {historyLoading ? 'Loading...' : 'Load more'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            );
+          }
+
+          return groupedVisibleItems.map((group) => (
             <section key={group.key} className="mb-4 last:mb-0">
-              {activeTab !== 'downloads' && (
+              {effectiveActiveTab !== 'downloads' && (
                 <button
                   type="button"
-                  onClick={() => setCollapsedGroups((prev) => ({ ...prev, [group.key]: !prev[group.key] }))}
-                  className="mb-2 w-full flex items-center justify-between text-[11px] uppercase tracking-wide opacity-70 hover:opacity-100 transition-opacity cursor-pointer"
+                  onClick={() =>
+                    setCollapsedGroups((prev) => ({ ...prev, [group.key]: !prev[group.key] }))
+                  }
+                  className="mb-2 flex w-full cursor-pointer items-center justify-between text-[11px] tracking-wide uppercase opacity-70 transition-opacity hover:opacity-100"
                 >
                   <div className="flex items-center gap-1.5">
                     <svg
-                      className={`w-3 h-3 transition-transform ${collapsedGroups[group.key] ? '-rotate-90' : ''}`}
+                      className={`h-3 w-3 transition-transform ${collapsedGroups[group.key] ? '-rotate-90' : ''}`}
                       fill="none"
                       stroke="currentColor"
                       viewBox="0 0 24 24"
                       strokeWidth="1.5"
                     >
-                      <path strokeLinecap="round" strokeLinejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5" />
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        d="m19.5 8.25-7.5 7.5-7.5-7.5"
+                      />
                     </svg>
                     <span>{group.label}</span>
                   </div>
-                  <span className="rounded-full h-[18px] min-w-[18px] px-1 bg-gray-500/10 dark:bg-gray-400/10 inline-flex items-center justify-center leading-none">{group.items.length}</span>
+                  <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-gray-500/10 px-1 leading-none dark:bg-gray-400/10">
+                    {group.items.length}
+                  </span>
                 </button>
               )}
               {!collapsedGroups[group.key] && (
-              <div className="divide-y divide-[color-mix(in_srgb,var(--border-muted)_60%,transparent)]">
-                {group.items.map((item) => {
-                  const showRequestActions = activeTab === 'requests' || activeTab === 'all';
-                  const requestId = item.requestId;
-                  const shouldShowRejectDialog =
-                    showRequestActions &&
-                    rejectingRequest !== null &&
-                    requestId === rejectingRequest.requestId;
-                  const requestRecord = item.requestRecord;
-                  const canShowRequestReview =
-                    showRequestActions &&
-                    isAdmin &&
-                    item.kind === 'request' &&
-                    typeof requestId === 'number' &&
-                    requestRecord?.status === 'pending';
-                  const shouldShowRequestReview =
-                    canShowRequestReview &&
-                    reviewingRequestId !== null &&
-                    requestId === reviewingRequestId &&
-                    requestRecord !== undefined;
+                <div className="divide-y divide-[color-mix(in_srgb,var(--border-muted)_60%,transparent)]">
+                  {group.items.map((item) => {
+                    const showRequestActions =
+                      effectiveActiveTab === 'requests' || effectiveActiveTab === 'all';
+                    const requestId = item.requestId;
+                    const shouldShowRejectDialog =
+                      showRequestActions &&
+                      effectiveRejectingRequest !== null &&
+                      requestId === effectiveRejectingRequest.requestId;
+                    const requestRecord = item.requestRecord;
+                    const canShowRequestReview =
+                      showRequestActions &&
+                      isAdmin &&
+                      item.kind === 'request' &&
+                      typeof requestId === 'number' &&
+                      requestRecord?.status === 'pending';
+                    const shouldShowRequestReview =
+                      canShowRequestReview &&
+                      effectiveReviewingRequestId !== null &&
+                      requestId === effectiveReviewingRequestId &&
+                      requestRecord !== undefined;
 
-                  return (
-                    <div key={item.id}>
-                      <ActivityCard
-                        item={item}
-                        isAdmin={isAdmin}
-                        onDownloadCancel={onCancel}
-                        onDownloadRetry={onRetry}
-                        onDownloadDismiss={onDownloadDismiss}
-                        onRequestCancel={onRequestCancel}
-                        onRequestApprove={onRequestApprove}
-                        onRequestDismiss={onRequestDismiss}
-                        onRequestReject={
-                          showRequestActions && onRequestReject
-                            ? (requestId) => {
-                                setReviewingRequestId(null);
-                                setRejectingRequest({ requestId });
-                              }
-                            : undefined
-                        }
-                        showRequestDetailsToggle={canShowRequestReview}
-                        isRequestDetailsOpen={shouldShowRequestReview}
-                        isSelected={shouldShowRequestReview || shouldShowRejectDialog}
-                        onRequestReviewApprove={
-                          onRequestApprove
-                            ? async (requestId, record, options) => {
-                                await onRequestApprove(requestId, record, options);
-                                setReviewingRequestId(null);
-                              }
-                            : undefined
-                        }
-                        isRequestRejectOpen={shouldShowRejectDialog}
-                        onRequestRejectClose={() => setRejectingRequest(null)}
-                        onRequestRejectConfirm={
-                          onRequestReject
-                            ? async (requestId, adminNote) => {
-                                await onRequestReject(requestId, adminNote);
-                                setRejectingRequest(null);
-                              }
-                            : undefined
-                        }
-                        onRequestDetailsToggle={
-                          canShowRequestReview && typeof requestId === 'number'
-                            ? () => {
-                                if (shouldShowRejectDialog) {
-                                  setRejectingRequest(null);
-                                  return;
+                    return (
+                      <div key={item.id}>
+                        <ActivityCard
+                          item={item}
+                          isAdmin={isAdmin}
+                          onDownloadCancel={onCancel}
+                          onDownloadRetry={onRetry}
+                          onDownloadDismiss={onDownloadDismiss}
+                          onRequestCancel={
+                            onRequestCancel
+                              ? (nextRequestId) => {
+                                  void onRequestCancel(nextRequestId);
                                 }
-                                setRejectingRequest(null);
-                                setReviewingRequestId((current) => (
-                                  current === requestId ? null : requestId
-                                ));
-                              }
-                            : undefined
-                        }
-                        onRequestDetailsOpen={
-                          canShowRequestReview && typeof requestId === 'number'
-                            ? () => {
-                                setRejectingRequest(null);
-                                setReviewingRequestId(requestId);
-                              }
-                            : undefined
-                        }
-                      />
-                    </div>
-                  );
-                })}
-              </div>
+                              : undefined
+                          }
+                          onRequestApprove={onRequestApprove}
+                          onRequestDismiss={onRequestDismiss}
+                          onRequestReject={
+                            showRequestActions && onRequestReject
+                              ? (nextRequestId) => {
+                                  setReviewingRequestId(null);
+                                  setRejectingRequest({ requestId: nextRequestId });
+                                }
+                              : undefined
+                          }
+                          showRequestDetailsToggle={canShowRequestReview}
+                          isRequestDetailsOpen={shouldShowRequestReview}
+                          isSelected={shouldShowRequestReview || shouldShowRejectDialog}
+                          onRequestReviewApprove={
+                            onRequestApprove
+                              ? async (approvedRequestId, record, options) => {
+                                  await onRequestApprove(approvedRequestId, record, options);
+                                  setReviewingRequestId(null);
+                                }
+                              : undefined
+                          }
+                          isRequestRejectOpen={shouldShowRejectDialog}
+                          onRequestRejectClose={() => setRejectingRequest(null)}
+                          onRequestRejectConfirm={
+                            onRequestReject
+                              ? async (rejectedRequestId, adminNote) => {
+                                  await onRequestReject(rejectedRequestId, adminNote);
+                                  setRejectingRequest(null);
+                                }
+                              : undefined
+                          }
+                          onRequestDetailsToggle={
+                            canShowRequestReview && typeof requestId === 'number'
+                              ? () => {
+                                  if (shouldShowRejectDialog) {
+                                    setRejectingRequest(null);
+                                    return;
+                                  }
+                                  setRejectingRequest(null);
+                                  setReviewingRequestId((current) =>
+                                    current === requestId ? null : requestId,
+                                  );
+                                }
+                              : undefined
+                          }
+                          onRequestDetailsOpen={
+                            canShowRequestReview && typeof requestId === 'number'
+                              ? () => {
+                                  setRejectingRequest(null);
+                                  setReviewingRequestId(requestId);
+                                }
+                              : undefined
+                          }
+                        />
+                      </div>
+                    );
+                  })}
+                </div>
               )}
             </section>
-          ))
-          )
-        )}
+          ));
+        })()}
       </div>
 
-      {(activeTab === 'downloads' || activeTab === 'all') && hasTerminalDownloadItems && clearCompletedTargets.length > 0 && (
-        <div
-          className="p-3 border-t flex items-center justify-center"
-          style={{
-            borderColor: 'var(--border-muted)',
-            paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))',
-          }}
-        >
-          <button
-            type="button"
-            onClick={() => onClearCompleted(clearCompletedTargets)}
-            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+      {(effectiveActiveTab === 'downloads' || effectiveActiveTab === 'all') &&
+        hasTerminalDownloadItems &&
+        clearCompletedTargets.length > 0 && (
+          <div
+            className="flex items-center justify-center border-t p-3"
+            style={{
+              borderColor: 'var(--border-muted)',
+              paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))',
+            }}
           >
-            Clear Completed
-          </button>
-        </div>
-      )}
+            <button
+              type="button"
+              onClick={() => onClearCompleted(clearCompletedTargets)}
+              className="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+            >
+              Clear Completed
+            </button>
+          </div>
+        )}
 
-      {activeTab === 'history' && historyItems.length > 0 && (
+      {effectiveActiveTab === 'history' && historyItems.length > 0 && (
         <div
-          className="p-3 border-t flex items-center justify-center"
+          className="flex items-center justify-center border-t p-3"
           style={{
             borderColor: 'var(--border-muted)',
             paddingBottom: 'calc(0.75rem + env(safe-area-inset-bottom))',
@@ -988,7 +1016,7 @@ export const ActivitySidebar = ({
           <button
             type="button"
             onClick={onClearHistory}
-            className="text-sm text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+            className="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
           >
             Clear History
           </button>
@@ -1011,7 +1039,7 @@ export const ActivitySidebar = ({
 
     return (
       <aside
-        className="hidden lg:flex fixed right-0 w-96 flex-col bg-(--bg-soft) z-30 rounded-2xl shadow-lg overflow-hidden"
+        className="fixed right-0 z-30 hidden w-96 flex-col overflow-hidden rounded-2xl bg-(--bg-soft) shadow-lg lg:flex"
         style={{
           top: `${pinnedTopOffset}px`,
           height: `calc(100dvh - ${pinnedTopOffset}px - 0.75rem)`,
@@ -1027,15 +1055,18 @@ export const ActivitySidebar = ({
 
   return (
     <>
-      <div
-        className={`fixed inset-0 bg-black/50 z-45 transition-opacity duration-300 ${
-          isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'
+      <button
+        type="button"
+        className={`fixed inset-0 z-45 bg-black/50 transition-opacity duration-300 ${
+          isOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
         onClick={onClose}
+        aria-label="Close activity sidebar"
+        tabIndex={-1}
       />
 
       <aside
-        className={`fixed top-0 right-0 h-full w-full sm:w-96 z-50 flex flex-col shadow-2xl transition-transform duration-300 ${
+        className={`fixed top-0 right-0 z-50 flex h-full w-full flex-col shadow-2xl transition-transform duration-300 sm:w-96 ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
         style={{ background: 'var(--bg)' }}

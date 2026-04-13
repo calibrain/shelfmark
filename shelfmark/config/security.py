@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, Any
 
 from shelfmark.config.migrations import migrate_security_settings
 from shelfmark.config.security_handlers import (
+    check_oidc_connection,
     on_save_security,
-    test_oidc_connection,
 )
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
@@ -45,10 +45,13 @@ def _migrate_security_settings() -> None:
         save_config_file,
     )
 
+    def _save_users_config(values: dict[str, Any]) -> None:
+        save_config_file("users", values)
+
     migrate_security_settings(
         load_security_config=lambda: load_config_file("security"),
         load_users_config=lambda: load_config_file("users"),
-        save_users_config=lambda values: save_config_file("users", values),
+        save_users_config=_save_users_config,
         ensure_config_dir=lambda: _ensure_config_dir("security"),
         get_config_path=lambda: _get_config_file_path("security"),
         sync_builtin_admin_user=sync_builtin_admin_user,
@@ -61,7 +64,7 @@ def _on_save_security(values: dict[str, Any]) -> dict[str, Any]:
 
 
 def _test_oidc_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
-    return test_oidc_connection(
+    return check_oidc_connection(
         load_security_config=lambda: {
             "OIDC_DISCOVERY_URL": app_config.get("OIDC_DISCOVERY_URL", ""),
         },

@@ -25,6 +25,21 @@ from shelfmark.release_sources.audiobookbay import scraper
 from shelfmark.release_sources.audiobookbay.utils import normalize_hostname, parse_size
 
 logger = setup_logger(__name__)
+MIN_RELEVANCE_QUERY_WORD_LENGTH = 2
+
+
+def _coerce_hostname_config(value: object) -> str:
+    """Return a normalized ABB hostname from config."""
+    return normalize_hostname(value if isinstance(value, str) else "")
+
+
+def _coerce_positive_int(value: object, default: int) -> int:
+    """Return a positive integer config value or the provided default."""
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int) and value > 0:
+        return value
+    return default
 
 
 # Map language names to ISO 639-1 codes (matching frontend color maps)
@@ -133,7 +148,7 @@ def _parse_bitrate_to_kbps(bitrate: str | None) -> int | None:
 
 def _generate_source_id(detail_url: str) -> str:
     """Generate a unique source ID from detail URL."""
-    return hashlib.md5(detail_url.encode()).hexdigest()
+    return hashlib.blake2b(detail_url.encode(), digest_size=16).hexdigest()
 
 
 @register_source("audiobookbay")
@@ -168,11 +183,11 @@ class AudiobookBaySource(ReleaseSource):
         if content_type != "audiobook":
             return []
 
-        hostname = normalize_hostname(config.get("ABB_HOSTNAME", ""))
+        hostname = _coerce_hostname_config(config.get("ABB_HOSTNAME", ""))
         if not hostname:
             logger.debug("AudiobookBay hostname is not configured")
             return []
-        max_pages = config.get("ABB_PAGE_LIMIT", 1)
+        max_pages = _coerce_positive_int(config.get("ABB_PAGE_LIMIT", 1), 1)
         exact_phrase = bool(config.get("ABB_EXACT_PHRASE", False))
 
         # Build search query candidates from plan.
@@ -246,7 +261,11 @@ class AudiobookBaySource(ReleaseSource):
                     )
 
             # Extract query words for relevance checking
-            query_words = {word.lower() for word in query_lower.split() if len(word) > 2}
+            query_words = {
+                word.lower()
+                for word in query_lower.split()
+                if len(word) > MIN_RELEVANCE_QUERY_WORD_LENGTH
+            }
 
             releases = []
             for result in results:
@@ -316,7 +335,7 @@ class AudiobookBaySource(ReleaseSource):
     def is_available(self) -> bool:
         """Check if AudiobookBay source is enabled and configured."""
         return config.get("ABB_ENABLED", False) is True and bool(
-            normalize_hostname(config.get("ABB_HOSTNAME", ""))
+            _coerce_hostname_config(config.get("ABB_HOSTNAME", ""))
         )
 
     def get_column_config(self) -> ReleaseColumnConfig:

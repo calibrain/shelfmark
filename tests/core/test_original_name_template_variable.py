@@ -32,7 +32,9 @@ class TestOriginalNameTransferTemplates:
 
         monkeypatch.setattr(
             "shelfmark.download.postprocess.transfer.get_template",
-            lambda _is_audiobook, mode: "{OriginalName}" if mode == "rename" else "{Author}/{Title}",
+            lambda *, is_audiobook, organization_mode: (
+                "{OriginalName}" if organization_mode == "rename" else "{Author}/{Title}"
+            ),
         )
 
         task = DownloadTask(
@@ -70,7 +72,7 @@ class TestOriginalNameTransferTemplates:
 
         monkeypatch.setattr(
             "shelfmark.download.postprocess.transfer.get_template",
-            lambda _is_audiobook, mode: "{Author}/{Title}/{OriginalName}",
+            lambda *, is_audiobook, organization_mode: "{Author}/{Title}/{OriginalName}",
         )
 
         task = DownloadTask(

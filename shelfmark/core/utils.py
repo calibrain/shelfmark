@@ -4,10 +4,13 @@ import base64
 import importlib
 import os
 import re
+import sqlite3
 from pathlib import Path
 from threading import Lock
 from typing import TYPE_CHECKING
 from urllib.parse import urlparse
+
+from shelfmark.core.request_helpers import normalize_optional_text
 
 if TYPE_CHECKING:
     from types import ModuleType
@@ -57,6 +60,7 @@ def normalize_http_url(
 
 _xmlrpc_patch_lock = Lock()
 _xmlrpc_patch_applied = False
+_XMLRPC_PATCH_ERRORS = (ImportError, AttributeError, OSError, RuntimeError)
 
 
 def get_hardened_xmlrpc_client() -> ModuleType:
@@ -70,7 +74,7 @@ def get_hardened_xmlrpc_client() -> ModuleType:
 
                     monkey_patch()
                     _xmlrpc_patch_applied = True
-                except Exception:
+                except _XMLRPC_PATCH_ERRORS:
                     # Keep runtime behavior unchanged if defusedxml is unavailable.
                     _xmlrpc_patch_applied = False
 
@@ -173,7 +177,7 @@ def _resolve_destination_username(
         if not user:
             return ""
         return str(user.get("username") or "").strip()
-    except Exception:
+    except ImportError, OSError, sqlite3.Error:
         return ""
 
 
@@ -249,19 +253,23 @@ def get_aa_content_type_dir(content_type: str | None = None) -> Path | None:
     for mapping in (_AA_CONTENT_TYPE_TO_CONFIG_KEY, _LEGACY_CONTENT_TYPE_TO_CONFIG_KEY):
         config_key = mapping.get(content_type_lower)
         if config_key:
-            custom_dir = config.get(config_key, "")
-            if custom_dir:
-                return Path(custom_dir)
+            custom_dir = _coerce_config_path(config.get(config_key, ""))
+            if custom_dir is not None:
+                return custom_dir
 
     return None
 
 
 def get_ingest_dir(content_type: str | None = None) -> Path:
-    """DEPRECATED: Use get_destination() and get_aa_content_type_dir() instead."""
+    """Return the legacy ingest directory for a content type."""
     from shelfmark.core.config import config
 
     # Check new DESTINATION setting first, then legacy INGEST_DIR
-    default_ingest_dir = Path(config.get("DESTINATION", "") or config.get("INGEST_DIR", "/books"))
+    default_ingest_dir = _coerce_config_path(config.get("DESTINATION", "")) or _coerce_config_path(
+        config.get("INGEST_DIR", "/books")
+    )
+    if default_ingest_dir is None:
+        default_ingest_dir = Path("/books")
 
     if not content_type:
         return default_ingest_dir
@@ -293,7 +301,26 @@ def transform_cover_url(cover_url: str | None, cache_id: str) -> str | None:
 
     # Encode the original URL and create a proxy URL
     encoded_url = base64.urlsafe_b64encode(cover_url.encode()).decode()
-    base_path = normalize_base_path(app_config.get("URL_BASE", ""))
+    base_path = normalize_base_path(normalize_optional_text(app_config.get("URL_BASE", "")))
     if base_path:
         return f"{base_path}/api/covers/{cache_id}?url={encoded_url}"
     return f"/api/covers/{cache_id}?url={encoded_url}"
+
+
+def _coerce_config_path(value: object) -> Path | None:
+    if isinstance(value, os.PathLike):
+        path_value = os.fspath(value)
+        if isinstance(path_value, str):
+            normalized = path_value.strip()
+            if normalized:
+                return Path(normalized)
+        return None
+
+    if not isinstance(value, str):
+        return None
+
+    normalized = value.strip()
+    if not normalized:
+        return None
+
+    return Path(normalized)

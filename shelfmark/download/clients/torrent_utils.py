@@ -1,8 +1,11 @@
 """Shared utilities for torrent clients."""
 
+from __future__ import annotations
+
 import base64
 import hashlib
 import re
+from binascii import Error as BinasciiError
 from dataclasses import dataclass
 from urllib.parse import parse_qs, urljoin, urlparse
 
@@ -21,6 +24,16 @@ _BTIH_PREFIX_BYTE = 0x12
 _BTIH_DIGEST_LENGTH = 32
 _BTIH_HASH_LENGTH_40 = 40
 _BTIH_HASH_LENGTH_32 = 32
+_TORRENT_FETCH_ERRORS = (
+    requests.exceptions.RequestException,
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
+_TORRENT_PARSE_ERRORS = (IndexError, KeyError, TypeError, ValueError)
+
+type BencodeValue = dict[str | bytes, BencodeValue] | list[BencodeValue] | int | bytes | str
 
 
 @dataclass
@@ -82,7 +95,7 @@ def extract_torrent_info(
         return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
 
     headers: dict[str, str] = {"Accept": "application/x-bittorrent"}
-    # TODO: Move this source-specific Prowlarr auth handling into a source hook.
+    # TODO(shelfmark): Move this source-specific Prowlarr auth handling into a source hook.
     api_key = str(config.get("PROWLARR_API_KEY", "") or "").strip()
     if api_key:
         headers["X-Api-Key"] = api_key
@@ -135,21 +148,18 @@ def extract_torrent_info(
         # Check if response is actually a magnet link (text response)
         # Some indexers return magnet links as plain text instead of redirecting
         if len(torrent_data) < _MAGNET_RESPONSE_MAX_BYTES:  # Magnet links are typically short
-            try:
-                text_content = torrent_data.decode("utf-8", errors="ignore").strip()
-                if text_content.startswith("magnet:"):
-                    logger.debug("Download URL returned magnet link as response body")
-                    info_hash = extract_hash_from_magnet(text_content)
-                    if not info_hash and expected_hash:
-                        info_hash = expected_hash
-                    return TorrentInfo(
-                        info_hash=info_hash,
-                        torrent_data=None,
-                        is_magnet=True,
-                        magnet_url=text_content,
-                    )
-            except Exception:
-                pass  # Not text, continue with torrent parsing
+            text_content = torrent_data.decode("utf-8", errors="ignore").strip()
+            if text_content.startswith("magnet:"):
+                logger.debug("Download URL returned magnet link as response body")
+                info_hash = extract_hash_from_magnet(text_content)
+                if not info_hash and expected_hash:
+                    info_hash = expected_hash
+                return TorrentInfo(
+                    info_hash=info_hash,
+                    torrent_data=None,
+                    is_magnet=True,
+                    magnet_url=text_content,
+                )
 
         info_hash = extract_info_hash_from_torrent(torrent_data) or expected_hash
         if info_hash:
@@ -157,7 +167,7 @@ def extract_torrent_info(
         else:
             logger.warning("Could not extract hash from torrent file")
         return TorrentInfo(info_hash=info_hash, torrent_data=torrent_data, is_magnet=False)
-    except Exception as e:
+    except _TORRENT_FETCH_ERRORS as e:
         logger.debug("Could not fetch torrent file: %s", e)
         return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
 
@@ -216,7 +226,7 @@ def bencode_decode(data: bytes) -> tuple:
     raise ValueError(msg)
 
 
-def bencode_encode(data: dict[str | bytes, object] | list[object] | int | bytes | str) -> bytes:
+def bencode_encode(data: BencodeValue) -> bytes:
     """Encode data to bencode format."""
     if isinstance(data, dict):
         # Keys must be sorted (bencode spec requirement)
@@ -256,9 +266,10 @@ def extract_info_hash_from_torrent(torrent_data: bytes) -> str | None:
         info_bencoded = bencode_encode(decoded[b"info"])
         info_dict = decoded[b"info"]
         if isinstance(info_dict, dict) and b"pieces" in info_dict:
-            return hashlib.sha1(info_bencoded).hexdigest().lower()
+            # BitTorrent v1 info hashes are defined as SHA-1.
+            return hashlib.sha1(info_bencoded).hexdigest().lower()  # noqa: S324
         return hashlib.sha256(info_bencoded).hexdigest().lower()
-    except Exception as e:
+    except _TORRENT_PARSE_ERRORS as e:
         logger.debug("Failed to parse torrent file: %s", e)
         return None
 
@@ -288,7 +299,7 @@ def extract_hash_from_magnet(magnet_url: str) -> str | None:
             padded = raw_value.upper() + "=" * (-len(raw_value) % 8)
             try:
                 data = base64.b32decode(padded, casefold=True)
-            except Exception:
+            except BinasciiError, ValueError:
                 return None
 
         if not data:
@@ -326,8 +337,10 @@ def extract_hash_from_magnet(magnet_url: str) -> str | None:
             if re.match(r"^[A-Z2-7]{32}$", hash_value.upper()):
                 try:
                     return base64.b32decode(hash_value.upper()).hex().lower()
-                except Exception:
-                    pass
+                except BinasciiError, ValueError:
+                    logger.debug(
+                        "Could not decode base32 BTIH hash from magnet URI: %s", hash_value
+                    )
 
             # Fallback: return as-is
             return hash_value.lower()

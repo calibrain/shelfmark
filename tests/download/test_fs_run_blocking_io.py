@@ -49,3 +49,20 @@ def test_run_blocking_io_handles_gevent_patched_subprocess_run() -> None:
         f"stdout:\n{completed.stdout}\n"
         f"stderr:\n{completed.stderr}"
     )
+
+
+def test_run_blocking_io_reraises_captured_operational_errors(monkeypatch) -> None:
+    from shelfmark.download import fs
+
+    class _FakePool:
+        def apply(self, func, args):
+            return func(*args)
+
+    monkeypatch.setattr(fs, "_use_gevent_threadpool", lambda: True)
+    monkeypatch.setattr(fs, "_get_io_threadpool", lambda: _FakePool())
+
+    def _boom() -> None:
+        raise RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        fs.run_blocking_io(_boom)

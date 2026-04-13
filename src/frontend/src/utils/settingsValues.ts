@@ -1,4 +1,4 @@
-import { SettingsField, SettingsTab } from '../types/settings';
+import type { SelectOption, SettingsField, SettingsTab } from '../types/settings';
 
 export type SettingsValues = Record<string, Record<string, unknown>>;
 
@@ -7,17 +7,17 @@ type ValueBearingField = Exclude<
   { type: 'ActionButton' } | { type: 'HeadingField' } | { type: 'CustomComponentField' }
 >;
 
-export function getFieldValue(field: SettingsField): unknown {
+function getFieldValue(field: SettingsField): unknown {
   if (
-    field.type === 'ActionButton'
-    || field.type === 'HeadingField'
-    || field.type === 'CustomComponentField'
+    field.type === 'ActionButton' ||
+    field.type === 'HeadingField' ||
+    field.type === 'CustomComponentField'
   ) {
     return undefined;
   }
 
   if (field.type === 'TableField') {
-    return (field as unknown as { value?: unknown }).value ?? [];
+    return field.value ?? [];
   }
 
   return field.value ?? '';
@@ -67,17 +67,20 @@ export function extractSettingsValues(tabs: SettingsTab[]): SettingsValues {
 
 export function getRestartRequiredFieldKeys(
   fields: SettingsField[],
-  changedValues: Record<string, unknown>
+  changedValues: Record<string, unknown>,
 ): string[] {
   return getValueBearingFields(fields)
-    .filter((field) => field.requiresRestart && Object.prototype.hasOwnProperty.call(changedValues, field.key))
+    .filter(
+      (field) =>
+        field.requiresRestart && Object.prototype.hasOwnProperty.call(changedValues, field.key),
+    )
     .map((field) => field.key);
 }
 
 export function settingsTabMatchesSavedValues(
   tabName: string,
   tabs: SettingsTab[],
-  expectedValues: Record<string, unknown>
+  expectedValues: Record<string, unknown>,
 ): boolean {
   const tab = tabs.find((entry) => entry.name === tabName);
   if (!tab) {
@@ -107,13 +110,72 @@ export function settingsTabMatchesSavedValues(
 }
 
 export function cloneSettingsValues(values: SettingsValues): SettingsValues {
-  return JSON.parse(JSON.stringify(values)) as SettingsValues;
+  return structuredClone(values);
+}
+
+function toComparableSelectValue(value: unknown): string | undefined {
+  if (typeof value === 'string') {
+    return value;
+  }
+  if (typeof value === 'number' || typeof value === 'boolean') {
+    return String(value);
+  }
+  return undefined;
+}
+
+function getFilteredSelectOptions(
+  options: SelectOption[],
+  filterValue: string | undefined,
+): SelectOption[] {
+  if (!filterValue) {
+    return options.filter((option) => !option.childOf);
+  }
+
+  return options.filter((option) => !option.childOf || option.childOf === filterValue);
+}
+
+export function normalizeDependentSelectValues(
+  fields: SettingsField[],
+  values: Record<string, unknown>,
+): Record<string, unknown> {
+  const valueFields = getValueBearingFields(fields);
+  let nextValues = values;
+  let changed = false;
+
+  do {
+    changed = false;
+
+    for (const field of valueFields) {
+      if (field.type !== 'SelectField' || !field.filterByField) {
+        continue;
+      }
+
+      const currentValue = toComparableSelectValue(nextValues[field.key]);
+      if (!currentValue) {
+        continue;
+      }
+
+      const filterValue = toComparableSelectValue(nextValues[field.filterByField]);
+      const filteredOptions = getFilteredSelectOptions(field.options, filterValue);
+      const isCurrentValueValid = filteredOptions.some((option) => option.value === currentValue);
+
+      if (!isCurrentValueValid) {
+        if (nextValues === values) {
+          nextValues = { ...values };
+        }
+        nextValues[field.key] = '';
+        changed = true;
+      }
+    }
+  } while (changed);
+
+  return nextValues;
 }
 
 export function mergeFetchedSettingsWithDirtyValues(
   fetchedValues: SettingsValues,
   currentValues: SettingsValues,
-  originalValues: SettingsValues
+  originalValues: SettingsValues,
 ): SettingsValues {
   const mergedValues: SettingsValues = {};
 

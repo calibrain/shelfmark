@@ -57,7 +57,6 @@ ENV DEBIAN_FRONTEND=noninteractive \
 ENV FLASK_PORT=8084
 
 # Configure locale, timezone, and perform initial cleanup in a single layer
-# User/group creation is removed
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     # For locale
@@ -89,6 +88,13 @@ RUN apt-get update && \
     echo "LC_ALL=en_US.UTF-8" >> /etc/environment && \
     echo "LANG=en_US.UTF-8" > /etc/locale.conf
 
+# Create a fixed runtime user/group so hardened Docker/Kubernetes deployments
+# can start the container directly as a non-root user with a passwd entry.
+RUN groupadd -g 1000 shelfmark && \
+    useradd -u 1000 -g shelfmark -d /home/shelfmark -s /usr/sbin/nologin shelfmark && \
+    mkdir -p /home/shelfmark && \
+    chown 1000:1000 /home/shelfmark
+
 # Set working directory
 WORKDIR /app
 
@@ -103,10 +109,19 @@ COPY . .
 # Copy built frontend from frontend-builder stage
 COPY --from=frontend-builder /frontend/dist /app/frontend-dist
 
-# Final setup: permissions and directories in one layer
-# Only creating directories and setting executable bits.
-# Ownership will be handled by the entrypoint script.
-RUN mkdir -p /var/log/shelfmark /books && \
+# Final setup: create image-owned runtime paths for the fixed non-root user.
+# Root/PUID mode still re-homes ownership at startup when needed.
+RUN mkdir -p \
+        /config \
+        /books \
+        /var/log/shelfmark \
+        /tmp/shelfmark/seleniumbase/downloaded_files \
+        /tmp/shelfmark/seleniumbase/archived_files && \
+    rm -rf /app/downloaded_files /app/archived_files && \
+    ln -s /tmp/shelfmark/seleniumbase/downloaded_files /app/downloaded_files && \
+    ln -s /tmp/shelfmark/seleniumbase/archived_files /app/archived_files && \
+    chown -R 1000:1000 /config /books /home/shelfmark /tmp/shelfmark /var/log/shelfmark && \
+    chmod -R a+rX /app && \
     chmod +x /app/entrypoint.sh /app/tor.sh /app/genDebug.sh
 
 # Expose the application port
@@ -148,6 +163,12 @@ RUN apt-get update && \
 # Install the browser automation stack used by the full image
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-default-groups --extra browser
+
+# Keep SeleniumBase's bundled driver cache writable for the fixed non-root user.
+RUN SELENIUMBASE_DRIVERS_DIR=$(/app/.venv/bin/python -c "import pathlib, seleniumbase; print(pathlib.Path(seleniumbase.__file__).resolve().parent / 'drivers')") && \
+    chown -R 1000:1000 "${SELENIUMBASE_DRIVERS_DIR}" && \
+    chmod -R u+rwX,go+rX "${SELENIUMBASE_DRIVERS_DIR}" && \
+    if [ -f "${SELENIUMBASE_DRIVERS_DIR}/uc_driver" ]; then chmod +x "${SELENIUMBASE_DRIVERS_DIR}/uc_driver"; fi
 
 # Grant read/execute permissions to others
 RUN chmod -R o+rx /usr/bin/chromium

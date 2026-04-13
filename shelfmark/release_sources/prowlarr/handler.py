@@ -2,7 +2,7 @@
 
 from typing import TYPE_CHECKING
 
-from shelfmark.core.config import config as config
+from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import normalize_optional_text
 from shelfmark.download.clients import (
@@ -26,6 +26,7 @@ from shelfmark.download.clients.base_handler import (
 from shelfmark.release_sources import register_handler
 from shelfmark.release_sources.prowlarr.cache import get_release, remove_release
 from shelfmark.release_sources.prowlarr.utils import (
+    coerce_int_like,
     get_preferred_download_url,
     get_protocol,
 )
@@ -36,6 +37,13 @@ if TYPE_CHECKING:
     from shelfmark.core.models import DownloadTask
 
 logger = setup_logger(__name__)
+__all__ = [
+    "ProwlarrHandler",
+    "POLL_INTERVAL",
+    "COMPLETED_PATH_RETRY_INTERVAL",
+    "COMPLETED_PATH_MAX_ATTEMPTS",
+    "config",
+]
 
 # Backwards-compat constants for tests patching this module.
 POLL_INTERVAL = _DEFAULT_POLL_INTERVAL
@@ -48,9 +56,8 @@ def _coerce_seed_time_minutes(raw_seed_time: object) -> int | None:
     if raw_seed_time is None:
         return None
 
-    try:
-        seed_time_seconds = int(raw_seed_time)
-    except TypeError, ValueError:
+    seed_time_seconds = coerce_int_like(raw_seed_time)
+    if seed_time_seconds is None:
         logger.warning("Invalid Prowlarr minimumSeedTime value: %r", raw_seed_time)
         return None
 

@@ -11,8 +11,10 @@ from urllib.parse import urljoin, urlparse
 import requests
 from tqdm import tqdm
 
+from shelfmark.bypass import BypassCancelledError
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.request_helpers import coerce_bool, normalize_positive_int
 from shelfmark.download import network
 from shelfmark.download.network import get_proxies, get_ssl_verify
 
@@ -21,6 +23,7 @@ if TYPE_CHECKING:
     from types import ModuleType
 
 logger = setup_logger(__name__)
+_RNG = random.SystemRandom()
 
 _MAX_REDIRECTS = 5
 _HTTP_STATUS_FORBIDDEN = HTTPStatus.FORBIDDEN
@@ -30,6 +33,17 @@ _HTTP_STATUS_OK = HTTPStatus.OK
 _HTTP_STATUS_RANGE_NOT_SATISFIABLE = HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE
 _HTTP_STATUS_PARTIAL_CONTENT = HTTPStatus.PARTIAL_CONTENT
 _HTTP_STATUS_NON_RETRYABLE = (_HTTP_STATUS_FORBIDDEN, _HTTP_STATUS_NOT_FOUND)
+_STATUS_CALLBACK_ERRORS = (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError)
+_BYPASSER_ERRORS = (
+    AttributeError,
+    BypassCancelledError,
+    KeyError,
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+    requests.exceptions.RequestException,
+)
 
 # Bypasser modules are imported lazily to support dynamic selection based on config
 _internal_bypasser = None
@@ -77,12 +91,12 @@ def _get_external_bypasser() -> ModuleType:
 
 def _is_using_external_bypasser() -> bool:
     """Check if external bypasser is configured (reads from config, not just env)."""
-    return app_config.get("USING_EXTERNAL_BYPASSER", False)
+    return coerce_bool(app_config.get("USING_EXTERNAL_BYPASSER", False))
 
 
 def _is_cf_bypass_enabled() -> bool:
     """Check if Cloudflare bypass is enabled."""
-    return app_config.get("USE_CF_BYPASS", True)
+    return coerce_bool(app_config.get("USE_CF_BYPASS", True))
 
 
 def get_bypassed_page(
@@ -90,7 +104,7 @@ def get_bypassed_page(
     selector: network.AAMirrorSelector | None = None,
     cancel_flag: Event | None = None,
 ) -> str | None:
-    """Wrapper that delegates to the appropriate bypasser based on config."""
+    """Fetch a bypassed page using the active bypasser implementation."""
     if _is_using_external_bypasser():
         return _get_external_bypasser().get_bypassed_page(url, selector, cancel_flag)
     return _get_internal_bypasser().get_bypassed_page(url, selector, cancel_flag)
@@ -168,7 +182,7 @@ def parse_size_string(size: str) -> float | None:
 
 def _backoff_delay(attempt: int, base: float = 0.25, cap: float = 3.0) -> float:
     """Exponential backoff with jitter."""
-    return min(cap, base * (2 ** (attempt - 1))) + random.random() * base
+    return min(cap, base * (2 ** (attempt - 1))) + _RNG.random() * base
 
 
 def _get_status_code(e: Exception) -> int | None:
@@ -218,11 +232,18 @@ def html_get_page(
     """Fetch HTML content from a URL with retry mechanism.
 
     Args:
+        url: URL to fetch.
+        retry: Maximum number of attempts before giving up.
+        selector: Mirror selector used for AA mirror and DNS rotation.
+        cancel_flag: Optional event used to abort retries early.
+        status_callback: Optional callback for UI status updates.
         allow_bypasser_fallback: If False, 403 errors will trigger mirror rotation
             instead of switching to the bypasser. Use for search operations.
+        use_bypasser: Whether to start with the bypasser instead of direct HTTP.
         include_response_url: If True, return `(html, final_url)` to expose the
             resolved response URL after redirects.
         success_delay: Optional delay (seconds) after successful fetch.
+        session: Optional requests session to reuse across attempts.
 
     """
 
@@ -231,18 +252,22 @@ def html_get_page(
             return html, response_url
         return html
 
-    retry = retry if retry is not None else app_config.MAX_RETRY
+    configured_retry = normalize_positive_int(app_config.MAX_RETRY)
+    retry_limit = (
+        retry if retry is not None else (configured_retry if configured_retry is not None else 1)
+    )
     selector = selector or network.AAMirrorSelector()
     original_url = url
     current_url = selector.rewrite(original_url)
     use_bypasser_now = use_bypasser
 
-    for attempt in range(1, retry + 1):
+    for attempt in range(1, retry_limit + 1):
         # Check for cancellation before each attempt
         if cancel_flag and cancel_flag.is_set():
             logger.info("html_get_page cancelled before attempt %s", attempt)
             return _result("", current_url)
 
+        cookies: dict[str, str] = {}
         try:
             if use_bypasser_now and _is_cf_bypass_enabled():
                 if status_callback:
@@ -258,7 +283,7 @@ def html_get_page(
                             return
                         try:
                             status_callback("resolving", "Bypassing protection...")
-                        except Exception:
+                        except _STATUS_CALLBACK_ERRORS:
                             return
 
                     heartbeat_thread = Thread(
@@ -268,7 +293,7 @@ def html_get_page(
                 try:
                     result = get_bypassed_page(current_url, selector, cancel_flag)
                     return _result(result or "", current_url)
-                except Exception as e:
+                except _BYPASSER_ERRORS as e:
                     logger.warning("Bypasser error: %s: %s", type(e).__name__, e)
                     return _result("", current_url)
                 finally:
@@ -402,18 +427,18 @@ def html_get_page(
                     continue
 
             # Retry with backoff
-            if attempt < retry:
+            if attempt < retry_limit:
                 logger.warning(
                     "Retry %s/%s for %s: %s: %s",
                     attempt,
-                    retry,
+                    retry_limit,
                     current_url,
                     type(e).__name__,
                     e,
                 )
                 time.sleep(_backoff_delay(attempt))
             else:
-                logger.exception("Giving up after %s attempts: %s", retry, current_url)
+                logger.exception("Giving up after %s attempts: %s", retry_limit, current_url)
 
     return _result("", current_url)
 
@@ -521,7 +546,7 @@ def download_url(
                         time.sleep(0.5)
                         # Retry with fresh cookies (don't increment attempt)
                         continue
-                    except Exception as cookie_err:
+                    except _BYPASSER_ERRORS as cookie_err:
                         logger.warning("Z-Library cookie refresh failed: %s", cookie_err)
 
             # Non-retryable errors

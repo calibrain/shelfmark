@@ -1,5 +1,6 @@
-import { RequestPolicyMode } from '../../../types';
-import { TableFieldConfig } from '../../../types/settings';
+import type { RequestPolicyMode } from '../../../types';
+import type { TableFieldConfig } from '../../../types/settings';
+import { isRecord, toNormalizedLowercaseTextValue } from './fieldHelpers';
 
 export type RequestPolicyContentType = 'ebook' | 'audiobook';
 export type RequestPolicyMatrixMode = Exclude<RequestPolicyMode, 'request_book'>;
@@ -57,6 +58,12 @@ export const REQUEST_POLICY_MODE_LABELS: Record<RequestPolicyMode, string> = {
 
 const MATRIX_MODES: RequestPolicyMatrixMode[] = ['download', 'request_release', 'blocked'];
 const CONTENT_TYPES: RequestPolicyContentType[] = ['ebook', 'audiobook'];
+const REQUEST_POLICY_MODES: RequestPolicyMode[] = [
+  'download',
+  'request_release',
+  'request_book',
+  'blocked',
+];
 const MODE_RANK: Record<RequestPolicyMode, number> = {
   download: 0,
   request_release: 1,
@@ -64,27 +71,32 @@ const MODE_RANK: Record<RequestPolicyMode, number> = {
   blocked: 3,
 };
 
-const normalizeSource = (value: unknown): string => String(value || '').trim().toLowerCase();
+const normalizeSource = (value: unknown): string => toNormalizedLowercaseTextValue(value);
 
 const normalizeContentType = (value: unknown): RequestPolicyContentType | null => {
-  const normalized = String(value || '').trim().toLowerCase();
+  const normalized = toNormalizedLowercaseTextValue(value);
   if (normalized === 'ebook') return 'ebook';
   if (normalized === 'audiobook') return 'audiobook';
   return null;
 };
 
-const normalizeMode = (
-  value: unknown,
-  options: readonly RequestPolicyMode[] = ['download', 'request_release', 'request_book', 'blocked']
-): RequestPolicyMode | null => {
-  const normalized = String(value || '').trim().toLowerCase() as RequestPolicyMode;
-  return options.includes(normalized) ? normalized : null;
+export const normalizeRequestPolicyMode = (value: unknown): RequestPolicyMode | null => {
+  const normalized = toNormalizedLowercaseTextValue(value);
+  return REQUEST_POLICY_MODES.find((option) => option === normalized) ?? null;
 };
 
-const toRuleKey = (source: string, contentType: RequestPolicyContentType) => `${source}::${contentType}`;
+export const normalizeRequestPolicyMatrixMode = (
+  value: unknown,
+): RequestPolicyMatrixMode | null => {
+  const normalized = toNormalizedLowercaseTextValue(value);
+  return MATRIX_MODES.find((option) => option === normalized) ?? null;
+};
 
-export const sortRules = (rules: RequestPolicyRuleRow[]): RequestPolicyRuleRow[] =>
-  [...rules].sort((a, b) => {
+const toRuleKey = (source: string, contentType: RequestPolicyContentType) =>
+  `${source}::${contentType}`;
+
+const sortRules = (rules: RequestPolicyRuleRow[]): RequestPolicyRuleRow[] =>
+  rules.toSorted((a, b) => {
     const sourceCmp = a.source.localeCompare(b.source);
     if (sourceCmp !== 0) return sourceCmp;
     return a.content_type.localeCompare(b.content_type);
@@ -92,12 +104,12 @@ export const sortRules = (rules: RequestPolicyRuleRow[]): RequestPolicyRuleRow[]
 
 export const normalizeRequestPolicyDefaults = (
   raw: Partial<Record<RequestPolicyContentType, unknown>>,
-  fallback: RequestPolicyMode = 'download'
+  fallback: RequestPolicyMode = 'download',
 ): RequestPolicyDefaultsValue => {
-  const fallbackMode = normalizeMode(fallback) || 'download';
+  const fallbackMode = normalizeRequestPolicyMode(fallback) || 'download';
   return {
-    ebook: normalizeMode(raw.ebook) || fallbackMode,
-    audiobook: normalizeMode(raw.audiobook) || fallbackMode,
+    ebook: normalizeRequestPolicyMode(raw.ebook) || fallbackMode,
+    audiobook: normalizeRequestPolicyMode(raw.audiobook) || fallbackMode,
   };
 };
 
@@ -108,13 +120,12 @@ export const normalizeRequestPolicyRules = (rawRules: unknown): RequestPolicyRul
 
   const byKey = new Map<string, RequestPolicyRuleRow>();
   rawRules.forEach((rawRule) => {
-    if (!rawRule || typeof rawRule !== 'object') {
+    if (!isRecord(rawRule)) {
       return;
     }
-    const row = rawRule as Record<string, unknown>;
-    const source = normalizeSource(row.source);
-    const contentType = normalizeContentType(row.content_type);
-    const mode = normalizeMode(row.mode, MATRIX_MODES) as RequestPolicyMatrixMode | null;
+    const source = normalizeSource(rawRule.source);
+    const contentType = normalizeContentType(rawRule.content_type);
+    const mode = normalizeRequestPolicyMatrixMode(rawRule.mode);
     if (!source || !contentType || !mode) {
       return;
     }
@@ -125,10 +136,10 @@ export const normalizeRequestPolicyRules = (rawRules: unknown): RequestPolicyRul
     });
   });
 
-  return sortRules([...byKey.values()]);
+  return sortRules(Array.from(byKey.values()));
 };
 
-export const capPolicyMode = (mode: RequestPolicyMode, ceiling: RequestPolicyMode): RequestPolicyMode => {
+const capPolicyMode = (mode: RequestPolicyMode, ceiling: RequestPolicyMode): RequestPolicyMode => {
   return MODE_RANK[mode] < MODE_RANK[ceiling] ? ceiling : mode;
 };
 
@@ -136,7 +147,9 @@ export const isMatrixConfigurable = (defaultMode: RequestPolicyMode): boolean =>
   return defaultMode !== 'blocked';
 };
 
-export const getAllowedMatrixModes = (defaultMode: RequestPolicyMode): RequestPolicyMatrixMode[] => {
+export const getAllowedMatrixModes = (
+  defaultMode: RequestPolicyMode,
+): RequestPolicyMatrixMode[] => {
   if (!isMatrixConfigurable(defaultMode)) {
     return [];
   }
@@ -146,7 +159,7 @@ export const getAllowedMatrixModes = (defaultMode: RequestPolicyMode): RequestPo
 
 export const mergeRequestPolicyRuleLayers = (
   baseRules: RequestPolicyRuleRow[],
-  overrideRules: RequestPolicyRuleRow[]
+  overrideRules: RequestPolicyRuleRow[],
 ): RequestPolicyRuleRow[] => {
   const merged = new Map<string, RequestPolicyRuleRow>();
   baseRules.forEach((rule) => {
@@ -155,19 +168,18 @@ export const mergeRequestPolicyRuleLayers = (
   overrideRules.forEach((rule) => {
     merged.set(toRuleKey(rule.source, rule.content_type), rule);
   });
-  return sortRules([...merged.values()]);
+  return sortRules(Array.from(merged.values()));
 };
 
 const findRule = (
   rules: RequestPolicyRuleRow[],
   source: string,
-  contentType: RequestPolicyContentType
+  contentType: RequestPolicyContentType,
 ): RequestPolicyRuleRow | null => {
   const normalizedSource = normalizeSource(source);
   return (
-    rules.find(
-      (rule) => rule.source === normalizedSource && rule.content_type === contentType
-    ) || null
+    rules.find((rule) => rule.source === normalizedSource && rule.content_type === contentType) ||
+    null
   );
 };
 
@@ -175,7 +187,7 @@ export const getInheritedCellMode = (
   source: string,
   contentType: RequestPolicyContentType,
   defaultModes: RequestPolicyDefaultsValue,
-  baseRules: RequestPolicyRuleRow[]
+  baseRules: RequestPolicyRuleRow[],
 ): RequestPolicyMode => {
   const ceiling = defaultModes[contentType];
   const fromRule = findRule(baseRules, source, contentType)?.mode;
@@ -187,7 +199,7 @@ export const getEffectiveCellMode = (
   contentType: RequestPolicyContentType,
   defaultModes: RequestPolicyDefaultsValue,
   baseRules: RequestPolicyRuleRow[],
-  explicitRules: RequestPolicyRuleRow[]
+  explicitRules: RequestPolicyRuleRow[],
 ): RequestPolicyMode => {
   const ceiling = defaultModes[contentType];
   const explicit = findRule(explicitRules, source, contentType)?.mode;
@@ -199,7 +211,7 @@ export const getEffectiveCellMode = (
 
 export const parseSourceCapabilitiesFromRulesField = (
   rulesField: TableFieldConfig | null | undefined,
-  fallbackSources: string[] = []
+  fallbackSources: string[] = [],
 ): RequestPolicySourceCapability[] => {
   if (!rulesField || !Array.isArray(rulesField.columns)) {
     return fallbackSources.map((source) => ({
@@ -262,15 +274,25 @@ export const parseSourceCapabilitiesFromRulesField = (
   const orderedSources = sourceOptions
     .map((option) => normalizeSource(option.value))
     .filter((source) => source && bySource.has(source));
-  const extraSources = [...bySource.keys()].filter((source) => !orderedSources.includes(source));
+  const extraSources = Array.from(bySource.keys()).filter(
+    (source) => !orderedSources.includes(source),
+  );
 
   return [...orderedSources, ...extraSources].map((source) => {
-    const row = bySource.get(source)!;
+    const row = bySource.get(source);
+    if (!row) {
+      return {
+        source,
+        displayName: source,
+        supportedContentTypes: [],
+      };
+    }
     const supported = CONTENT_TYPES.filter((contentType) =>
-      row.supportedContentTypes.includes(contentType)
+      row.supportedContentTypes.includes(contentType),
     );
     return {
-      ...row,
+      source: row.source,
+      displayName: row.displayName,
       supportedContentTypes: supported,
     };
   });
@@ -279,7 +301,7 @@ export const parseSourceCapabilitiesFromRulesField = (
 const isSourceContentTypeSupported = (
   sourceCapabilities: RequestPolicySourceCapability[],
   source: string,
-  contentType: RequestPolicyContentType
+  contentType: RequestPolicyContentType,
 ): boolean => {
   const normalizedSource = normalizeSource(source);
   const sourceCapability = sourceCapabilities.find((row) => row.source === normalizedSource);
@@ -314,10 +336,4 @@ export const normalizeExplicitRulesForPersistence = ({
   });
 
   return sortRules(filtered);
-};
-
-export const areRuleSetsEqual = (left: RequestPolicyRuleRow[], right: RequestPolicyRuleRow[]): boolean => {
-  const leftSorted = sortRules(left);
-  const rightSorted = sortRules(right);
-  return JSON.stringify(leftSorted) === JSON.stringify(rightSorted);
 };

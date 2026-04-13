@@ -1,4 +1,4 @@
-import {
+import type {
   Book,
   StatusData,
   AppConfig,
@@ -13,23 +13,26 @@ import {
   MetadataProvidersResponse,
   MetadataSearchConfig,
 } from '../types';
-import { SettingsResponse, ActionResult, UpdateResult, SettingsTab } from '../types/settings';
+import type {
+  ActionResult,
+  SettingsField,
+  SettingsResponse,
+  SettingsTab,
+  UpdateResult,
+} from '../types/settings';
+import { getApiBase, withBasePath } from '../utils/basePath';
+import type { MetadataBookData, SourceRecordData } from '../utils/bookTransformers';
 import {
-  MetadataBookData,
-  SourceRecordData,
   transformMetadataToBook,
   transformReleaseToDirectBook,
   transformSourceRecordToBook,
 } from '../utils/bookTransformers';
-import { getApiBase, withBasePath } from '../utils/basePath';
+import { isRecord, toStringValue } from '../utils/objectHelpers';
+import type { FulfilAdminRequestBody, RejectAdminRequestBody } from './requestApiHelpers';
 import {
   buildAdminRequestActionUrl,
   buildFulfilAdminRequestBody,
   buildRejectAdminRequestBody,
-  buildRequestListUrl,
-  FulfilAdminRequestBody,
-  RejectAdminRequestBody,
-  RequestListParams,
 } from './requestApiHelpers';
 
 const API_BASE = getApiBase();
@@ -52,7 +55,6 @@ const API = {
   requests: `${API_BASE}/requests`,
   requestsBatch: `${API_BASE}/requests/batch`,
   adminRequests: `${API_BASE}/admin/requests`,
-  adminRequestCounts: `${API_BASE}/admin/requests/count`,
   activitySnapshot: `${API_BASE}/activity/snapshot`,
   activityDismiss: `${API_BASE}/activity/dismiss`,
   activityDismissMany: `${API_BASE}/activity/dismiss-many`,
@@ -68,14 +70,21 @@ export class AuthenticationError extends Error {
 }
 
 // Custom error class for request timeouts
-export class TimeoutError extends Error {
+class TimeoutError extends Error {
   constructor(message: string) {
     super(message);
     this.name = 'TimeoutError';
   }
 }
 
-export class ApiResponseError extends Error {
+type ApiResponseErrorShape = Error & {
+  status: number;
+  code?: string;
+  requiredMode?: string;
+  payload?: Record<string, unknown>;
+};
+
+class ApiResponseError extends Error {
   status: number;
   code?: string;
   requiredMode?: string;
@@ -88,7 +97,7 @@ export class ApiResponseError extends Error {
       code?: string;
       requiredMode?: string;
       payload?: Record<string, unknown>;
-    }
+    },
   ) {
     super(message);
     this.name = 'ApiResponseError';
@@ -99,7 +108,7 @@ export class ApiResponseError extends Error {
   }
 }
 
-export const isApiResponseError = (error: unknown): error is ApiResponseError => {
+export const isApiResponseError = (error: unknown): error is ApiResponseErrorShape => {
   return error instanceof ApiResponseError;
 };
 
@@ -109,16 +118,20 @@ const mapApiErrorToActionResult = (error: unknown): ActionResult | null => {
   }
 
   const payload = error.payload;
-  const message =
-    typeof payload.message === 'string'
-      ? payload.message
-      : (typeof payload.error === 'string' ? payload.error : null);
+  let message: string | null = null;
+  if (typeof payload.message === 'string') {
+    message = payload.message;
+  } else if (typeof payload.error === 'string') {
+    message = payload.error;
+  }
   if (!message) {
     return null;
   }
 
   const details = Array.isArray(payload.details)
-    ? payload.details.filter((detail): detail is string => typeof detail === 'string' && detail.trim().length > 0)
+    ? payload.details.filter(
+        (detail): detail is string => typeof detail === 'string' && detail.trim().length > 0,
+      )
     : undefined;
 
   return {
@@ -135,22 +148,22 @@ const DEFAULT_TIMEOUT_MS = 30000;
 async function fetchJSON<T>(
   url: string,
   opts: RequestInit = {},
-  timeoutMs: number | null = DEFAULT_TIMEOUT_MS
+  timeoutMs: number | null = DEFAULT_TIMEOUT_MS,
 ): Promise<T> {
   const controller = new AbortController();
-  const timeoutId = timeoutMs && timeoutMs > 0
-    ? setTimeout(() => controller.abort(), timeoutMs)
-    : null;
+  const timeoutId =
+    timeoutMs && timeoutMs > 0 ? setTimeout(() => controller.abort(), timeoutMs) : null;
+  const headers = new Headers(opts.headers);
+  if (!headers.has('Content-Type')) {
+    headers.set('Content-Type', 'application/json');
+  }
 
   try {
     const res = await fetch(url, {
       ...opts,
-      credentials: 'include',  // Enable cookies for session
+      credentials: 'include', // Enable cookies for session
       signal: controller.signal,
-      headers: {
-        'Content-Type': 'application/json',
-        ...opts.headers,
-      },
+      headers,
     });
 
     if (!res.ok) {
@@ -159,9 +172,9 @@ async function fetchJSON<T>(
       let hasServerMessage = false;
       let errorData: Record<string, unknown> | null = null;
       try {
-        const parsed = await res.json();
-        if (parsed && typeof parsed === 'object') {
-          errorData = parsed as Record<string, unknown>;
+        const parsed: unknown = await res.json();
+        if (isRecord(parsed) && !Array.isArray(parsed)) {
+          errorData = parsed;
         }
         // Prefer user-friendly 'message' field, fall back to 'error'
         if (typeof errorData?.message === 'string') {
@@ -173,7 +186,10 @@ async function fetchJSON<T>(
         }
       } catch (e) {
         // Log parse failure for debugging - server may have returned non-JSON (e.g., HTML error page)
-        console.warn(`Failed to parse error response from ${url}:`, e instanceof Error ? e.message : e);
+        console.warn(
+          `Failed to parse error response from ${url}:`,
+          e instanceof Error ? e.message : e,
+        );
       }
 
       // Provide helpful message for gateway/proxy errors
@@ -197,11 +213,14 @@ async function fetchJSON<T>(
       });
     }
 
+    // eslint-disable-next-line @typescript-eslint/no-unsafe-return -- fetch() returns untyped JSON; callers provide the expected response shape at the boundary
     return res.json();
   } catch (error) {
     // Handle abort/timeout errors
     if (error instanceof Error && error.name === 'AbortError') {
-      throw new TimeoutError('Request timed out. Check your network connection or proxy configuration.');
+      throw new TimeoutError(
+        'Request timed out. Check your network connection or proxy configuration.',
+      );
     }
     throw error;
   } finally {
@@ -214,7 +233,9 @@ async function fetchJSON<T>(
 // API functions
 export const searchBooks = async (query: string): Promise<Book[]> => {
   if (!query) return [];
-  const response = await fetchJSON<ReleasesResponse>(`${API_BASE}/releases?source=direct_download&${query}`);
+  const response = await fetchJSON<ReleasesResponse>(
+    `${API_BASE}/releases?source=direct_download&${query}`,
+  );
   return response.releases.map(transformReleaseToDirectBook);
 };
 
@@ -231,7 +252,7 @@ interface MetadataSearchResponse {
 }
 
 // Metadata search result with pagination info
-export interface MetadataSearchResult {
+interface MetadataSearchResult {
   books: Book[];
   page: number;
   totalFound: number;
@@ -256,7 +277,7 @@ export interface BookTargetOption {
   writable: boolean;
 }
 
-export interface BookTargetStateResult {
+interface BookTargetStateResult {
   changed: boolean;
   selected: boolean;
   deselectedTarget?: string;
@@ -270,9 +291,9 @@ export const searchMetadata = async (
   fields: Record<string, string | number | boolean> = {},
   page: number = 1,
   contentType: string = 'ebook',
-  provider?: string
+  provider?: string,
 ): Promise<MetadataSearchResult> => {
-  const hasFields = Object.values(fields).some(v => v !== '' && v !== false);
+  const hasFields = Object.values(fields).some((v) => v !== '' && v !== false);
 
   if (!query && !hasFields) {
     return { books: [], page: 1, totalFound: 0, hasMore: false };
@@ -297,7 +318,9 @@ export const searchMetadata = async (
     }
   });
 
-  const response = await fetchJSON<MetadataSearchResponse>(`${API.metadataSearch}?${params.toString()}`);
+  const response = await fetchJSON<MetadataSearchResponse>(
+    `${API.metadataSearch}?${params.toString()}`,
+  );
 
   return {
     books: response.books.map(transformMetadataToBook),
@@ -342,9 +365,8 @@ export const fetchFieldOptions = async (
     url.searchParams.set('query', query.trim());
   }
 
-  const requestUrl = url.origin === window.location.origin
-    ? `${url.pathname}${url.search}`
-    : url.toString();
+  const requestUrl =
+    url.origin === window.location.origin ? `${url.pathname}${url.search}` : url.toString();
 
   const response = await fetchJSON<{ options?: unknown }>(requestUrl);
   if (!Array.isArray(response.options)) {
@@ -362,7 +384,7 @@ export const fetchFieldOptions = async (
 const parseBaseOption = (
   option: Record<string, unknown>,
 ): { value: string; label: string; group?: string; description?: string } => {
-  const value = typeof option.value === 'string' ? option.value : String(option.value ?? '');
+  const value = toStringValue(option.value) ?? '';
   const label = typeof option.label === 'string' ? option.label : value;
   const group = typeof option.group === 'string' ? option.group : undefined;
   const description = typeof option.description === 'string' ? option.description : undefined;
@@ -381,22 +403,18 @@ const parseBookTargetOptions = (raw: unknown): BookTargetOption[] => {
   if (!Array.isArray(raw)) return [];
   return raw
     .filter((item): item is Record<string, unknown> => typeof item === 'object' && item !== null)
-    .map((item) => ({
-      ...parseBaseOption(item),
-      checked: item.checked === true,
-      writable: item.writable !== false,
-    }))
+    .map((item) => {
+      const baseOption = parseBaseOption(item);
+      return {
+        value: baseOption.value,
+        label: baseOption.label,
+        group: baseOption.group,
+        description: baseOption.description,
+        checked: item.checked === true,
+        writable: item.writable !== false,
+      };
+    })
     .filter((option) => option.value !== '');
-};
-
-export const fetchBookTargetOptions = async (
-  provider: string,
-  bookId: string,
-): Promise<BookTargetOption[]> => {
-  const response = await fetchJSON<{ options?: unknown }>(
-    `${API_BASE}/metadata/book/${encodeURIComponent(provider)}/${encodeURIComponent(bookId)}/targets`
-  );
-  return parseBookTargetOptions(response.options);
 };
 
 export const fetchBookTargetOptionsBatch = async (
@@ -408,12 +426,12 @@ export const fetchBookTargetOptionsBatch = async (
     {
       method: 'POST',
       body: JSON.stringify({ book_ids: bookIds }),
-    }
+    },
   );
 
   const results = new Map<string, BookTargetOption[]>();
-  if (typeof response.results === 'object' && response.results !== null) {
-    for (const [bookId, options] of Object.entries(response.results as Record<string, unknown>)) {
+  if (isRecord(response.results) && !Array.isArray(response.results)) {
+    for (const [bookId, options] of Object.entries(response.results)) {
       results.set(bookId, parseBookTargetOptions(options));
     }
   }
@@ -426,24 +444,29 @@ export const setBookTargetState = async (
   target: string,
   selected: boolean,
 ): Promise<BookTargetStateResult> => {
-  const response = await fetchJSON<{ changed?: unknown; selected?: unknown; deselected_target?: unknown }>(
+  const response = await fetchJSON<{
+    changed?: unknown;
+    selected?: unknown;
+    deselected_target?: unknown;
+  }>(
     `${API_BASE}/metadata/book/${encodeURIComponent(provider)}/${encodeURIComponent(bookId)}/targets`,
     {
       method: 'PUT',
       body: JSON.stringify({ target, selected }),
-    }
+    },
   );
 
   return {
     changed: response.changed === true,
     selected: response.selected === true,
-    deselectedTarget: typeof response.deselected_target === 'string' ? response.deselected_target : undefined,
+    deselectedTarget:
+      typeof response.deselected_target === 'string' ? response.deselected_target : undefined,
   };
 };
 
 export const getSourceRecordInfo = async (source: string, id: string): Promise<Book> => {
   const response = await fetchJSON<SourceRecordData>(
-    `${API_BASE}/release-sources/${encodeURIComponent(source)}/records/${encodeURIComponent(id)}`
+    `${API_BASE}/release-sources/${encodeURIComponent(source)}/records/${encodeURIComponent(id)}`,
   );
   return transformSourceRecordToBook(response);
 };
@@ -451,7 +474,7 @@ export const getSourceRecordInfo = async (source: string, id: string): Promise<B
 // Get full book details from a metadata provider
 export const getMetadataBookInfo = async (provider: string, bookId: string): Promise<Book> => {
   const response = await fetchJSON<MetadataBookData>(
-    `${API_BASE}/metadata/book/${encodeURIComponent(provider)}/${encodeURIComponent(bookId)}`
+    `${API_BASE}/metadata/book/${encodeURIComponent(provider)}/${encodeURIComponent(bookId)}`,
   );
 
   return transformMetadataToBook(response);
@@ -462,8 +485,8 @@ export type DownloadReleasePayload = {
   source: string;
   source_id: string;
   title: string;
-  author?: string;   // Author from metadata provider
-  year?: string;     // Year from metadata provider
+  author?: string; // Author from metadata provider
+  year?: string; // Year from metadata provider
   format?: string;
   size?: string;
   size_bytes?: number;
@@ -472,8 +495,8 @@ export type DownloadReleasePayload = {
   indexer?: string;
   seeders?: number;
   extra?: Record<string, unknown>;
-  preview?: string;  // Book cover from metadata provider
-  content_type?: string;  // "ebook" or "audiobook" - for directory routing
+  preview?: string; // Book cover from metadata provider
+  content_type?: string; // "ebook" or "audiobook" - for directory routing
   series_name?: string;
   series_position?: number;
   subtitle?: string;
@@ -483,7 +506,7 @@ export type DownloadReleasePayload = {
 
 export const downloadRelease = async (
   release: DownloadReleasePayload,
-  onBehalfOfUserId?: number
+  onBehalfOfUserId?: number,
 ): Promise<void> => {
   const payload =
     typeof onBehalfOfUserId === 'number'
@@ -520,7 +543,7 @@ export const dismissManyActivityItems = async (items: ActivityDismissPayload[]):
 
 export const listActivityHistory = async (
   limit: number = 50,
-  offset: number = 0
+  offset: number = 0,
 ): Promise<ActivityHistoryItem[]> => {
   const params = new URLSearchParams();
   params.set('limit', String(limit));
@@ -544,20 +567,12 @@ export const getConfig = async (): Promise<AppConfig> => {
   return fetchJSON<AppConfig>(API.config);
 };
 
-export type ListRequestsParams = RequestListParams;
-
-export interface AdminRequestCounts {
-  pending: number;
-  total: number;
-  by_status: Record<string, number>;
-}
-
-export interface ActivityDismissedItem {
+interface ActivityDismissedItem {
   item_type: 'download' | 'request';
   item_key: string;
 }
 
-export interface ActivitySnapshotResponse {
+interface ActivitySnapshotResponse {
   status: StatusData;
   requests: RequestRecord[];
   dismissed: ActivityDismissedItem[];
@@ -586,23 +601,13 @@ export const fetchRequestPolicy = async (): Promise<RequestPolicyResponse> => {
   return fetchJSON<RequestPolicyResponse>(API.requestPolicy);
 };
 
-export const createRequest = async (payload: CreateRequestPayload): Promise<RequestSubmissionResult> => {
-  return fetchJSON<RequestSubmissionResult>(API.requests, {
-    method: 'POST',
-    body: JSON.stringify(payload),
-  });
-};
-
-export const createRequests = async (payloads: CreateRequestPayload[]): Promise<RequestSubmissionResult[]> => {
+export const createRequests = async (
+  payloads: CreateRequestPayload[],
+): Promise<RequestSubmissionResult[]> => {
   return fetchJSON<RequestSubmissionResult[]>(API.requestsBatch, {
     method: 'POST',
     body: JSON.stringify({ requests: payloads }),
   });
-};
-
-export const listRequests = async (params: ListRequestsParams = {}): Promise<RequestRecord[]> => {
-  const url = buildRequestListUrl(API.requests, params);
-  return fetchJSON<RequestRecord[]>(url);
 };
 
 export const cancelRequest = async (id: number): Promise<RequestRecord> => {
@@ -611,18 +616,9 @@ export const cancelRequest = async (id: number): Promise<RequestRecord> => {
   });
 };
 
-export const listAdminRequests = async (params: ListRequestsParams = {}): Promise<RequestRecord[]> => {
-  const url = buildRequestListUrl(API.adminRequests, params);
-  return fetchJSON<RequestRecord[]>(url);
-};
-
-export const getAdminRequestCounts = async (): Promise<AdminRequestCounts> => {
-  return fetchJSON<AdminRequestCounts>(API.adminRequestCounts);
-};
-
 export const fulfilAdminRequest = async (
   id: number,
-  body: FulfilAdminRequestBody = {}
+  body: FulfilAdminRequestBody = {},
 ): Promise<RequestRecord> => {
   return fetchJSON<RequestRecord>(buildAdminRequestActionUrl(API.adminRequests, id, 'fulfil'), {
     method: 'POST',
@@ -632,7 +628,7 @@ export const fulfilAdminRequest = async (
 
 export const rejectAdminRequest = async (
   id: number,
-  body: RejectAdminRequestBody = {}
+  body: RejectAdminRequestBody = {},
 ): Promise<RequestRecord> => {
   return fetchJSON<RequestRecord>(buildAdminRequestActionUrl(API.adminRequests, id, 'reject'), {
     method: 'POST',
@@ -669,7 +665,7 @@ export const getSettingsTab = async (tabName: string): Promise<SettingsTab> => {
 
 export const updateSettings = async (
   tabName: string,
-  values: Record<string, unknown>
+  values: Record<string, unknown>,
 ): Promise<UpdateResult> => {
   return fetchJSON<UpdateResult>(`${API.settings}/${tabName}`, {
     method: 'PUT',
@@ -680,7 +676,7 @@ export const updateSettings = async (
 export const executeSettingsAction = async (
   tabName: string,
   actionKey: string,
-  currentValues?: Record<string, unknown>
+  currentValues?: Record<string, unknown>,
 ): Promise<ActionResult> => {
   try {
     return await fetchJSON<ActionResult>(`${API.settings}/${tabName}/action/${actionKey}`, {
@@ -707,12 +703,12 @@ export interface OnboardingStep {
   id: string;
   title: string;
   tab: string;
-  fields: import('../types/settings').SettingsField[];
-  showWhen?: OnboardingStepCondition[];  // Array of conditions (all must be true)
+  fields: SettingsField[];
+  showWhen?: OnboardingStepCondition[]; // Array of conditions (all must be true)
   optional?: boolean;
 }
 
-export interface OnboardingConfig {
+interface OnboardingConfig {
   steps: OnboardingStep[];
   values: Record<string, unknown>;
   complete: boolean;
@@ -723,7 +719,7 @@ export const getOnboarding = async (): Promise<OnboardingConfig> => {
 };
 
 export const saveOnboarding = async (
-  values: Record<string, unknown>
+  values: Record<string, unknown>,
 ): Promise<{ success: boolean; message: string }> => {
   return fetchJSON<{ success: boolean; message: string }>(`${API_BASE}/onboarding`, {
     method: 'POST',
@@ -755,7 +751,7 @@ export const getReleases = async (
   languages?: string[],
   contentType?: string,
   manualQuery?: string,
-  indexers?: string[]
+  indexers?: string[],
 ): Promise<ReleasesResponse> => {
   const params = new URLSearchParams({
     provider,
@@ -815,7 +811,7 @@ export interface AdminUser {
   settings?: Record<string, unknown>;
 }
 
-export interface SelfUserEditContext {
+interface SelfUserEditContext {
   user: AdminUser;
   deliveryPreferences: DeliveryPreferencesResponse | null;
   searchPreferences: DeliveryPreferencesResponse | null;
@@ -832,9 +828,13 @@ export const getAdminUser = async (userId: number): Promise<AdminUser> => {
   return fetchJSON<AdminUser>(`${API_BASE}/admin/users/${userId}`);
 };
 
-export const createAdminUser = async (
-  data: { username: string; password: string; email?: string; display_name?: string; role?: string }
-): Promise<AdminUser> => {
+export const createAdminUser = async (data: {
+  username: string;
+  password: string;
+  email?: string;
+  display_name?: string;
+  role?: string;
+}): Promise<AdminUser> => {
   return fetchJSON<AdminUser>(`${API_BASE}/admin/users`, {
     method: 'POST',
     body: JSON.stringify(data),
@@ -846,7 +846,7 @@ export const updateAdminUser = async (
   data: Partial<Pick<AdminUser, 'role' | 'email' | 'display_name'>> & {
     password?: string;
     settings?: Record<string, unknown>;
-  }
+  },
 ): Promise<AdminUser> => {
   return fetchJSON<AdminUser>(`${API_BASE}/admin/users/${userId}`, {
     method: 'PUT',
@@ -860,7 +860,7 @@ export const deleteAdminUser = async (userId: number): Promise<{ success: boolea
   });
 };
 
-export interface CwaUserSyncResult {
+interface CwaUserSyncResult {
   success: boolean;
   message: string;
   created: number;
@@ -890,59 +890,50 @@ export const getDownloadDefaults = async (): Promise<DownloadDefaults> => {
   return fetchJSON<DownloadDefaults>(`${API_BASE}/admin/download-defaults`);
 };
 
-export interface BookloreOption {
-  value: string;
-  label: string;
-  childOf?: string;
-}
-
-export interface BookloreOptions {
-  libraries: BookloreOption[];
-  paths: BookloreOption[];
-}
-
-export const getBookloreOptions = async (): Promise<BookloreOptions> => {
-  return fetchJSON<BookloreOptions>(`${API_BASE}/admin/booklore-options`);
-};
-
 export interface DeliveryPreferencesResponse {
   tab: string;
   keys: string[];
-  fields: import('../types/settings').SettingsField[];
+  fields: SettingsField[];
   globalValues: Record<string, unknown>;
   userOverrides: Record<string, unknown>;
   effective: Record<string, { value: unknown; source: string }>;
 }
 
 export const getAdminDeliveryPreferences = async (
-  userId: number
+  userId: number,
 ): Promise<DeliveryPreferencesResponse> => {
-  return fetchJSON<DeliveryPreferencesResponse>(`${API_BASE}/admin/users/${userId}/delivery-preferences`);
+  return fetchJSON<DeliveryPreferencesResponse>(
+    `${API_BASE}/admin/users/${userId}/delivery-preferences`,
+  );
 };
 
 export const getAdminSearchPreferences = async (
-  userId: number
+  userId: number,
 ): Promise<DeliveryPreferencesResponse> => {
-  return fetchJSON<DeliveryPreferencesResponse>(`${API_BASE}/admin/users/${userId}/search-preferences`);
+  return fetchJSON<DeliveryPreferencesResponse>(
+    `${API_BASE}/admin/users/${userId}/search-preferences`,
+  );
 };
 
 export const getAdminNotificationPreferences = async (
-  userId: number
+  userId: number,
 ): Promise<DeliveryPreferencesResponse> => {
-  return fetchJSON<DeliveryPreferencesResponse>(`${API_BASE}/admin/users/${userId}/notification-preferences`);
+  return fetchJSON<DeliveryPreferencesResponse>(
+    `${API_BASE}/admin/users/${userId}/notification-preferences`,
+  );
 };
 
 export const testAdminUserNotificationPreferences = async (
   userId: number,
-  routes: Array<Record<string, unknown>>
-): Promise<import('../types/settings').ActionResult> => {
+  routes: Array<Record<string, unknown>>,
+): Promise<ActionResult> => {
   try {
-    return await fetchJSON<import('../types/settings').ActionResult>(
+    return await fetchJSON<ActionResult>(
       `${API_BASE}/admin/users/${userId}/notification-preferences/test`,
       {
         method: 'POST',
         body: JSON.stringify({ USER_NOTIFICATION_ROUTES: routes }),
-      }
+      },
     );
   } catch (error) {
     const mapped = mapApiErrorToActionResult(error);
@@ -954,16 +945,13 @@ export const testAdminUserNotificationPreferences = async (
 };
 
 export const testSelfNotificationPreferences = async (
-  routes: Array<Record<string, unknown>>
-): Promise<import('../types/settings').ActionResult> => {
+  routes: Array<Record<string, unknown>>,
+): Promise<ActionResult> => {
   try {
-    return await fetchJSON<import('../types/settings').ActionResult>(
-      `${API_BASE}/users/me/notification-preferences/test`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ USER_NOTIFICATION_ROUTES: routes }),
-      }
-    );
+    return await fetchJSON<ActionResult>(`${API_BASE}/users/me/notification-preferences/test`, {
+      method: 'POST',
+      body: JSON.stringify({ USER_NOTIFICATION_ROUTES: routes }),
+    });
   } catch (error) {
     const mapped = mapApiErrorToActionResult(error);
     if (mapped) {
@@ -973,26 +961,28 @@ export const testSelfNotificationPreferences = async (
   }
 };
 
-export interface SettingsOverrideUserDetail {
+interface SettingsOverrideUserDetail {
   userId: number;
   username: string;
   value: unknown;
 }
 
-export interface SettingsOverrideKeySummary {
+interface SettingsOverrideKeySummary {
   count: number;
   users: SettingsOverrideUserDetail[];
 }
 
-export interface SettingsOverridesSummaryResponse {
+interface SettingsOverridesSummaryResponse {
   tab: string;
   keys: Record<string, SettingsOverrideKeySummary>;
 }
 
 export const getAdminSettingsOverridesSummary = async (
-  tabName: string
+  tabName: string,
 ): Promise<SettingsOverridesSummaryResponse> => {
-  return fetchJSON<SettingsOverridesSummaryResponse>(`${API_BASE}/admin/settings/overrides-summary?tab=${encodeURIComponent(tabName)}`);
+  return fetchJSON<SettingsOverridesSummaryResponse>(
+    `${API_BASE}/admin/settings/overrides-summary?tab=${encodeURIComponent(tabName)}`,
+  );
 };
 
 export const getSelfUserEditContext = async (): Promise<SelfUserEditContext> => {
@@ -1003,7 +993,7 @@ export const updateSelfUser = async (
   data: Partial<Pick<AdminUser, 'email' | 'display_name'>> & {
     password?: string;
     settings?: Record<string, unknown>;
-  }
+  },
 ): Promise<AdminUser> => {
   return fetchJSON<AdminUser>(`${API_BASE}/users/me`, {
     method: 'PUT',

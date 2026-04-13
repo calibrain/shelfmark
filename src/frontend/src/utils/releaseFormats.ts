@@ -1,4 +1,4 @@
-import { Release } from '../types';
+import type { Release } from '../types';
 
 function normalizeFormatValue(value: unknown): string | null {
   if (typeof value !== 'string') {
@@ -24,7 +24,7 @@ export function getReleaseFormats(release: Release): string[] {
 
   addFormat(release.format);
 
-  const extraFormats = (release.extra as Record<string, unknown> | undefined)?.formats;
+  const extraFormats = release.extra?.formats;
   if (Array.isArray(extraFormats)) {
     extraFormats.forEach(addFormat);
   } else {

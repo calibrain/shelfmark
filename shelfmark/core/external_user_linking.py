@@ -60,6 +60,7 @@ def _get_by_subject(
 
 
 def find_unique_user_by_email(user_db: UserDB, email: str | None) -> dict[str, Any] | None:
+    """Return the unique local user matching an email address, if any."""
     key = _email_key(_normalize_email(email))
     if not key:
         return None

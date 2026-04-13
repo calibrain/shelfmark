@@ -1,0 +1,97 @@
+{
+  "$schema": "./node_modules/oxlint/configuration_schema.json",
+  "plugins": ["react", "typescript", "unicorn", "oxc", "jsx-a11y", "import"],
+  "options": {
+    "typeAware": true
+  },
+  "categories": {
+    "correctness": "error",
+    "suspicious": "error",
+    "perf": "error"
+  },
+  "rules": {
+    "react/react-in-jsx-scope": "off",
+    "no-console": "off",
+    "unicorn/no-null": "off",
+    "unicorn/filename-case": "off",
+    "unicorn/prefer-top-level-await": "off",
+    "import/no-default-export": "error",
+    "import/no-cycle": ["error", { "maxDepth": 5 }],
+    "unicorn/no-abusive-eslint-disable": "error",
+    "no-new-func": "error",
+    "unicorn/custom-error-definition": "error",
+    "typescript/no-explicit-any": "error",
+    "typescript/no-unsafe-argument": "error",
+    "typescript/no-unsafe-assignment": "error",
+    "typescript/no-unsafe-call": "error",
+    "typescript/no-unsafe-member-access": "error",
+    "typescript/no-unsafe-return": "error",
+    "typescript/no-empty-object-type": "error",
+    "typescript/no-unsafe-function-type": "error",
+    "typescript/no-invalid-void-type": "error",
+    "typescript/ban-ts-comment": "error",
+    "typescript/no-require-imports": "error",
+    "typescript/no-import-type-side-effects": "error",
+    "typescript/no-misused-promises": "error",
+    "typescript/no-non-null-assertion": "error",
+    "typescript/only-throw-error": "error",
+    "react/no-danger": "error",
+    "react/no-clone-element": "error",
+    "react/no-react-children": "error",
+    "react/button-has-type": "error",
+    "no-var": "error",
+    "no-alert": "error",
+    "no-script-url": "error",
+    "no-template-curly-in-string": "error",
+    "eqeqeq": ["error", "always", { "null": "ignore" }],
+    "no-return-assign": "error",
+    "import/no-mutable-exports": "error",
+    "import/no-commonjs": "error",
+    "typescript/consistent-type-imports": "error",
+    "unicorn/no-useless-promise-resolve-reject": "error",
+    "unicorn/no-object-as-default-parameter": "error",
+    "unicorn/no-nested-ternary": "error",
+    "unicorn/no-unreadable-iife": "error",
+    "no-empty-function": "error",
+    "no-useless-return": "error",
+    "import/no-duplicates": "error",
+    "react/jsx-no-useless-fragment": "error",
+    "react/self-closing-comp": "error",
+    "typescript/switch-exhaustiveness-check": "error",
+    "no-restricted-imports": [
+      "error",
+      {
+        "paths": [
+          {
+            "name": "react",
+            "importNames": ["useEffect"],
+            "message": "Direct useEffect is not allowed. Derive state during render, use event handlers, reset with key, or use useMountEffect / a named sync hook for external system sync. See hooks/useMountEffect.ts and the React docs: https://react.dev/learn/you-might-not-need-an-effect"
+          }
+        ]
+      }
+    ]
+  },
+  "overrides": [
+    {
+      "files": [
+        "src/hooks/useMountEffect.ts",
+        "src/hooks/useBodyScrollLock.ts",
+        "src/hooks/useEscapeKey.ts",
+        "src/hooks/useDismiss.ts",
+        "src/hooks/app/useStatusChangeNotifications.ts",
+        "src/hooks/useRealtimeStatus.ts",
+        "src/hooks/useActivity.ts"
+      ],
+      "rules": {
+        "no-restricted-imports": "off"
+      }
+    },
+    {
+      "files": ["src/tests/**"],
+      "rules": {
+        "typescript/no-explicit-any": "off"
+      }
+    }
+  ],
+  "ignorePatterns": ["dist/**", "node_modules/**"]
+}

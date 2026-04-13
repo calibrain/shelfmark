@@ -1,15 +1,17 @@
-import { Fragment, ReactElement } from 'react';
-import { DeliveryPreferencesResponse } from '../../../services/api';
-import { ActionResult } from '../../../types/settings';
-import { SettingsTab } from '../../../types/settings';
+import type { ReactElement } from 'react';
+import { Fragment } from 'react';
+
+import type { DeliveryPreferencesResponse } from '../../../services/api';
+import type { ActionResult, SettingsTab } from '../../../types/settings';
+import { toTrimmedTextValue } from './fieldHelpers';
+import type { PerUserSettings } from './types';
 import { UserNotificationOverridesSection } from './UserNotificationOverridesSection';
 import { UserOverridesSection } from './UserOverridesSection';
 import { UserRequestPolicyOverridesSection } from './UserRequestPolicyOverridesSection';
 import { UserSearchPreferencesSection } from './UserSearchPreferencesSection';
-import { PerUserSettings } from './types';
 
-export type UserOverrideScope = 'admin' | 'self';
-export type UserOverrideSectionId = 'delivery' | 'search' | 'notifications' | 'requestPolicy';
+type UserOverrideScope = 'admin' | 'self';
+type UserOverrideSectionId = 'delivery' | 'search' | 'notifications' | 'requestPolicy';
 
 interface UserOverridesSectionsProps {
   scope: UserOverrideScope;
@@ -42,9 +44,10 @@ const USER_OVERRIDE_SECTION_DEFINITIONS: UserOverrideSectionDefinition[] = [
   { id: 'requestPolicy', adminOnly: true },
 ];
 
-const USER_OVERRIDE_SECTION_ORDER: UserOverrideSectionId[] =
-  USER_OVERRIDE_SECTION_DEFINITIONS.map((section) => section.id);
-const USER_OVERRIDE_SECTION_ID_SET = new Set<UserOverrideSectionId>(USER_OVERRIDE_SECTION_ORDER);
+const USER_OVERRIDE_SECTION_ORDER: UserOverrideSectionId[] = USER_OVERRIDE_SECTION_DEFINITIONS.map(
+  (section) => section.id,
+);
+const USER_OVERRIDE_SECTION_ID_SET = new Set<string>(USER_OVERRIDE_SECTION_ORDER);
 
 const USER_OVERRIDE_SECTION_META: Record<UserOverrideSectionId, UserOverrideSectionDefinition> = {
   delivery: { id: 'delivery', adminOnly: false },
@@ -54,19 +57,19 @@ const USER_OVERRIDE_SECTION_META: Record<UserOverrideSectionId, UserOverrideSect
 };
 
 export const DEFAULT_SELF_USER_OVERRIDE_SECTIONS: UserOverrideSectionId[] =
-  USER_OVERRIDE_SECTION_ORDER.filter((sectionId) => !USER_OVERRIDE_SECTION_META[sectionId].adminOnly);
+  USER_OVERRIDE_SECTION_ORDER.filter(
+    (sectionId) => !USER_OVERRIDE_SECTION_META[sectionId].adminOnly,
+  );
 
-const isUserOverrideSectionId = (value: string): value is UserOverrideSectionId => (
-  USER_OVERRIDE_SECTION_ID_SET.has(value as UserOverrideSectionId)
-);
+const isUserOverrideSectionId = (value: string): value is UserOverrideSectionId =>
+  USER_OVERRIDE_SECTION_ID_SET.has(value);
 
 export const normalizeUserOverrideSections = (
   sections: Iterable<unknown> | null | undefined,
   scope: UserOverrideScope,
 ): UserOverrideSectionId[] => {
-  const fallbackSections = scope === 'self'
-    ? DEFAULT_SELF_USER_OVERRIDE_SECTIONS
-    : USER_OVERRIDE_SECTION_ORDER;
+  const fallbackSections =
+    scope === 'self' ? DEFAULT_SELF_USER_OVERRIDE_SECTIONS : USER_OVERRIDE_SECTION_ORDER;
 
   if (!sections) {
     return fallbackSections;
@@ -79,7 +82,7 @@ export const normalizeUserOverrideSections = (
 
   const requestedIds = new Set<UserOverrideSectionId>();
   requestedValues.forEach((value) => {
-    const normalizedValue = String(value ?? '').trim();
+    const normalizedValue = toTrimmedTextValue(value);
     if (isUserOverrideSectionId(normalizedValue)) {
       requestedIds.add(normalizedValue);
     }

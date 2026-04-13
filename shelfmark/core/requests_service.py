@@ -40,6 +40,7 @@ class RequestServiceError(ValueError):
         code: str | None = None,
         required_mode: str | None = None,
     ) -> None:
+        """Initialize the error with HTTP metadata for API callers."""
         super().__init__(message)
         self.status_code = status_code
         self.code = code

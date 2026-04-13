@@ -7,9 +7,26 @@ with various authentication modes.
 Run with: uv run pytest tests/e2e/ -v -m e2e
 """
 
+from typing import TYPE_CHECKING
+from uuid import uuid4
+
 import pytest
 
-from .conftest import APIClient
+if TYPE_CHECKING:
+    from .conftest import APIClient
+
+
+def _auth_check(api_client: APIClient) -> dict:
+    """Fetch the current auth state and assert the response shape."""
+    resp = api_client.get("/api/auth/check")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert isinstance(data, dict)
+    assert "authenticated" in data
+    assert "auth_required" in data
+    assert "auth_mode" in data
+    assert "is_admin" in data
+    return data
 
 
 @pytest.mark.e2e
@@ -17,76 +34,104 @@ class TestAuthenticationFlow:
     """Tests for the authentication endpoints in a real environment."""
 
     def test_auth_check_endpoint_exists(self, api_client: APIClient):
-        """Test that auth check endpoint is accessible."""
-        resp = api_client.get("/api/auth/check")
+        """Test that auth check returns the stable contract fields."""
+        data = _auth_check(api_client)
 
-        assert resp.status_code == 200
-        data = resp.json()
-        assert "authenticated" in data
-        assert "auth_required" in data
-        assert "auth_mode" in data
+        if data["auth_mode"] == "none":
+            assert data == {
+                "authenticated": True,
+                "auth_required": False,
+                "auth_mode": "none",
+                "is_admin": True,
+            }
+            return
+
+        assert isinstance(data["authenticated"], bool)
+        assert data["auth_required"] is True
+        assert data["auth_mode"] in ["builtin", "cwa", "proxy", "oidc"]
+        assert isinstance(data["is_admin"], bool)
+        assert data["username"] is None or isinstance(data["username"], str)
+        assert "display_name" in data
+        assert data["display_name"] is None or isinstance(data["display_name"], str)
 
     def test_auth_check_returns_auth_mode(self, api_client: APIClient):
-        """Test that auth check returns the current auth mode."""
-        resp = api_client.get("/api/auth/check")
-
-        data = resp.json()
-        assert "auth_mode" in data
-        # Should be one of the valid auth modes
+        """Test that auth check reports a known auth mode."""
+        data = _auth_check(api_client)
         assert data["auth_mode"] in ["none", "builtin", "cwa", "proxy", "oidc"]
 
     def test_auth_check_includes_admin_status(self, api_client: APIClient):
-        """Test that auth check includes admin status."""
-        resp = api_client.get("/api/auth/check")
-
-        data = resp.json()
-        assert "is_admin" in data
+        """Test that auth check exposes a boolean admin flag."""
+        data = _auth_check(api_client)
         assert isinstance(data["is_admin"], bool)
 
     def test_logout_endpoint_exists(self, api_client: APIClient):
-        """Test that logout endpoint is accessible."""
+        """Test that logout returns the stable success contract."""
         resp = api_client.post("/api/auth/logout")
 
-        # Should return 200 whether authenticated or not
         assert resp.status_code == 200
         data = resp.json()
-        assert "success" in data
+        assert data.get("success") is True
+        assert set(data).issubset({"success", "logout_url"})
+        if "logout_url" in data:
+            assert isinstance(data["logout_url"], str)
+            assert data["logout_url"].startswith("http")
 
     def test_logout_may_return_logout_url(self, api_client: APIClient):
         """Test that logout may return a logout URL for proxy auth."""
         resp = api_client.post("/api/auth/logout")
 
         data = resp.json()
-        # logout_url is optional depending on auth mode
         if "logout_url" in data:
             assert isinstance(data["logout_url"], str)
+            assert data["logout_url"].startswith("http")
 
     def test_login_endpoint_exists(self, api_client: APIClient):
-        """Test that login endpoint is accessible."""
+        """Test that login obeys the current authentication contract."""
+        auth_data = _auth_check(api_client)
+        username = f"e2e-auth-{uuid4().hex[:8]}"
         resp = api_client.post(
-            "/api/auth/login", json={"username": "test", "password": "test", "remember_me": False}
+            "/api/auth/login",
+            json={"username": username, "password": "wrong-password", "remember_me": False},
         )
 
-        # Should return some response (may be success, auth error, or rate limit)
-        assert resp.status_code in [200, 401, 403, 429]
+        auth_mode = auth_data.get("auth_mode")
+        if auth_mode == "none":
+            assert resp.status_code == 200
+            assert resp.json() == {"success": True}
+        elif auth_mode == "proxy":
+            assert resp.status_code == 401
+            assert resp.json() == {"error": "Proxy authentication is enabled"}
+        elif auth_mode in {"builtin", "cwa"}:
+            assert resp.status_code == 401
+            assert resp.json() == {"error": "Invalid username or password."}
+        elif auth_mode == "oidc":
+            if auth_data.get("hide_local_auth"):
+                assert resp.status_code == 403
+                assert resp.json() == {"error": "Local authentication is disabled"}
+            else:
+                assert resp.status_code == 401
+                assert resp.json() == {"error": "Invalid username or password."}
+        else:
+            pytest.fail(f"Unexpected auth mode: {auth_mode}")
 
     def test_login_with_no_auth_succeeds(self, api_client: APIClient):
         """Test that login succeeds when no authentication is required."""
-        # First check if auth is required
-        auth_check = api_client.get("/api/auth/check")
-        auth_data = auth_check.json()
+        auth_data = _auth_check(api_client)
 
         if not auth_data.get("auth_required"):
-            # Try logging in
             resp = api_client.post(
                 "/api/auth/login",
                 json={"username": "anyuser", "password": "anypass", "remember_me": False},
             )
 
-            # Should succeed
             assert resp.status_code == 200
-            data = resp.json()
-            assert data.get("success") is True
+            assert resp.json() == {"success": True}
+            assert api_client.get("/api/auth/check").json() == {
+                "authenticated": True,
+                "auth_required": False,
+                "auth_mode": "none",
+                "is_admin": True,
+            }
 
 
 @pytest.mark.e2e
@@ -94,34 +139,35 @@ class TestProxyAuthentication:
     """Tests for proxy authentication mode."""
 
     def test_proxy_auth_with_valid_header(self, api_client: APIClient):
-        """Test proxy auth when valid user header is present."""
-        # Check current auth mode
-        auth_check = api_client.get("/api/auth/check")
-        auth_data = auth_check.json()
+        """Test proxy auth creates and preserves a session from the proxy header."""
+        auth_data = _auth_check(api_client)
 
         if auth_data.get("auth_mode") != "proxy":
             pytest.skip("Proxy authentication not configured")
 
-        # Make a request with proxy auth header
-        # Note: In real deployment, these headers would be set by the proxy
-        resp = api_client.get("/api/config", headers={"X-Auth-User": "proxyuser"})
-
-        if resp.status_code == 401:
-            pytest.skip("Proxy auth header not accepted (check proxy configuration)")
-
-        # Should be able to access the endpoint
+        resp = api_client.get("/api/auth/check", headers={"X-Auth-User": "proxyuser"})
         assert resp.status_code == 200
+        data = resp.json()
+        assert data["authenticated"] is True
+        assert data["auth_mode"] == "proxy"
+        assert data["username"] == "proxyuser"
+        assert data["auth_required"] is True
+        assert isinstance(data["is_admin"], bool)
+        assert "display_name" in data
+
+        follow_up = api_client.get("/api/auth/check")
+        follow_up_data = follow_up.json()
+        assert follow_up.status_code == 200
+        assert follow_up_data["authenticated"] is True
+        assert follow_up_data["username"] == "proxyuser"
 
     def test_proxy_auth_logout_url_available(self, api_client: APIClient):
         """Test that proxy auth provides logout URL if configured."""
-        # Check current auth mode
-        auth_check = api_client.get("/api/auth/check")
-        auth_data = auth_check.json()
+        auth_data = _auth_check(api_client)
 
         if auth_data.get("auth_mode") != "proxy":
             pytest.skip("Proxy authentication not configured")
 
-        # Check for logout URL in auth check response
         if "logout_url" in auth_data:
             assert isinstance(auth_data["logout_url"], str)
             assert len(auth_data["logout_url"]) > 0
@@ -133,39 +179,32 @@ class TestBuiltinAuthentication:
 
     def test_builtin_auth_requires_credentials(self, api_client: APIClient):
         """Test that endpoints require authentication when builtin auth is enabled."""
-        # Check current auth mode
-        auth_check = api_client.get("/api/auth/check")
-        auth_data = auth_check.json()
+        auth_data = _auth_check(api_client)
 
         if auth_data.get("auth_mode") != "builtin":
             pytest.skip("Built-in authentication not configured")
 
-        if not auth_data.get("authenticated"):
-            # Attempt to access protected endpoint without authentication
-            resp = api_client.get("/api/config")
+        if auth_data.get("authenticated"):
+            pytest.skip("Built-in auth session already authenticated")
 
-            # Should be blocked
-            assert resp.status_code == 401
+        resp = api_client.get("/api/config")
+        assert resp.status_code == 401
 
     def test_builtin_auth_invalid_credentials(self, api_client: APIClient):
         """Test login with invalid credentials fails."""
-        # Check current auth mode
-        auth_check = api_client.get("/api/auth/check")
-        auth_data = auth_check.json()
+        auth_data = _auth_check(api_client)
 
         if auth_data.get("auth_mode") != "builtin":
             pytest.skip("Built-in authentication not configured")
 
-        # Try logging in with invalid credentials
+        username = f"builtin-e2e-{uuid4().hex[:8]}"
         resp = api_client.post(
             "/api/auth/login",
-            json={"username": "invalid_user", "password": "wrong_password", "remember_me": False},
+            json={"username": username, "password": "wrong_password", "remember_me": False},
         )
 
-        # Should fail, or be rate-limited on a live stack after repeated attempts
-        assert resp.status_code in [401, 403, 429]
-        data = resp.json()
-        assert data.get("success") is not True
+        assert resp.status_code == 401
+        assert resp.json() == {"error": "Invalid username or password."}
 
 
 @pytest.mark.e2e
@@ -174,53 +213,29 @@ class TestCalibreWebAuthentication:
 
     def test_cwa_auth_mode_available(self, api_client: APIClient):
         """Test that CWA auth mode is reported if configured."""
-        # Check current auth mode
-        auth_check = api_client.get("/api/auth/check")
-        auth_data = auth_check.json()
+        auth_data = _auth_check(api_client)
 
         if auth_data.get("auth_mode") == "cwa":
-            # CWA mode is active
             assert auth_data["auth_mode"] == "cwa"
-            # Should have authenticated or auth_required status
-            assert "authenticated" in auth_data
-            assert "auth_required" in auth_data
+            assert auth_data["auth_required"] is True
+            assert isinstance(auth_data["authenticated"], bool)
+            assert isinstance(auth_data["is_admin"], bool)
 
 
 @pytest.mark.e2e
 class TestAdminAccess:
     """Tests for admin access restrictions."""
 
-    def test_settings_endpoint_respects_admin_restriction(self, api_client: APIClient):
-        """Test that settings endpoints respect admin restrictions."""
-        # Check current auth status
-        auth_check = api_client.get("/api/auth/check")
-        auth_data = auth_check.json()
+    def test_admin_only_routes_require_auth(self, api_client: APIClient):
+        """Test that admin-only routes are blocked before auth is established."""
+        auth_data = _auth_check(api_client)
 
-        # If auth is required and user is not admin
-        if auth_data.get("auth_required") and auth_data.get("authenticated"):
-            if not auth_data.get("is_admin"):
-                # Try accessing settings
-                resp = api_client.get("/api/settings")
+        if not auth_data.get("auth_required"):
+            pytest.skip("Authentication is not required in this environment")
 
-                # May be blocked with 403 if admin-only
-                # Or allowed if settings are not restricted
-                assert resp.status_code in [200, 403]
-
-    def test_onboarding_endpoint_respects_admin_restriction(self, api_client: APIClient):
-        """Test that onboarding endpoints respect admin restrictions."""
-        # Check current auth status
-        auth_check = api_client.get("/api/auth/check")
-        auth_data = auth_check.json()
-
-        # If auth is required and user is not admin
-        if auth_data.get("auth_required") and auth_data.get("authenticated"):
-            if not auth_data.get("is_admin"):
-                # Try accessing onboarding
-                resp = api_client.get("/api/onboarding")
-
-                # May be blocked with 403 if admin-only
-                # Or allowed if settings are not restricted
-                assert resp.status_code in [200, 403]
+        for path in ("/api/settings/security", "/api/settings/users", "/api/onboarding"):
+            resp = api_client.get(path)
+            assert resp.status_code == 401
 
 
 @pytest.mark.e2e
@@ -229,45 +244,28 @@ class TestAuthenticationWorkflow:
 
     def test_login_logout_cycle(self, api_client: APIClient):
         """Test complete login and logout cycle."""
-        # Check initial auth status
-        auth_check = api_client.get("/api/auth/check")
-        initial_auth = auth_check.json()
+        initial_auth = _auth_check(api_client)
 
-        # If no auth required, skip this test
         if not initial_auth.get("auth_required"):
             pytest.skip("No authentication required")
 
-        # Try logout first to clear any existing session
         logout_resp = api_client.post("/api/auth/logout")
         assert logout_resp.status_code == 200
+        assert logout_resp.json().get("success") is True
 
-        # Check we're logged out
-        auth_check = api_client.get("/api/auth/check")
-        post_logout_auth = auth_check.json()
+        post_logout_auth = _auth_check(api_client)
 
-        # For builtin/cwa auth, should not be authenticated
-        # For proxy auth, depends on proxy configuration
-        if initial_auth.get("auth_mode") in ["builtin", "cwa"]:
+        if (
+            initial_auth.get("auth_mode") in ["builtin", "cwa"]
+            or initial_auth.get("auth_mode") == "proxy"
+        ):
             assert post_logout_auth.get("authenticated") is False
+            assert post_logout_auth.get("username") is None
 
     def test_auth_check_consistency(self, api_client: APIClient):
         """Test that auth check returns consistent results."""
-        # Make multiple auth check requests
-        resp1 = api_client.get("/api/auth/check")
-        resp2 = api_client.get("/api/auth/check")
-        resp3 = api_client.get("/api/auth/check")
+        data1 = _auth_check(api_client)
+        data2 = _auth_check(api_client)
+        data3 = _auth_check(api_client)
 
-        data1 = resp1.json()
-        data2 = resp2.json()
-        data3 = resp3.json()
-
-        # All should succeed
-        assert resp1.status_code == 200
-        assert resp2.status_code == 200
-        assert resp3.status_code == 200
-
-        # Auth mode should be consistent
-        assert data1["auth_mode"] == data2["auth_mode"] == data3["auth_mode"]
-
-        # Auth required should be consistent
-        assert data1["auth_required"] == data2["auth_required"] == data3["auth_required"]
+        assert data1 == data2 == data3

@@ -1,19 +1,22 @@
 """Tests for natural sort and sequential part number assignment."""
 
-import pytest
 from pathlib import Path
-from shelfmark.core.naming import natural_sort_key, assign_part_numbers
+
+from shelfmark.core.naming import assign_part_numbers, natural_sort_key
 
 
 class TestNaturalSortKey:
-
     def test_simple_numbers(self):
         files = ["Part 2.mp3", "Part 10.mp3", "Part 1.mp3"]
         assert sorted(files, key=natural_sort_key) == ["Part 1.mp3", "Part 2.mp3", "Part 10.mp3"]
 
     def test_leading_zeros(self):
         files = ["Track 01.mp3", "Track 10.mp3", "Track 02.mp3"]
-        assert sorted(files, key=natural_sort_key) == ["Track 01.mp3", "Track 02.mp3", "Track 10.mp3"]
+        assert sorted(files, key=natural_sort_key) == [
+            "Track 01.mp3",
+            "Track 02.mp3",
+            "Track 10.mp3",
+        ]
 
     def test_case_insensitive(self):
         files = ["PART 2.mp3", "part 1.mp3", "Part 3.mp3"]
@@ -22,7 +25,10 @@ class TestNaturalSortKey:
     def test_multiple_numbers_in_filename(self):
         files = ["CD2_Track10.mp3", "CD1_Track2.mp3", "CD1_Track10.mp3", "CD2_Track1.mp3"]
         assert sorted(files, key=natural_sort_key) == [
-            "CD1_Track2.mp3", "CD1_Track10.mp3", "CD2_Track1.mp3", "CD2_Track10.mp3"
+            "CD1_Track2.mp3",
+            "CD1_Track10.mp3",
+            "CD2_Track1.mp3",
+            "CD2_Track10.mp3",
         ]
 
     def test_no_numbers(self):
@@ -31,7 +37,11 @@ class TestNaturalSortKey:
 
     def test_path_objects(self):
         files = [Path("file10.mp3"), Path("file2.mp3"), Path("file1.mp3")]
-        assert [f.name for f in sorted(files, key=natural_sort_key)] == ["file1.mp3", "file2.mp3", "file10.mp3"]
+        assert [f.name for f in sorted(files, key=natural_sort_key)] == [
+            "file1.mp3",
+            "file2.mp3",
+            "file10.mp3",
+        ]
 
     def test_uses_filename_only(self):
         files = [Path("/z/dir/file1.mp3"), Path("/a/dir/file2.mp3")]
@@ -40,7 +50,6 @@ class TestNaturalSortKey:
 
 
 class TestAssignPartNumbers:
-
     def test_empty_list(self):
         assert assign_part_numbers([]) == []
 
@@ -65,7 +74,10 @@ class TestAssignPartNumbers:
 
     def test_custom_zero_padding(self):
         files = [Path("a.mp3"), Path("b.mp3")]
-        assert assign_part_numbers(files, zero_pad_width=3) == [(Path("a.mp3"), "001"), (Path("b.mp3"), "002")]
+        assert assign_part_numbers(files, zero_pad_width=3) == [
+            (Path("a.mp3"), "001"),
+            (Path("b.mp3"), "002"),
+        ]
 
     def test_many_files_padding(self):
         files = [Path(f"track_{i}.mp3") for i in range(100, 0, -1)]
@@ -75,7 +87,6 @@ class TestAssignPartNumbers:
 
 
 class TestRealWorldScenarios:
-
     def test_standard_part_naming(self):
         files = [
             Path("The Way of Kings - Part 02.mp3"),
@@ -92,28 +103,54 @@ class TestRealWorldScenarios:
         ]
 
     def test_cd_track_naming(self):
-        files = [Path("CD02_Track01.mp3"), Path("CD01_Track02.mp3"), Path("CD01_Track01.mp3"), Path("CD02_Track02.mp3")]
+        files = [
+            Path("CD02_Track01.mp3"),
+            Path("CD01_Track02.mp3"),
+            Path("CD01_Track01.mp3"),
+            Path("CD02_Track02.mp3"),
+        ]
         result = assign_part_numbers(files)
         assert [r[0].name for r in result] == [
-            "CD01_Track01.mp3", "CD01_Track02.mp3", "CD02_Track01.mp3", "CD02_Track02.mp3"
+            "CD01_Track01.mp3",
+            "CD01_Track02.mp3",
+            "CD02_Track01.mp3",
+            "CD02_Track02.mp3",
         ]
 
     def test_disc_track_naming(self):
-        files = [Path("Disc 1 - Track 10.mp3"), Path("Disc 1 - Track 2.mp3"), Path("Disc 2 - Track 1.mp3")]
+        files = [
+            Path("Disc 1 - Track 10.mp3"),
+            Path("Disc 1 - Track 2.mp3"),
+            Path("Disc 2 - Track 1.mp3"),
+        ]
         result = assign_part_numbers(files)
         assert [r[0].name for r in result] == [
-            "Disc 1 - Track 2.mp3", "Disc 1 - Track 10.mp3", "Disc 2 - Track 1.mp3"
+            "Disc 1 - Track 2.mp3",
+            "Disc 1 - Track 10.mp3",
+            "Disc 2 - Track 1.mp3",
         ]
 
     def test_simple_numbered_files(self):
         files = [Path("02 Chapter Two.mp3"), Path("01 Chapter One.mp3"), Path("10 Chapter Ten.mp3")]
         result = assign_part_numbers(files)
-        assert [r[0].name for r in result] == ["01 Chapter One.mp3", "02 Chapter Two.mp3", "10 Chapter Ten.mp3"]
+        assert [r[0].name for r in result] == [
+            "01 Chapter One.mp3",
+            "02 Chapter Two.mp3",
+            "10 Chapter Ten.mp3",
+        ]
 
     def test_bracketed_numbers(self):
-        files = [Path("Book Title [03].mp3"), Path("Book Title [01].mp3"), Path("Book Title [02].mp3")]
+        files = [
+            Path("Book Title [03].mp3"),
+            Path("Book Title [01].mp3"),
+            Path("Book Title [02].mp3"),
+        ]
         result = assign_part_numbers(files)
-        assert [r[0].name for r in result] == ["Book Title [01].mp3", "Book Title [02].mp3", "Book Title [03].mp3"]
+        assert [r[0].name for r in result] == [
+            "Book Title [01].mp3",
+            "Book Title [02].mp3",
+            "Book Title [03].mp3",
+        ]
 
 
 class TestNoFalsePositives:
@@ -126,9 +163,17 @@ class TestNoFalsePositives:
         assert result[1] == (Path("Fahrenheit 451 - Part 2.mp3"), "02")
 
     def test_1984(self):
-        files = [Path("1984 - Chapter 03.mp3"), Path("1984 - Chapter 01.mp3"), Path("1984 - Chapter 02.mp3")]
+        files = [
+            Path("1984 - Chapter 03.mp3"),
+            Path("1984 - Chapter 01.mp3"),
+            Path("1984 - Chapter 02.mp3"),
+        ]
         result = assign_part_numbers(files)
-        assert [r[0].name for r in result] == ["1984 - Chapter 01.mp3", "1984 - Chapter 02.mp3", "1984 - Chapter 03.mp3"]
+        assert [r[0].name for r in result] == [
+            "1984 - Chapter 01.mp3",
+            "1984 - Chapter 02.mp3",
+            "1984 - Chapter 03.mp3",
+        ]
 
     def test_catch_22(self):
         files = [Path("Catch-22 Part 2.mp3"), Path("Catch-22 Part 1.mp3")]
@@ -142,7 +187,6 @@ class TestNoFalsePositives:
 
 
 class TestEdgeCases:
-
     def test_identical_filenames_different_dirs(self):
         files = [Path("/dir2/track.mp3"), Path("/dir1/track.mp3")]
         result = assign_part_numbers(files)

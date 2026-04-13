@@ -2,7 +2,7 @@
 
 import queue
 import time
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from threading import Event, Lock
 from typing import TYPE_CHECKING, Any
@@ -20,12 +20,28 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 logger = setup_logger(__name__)
+_QUEUE_HOOK_ERRORS = (OSError, RuntimeError, TypeError, ValueError)
+
+
+def _coerce_status_timeout_seconds(value: object, *, default: int) -> int:
+    """Normalize STATUS_TIMEOUT into a usable positive integer."""
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return value if value > 0 else default
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            parsed = int(stripped)
+            return parsed if parsed > 0 else default
+    return default
 
 
 class BookQueue:
     """Thread-safe download queue manager with priority support and cancellation."""
 
     def __init__(self) -> None:
+        """Initialize queue state, locks, and lifecycle hooks."""
         self._queue: queue.PriorityQueue[QueueItem] = queue.PriorityQueue()
         self._lock = Lock()
         self._status: dict[str, QueueStatus] = {}
@@ -39,7 +55,12 @@ class BookQueue:
     @property
     def _status_timeout(self) -> timedelta:
         """Get status timeout from config (allows live updates)."""
-        return timedelta(seconds=app_config.get("STATUS_TIMEOUT", 3600))
+        return timedelta(
+            seconds=_coerce_status_timeout_seconds(
+                app_config.get("STATUS_TIMEOUT", 3600),
+                default=3600,
+            )
+        )
 
     def add(self, task: DownloadTask) -> bool:
         """Add a download task to the queue. Returns False if already exists."""
@@ -67,7 +88,7 @@ class BookQueue:
         if hook is not None:
             try:
                 hook(task_id, task)
-            except Exception as exc:
+            except _QUEUE_HOOK_ERRORS as exc:
                 logger.warning("Queue hook failed while adding task %s: %s", task_id, exc)
         return True
 
@@ -104,9 +125,9 @@ class BookQueue:
             return self._status.get(task_id)
 
     def _update_status(self, book_id: str, status: QueueStatus) -> None:
-        """Internal method to update status and timestamp."""
+        """Update the status and timestamp for a task."""
         self._status[book_id] = status
-        self._status_timestamps[book_id] = datetime.now()
+        self._status_timestamps[book_id] = datetime.now(UTC)
 
     def set_terminal_status_hook(
         self,
@@ -306,7 +327,7 @@ class BookQueue:
         if hook is not None and hook_task is not None:
             try:
                 hook(task_id, hook_task)
-            except Exception as exc:
+            except _QUEUE_HOOK_ERRORS as exc:
                 logger.warning("Queue hook failed while requeueing task %s: %s", task_id, exc)
         return True
 
@@ -349,7 +370,7 @@ class BookQueue:
         """Remove any tasks that are done downloading or have stale status."""
         terminal_statuses = TERMINAL_QUEUE_STATUSES
         with self._lock:
-            current_time = datetime.now()
+            current_time = datetime.now(UTC)
             to_remove = []
 
             for task_id, status in self._status.items():

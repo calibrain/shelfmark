@@ -7,59 +7,204 @@ They require external services to be available and may take longer to run.
 Run with: uv run pytest tests/e2e/test_download_flow.py -v -m e2e
 """
 
-import os
-import hashlib
 import time
 
 import pytest
 
-from .conftest import APIClient, DownloadTracker, DOWNLOAD_TIMEOUT
+from .conftest import (
+    DOWNLOAD_TIMEOUT,
+    SUCCESS_DOWNLOAD_STATES,
+    APIClient,
+    DownloadTracker,
+    assert_queue_order_response,
+    assert_queued_download_response,
+)
+
+
+def _assert_terminal_download_result(
+    result: dict[str, object],
+    *,
+    source_id: str,
+    expected_title: str,
+    expected_source: str | None = None,
+) -> None:
+    """Assert that a finished download produced a structured queue payload."""
+    state = result["state"]
+    entry = result["data"]
+    assert isinstance(entry, dict)
+    if state == "error":
+        error_message = str(
+            entry.get("status_message") or entry.get("last_error_message") or ""
+        ).strip()
+        pytest.fail(
+            f"{expected_source or source_id} download failed"
+            f"{f': {error_message}' if error_message else f': {entry!r}'}"
+        )
+
+    assert state in SUCCESS_DOWNLOAD_STATES, (
+        f"{expected_source or source_id} ended in unexpected state {state!r}: {entry!r}"
+    )
+    assert entry.get("id") == source_id
+    assert entry.get("title") == expected_title
+    if expected_source is not None:
+        assert entry.get("source") == expected_source
+    status = entry.get("status")
+    assert status is None or status in SUCCESS_DOWNLOAD_STATES | {"queued"}
+
+
+def _is_duplicate_queue_error(response) -> bool:
+    """Whether the API refused to queue a release because it already exists."""
+    if response.status_code != 500:
+        return False
+    try:
+        payload = response.json()
+    except ValueError:
+        return False
+    return payload == {"error": "Release is already in the download queue"}
+
+
+def _require_json_object(
+    response, *, context: str, skip_statuses: set[int] | frozenset[int] = frozenset({503})
+) -> dict[str, object]:
+    if response.status_code in skip_statuses:
+        pytest.skip(f"{context} unavailable: {response.status_code}")
+    assert response.status_code == 200, f"{context} failed: {response.status_code} {response.text}"
+    payload = response.json()
+    assert isinstance(payload, dict), f"{context} did not return a JSON object: {payload!r}"
+    return payload
+
+
+def _extract_result_list(payload: object, *, context: str) -> list[dict[str, object]]:
+    if isinstance(payload, dict):
+        if "books" in payload:
+            results = payload["books"]
+        elif "releases" in payload:
+            results = payload["releases"]
+        else:
+            results = payload.get("results", payload)
+    else:
+        results = payload
+
+    if isinstance(results, dict):
+        list_values = [value for value in results.values() if isinstance(value, list)]
+        if not list_values:
+            pytest.fail(f"{context} returned an unexpected result structure: {payload!r}")
+        if not any(list_values):
+            pytest.skip(f"{context} returned no results")
+        results = next(value for value in list_values if value)
+
+    if not isinstance(results, list):
+        pytest.fail(f"{context} did not return a result list: {payload!r}")
+    if not results:
+        pytest.skip(f"{context} returned no results")
+    return results
+
+
+def _require_queue_entry(
+    api_client: APIClient,
+    book_id: str,
+    *,
+    context: str,
+    timeout: int = 20,
+) -> dict[str, object]:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        queue_resp = api_client.get("/api/queue/order")
+        if queue_resp.status_code == 200:
+            queue_order = assert_queue_order_response(queue_resp)
+            for entry in queue_order:
+                if entry.get("id") == book_id:
+                    return entry
+        elif queue_resp.status_code == 503:
+            pytest.skip(f"{context} queue endpoint unavailable")
+        else:
+            pytest.fail(
+                f"{context} queue lookup failed: {queue_resp.status_code} {queue_resp.text}"
+            )
+
+        status_resp = api_client.get("/api/status")
+        if status_resp.status_code == 200:
+            status_data = status_resp.json()
+            if isinstance(status_data, dict):
+                for state in ("complete", "done", "available", "error", "cancelled"):
+                    state_entries = status_data.get(state)
+                    if isinstance(state_entries, dict) and book_id in state_entries:
+                        pytest.fail(
+                            f"{context} reached terminal state {state} before it was observed in the queue: "
+                            f"{state_entries[book_id]!r}"
+                        )
+
+        time.sleep(1)
+
+    pytest.fail(f"{context} never appeared in the queue")
+
+
+def _wait_for_queue_absence(
+    api_client: APIClient,
+    book_id: str,
+    *,
+    context: str,
+    timeout: int = 20,
+) -> None:
+    deadline = time.time() + timeout
+    while time.time() < deadline:
+        queue_resp = api_client.get("/api/queue/order")
+        if queue_resp.status_code == 200:
+            queue_order = assert_queue_order_response(queue_resp)
+            if all(entry.get("id") != book_id for entry in queue_order):
+                return
+        elif queue_resp.status_code == 503:
+            pytest.skip(f"{context} queue endpoint unavailable")
+        else:
+            pytest.fail(
+                f"{context} queue lookup failed: {queue_resp.status_code} {queue_resp.text}"
+            )
+
+        time.sleep(1)
+
+    pytest.fail(f"{context} still appeared in the queue after cancellation")
 
 
 def _find_available_provider(api_client: APIClient) -> str | None:
     """Find a working metadata provider."""
     resp = api_client.get("/api/metadata/providers")
-    if resp.status_code != 200:
-        return None
+    if resp.status_code == 503:
+        pytest.skip("Metadata providers unavailable")
+    assert resp.status_code == 200, f"Metadata providers failed: {resp.status_code} {resp.text}"
 
     providers_data = resp.json()
+    if not isinstance(providers_data, (dict, list)):
+        pytest.fail(f"Metadata providers returned an unexpected payload: {providers_data!r}")
 
-    # Handle both dict and list formats
-    if isinstance(providers_data, dict):
-        # Dict format: keys are provider names
-        provider_names = list(providers_data.keys())
-    else:
-        # List format
-        provider_names = [
-            p.get("name") for p in providers_data if isinstance(p, dict) and p.get("name")
-        ]
+    providers = (
+        providers_data.get("providers", []) if isinstance(providers_data, dict) else providers_data
+    )
+    provider_names = [
+        provider.get("name")
+        for provider in providers
+        if (
+            isinstance(provider, dict)
+            and provider.get("name")
+            and provider.get("enabled") is True
+            and provider.get("available") is True
+        )
+    ]
 
     for name in provider_names:
-        if name:
-            # Try a simple search to verify it works
-            test_resp = api_client.get(
-                "/api/metadata/search",
-                params={"query": "test", "provider": name},
-                timeout=30,
-            )
-            if test_resp.status_code == 200:
-                return name
-    return None
-
-
-def _find_available_release_source(api_client: APIClient) -> str | None:
-    """Find a working release source."""
-    resp = api_client.get("/api/release-sources")
-    if resp.status_code != 200:
-        return None
-
-    sources = resp.json()
-    for source in sources:
-        name = source.get("name")
-        # Skip prowlarr unless configured
-        if name and name != "prowlarr":
+        test_resp = api_client.get(
+            "/api/metadata/search",
+            params={"query": "test", "provider": name},
+            timeout=30,
+        )
+        if test_resp.status_code == 200:
             return name
-    return None
+        if test_resp.status_code != 503:
+            pytest.fail(
+                f"Metadata provider {name} failed during availability check: "
+                f"{test_resp.status_code} {test_resp.text}"
+            )
+
+    pytest.skip("No working metadata providers available")
 
 
 @pytest.mark.e2e
@@ -71,8 +216,6 @@ class TestMetadataToReleaseFlow:
         """Test searching metadata then finding releases."""
         # Find a working provider
         provider = _find_available_provider(protected_api_client)
-        if not provider:
-            pytest.skip("No metadata providers available")
 
         # Search for a public domain book
         search_resp = protected_api_client.get(
@@ -81,22 +224,8 @@ class TestMetadataToReleaseFlow:
             timeout=30,
         )
 
-        if search_resp.status_code != 200:
-            pytest.skip(f"Search failed: {search_resp.status_code}")
-
-        search_data = search_resp.json()
-        results = search_data.get("results", search_data)
-
-        # Handle dict format where results might be nested
-        if isinstance(results, dict):
-            # Results might be under a key like the query or "results"
-            for key, value in results.items():
-                if isinstance(value, list) and value:
-                    results = value
-                    break
-
-        if not results or not isinstance(results, list):
-            pytest.skip("No search results returned")
+        search_data = _require_json_object(search_resp, context="metadata search")
+        results = _extract_result_list(search_data, context="metadata search")
 
         # Get the first result
         first_result = results[0]
@@ -115,11 +244,13 @@ class TestMetadataToReleaseFlow:
             timeout=60,
         )
 
-        # Releases may fail if sources are unavailable
-        if releases_resp.status_code == 200:
-            releases_data = releases_resp.json()
-            assert "releases" in releases_data
-            assert "book" in releases_data
+        releases_data = _require_json_object(releases_resp, context="release lookup")
+        releases = releases_data.get("releases")
+        if not isinstance(releases, list):
+            pytest.fail(f"Release lookup returned an invalid releases payload: {releases_data!r}")
+        if not releases:
+            pytest.skip("No releases available")
+        assert "book" in releases_data
 
 
 @pytest.mark.e2e
@@ -152,21 +283,8 @@ class TestFullDownloadJourney:
             timeout=30,
         )
 
-        if search_resp.status_code != 200:
-            pytest.skip(f"Metadata search unavailable: {search_resp.status_code}")
-
-        search_data = search_resp.json()
-        results = search_data.get("results", search_data)
-
-        # Handle dict format where results might be nested
-        if isinstance(results, dict):
-            for key, value in results.items():
-                if isinstance(value, list) and value:
-                    results = value
-                    break
-
-        if not results or not isinstance(results, list):
-            pytest.skip("No search results")
+        search_data = _require_json_object(search_resp, context="metadata search")
+        results = _extract_result_list(search_data, context="metadata search")
 
         first_result = results[0]
         book_id = first_result.get("id") or first_result.get("provider_id")
@@ -182,12 +300,8 @@ class TestFullDownloadJourney:
             timeout=60,
         )
 
-        if releases_resp.status_code != 200:
-            pytest.skip(f"Releases unavailable: {releases_resp.status_code}")
-
-        releases_data = releases_resp.json()
+        releases_data = _require_json_object(releases_resp, context="release lookup")
         releases = releases_data.get("releases", [])
-
         if not releases:
             pytest.skip("No releases available")
 
@@ -218,9 +332,8 @@ class TestFullDownloadJourney:
             },
         )
 
-        assert queue_resp.status_code == 200, f"Failed to queue: {queue_resp.text}"
-        queue_data = queue_resp.json()
-        assert queue_data.get("status") == "queued"
+        if not _is_duplicate_queue_error(queue_resp):
+            assert_queued_download_response(queue_resp)
 
         # Wait for download to complete (or error)
         result = download_tracker.wait_for_status(
@@ -234,12 +347,17 @@ class TestFullDownloadJourney:
             status_resp = protected_api_client.get("/api/status")
             if status_resp.status_code == 200:
                 status_data = status_resp.json()
-                if "error" in status_data and source_id in status_data["error"]:
-                    error_info = status_data["error"][source_id]
-                    pytest.skip(f"Download failed: {error_info}")
+                error_info = status_data.get("error", {}).get(source_id)
+                if error_info:
+                    pytest.fail(f"Download failed: {error_info}")
             pytest.fail("Download timed out")
 
-        assert result["state"] in ["complete", "done", "available"]
+        _assert_terminal_download_result(
+            result,
+            source_id=source_id,
+            expected_title=target_release.get("title", "Test Book"),
+            expected_source=target_release.get("source", "direct_download"),
+        )
 
 
 @pytest.mark.e2e
@@ -260,11 +378,17 @@ class TestDirectSourceReleaseFlow:
         if search_resp.status_code == 503:
             pytest.skip("Direct source query unavailable")
 
-        if search_resp.status_code != 200:
-            pytest.skip(f"Direct source query failed: {search_resp.status_code}")
+        assert search_resp.status_code == 200, (
+            f"Direct source query failed: {search_resp.status_code} {search_resp.text}"
+        )
 
         payload = search_resp.json()
+        assert isinstance(payload, dict), (
+            f"Direct source query returned an unexpected payload: {payload!r}"
+        )
         results = payload.get("releases") or []
+        if not isinstance(results, list):
+            pytest.fail(f"Direct source query returned an unexpected payload: {payload!r}")
         if not results:
             pytest.skip("No direct source query results")
 
@@ -277,7 +401,7 @@ class TestDirectSourceReleaseFlow:
         info_resp = protected_api_client.get(f"/api/release-sources/{source}/records/{source_id}")
 
         if info_resp.status_code != 200:
-            pytest.skip(f"Source record endpoint failed: {info_resp.status_code}")
+            pytest.fail(f"Source record endpoint failed: {info_resp.status_code}")
 
         # Queue download from the shared release payload
         download_tracker.track(source_id)
@@ -286,11 +410,21 @@ class TestDirectSourceReleaseFlow:
             json={**first_result, "content_type": "ebook", "search_mode": "direct"},
         )
 
-        if download_resp.status_code != 200:
-            pytest.skip(f"Release download queue failed: {download_resp.status_code}")
+        if not _is_duplicate_queue_error(download_resp):
+            assert_queued_download_response(download_resp)
 
-        download_data = download_resp.json()
-        assert download_data.get("status") == "queued"
+        result = download_tracker.wait_for_status(
+            source_id,
+            target_states=["complete", "done", "available"],
+            timeout=DOWNLOAD_TIMEOUT,
+        )
+        assert result is not None, "Direct source download did not reach a terminal state"
+        _assert_terminal_download_result(
+            result,
+            source_id=source_id,
+            expected_title=first_result.get("title", "Unknown title"),
+            expected_source="direct_download",
+        )
 
 
 @pytest.mark.e2e
@@ -314,14 +448,26 @@ class TestDownloadCancellation:
             },
         )
 
-        if queue_resp.status_code != 200:
-            pytest.skip("Could not queue test download")
+        assert_queued_download_response(queue_resp)
 
-        # Cancel immediately before the worker processes it.
-        # Accept 404 if the task already failed (unknown source processes instantly).
+        _require_queue_entry(
+            protected_api_client,
+            test_id,
+            context="cancel download precondition",
+        )
+
+        # Cancel it
         cancel_resp = protected_api_client.delete(f"/api/download/{test_id}/cancel")
 
-        assert cancel_resp.status_code in [200, 204, 404]
+        assert cancel_resp.status_code == 200
+        cancel_data = cancel_resp.json()
+        assert cancel_data == {"status": "cancelled", "book_id": test_id}
+
+        _wait_for_queue_absence(
+            protected_api_client,
+            test_id,
+            context="cancel download",
+        )
 
     def test_cancel_removes_from_queue(
         self, protected_api_client: APIClient, download_tracker: DownloadTracker
@@ -340,18 +486,23 @@ class TestDownloadCancellation:
             },
         )
 
-        time.sleep(0.5)
+        _require_queue_entry(
+            protected_api_client,
+            test_id,
+            context="cancel verification precondition",
+        )
 
         # Cancel it
-        protected_api_client.delete(f"/api/download/{test_id}/cancel")
-
-        time.sleep(0.5)
+        cancel_resp = protected_api_client.delete(f"/api/download/{test_id}/cancel")
+        assert cancel_resp.status_code == 200
+        assert cancel_resp.json() == {"status": "cancelled", "book_id": test_id}
 
         # Check it's not in the queue
-        queue_resp = protected_api_client.get("/api/queue/order")
-        if queue_resp.status_code == 200:
-            queue_order = queue_resp.json()
-            assert test_id not in queue_order
+        _wait_for_queue_absence(
+            protected_api_client,
+            test_id,
+            context="cancel verification",
+        )
 
 
 @pytest.mark.e2e
@@ -374,10 +525,13 @@ class TestQueuePriority:
             },
         )
 
-        if queue_resp.status_code != 200:
-            pytest.skip("Could not queue download")
+        assert_queued_download_response(queue_resp)
 
-        time.sleep(0.5)
+        _require_queue_entry(
+            protected_api_client,
+            test_id,
+            context="priority update precondition",
+        )
 
         # Update priority
         priority_resp = protected_api_client.put(
@@ -385,5 +539,11 @@ class TestQueuePriority:
             json={"priority": 10},
         )
 
-        # Should succeed or return 404 if already processed
-        assert priority_resp.status_code in [200, 404]
+        assert priority_resp.status_code == 200
+        assert priority_resp.json() == {"status": "updated", "book_id": test_id, "priority": 10}
+
+        queue_resp = protected_api_client.get("/api/queue/order")
+        queue_order = assert_queue_order_response(queue_resp)
+        matching_entries = [entry for entry in queue_order if entry.get("id") == test_id]
+        assert len(matching_entries) == 1
+        assert matching_entries[0]["priority"] == 10

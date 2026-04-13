@@ -1,18 +1,38 @@
+"""Output registry and shared types for post-download delivery handlers."""
+
 from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from pathlib import Path
-from threading import Event
+from typing import TYPE_CHECKING, Protocol
 
-from shelfmark.core.models import DownloadTask
+if TYPE_CHECKING:
+    from pathlib import Path
+    from threading import Event
+
+    from shelfmark.core.models import DownloadTask
 
 StatusCallback = Callable[[str, str | None], None]
-OutputHandler = Callable[[Path, DownloadTask, Event, StatusCallback, bool], str | None]
+
+
+class OutputHandler(Protocol):
+    """Callable contract for post-download output handlers."""
+
+    def __call__(
+        self,
+        temp_file: Path,
+        task: DownloadTask,
+        cancel_flag: Event,
+        status_callback: StatusCallback,
+        *,
+        preserve_source_on_failure: bool = False,
+    ) -> str | None: ...
 
 
 @dataclass(frozen=True)
 class OutputRegistration:
+    """Registered output handler with support checks and priority metadata."""
+
     mode: str
     supports_task: Callable[[DownloadTask], bool]
     handler: OutputHandler
@@ -28,6 +48,8 @@ def register_output(
     supports_task: Callable[[DownloadTask], bool],
     priority: int = 0,
 ) -> Callable[[OutputHandler], OutputHandler]:
+    """Register an output handler for a named delivery mode."""
+
     def decorator(handler: OutputHandler) -> OutputHandler:
         _OUTPUT_REGISTRY.append(
             OutputRegistration(
@@ -44,6 +66,7 @@ def register_output(
 
 
 def load_output_handlers() -> None:
+    """Load built-in output handlers exactly once."""
     global _OUTPUTS_LOADED
     if _OUTPUTS_LOADED:
         return
@@ -80,6 +103,7 @@ def _derive_output_mode(task: DownloadTask) -> str:
 
 
 def resolve_output_handler(task: DownloadTask) -> OutputRegistration | None:
+    """Resolve the best output handler for a download task."""
     load_output_handlers()
     desired_mode = _derive_output_mode(task)
 

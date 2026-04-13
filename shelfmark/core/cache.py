@@ -113,11 +113,25 @@ def get_metadata_cache() -> CacheService:
     return _metadata_cache
 
 
-def cache_key(*args, **kwargs) -> str:
+def cache_key(*args: object, **kwargs: object) -> str:
     """Generate cache key from arguments."""
     parts = [str(arg) for arg in args]
     parts.extend(f"{k}={v}" for k, v in sorted(kwargs.items()))
     return ":".join(parts)
+
+
+def _coerce_ttl_seconds(value: object, *, default: int) -> int:
+    """Normalize cache TTL values read from config or decorator arguments."""
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return value if value > 0 else default
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped.isdigit():
+            parsed = int(stripped)
+            return parsed if parsed > 0 else default
+    return default
 
 
 def cacheable(
@@ -126,7 +140,7 @@ def cacheable(
     ttl_default: int = 300,
     key_prefix: str = "",
 ) -> Callable[[Callable[P, R]], Callable[P, R]]:
-    """Decorator for caching function results. Use ttl (static) or ttl_key (from config)."""
+    """Cache function results with a static or config-backed TTL."""
 
     def decorator(func: Callable[P, R]) -> Callable[P, R]:
         @wraps(func)
@@ -142,7 +156,10 @@ def cacheable(
             if ttl is not None:
                 effective_ttl = ttl
             elif ttl_key:
-                effective_ttl = config.get(ttl_key, ttl_default)
+                effective_ttl = _coerce_ttl_seconds(
+                    config.get(ttl_key, ttl_default),
+                    default=ttl_default,
+                )
             else:
                 effective_ttl = ttl_default
 

@@ -3,6 +3,7 @@
 import json
 import os
 import shutil
+import tempfile
 from pathlib import Path
 
 
@@ -78,7 +79,9 @@ def is_covers_cache_enabled() -> bool:
     from shelfmark.core.config import config
 
     setting_enabled = config.get("COVERS_CACHE_ENABLED", True)
-    return setting_enabled and _is_config_dir_writable()
+    if isinstance(setting_enabled, str):
+        return string_to_bool(setting_enabled) and _is_config_dir_writable()
+    return bool(setting_enabled) and _is_config_dir_writable()
 
 
 # =============================================================================
@@ -89,7 +92,7 @@ CONFIG_DIR = Path(os.getenv("CONFIG_DIR", "/config"))
 LOG_ROOT = Path(os.getenv("LOG_ROOT", "/var/log/"))
 LOG_DIR = LOG_ROOT / "shelfmark"
 LOG_FILE = LOG_DIR / "shelfmark.log"
-TMP_DIR = Path(os.getenv("TMP_DIR", "/tmp/shelfmark"))
+TMP_DIR = Path(os.getenv("TMP_DIR", (Path(tempfile.gettempdir()) / "shelfmark").as_posix()))
 INGEST_DIR = Path(os.getenv("INGEST_DIR", "/books"))
 
 

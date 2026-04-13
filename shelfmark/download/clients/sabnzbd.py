@@ -3,25 +3,34 @@
 Uses SABnzbd's REST API directly via requests (no external dependency).
 """
 
+from typing import Any
 from urllib.parse import urlparse
 
 import requests
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
     register_client,
     with_retry,
 )
+from shelfmark.download.clients._coercion import config_text, normalize_http_config_url
 from shelfmark.download.network import get_ssl_verify
 
 logger = setup_logger(__name__)
 
 _ETA_PART_COUNT = 3
 _SPEED_PARTS_MIN = 2
+_SABNZBD_CLIENT_ERRORS = (
+    requests.exceptions.RequestException,
+    AttributeError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
+_SabnzbdRequestParam = str | int | float | bool
 
 
 def _parse_eta(eta_str: str) -> int | None:
@@ -103,33 +112,33 @@ class SABnzbdClient(DownloadClient):
 
     def __init__(self) -> None:
         """Initialize SABnzbd client with settings from config."""
-        raw_url = config.get("SABNZBD_URL", "")
+        raw_url = config_text(config.get("SABNZBD_URL", ""))
         if not raw_url:
             msg = "SABNZBD_URL is required"
             raise ValueError(msg)
 
-        api_key = config.get("SABNZBD_API_KEY", "")
+        api_key = config_text(config.get("SABNZBD_API_KEY", ""))
         if not api_key:
             msg = "SABNZBD_API_KEY is required"
             raise ValueError(msg)
 
-        self.url = normalize_http_url(raw_url)
+        self.url = normalize_http_config_url(raw_url)
         if not self.url:
             msg = "SABNZBD_URL is invalid"
             raise ValueError(msg)
         self.api_key = api_key
-        self._category = config.get("SABNZBD_CATEGORY", "books")
+        self._category = config_text(config.get("SABNZBD_CATEGORY", "books"))
 
     @staticmethod
     def is_configured() -> bool:
         """Check if SABnzbd is configured and selected as the usenet client."""
-        client = config.get("PROWLARR_USENET_CLIENT", "")
-        url = normalize_http_url(config.get("SABNZBD_URL", ""))
-        api_key = config.get("SABNZBD_API_KEY", "")
+        client = config_text(config.get("PROWLARR_USENET_CLIENT", ""))
+        url = normalize_http_config_url(config.get("SABNZBD_URL", ""))
+        api_key = config_text(config.get("SABNZBD_API_KEY", ""))
         return client == "sabnzbd" and bool(url) and bool(api_key)
 
     @with_retry()
-    def _api_call(self, mode: str, params: dict | None = None) -> object:
+    def _api_call(self, mode: str, params: dict[str, _SabnzbdRequestParam] | None = None) -> Any:
         """Make an API call to SABnzbd.
 
         Args:
@@ -145,7 +154,7 @@ class SABnzbdClient(DownloadClient):
         """
         api_url = f"{self.url}/api"
 
-        request_params = {
+        request_params: dict[str, _SabnzbdRequestParam] = {
             "apikey": self.api_key,
             "mode": mode,
             "output": "json",
@@ -170,7 +179,7 @@ class SABnzbdClient(DownloadClient):
 
     def _api_post_file(
         self, nzb_content: bytes, filename: str, nzb_name: str, category: str
-    ) -> object:
+    ) -> Any:
         """Upload an NZB file to SABnzbd using addfile.
 
         Returns:
@@ -178,7 +187,7 @@ class SABnzbdClient(DownloadClient):
 
         """
         api_url = f"{self.url}/api"
-        request_params = {
+        request_params: dict[str, _SabnzbdRequestParam] = {
             "apikey": self.api_key,
             "mode": "addfile",
             "output": "json",
@@ -212,12 +221,12 @@ class SABnzbdClient(DownloadClient):
         return response.content
 
     def _get_prowlarr_headers(self, url: str) -> dict:
-        # TODO: Move this source-specific Prowlarr auth handling into a source hook.
+        # TODO(shelfmark): Move this source-specific Prowlarr auth handling into a source hook.
         api_key = str(config.get("PROWLARR_API_KEY", "") or "").strip()
         if not api_key:
             return {}
 
-        prowlarr_url = normalize_http_url(config.get("PROWLARR_URL", ""))
+        prowlarr_url = normalize_http_config_url(config.get("PROWLARR_URL", ""))
         if not prowlarr_url:
             return {}
 
@@ -283,7 +292,7 @@ class SABnzbdClient(DownloadClient):
             return False, "Could not connect to SABnzbd"
         except requests.exceptions.Timeout:
             return False, "Connection timed out"
-        except Exception as e:
+        except _SABNZBD_CLIENT_ERRORS as e:
             return False, f"Connection failed: {e!s}"
         else:
             return True, f"Connected to SABnzbd {version}"
@@ -294,7 +303,7 @@ class SABnzbdClient(DownloadClient):
         name: str,
         category: str | None = None,
         expected_hash: str | None = None,
-        **kwargs,
+        **kwargs: object,
     ) -> str:
         """Add NZB by URL.
 
@@ -303,6 +312,7 @@ class SABnzbdClient(DownloadClient):
             name: Display name for the download
             category: Category for organization (uses configured default if not specified)
             expected_hash: Optional info_hash hint (unused)
+            **kwargs: Client-specific options passed through to the implementation.
 
         Returns:
             SABnzbd nzo_id.
@@ -312,16 +322,16 @@ class SABnzbdClient(DownloadClient):
 
         """
         # Use configured category if not explicitly provided
-        category = category or self._category
+        resolved_category = category or self._category
 
         try:
             logger.debug("Adding NZB to SABnzbd: %s", name)
             nzb_filename = self._build_nzb_filename(name, url)
             nzb_content = self._fetch_nzb_content(url)
-            result = self._api_post_file(nzb_content, nzb_filename, name, category)
+            result = self._api_post_file(nzb_content, nzb_filename, name, resolved_category)
             nzo_id = self._extract_nzo_id(result)
             logger.info("Added NZB to SABnzbd: %s", nzo_id)
-        except Exception as e:
+        except _SABNZBD_CLIENT_ERRORS as e:
             logger.warning("SABnzbd addfile failed, falling back to addurl: %s", e)
         else:
             return nzo_id
@@ -332,12 +342,12 @@ class SABnzbdClient(DownloadClient):
                 {
                     "name": url,
                     "nzbname": name,
-                    "cat": category,
+                    "cat": resolved_category,
                 },
             )
             nzo_id = self._extract_nzo_id(result)
             logger.info("Added NZB to SABnzbd via addurl: %s", nzo_id)
-        except Exception:
+        except _SABNZBD_CLIENT_ERRORS:
             logger.exception("SABnzbd add failed")
             raise
         else:
@@ -447,7 +457,7 @@ class SABnzbdClient(DownloadClient):
             # Not found
             logger.warning("SABnzbd: download %s not found in queue or history", download_id)
             return DownloadStatus.error("Download not found")
-        except Exception as e:
+        except _SABNZBD_CLIENT_ERRORS as e:
             return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, *, delete_files: bool = False, archive: bool = True) -> bool:
@@ -477,7 +487,7 @@ class SABnzbdClient(DownloadClient):
             if result.get("status"):
                 logger.info("Removed NZB from SABnzbd queue: %s", download_id)
                 return True
-        except Exception as e:
+        except _SABNZBD_CLIENT_ERRORS as e:
             logger.debug("SABnzbd queue delete skipped for %s: %s", download_id, e)
 
         # If not in queue (or queue delete failed), try to remove from history.
@@ -496,7 +506,7 @@ class SABnzbdClient(DownloadClient):
                 action = "archived" if archive else "removed"
                 logger.info("NZB %s from SABnzbd history: %s", action, download_id)
                 return True
-        except Exception as e:
+        except _SABNZBD_CLIENT_ERRORS as e:
             self._log_error("remove", e)
             return False
 
@@ -583,7 +593,7 @@ class SABnzbdClient(DownloadClient):
                         logger.debug("Found existing NZB in SABnzbd history: %s", nzo_id)
                         return (nzo_id, status)
 
-        except Exception as e:
+        except _SABNZBD_CLIENT_ERRORS as e:
             logger.debug("Error checking for existing NZB: %s", e)
             return None
         else:

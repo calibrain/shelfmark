@@ -1,11 +1,13 @@
-import { useState, useEffect } from 'react';
-import { Book, ButtonStateInfo, SortOption } from '../types';
+import { useState } from 'react';
+
 import { useSearchMode } from '../contexts/SearchModeContext';
+import { SORT_OPTIONS } from '../data/filterOptions';
+import { useMediaQuery } from '../hooks/useMediaQuery';
+import type { Book, ButtonStateInfo, SortOption } from '../types';
+import { Dropdown } from './Dropdown';
 import { CardView } from './resultsViews/CardView';
 import { CompactView } from './resultsViews/CompactView';
 import { ListView } from './resultsViews/ListView';
-import { Dropdown } from './Dropdown';
-import { SORT_OPTIONS } from '../data/filterOptions';
 
 // Grid layout classes by view mode
 const GRID_CLASSES = {
@@ -55,51 +57,51 @@ export const ResultsSection = ({
   resultsSourceUrl,
 }: ResultsSectionProps) => {
   const { searchMode } = useSearchMode();
+  const activeViewClasses =
+    searchMode === 'universal'
+      ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+      : 'bg-sky-700 text-white hover:bg-sky-800';
   const [viewMode, setViewMode] = useState<'card' | 'compact' | 'list'>(() => {
-    const saved = localStorage.getItem('bookViewMode');
-    return saved === 'card' || saved === 'compact' || saved === 'list' ? saved : 'compact';
+    if (typeof window === 'undefined') {
+      return 'compact';
+    }
+
+    try {
+      const saved = window.localStorage.getItem('bookViewMode');
+      return saved === 'card' || saved === 'compact' || saved === 'list' ? saved : 'compact';
+    } catch {
+      return 'compact';
+    }
   });
+  const isDesktop = useMediaQuery('(min-width: 640px)');
 
-  const [isDesktop, setIsDesktop] = useState(false);
-  useEffect(() => {
-    localStorage.setItem('bookViewMode', viewMode);
-  }, [viewMode]);
-
-  // Track whether we're in desktop layout (sm breakpoint and above)
-  // Debounced to avoid excessive state updates during resize
-  useEffect(() => {
-    let timeoutId: number;
-
-    const checkDesktop = () => {
-      clearTimeout(timeoutId);
-      timeoutId = window.setTimeout(() => {
-        setIsDesktop(window.innerWidth >= 640); // sm breakpoint
-      }, 100);
-    };
-
-    // Initial check without debounce
-    setIsDesktop(window.innerWidth >= 640);
-
-    window.addEventListener('resize', checkDesktop);
-    return () => {
-      clearTimeout(timeoutId);
-      window.removeEventListener('resize', checkDesktop);
-    };
-  }, []);
+  const updateViewMode = (nextViewMode: 'card' | 'compact' | 'list') => {
+    setViewMode(nextViewMode);
+    try {
+      window.localStorage.setItem('bookViewMode', nextViewMode);
+    } catch {
+      // Best effort only.
+    }
+  };
 
   if (!visible) return null;
 
   return (
-    <section id="results-section" className="mb-4 sm:mb-8 w-full">
-      <div className="flex items-center justify-between mb-2 sm:mb-3 relative z-10">
-        {showSortControl ? (
-          <SortControl value={sortValue} onChange={onSortChange} metadataSortOptions={metadataSortOptions} />
-        ) : resultsSourceUrl ? (
+    <section id="results-section" className="mb-4 w-full sm:mb-8">
+      <div className="relative z-10 mb-2 flex items-center justify-between sm:mb-3">
+        {showSortControl && (
+          <SortControl
+            value={sortValue}
+            onChange={onSortChange}
+            metadataSortOptions={metadataSortOptions}
+          />
+        )}
+        {!showSortControl && resultsSourceUrl && (
           <a
             href={resultsSourceUrl}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200 animate-pop-up"
+            className="animate-pop-up inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium text-gray-600 transition-colors hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-200"
           >
             View list on Hardcover
             <svg className="h-3.5 w-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -111,18 +113,17 @@ export const ResultsSection = ({
               />
             </svg>
           </a>
-        ) : null}
+        )}
 
         {/* View toggle buttons - Desktop: show all 3, Mobile: show Compact and List only */}
-        <div className="flex items-center gap-2 ml-auto">
+        <div className="ml-auto flex items-center gap-2">
           {isDesktop && (
             <button
-              onClick={() => setViewMode('card')}
-              className={`p-2 rounded-full transition-all duration-200 ${
+              type="button"
+              onClick={() => updateViewMode('card')}
+              className={`rounded-full p-2 transition-all duration-200 ${
                 viewMode === 'card'
-                  ? searchMode === 'universal'
-                    ? 'text-white bg-emerald-600 hover:bg-emerald-700'
-                    : 'text-white bg-sky-700 hover:bg-sky-800'
+                  ? activeViewClasses
                   : 'hover-action text-gray-900 dark:text-gray-100'
               }`}
               title="Card view"
@@ -130,7 +131,7 @@ export const ResultsSection = ({
               aria-pressed={viewMode === 'card'}
             >
               <svg
-                className="w-5 h-5"
+                className="h-5 w-5"
                 fill="none"
                 stroke="currentColor"
                 viewBox="0 0 24 24"
@@ -145,12 +146,11 @@ export const ResultsSection = ({
             </button>
           )}
           <button
-            onClick={() => setViewMode('compact')}
-            className={`p-2 rounded-full transition-all duration-200 ${
+            type="button"
+            onClick={() => updateViewMode('compact')}
+            className={`rounded-full p-2 transition-all duration-200 ${
               viewMode === 'compact'
-                ? searchMode === 'universal'
-                  ? 'text-white bg-emerald-600 hover:bg-emerald-700'
-                  : 'text-white bg-sky-700 hover:bg-sky-800'
+                ? activeViewClasses
                 : 'hover-action text-gray-900 dark:text-gray-100'
             }`}
             title="Compact view"
@@ -158,7 +158,7 @@ export const ResultsSection = ({
             aria-pressed={viewMode === 'compact'}
           >
             <svg
-              className="w-5 h-5"
+              className="h-5 w-5"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -171,12 +171,11 @@ export const ResultsSection = ({
             </svg>
           </button>
           <button
-            onClick={() => setViewMode('list')}
-            className={`p-2 rounded-full transition-all duration-200 ${
+            type="button"
+            onClick={() => updateViewMode('list')}
+            className={`rounded-full p-2 transition-all duration-200 ${
               viewMode === 'list'
-                ? searchMode === 'universal'
-                  ? 'text-white bg-emerald-600 hover:bg-emerald-700'
-                  : 'text-white bg-sky-700 hover:bg-sky-800'
+                ? activeViewClasses
                 : 'hover-action text-gray-900 dark:text-gray-100'
             }`}
             title="List view"
@@ -184,7 +183,7 @@ export const ResultsSection = ({
             aria-pressed={viewMode === 'list'}
           >
             <svg
-              className="w-5 h-5"
+              className="h-5 w-5"
               fill="none"
               stroke="currentColor"
               viewBox="0 0 24 24"
@@ -200,7 +199,16 @@ export const ResultsSection = ({
         </div>
       </div>
       {viewMode === 'list' ? (
-        <ListView books={books} onDetails={onDetails} onDownload={onDownload} onGetReleases={onGetReleases} getButtonState={getButtonState} getUniversalButtonState={getUniversalButtonState} showSeriesPosition={sortValue === 'series_order'} onShowToast={onShowToast} />
+        <ListView
+          books={books}
+          onDetails={onDetails}
+          onDownload={onDownload}
+          onGetReleases={onGetReleases}
+          getButtonState={getButtonState}
+          getUniversalButtonState={getUniversalButtonState}
+          showSeriesPosition={sortValue === 'series_order'}
+          onShowToast={onShowToast}
+        />
       ) : (
         <div
           id="results-grid"
@@ -210,9 +218,10 @@ export const ResultsSection = ({
             const shouldUseCardLayout = isDesktop && viewMode === 'card';
             const animationDelay = index * 50;
             // Use appropriate button state function based on search mode
-            const buttonState = searchMode === 'universal'
-              ? getUniversalButtonState(book.id)
-              : getButtonState(book.id);
+            const buttonState =
+              searchMode === 'universal'
+                ? getUniversalButtonState(book.id)
+                : getButtonState(book.id);
 
             return shouldUseCardLayout ? (
               <CardView
@@ -243,27 +252,38 @@ export const ResultsSection = ({
           })}
         </div>
       )}
-      {books.length === 0 && (
-        <div className="mt-4 text-sm opacity-80">No results found.</div>
-      )}
+      {books.length === 0 && <div className="mt-4 text-sm opacity-80">No results found.</div>}
 
       {/* Load More button (universal mode pagination) */}
       {searchMode === 'universal' && hasMore && onLoadMore && (
         <div className="mt-12 flex flex-col items-center gap-2">
           <button
+            type="button"
             onClick={onLoadMore}
             disabled={isLoadingMore}
-            className={`px-3 py-2 rounded-full text-sm font-medium transition-all duration-200 ${
+            className={`rounded-full px-3 py-2 text-sm font-medium transition-all duration-200 ${
               isLoadingMore
-                ? 'bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-wait'
-                : 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                ? 'cursor-wait bg-gray-300 text-gray-500 dark:bg-gray-600 dark:text-gray-400'
+                : 'bg-emerald-600 text-white hover:bg-emerald-700'
             }`}
           >
             {isLoadingMore ? (
               <span className="flex items-center gap-2">
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                    fill="none"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                  />
                 </svg>
                 Loading...
               </span>
@@ -297,10 +317,14 @@ const SortControl = ({ value, onChange, metadataSortOptions }: SortControlProps)
   const { searchMode } = useSearchMode();
   // Use different sort options based on search mode
   // For universal mode, use dynamic options from API (with fallback)
-  const sortOptions = searchMode === 'universal'
-    ? (metadataSortOptions && metadataSortOptions.length > 0 ? metadataSortOptions : DEFAULT_UNIVERSAL_SORT_OPTIONS)
-    : SORT_OPTIONS;
-  const selected = sortOptions.find(option => option.value === value) ?? sortOptions[0];
+  let sortOptions = SORT_OPTIONS;
+  if (searchMode === 'universal') {
+    sortOptions =
+      metadataSortOptions && metadataSortOptions.length > 0
+        ? metadataSortOptions
+        : DEFAULT_UNIVERSAL_SORT_OPTIONS;
+  }
+  const selected = sortOptions.find((option) => option.value === value) ?? sortOptions[0];
 
   return (
     <Dropdown
@@ -310,7 +334,7 @@ const SortControl = ({ value, onChange, metadataSortOptions }: SortControlProps)
         <button
           type="button"
           onClick={toggle}
-          className={`relative flex items-center gap-2 px-3 py-2 rounded-full transition-all duration-200 text-gray-900 dark:text-gray-100 hover-action ${
+          className={`hover-action relative flex items-center gap-2 rounded-full px-3 py-2 text-gray-900 transition-all duration-200 dark:text-gray-100 ${
             isOpen ? 'bg-(--hover-action)' : ''
           } animate-pop-up`}
           aria-haspopup="listbox"
@@ -323,7 +347,7 @@ const SortControl = ({ value, onChange, metadataSortOptions }: SortControlProps)
             viewBox="0 0 24 24"
             strokeWidth={1.5}
             stroke="currentColor"
-            className="w-5 h-5 sm:w-6 sm:h-6"
+            className="h-5 w-5 sm:h-6 sm:w-6"
           >
             <path
               strokeLinecap="round"
@@ -337,19 +361,20 @@ const SortControl = ({ value, onChange, metadataSortOptions }: SortControlProps)
     >
       {({ close }) => (
         <div role="listbox" aria-label="Sort results">
-          {sortOptions.map(option => {
+          {sortOptions.map((option) => {
             const isSelected = option.value === selected.value;
+            let selectedClassName = '';
+            if (isSelected) {
+              selectedClassName =
+                searchMode === 'universal'
+                  ? 'font-medium text-emerald-600 dark:text-emerald-400'
+                  : 'font-medium text-sky-600 dark:text-sky-300';
+            }
             return (
               <button
                 type="button"
                 key={option.value || 'default'}
-                className={`w-full px-3 py-2 text-left text-base flex items-center justify-between gap-2 hover-surface ${
-                  isSelected
-                    ? searchMode === 'universal'
-                      ? 'text-emerald-600 dark:text-emerald-400 font-medium'
-                      : 'text-sky-600 dark:text-sky-300 font-medium'
-                    : ''
-                }`}
+                className={`hover-surface flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-base ${selectedClassName}`}
                 onClick={() => {
                   onChange(option.value);
                   close();
@@ -365,7 +390,7 @@ const SortControl = ({ value, onChange, metadataSortOptions }: SortControlProps)
                     viewBox="0 0 24 24"
                     strokeWidth={1.5}
                     stroke="currentColor"
-                    className="w-4 h-4"
+                    className="h-4 w-4"
                   >
                     <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
                   </svg>

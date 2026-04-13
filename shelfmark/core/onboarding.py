@@ -86,7 +86,7 @@ def _get_field_from_tab(tab_name: str, field_key: str) -> SettingsField | None:
     return None
 
 
-def _clone_field_with_overrides(field: SettingsField, **overrides) -> SettingsField:
+def _clone_field_with_overrides(field: SettingsField, **overrides: object) -> SettingsField:
     """Clone a field with optional attribute overrides.
 
     Useful for customizing labels, descriptions, or defaults for onboarding context.

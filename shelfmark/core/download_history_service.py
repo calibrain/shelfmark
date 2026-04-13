@@ -7,7 +7,7 @@ import sqlite3
 import threading
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, SupportsIndex, SupportsInt, TypeGuard
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import TERMINAL_QUEUE_STATUSES
@@ -23,6 +23,25 @@ logger = setup_logger(__name__)
 VALID_TERMINAL_STATUSES = frozenset(s.value for s in TERMINAL_QUEUE_STATUSES)
 ACTIVE_DOWNLOAD_STATUS = "active"
 VALID_ORIGINS = frozenset({"direct", "requested"})
+
+
+def _is_convertible_to_int(
+    value: object,
+) -> TypeGuard[str | bytes | bytearray | SupportsInt | SupportsIndex]:
+    """Return True when *value* can be safely passed to ``int``."""
+    return (
+        isinstance(value, (str, bytes, bytearray))
+        or hasattr(value, "__int__")
+        or hasattr(value, "__index__")
+    )
+
+
+def _coerce_int_value(value: object) -> int:
+    """Normalize int-like values and raise TypeError for unsupported inputs."""
+    if isinstance(value, bool) or not _is_convertible_to_int(value):
+        msg = "limit must be an integer"
+        raise TypeError(msg)
+    return int(value)
 
 
 def _normalize_task_id(task_id: object) -> str:
@@ -60,7 +79,7 @@ def _normalize_limit(value: object, *, default: int, minimum: int, maximum: int)
     if value is None:
         return default
     try:
-        parsed = int(value)
+        parsed = _coerce_int_value(value)
     except (TypeError, ValueError) as exc:
         msg = "limit must be an integer"
         raise ValueError(msg) from exc
@@ -75,6 +94,7 @@ class DownloadHistoryService:
     """Service for persisted canonical download activity rows."""
 
     def __init__(self, db_path: str) -> None:
+        """Initialize the service with the SQLite history database path."""
         self._db_path = db_path
         self._lock = threading.Lock()
 
@@ -146,6 +166,7 @@ class DownloadHistoryService:
 
     @staticmethod
     def is_retry_available(row: dict[str, Any]) -> bool:
+        """Return whether a persisted download row can be retried."""
         final_status = (
             str(row.get("retry_final_status") or row.get("final_status") or "").strip().lower()
         )
@@ -175,6 +196,7 @@ class DownloadHistoryService:
 
     @staticmethod
     def to_download_payload(row: dict[str, Any]) -> dict[str, Any]:
+        """Build the sidebar/history download payload for a persisted row."""
         return {
             "id": row.get("task_id"),
             "title": row.get("title"),
@@ -211,6 +233,7 @@ class DownloadHistoryService:
 
     @classmethod
     def to_history_row(cls, row: dict[str, Any], *, dismissed_at: str) -> dict[str, Any]:
+        """Build the activity-history payload for a persisted download row."""
         task_id = str(row.get("task_id") or "").strip()
         item_key = cls._to_item_key(task_id)
         download_payload = cls.to_download_payload(row)
@@ -245,7 +268,7 @@ class DownloadHistoryService:
         source_display_name: str | None,
         title: str,
         author: str | None,
-        format: str | None,
+        file_format: str | None,
         size: str | None,
         preview: str | None,
         content_type: str | None,
@@ -303,7 +326,7 @@ class DownloadHistoryService:
                         normalize_optional_text(source_display_name),
                         normalized_title,
                         normalize_optional_text(author),
-                        normalize_optional_text(format),
+                        normalize_optional_text(file_format),
                         normalize_optional_text(size),
                         normalize_optional_text(preview),
                         normalize_optional_text(content_type),
@@ -368,6 +391,7 @@ class DownloadHistoryService:
                 conn.close()
 
     def get_by_task_id(self, task_id: str) -> dict[str, Any] | None:
+        """Return a persisted download row for the given task id."""
         normalized_task_id = _normalize_task_id(task_id)
         conn = self._connect()
         try:
@@ -385,6 +409,7 @@ class DownloadHistoryService:
         user_id: int | None,
         limit: int = 200,
     ) -> list[dict[str, Any]]:
+        """Return recent persisted download rows, optionally scoped to one user."""
         normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
         normalized_limit = _normalize_limit(limit, default=200, minimum=1, maximum=1000)
         query = "SELECT * FROM download_history"

@@ -1,13 +1,13 @@
 """Metadata provider plugin system - base classes and registry."""
 
 from abc import ABC, abstractmethod
+from collections.abc import Callable
 from contextlib import suppress
 from dataclasses import dataclass, field
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any, ClassVar
+from typing import Any, ClassVar, TypeVar
 
-if TYPE_CHECKING:
-    from collections.abc import Callable
+from shelfmark.core.request_helpers import normalize_optional_text
 
 
 class SearchType(StrEnum):
@@ -418,6 +418,7 @@ class MetadataProvider(ABC):
         self,
         book_id: str,
         target: str,
+        *,
         selected: bool,
     ) -> dict[str, Any]:
         """Set whether a book belongs to a provider-managed list or shelf.
@@ -430,15 +431,20 @@ class MetadataProvider(ABC):
 
 # Provider registry
 _PROVIDERS: dict[str, type[MetadataProvider]] = {}
-_PROVIDER_KWARGS_FACTORIES: dict[str, Any] = {}  # Callable[[], Dict]
+_PROVIDER_KWARGS_FACTORIES: dict[str, Callable[[], dict[str, Any]]] = {}
+ProviderType = TypeVar("ProviderType", bound=MetadataProvider)
+ProviderKwargsFactory = TypeVar(
+    "ProviderKwargsFactory",
+    bound=Callable[[], dict[str, Any]],
+)
 
 
 def register_provider(
     name: str,
-) -> Callable[[type[MetadataProvider]], type[MetadataProvider]]:
-    """Decorator to register a metadata provider."""
+) -> Callable[[type[ProviderType]], type[ProviderType]]:
+    """Register a metadata provider."""
 
-    def decorator(cls: type[MetadataProvider]) -> type[MetadataProvider]:
+    def decorator(cls: type[ProviderType]) -> type[ProviderType]:
         _PROVIDERS[name] = cls
         return cls
 
@@ -447,8 +453,8 @@ def register_provider(
 
 def register_provider_kwargs(
     name: str,
-) -> Callable[[Callable[[], dict[str, Any]]], Callable[[], dict[str, Any]]]:
-    """Decorator to register a provider's kwargs factory.
+) -> Callable[[ProviderKwargsFactory], ProviderKwargsFactory]:
+    """Register a provider kwargs factory.
 
     The decorated function should return a Dict of kwargs to pass to the
     provider constructor. This allows each provider to define its own
@@ -462,15 +468,15 @@ def register_provider_kwargs(
 
     """
 
-    def decorator(fn: Callable[[], dict[str, Any]]) -> Callable[[], dict[str, Any]]:
+    def decorator(fn: ProviderKwargsFactory) -> ProviderKwargsFactory:
         _PROVIDER_KWARGS_FACTORIES[name] = fn
         return fn
 
     return decorator
 
 
-def get_provider(name: str, **kwargs) -> MetadataProvider:
-    """Factory - instantiate any registered provider."""
+def get_provider(name: str, **kwargs: object) -> MetadataProvider:
+    """Instantiate a registered metadata provider."""
     if name not in _PROVIDERS:
         msg = f"Unknown metadata provider: {name}"
         raise ValueError(msg)
@@ -527,11 +533,17 @@ def get_configured_provider(
 
     # For audiobooks, try audiobook-specific provider first, then fall back to main provider
     if content_type == "audiobook":
-        metadata_provider = app_config.get("METADATA_PROVIDER_AUDIOBOOK", "", user_id=user_id)
+        metadata_provider = normalize_optional_text(
+            app_config.get("METADATA_PROVIDER_AUDIOBOOK", "", user_id=user_id)
+        )
         if not metadata_provider:
-            metadata_provider = app_config.get("METADATA_PROVIDER", "", user_id=user_id)
+            metadata_provider = normalize_optional_text(
+                app_config.get("METADATA_PROVIDER", "", user_id=user_id)
+            )
     else:
-        metadata_provider = app_config.get("METADATA_PROVIDER", "", user_id=user_id)
+        metadata_provider = normalize_optional_text(
+            app_config.get("METADATA_PROVIDER", "", user_id=user_id)
+        )
 
     if not metadata_provider:
         return None
@@ -559,24 +571,28 @@ def get_configured_provider_name(
     app_config.refresh()
 
     if content_type == "combined":
-        combined_provider = app_config.get(
-            "METADATA_PROVIDER_COMBINED",
-            "",
-            user_id=user_id,
+        combined_provider = normalize_optional_text(
+            app_config.get(
+                "METADATA_PROVIDER_COMBINED",
+                "",
+                user_id=user_id,
+            )
         )
         if combined_provider or not fallback_to_main:
-            return combined_provider
+            return combined_provider or ""
 
     if content_type == "audiobook":
-        audiobook_provider = app_config.get(
-            "METADATA_PROVIDER_AUDIOBOOK",
-            "",
-            user_id=user_id,
+        audiobook_provider = normalize_optional_text(
+            app_config.get(
+                "METADATA_PROVIDER_AUDIOBOOK",
+                "",
+                user_id=user_id,
+            )
         )
         if audiobook_provider or not fallback_to_main:
-            return audiobook_provider
+            return audiobook_provider or ""
 
-    return app_config.get("METADATA_PROVIDER", "", user_id=user_id)
+    return normalize_optional_text(app_config.get("METADATA_PROVIDER", "", user_id=user_id)) or ""
 
 
 def get_provider_sort_options(
@@ -648,7 +664,9 @@ def get_provider_default_sort(
 
     # Look up provider-specific default sort setting
     setting_key = f"{provider_name.upper()}_DEFAULT_SORT"
-    return app_config.get(setting_key, "relevance", user_id=user_id)
+    return normalize_optional_text(app_config.get(setting_key, "relevance", user_id=user_id)) or (
+        "relevance"
+    )
 
 
 def sync_metadata_provider_selection() -> None:

@@ -3,12 +3,45 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Any
+from typing import Any, Protocol, SupportsIndex, SupportsInt, TypeGuard
 
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 
 _logger = setup_logger(__name__)
+
+type _ConvertibleToInt = str | bytes | bytearray | SupportsInt | SupportsIndex
+
+
+class _MappingWithGet(Protocol):
+    """Minimal mapping protocol for session-like objects."""
+
+    def get(self, key: str, default: object = None, /) -> object: ...
+
+
+class _UserDBLike(Protocol):
+    """Minimal user DB protocol for username population helpers."""
+
+    def get_user(self, *, user_id: int) -> dict[str, Any] | None: ...
+
+
+def _is_mapping_with_get(candidate: object) -> TypeGuard[_MappingWithGet]:
+    """Return True when *candidate* exposes a mapping-style get method."""
+    return callable(getattr(candidate, "get", None))
+
+
+def _is_user_db_like(candidate: object) -> TypeGuard[_UserDBLike]:
+    """Return True when *candidate* exposes the user lookup API we need."""
+    return callable(getattr(candidate, "get_user", None))
+
+
+def _is_convertible_to_int(value: object) -> TypeGuard[_ConvertibleToInt]:
+    """Return True when *value* can be passed to ``int`` safely."""
+    return (
+        isinstance(value, (str, bytes, bytearray))
+        or hasattr(value, "__int__")
+        or hasattr(value, "__index__")
+    )
 
 
 def now_utc_iso() -> str:
@@ -32,7 +65,7 @@ def emit_ws_event(
         if socketio is None or not callable(is_enabled) or not is_enabled():
             return
         socketio.emit(event_name, payload, to=room)
-    except Exception as exc:
+    except (AttributeError, RuntimeError, TypeError, ValueError) as exc:
         _logger.warning(
             "Failed to emit WebSocket event '%s' to room '%s': %s",
             event_name,
@@ -65,15 +98,17 @@ def coerce_bool(value: object, *, default: bool = False) -> bool:
 
 def get_session_db_user_id(session_obj: object) -> int | None:
     """Extract and coerce `db_user_id` from a Flask session to ``int | None``."""
-    raw = session_obj.get("db_user_id") if session_obj is not None else None
+    raw = session_obj.get("db_user_id") if _is_mapping_with_get(session_obj) else None
     try:
-        return int(raw) if raw is not None else None
+        return int(raw) if raw is not None and _is_convertible_to_int(raw) else None
     except TypeError, ValueError:
         return None
 
 
 def coerce_int(value: object, default: int) -> int:
     """Best-effort integer coercion with fallback to default."""
+    if not _is_convertible_to_int(value):
+        return default
     try:
         return int(value)
     except TypeError, ValueError:
@@ -90,6 +125,8 @@ def normalize_optional_text(value: object) -> str | None:
 
 def normalize_positive_int(value: object) -> int | None:
     """Parse *value* as a positive integer, returning ``None`` on failure."""
+    if not _is_convertible_to_int(value):
+        return None
     try:
         parsed = int(value)
     except TypeError, ValueError:
@@ -105,6 +142,9 @@ def normalize_optional_positive_int(value: object, field_name: str = "value") ->
     """
     if value is None:
         return None
+    if not _is_convertible_to_int(value):
+        msg = f"{field_name} must be a positive integer when provided"
+        raise ValueError(msg)
     try:
         parsed = int(value)
     except (TypeError, ValueError) as exc:
@@ -118,9 +158,15 @@ def normalize_optional_positive_int(value: object, field_name: str = "value") ->
 
 def populate_request_usernames(rows: list[dict[str, Any]], user_db: object) -> None:
     """Add 'username' to each request row by looking up user_id."""
+    if not _is_user_db_like(user_db):
+        return
+
     cache: dict[int, str] = {}
     for row in rows:
-        requester_id = row["user_id"]
+        requester_id = normalize_positive_int(row.get("user_id"))
+        if requester_id is None:
+            row["username"] = ""
+            continue
         if requester_id not in cache:
             requester = user_db.get_user(user_id=requester_id)
             cache[requester_id] = requester.get("username", "") if requester else ""

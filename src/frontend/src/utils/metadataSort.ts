@@ -1,4 +1,4 @@
-import { SortOption } from '../types';
+import type { SortOption } from '../types';
 
 const FALLBACK_SORT = 'relevance';
 
@@ -11,9 +11,10 @@ export const getEffectiveMetadataSort = ({
   defaultSort?: string;
   sortOptions?: SortOption[];
 }): string => {
-  const supportedSorts = sortOptions && sortOptions.length > 0
-    ? sortOptions.map((option) => option.value)
-    : [FALLBACK_SORT];
+  const supportedSorts =
+    sortOptions && sortOptions.length > 0
+      ? sortOptions.map((option) => option.value)
+      : [FALLBACK_SORT];
 
   if (currentSort && supportedSorts.includes(currentSort)) {
     return currentSort;

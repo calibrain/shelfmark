@@ -1,4 +1,4 @@
-import { TextFieldConfig } from '../../../types/settings';
+import type { TextFieldConfig } from '../../../types/settings';
 
 interface TextFieldProps {
   field: TextFieldConfig;
@@ -19,10 +19,7 @@ export const TextField = ({ field, value, onChange, disabled }: TextFieldProps) 
       placeholder={field.placeholder}
       maxLength={field.maxLength}
       disabled={isDisabled}
-      className="w-full px-3 py-2 rounded-lg border border-(--border-muted)                 bg-(--bg-soft) text-sm
-                 focus:outline-hidden focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500
-                 disabled:opacity-60 disabled:cursor-not-allowed
-                 transition-colors"
+      className="w-full rounded-lg border border-(--border-muted) bg-(--bg-soft) px-3 py-2 text-sm transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50 focus:outline-hidden disabled:cursor-not-allowed disabled:opacity-60"
     />
   );
 };

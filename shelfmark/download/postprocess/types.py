@@ -1,3 +1,5 @@
+"""Typed data containers used by the post-processing pipeline."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -11,6 +13,8 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class TransferPlan:
+    """Plan describing how files should move from source to output."""
+
     source_path: Path
     use_hardlink: bool
     allow_archive_extraction: bool
@@ -19,6 +23,8 @@ class TransferPlan:
 
 @dataclass(frozen=True)
 class OutputPlan:
+    """Resolved output mode, staging strategy, and transfer settings."""
+
     mode: str
     stage_action: StageAction
     staging_dir: Path
@@ -28,6 +34,8 @@ class OutputPlan:
 
 @dataclass(frozen=True)
 class PreparedFiles:
+    """Prepared file set ready for transfer or output handling."""
+
     output_plan: OutputPlan
     working_path: Path
     files: list[Path]
@@ -37,5 +45,7 @@ class PreparedFiles:
 
 @dataclass(frozen=True)
 class PlanStep:
+    """Recorded post-processing step and its debug metadata."""
+
     name: str
     details: dict[str, Any]

@@ -1,4 +1,4 @@
-import { Language } from '../types';
+import type { Language } from '../types';
 
 export const LANGUAGE_OPTION_DEFAULT = 'default';
 export const LANGUAGE_OPTION_ALL = 'all';
@@ -48,13 +48,13 @@ export const getLanguageFilterValues = (
     return null;
   }
 
-  const supportedCodes = new Set(supportedLanguages.map(lang => lang.code));
-  const defaultCodes = defaultLanguageCodes.filter(code => supportedCodes.has(code));
+  const supportedCodes = new Set(supportedLanguages.map((lang) => lang.code));
+  const defaultCodes = defaultLanguageCodes.filter((code) => supportedCodes.has(code));
   const resolved = new Set<string>();
 
-  uniqueSelection.forEach(code => {
+  uniqueSelection.forEach((code) => {
     if (code === LANGUAGE_OPTION_DEFAULT) {
-      defaultCodes.forEach(defaultCode => resolved.add(defaultCode));
+      defaultCodes.forEach((defaultCode) => resolved.add(defaultCode));
       return;
     }
 
@@ -79,27 +79,6 @@ export const getReleaseSearchLanguageParams = (
 ): string[] | undefined => {
   const resolved = getLanguageFilterValues(selection, supportedLanguages, defaultLanguageCodes);
   return resolved === null ? undefined : resolved;
-};
-
-export const formatDefaultLanguageLabel = (
-  languageCodes: string[],
-  supportedLanguages: Language[],
-): string => {
-  if (!languageCodes || languageCodes.length === 0) {
-    return 'Default (env config)';
-  }
-
-  const languageNames = supportedLanguages
-    .filter(lang => languageCodes.includes(lang.code))
-    .map(lang => lang.language);
-
-  if (languageNames.length === 0) {
-    return 'Default (env config)';
-  }
-
-  const joined = languageNames.slice(0, 3).join(', ');
-  const suffix = languageNames.length > 3 ? '…' : '';
-  return `Default (${joined}${suffix})`;
 };
 
 /**
@@ -138,16 +117,19 @@ export const releaseLanguageMatchesFilter = (
   }
 
   // Split by common multi-language separators: comma, slash, plus, ampersand
-  const releaseParts = releaseLang.split(/[,/+&]/).map(l => l.trim().toLowerCase()).filter(Boolean);
+  const releaseParts = releaseLang
+    .split(/[,/+&]/)
+    .map((l) => l.trim().toLowerCase())
+    .filter(Boolean);
 
   // Normalize release language parts to codes (handles both "en" and "english")
-  const releaseCodes = releaseParts.map(part => {
+  const releaseCodes = releaseParts.map((part) => {
     if (languageNormalizer) {
       return languageNormalizer.get(part) ?? part;
     }
     return part;
   });
 
-  const selectedSet = new Set(selectedCodes.map(c => c.toLowerCase()));
-  return releaseCodes.every(code => selectedSet.has(code));
+  const selectedSet = new Set(selectedCodes.map((c) => c.toLowerCase()));
+  return releaseCodes.every((code) => selectedSet.has(code));
 };

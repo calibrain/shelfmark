@@ -4,21 +4,27 @@ Uses NZBGet's JSON-RPC API directly via requests (no external dependency).
 """
 
 import json
+from typing import Any, NoReturn
 
 import requests
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
     register_client,
     with_retry,
 )
+from shelfmark.download.clients._coercion import config_text, normalize_http_config_url
 from shelfmark.download.network import get_ssl_verify
 
 logger = setup_logger(__name__)
+_NZBGET_CLIENT_ERRORS = (AttributeError, OSError, RuntimeError, TypeError, ValueError)
+
+
+def _raise_runtime_error(message: str) -> NoReturn:
+    raise RuntimeError(message)
 
 
 @register_client("usenet")
@@ -30,24 +36,24 @@ class NZBGetClient(DownloadClient):
 
     def __init__(self) -> None:
         """Initialize NZBGet client with settings from config."""
-        raw_url = config.get("NZBGET_URL", "")
+        raw_url = config_text(config.get("NZBGET_URL", ""))
         if not raw_url:
             msg = "NZBGET_URL is required"
             raise ValueError(msg)
 
-        self.url = normalize_http_url(raw_url)
+        self.url = normalize_http_config_url(raw_url)
         if not self.url:
             msg = "NZBGET_URL is invalid"
             raise ValueError(msg)
-        self.username = config.get("NZBGET_USERNAME", "nzbget")
-        self.password = config.get("NZBGET_PASSWORD", "")
-        self._category = config.get("NZBGET_CATEGORY", "Books")
+        self.username = config_text(config.get("NZBGET_USERNAME", "nzbget"), "nzbget")
+        self.password = config_text(config.get("NZBGET_PASSWORD", ""))
+        self._category = config_text(config.get("NZBGET_CATEGORY", "Books"), "Books")
 
     @staticmethod
     def is_configured() -> bool:
         """Check if NZBGet is configured and selected as the usenet client."""
-        client = config.get("PROWLARR_USENET_CLIENT", "")
-        url = normalize_http_url(config.get("NZBGET_URL", ""))
+        client = config_text(config.get("PROWLARR_USENET_CLIENT", ""))
+        url = normalize_http_config_url(config.get("NZBGET_URL", ""))
         return client == "nzbget" and bool(url)
 
     def _try_remove_command(
@@ -59,12 +65,12 @@ class NZBGetClient(DownloadClient):
             if result:
                 logger.info("Removed NZB from NZBGet (%s): %s", command, download_id)
                 return True, None
-        except Exception as e:
+        except _NZBGET_CLIENT_ERRORS as e:
             return False, e
         return False, None
 
     @with_retry()
-    def _rpc_call(self, method: str, params: list | None = None) -> object:
+    def _rpc_call(self, method: str, params: list[object] | None = None) -> Any:
         """Make a JSON-RPC call to NZBGet.
 
         Args:
@@ -115,7 +121,7 @@ class NZBGetClient(DownloadClient):
             return False, "Could not connect to NZBGet"
         except requests.exceptions.Timeout:
             return False, "Connection timed out"
-        except Exception as e:
+        except _NZBGET_CLIENT_ERRORS as e:
             return False, f"Connection failed: {e!s}"
         else:
             return True, f"Connected to NZBGet {version}"
@@ -126,7 +132,7 @@ class NZBGetClient(DownloadClient):
         name: str,
         category: str | None = None,
         expected_hash: str | None = None,
-        **kwargs,
+        **kwargs: object,
     ) -> str:
         """Add NZB by URL.
 
@@ -138,6 +144,7 @@ class NZBGetClient(DownloadClient):
             name: Display name for the download
             category: Category for organization (uses configured default if not specified)
             expected_hash: Optional info_hash hint (unused)
+            **kwargs: Client-specific options passed through to the implementation.
 
         Returns:
             NZBGet download ID (NZBID).
@@ -149,11 +156,7 @@ class NZBGetClient(DownloadClient):
         import base64
 
         # Use configured category if not explicitly provided
-        category = category or self._category
-
-        def _raise_invalid_nzb_id() -> None:
-            msg = "NZBGet returned invalid ID"
-            raise RuntimeError(msg)
+        resolved_category = category or self._category
 
         try:
             # Fetch NZB content from the URL (handles Prowlarr proxy redirects)
@@ -173,7 +176,7 @@ class NZBGetClient(DownloadClient):
                 [
                     nzb_filename,  # NZBFilename
                     nzb_content,  # Content (base64-encoded NZB)
-                    category,  # Category
+                    resolved_category,  # Category
                     0,  # Priority (0 = normal)
                     False,  # AddToTop
                     False,  # AddPaused
@@ -184,16 +187,22 @@ class NZBGetClient(DownloadClient):
                 ],
             )
 
-            if nzb_id and nzb_id > 0:
+            if isinstance(nzb_id, int) and nzb_id > 0:
                 logger.info("Added NZB to NZBGet: %s", nzb_id)
                 return str(nzb_id)
 
-            _raise_invalid_nzb_id()
+            if isinstance(nzb_id, str):
+                stripped_nzb_id = nzb_id.strip()
+                if stripped_nzb_id.isdigit() and int(stripped_nzb_id) > 0:
+                    logger.info("Added NZB to NZBGet: %s", stripped_nzb_id)
+                    return stripped_nzb_id
+
+            _raise_runtime_error("NZBGet returned invalid ID")
         except requests.RequestException as e:
             logger.exception("Failed to fetch NZB from URL")
             msg = f"Failed to fetch NZB: {e}"
             raise RuntimeError(msg) from e
-        except Exception:
+        except _NZBGET_CLIENT_ERRORS:
             logger.exception("NZBGet add failed")
             raise
 
@@ -286,7 +295,7 @@ class NZBGetClient(DownloadClient):
 
             # Not found in queue or history
             return DownloadStatus.error("Download not found")
-        except Exception as e:
+        except _NZBGET_CLIENT_ERRORS as e:
             return DownloadStatus.error(self._log_error("get_status", e))
 
     def remove(self, download_id: str, *, delete_files: bool = False) -> bool:

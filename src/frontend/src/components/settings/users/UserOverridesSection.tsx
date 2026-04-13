@@ -1,5 +1,5 @@
-import { DeliveryPreferencesResponse } from '../../../services/api';
-import {
+import type { DeliveryPreferencesResponse } from '../../../services/api';
+import type {
   HeadingFieldConfig,
   MultiSelectFieldConfig,
   SelectFieldConfig,
@@ -7,8 +7,8 @@ import {
 } from '../../../types/settings';
 import { HeadingField, MultiSelectField, SelectField, TextField } from '../fields';
 import { FieldWrapper } from '../shared';
-import { getFieldByKey } from './fieldHelpers';
-import { PerUserSettings } from './types';
+import { getFieldByKey, toNormalizedLowercaseTextValue, toTextValue } from './fieldHelpers';
+import type { PerUserSettings } from './types';
 
 interface UserOverridesSectionProps {
   deliveryPreferences: DeliveryPreferencesResponse | null;
@@ -45,7 +45,7 @@ const fallbackDestinationAudiobookField: TextFieldConfig = {
   type: 'TextField',
   key: 'DESTINATION_AUDIOBOOK',
   label: 'Destination',
-  description: 'Directory for this user\'s audiobook downloads.',
+  description: "Directory for this user's audiobook downloads.",
   value: '',
 };
 
@@ -81,7 +81,8 @@ const fallbackBrowserDownloadField: MultiSelectFieldConfig = {
   type: 'MultiSelectField',
   key: 'DOWNLOAD_TO_BROWSER_CONTENT_TYPES',
   label: 'Download to Browser',
-  description: 'Automatically download completed files to this browser for the selected content types.',
+  description:
+    'Automatically download completed files to this browser for the selected content types.',
   value: [],
   variant: 'dropdown',
   options: [
@@ -93,7 +94,7 @@ const fallbackBrowserDownloadField: MultiSelectFieldConfig = {
 type DeliverySettingKey = keyof PerUserSettings;
 
 function normalizeMode(value: unknown): 'folder' | 'booklore' | 'email' {
-  const mode = String(value || '').trim().toLowerCase();
+  const mode = toNormalizedLowercaseTextValue(value);
   if (mode === 'booklore' || mode === 'email') {
     return mode;
   }
@@ -101,8 +102,7 @@ function normalizeMode(value: unknown): 'folder' | 'booklore' | 'email' {
 }
 
 function toStringValue(value: unknown): string {
-  if (value === undefined || value === null) return '';
-  return String(value);
+  return toTextValue(value);
 }
 
 const deliveryHeading: HeadingFieldConfig = {
@@ -123,7 +123,8 @@ const audiobooksHeading: HeadingFieldConfig = {
   type: 'HeadingField',
   key: 'delivery_preferences_audiobooks_heading',
   title: 'Audiobooks',
-  description: 'Audiobooks always use folder output. Use Reset to inherit the global audiobook destination.',
+  description:
+    'Audiobooks always use folder output. Use Reset to inherit the global audiobook destination.',
 };
 
 const BOOK_PREFERENCE_KEYS: DeliverySettingKey[] = [
@@ -146,13 +147,25 @@ export const UserOverridesSection = ({
   const globalValues = deliveryPreferences?.globalValues ?? {};
   const preferenceKeys = deliveryPreferences?.keys ?? [];
 
-  const outputModeField = getFieldByKey<SelectFieldConfig>(fields, 'BOOKS_OUTPUT_MODE', fallbackOutputModeField);
-  const destinationField = getFieldByKey<TextFieldConfig>(fields, 'DESTINATION', fallbackDestinationField);
-  const destinationAudiobookField = getFieldByKey<TextFieldConfig>(fields, 'DESTINATION_AUDIOBOOK', fallbackDestinationAudiobookField);
-  const bookloreLibraryField = getFieldByKey<SelectFieldConfig>(fields, 'BOOKLORE_LIBRARY_ID', fallbackBookloreLibraryField);
-  const booklorePathField = getFieldByKey<SelectFieldConfig>(fields, 'BOOKLORE_PATH_ID', fallbackBooklorePathField);
-  const emailRecipientFieldSource = getFieldByKey<TextFieldConfig>(fields, 'EMAIL_RECIPIENT', fallbackEmailRecipientField);
-  const browserDownloadField = getFieldByKey<MultiSelectFieldConfig>(
+  const outputModeField = getFieldByKey(fields, 'BOOKS_OUTPUT_MODE', fallbackOutputModeField);
+  const destinationField = getFieldByKey(fields, 'DESTINATION', fallbackDestinationField);
+  const destinationAudiobookField = getFieldByKey(
+    fields,
+    'DESTINATION_AUDIOBOOK',
+    fallbackDestinationAudiobookField,
+  );
+  const bookloreLibraryField = getFieldByKey(
+    fields,
+    'BOOKLORE_LIBRARY_ID',
+    fallbackBookloreLibraryField,
+  );
+  const booklorePathField = getFieldByKey(fields, 'BOOKLORE_PATH_ID', fallbackBooklorePathField);
+  const emailRecipientFieldSource = getFieldByKey(
+    fields,
+    'EMAIL_RECIPIENT',
+    fallbackEmailRecipientField,
+  );
+  const browserDownloadField = getFieldByKey(
     fields,
     'DOWNLOAD_TO_BROWSER_CONTENT_TYPES',
     fallbackBrowserDownloadField,
@@ -163,14 +176,14 @@ export const UserOverridesSection = ({
     description: 'Email address used for this user in Email output mode.',
   };
   const browserDownloadGlobalValue = Array.isArray(globalValues.DOWNLOAD_TO_BROWSER_CONTENT_TYPES)
-    ? globalValues.DOWNLOAD_TO_BROWSER_CONTENT_TYPES
-        .map((entry) => String(entry).trim())
-        .filter((entry) => entry.length > 0)
+    ? globalValues.DOWNLOAD_TO_BROWSER_CONTENT_TYPES.map((entry) => String(entry).trim()).filter(
+        (entry) => entry.length > 0,
+      )
     : [];
   const browserDownloadUserValue = Array.isArray(userSettings.DOWNLOAD_TO_BROWSER_CONTENT_TYPES)
-    ? userSettings.DOWNLOAD_TO_BROWSER_CONTENT_TYPES
-        .map((entry) => String(entry).trim())
-        .filter((entry) => entry.length > 0)
+    ? userSettings.DOWNLOAD_TO_BROWSER_CONTENT_TYPES.map((entry) => entry.trim()).filter(
+        (entry) => entry.length > 0,
+      )
     : [];
 
   const isOverridden = (key: DeliverySettingKey): boolean => {
@@ -183,15 +196,14 @@ export const UserOverridesSection = ({
     }
 
     const userValue = toStringValue(userSettings[key]);
-    const globalValue = toStringValue(globalValues[key as string]);
+    const globalValue = toStringValue(globalValues[key]);
     return userValue !== globalValue;
   };
 
-  const isBrowserDownloadOverridden = (
-    Object.prototype.hasOwnProperty.call(userSettings, 'DOWNLOAD_TO_BROWSER_CONTENT_TYPES')
-    && userSettings.DOWNLOAD_TO_BROWSER_CONTENT_TYPES !== null
-    && JSON.stringify(browserDownloadUserValue) !== JSON.stringify(browserDownloadGlobalValue)
-  );
+  const isBrowserDownloadOverridden =
+    Object.prototype.hasOwnProperty.call(userSettings, 'DOWNLOAD_TO_BROWSER_CONTENT_TYPES') &&
+    userSettings.DOWNLOAD_TO_BROWSER_CONTENT_TYPES !== null &&
+    JSON.stringify(browserDownloadUserValue) !== JSON.stringify(browserDownloadGlobalValue);
 
   const resetKeys = (keys: DeliverySettingKey[]) => {
     setUserSettings((prev) => {
@@ -201,6 +213,10 @@ export const UserOverridesSection = ({
       });
       return next;
     });
+  };
+
+  const resetBookloreLibrary = () => {
+    resetKeys(['BOOKLORE_LIBRARY_ID', 'BOOKLORE_PATH_ID']);
   };
 
   const readValue = (key: DeliverySettingKey, fallback = ''): string => {
@@ -225,11 +241,17 @@ export const UserOverridesSection = ({
   const pathValue = readValue('BOOKLORE_PATH_ID');
   const emailRecipientValue = readValue('EMAIL_RECIPIENT');
 
-  const availableBookPreferenceKeys = BOOK_PREFERENCE_KEYS.filter((key) => preferenceKeys.includes(String(key)));
-  const availableAudiobookPreferenceKeys = AUDIOBOOK_PREFERENCE_KEYS.filter((key) => preferenceKeys.includes(String(key)));
+  const availableBookPreferenceKeys = BOOK_PREFERENCE_KEYS.filter((key) =>
+    preferenceKeys.includes(String(key)),
+  );
+  const availableAudiobookPreferenceKeys = AUDIOBOOK_PREFERENCE_KEYS.filter((key) =>
+    preferenceKeys.includes(String(key)),
+  );
 
   const hasBookDeliveryOverride = availableBookPreferenceKeys.some((key) => isOverridden(key));
-  const hasAudiobookDeliveryOverride = availableAudiobookPreferenceKeys.some((key) => isOverridden(key));
+  const hasAudiobookDeliveryOverride = availableAudiobookPreferenceKeys.some((key) =>
+    isOverridden(key),
+  );
 
   const canOverrideOutputMode = isUserOverridable('BOOKS_OUTPUT_MODE');
   const canOverrideBrowserDownload = isUserOverridable('DOWNLOAD_TO_BROWSER_CONTENT_TYPES');
@@ -262,10 +284,12 @@ export const UserOverridesSection = ({
           <MultiSelectField
             field={browserDownloadField}
             value={browserDownloadContentTypes}
-            onChange={(value) => setUserSettings((prev) => ({
-              ...prev,
-              DOWNLOAD_TO_BROWSER_CONTENT_TYPES: value,
-            }))}
+            onChange={(value) =>
+              setUserSettings((prev) => ({
+                ...prev,
+                DOWNLOAD_TO_BROWSER_CONTENT_TYPES: value,
+              }))
+            }
             disabled={Boolean(browserDownloadField.fromEnv)}
           />
         </FieldWrapper>
@@ -277,12 +301,12 @@ export const UserOverridesSection = ({
         <FieldWrapper
           field={outputModeField}
           resetAction={
-            hasBookDeliveryOverride ? (
-              {
-                label: 'Reset all',
-                onClick: () => resetKeys(availableBookPreferenceKeys),
-              }
-            ) : undefined
+            hasBookDeliveryOverride
+              ? {
+                  label: 'Reset all',
+                  onClick: () => resetKeys(availableBookPreferenceKeys),
+                }
+              : undefined
           }
         >
           <SelectField
@@ -322,7 +346,7 @@ export const UserOverridesSection = ({
             isOverridden('BOOKLORE_LIBRARY_ID')
               ? {
                   disabled: Boolean(bookloreLibraryField.fromEnv),
-                  onClick: () => resetKeys(['BOOKLORE_LIBRARY_ID']),
+                  onClick: resetBookloreLibrary,
                 }
               : undefined
           }
@@ -399,12 +423,14 @@ export const UserOverridesSection = ({
                 : undefined
             }
           >
-          <TextField
-            field={destinationAudiobookField}
-            value={destinationAudiobookValue}
-            onChange={(value) => setUserSettings((prev) => ({ ...prev, DESTINATION_AUDIOBOOK: value }))}
-            disabled={Boolean(destinationAudiobookField.fromEnv)}
-          />
+            <TextField
+              field={destinationAudiobookField}
+              value={destinationAudiobookValue}
+              onChange={(value) =>
+                setUserSettings((prev) => ({ ...prev, DESTINATION_AUDIOBOOK: value }))
+              }
+              disabled={Boolean(destinationAudiobookField.fromEnv)}
+            />
           </FieldWrapper>
         </>
       )}

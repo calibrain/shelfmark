@@ -1,3 +1,5 @@
+"""Helpers for Booklore settings validation, option loading, and connection tests."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -121,7 +123,7 @@ def get_booklore_library_options() -> list[dict[str, Any]]:
 
     base_url = str(config.get("BOOKLORE_HOST", "") or "").strip().rstrip("/")
     username = str(config.get("BOOKLORE_USERNAME", "") or "").strip()
-    password = config.get("BOOKLORE_PASSWORD", "") or ""
+    password = str(config.get("BOOKLORE_PASSWORD", "") or "")
 
     if not base_url or not username or not password:
         return []
@@ -146,7 +148,7 @@ def get_booklore_path_options() -> list[dict[str, Any]]:
 
     base_url = str(config.get("BOOKLORE_HOST", "") or "").strip().rstrip("/")
     username = str(config.get("BOOKLORE_USERNAME", "") or "").strip()
-    password = config.get("BOOKLORE_PASSWORD", "") or ""
+    password = str(config.get("BOOKLORE_PASSWORD", "") or "")
 
     if not base_url or not username or not password:
         return []
@@ -164,7 +166,7 @@ def get_booklore_path_options() -> list[dict[str, Any]]:
         return path_options
 
 
-def test_booklore_connection(
+def check_booklore_connection(
     current_values: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Test the Booklore connection using current form values."""
@@ -180,7 +182,7 @@ def test_booklore_connection(
 
     base_url = str(_get_value("BOOKLORE_HOST", "") or "").strip().rstrip("/")
     username = str(_get_value("BOOKLORE_USERNAME", "") or "").strip()
-    password = _get_value("BOOKLORE_PASSWORD", "") or ""
+    password = str(_get_value("BOOKLORE_PASSWORD", "") or "")
 
     if not base_url:
         return {"success": False, "message": "Grimmory URL is required"}

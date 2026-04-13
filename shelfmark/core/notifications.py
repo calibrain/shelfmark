@@ -8,7 +8,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
 from enum import StrEnum
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Protocol, TypeGuard
 from urllib.parse import urlsplit
 
 try:
@@ -18,6 +18,7 @@ except ImportError:  # pragma: no cover - exercised in tests via monkeypatch
 
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.request_helpers import normalize_positive_int
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -33,6 +34,33 @@ _APPRISE_LOGO_URL = (
     "https://raw.githubusercontent.com/calibrain/shelfmark/main/src/frontend/public/logo.png"
 )
 _APPRISE_LOGGER_NAME = "apprise"
+_APPRISE_DISPATCH_ERRORS = (RuntimeError, TypeError, ValueError)
+
+
+class _ApprisePluginWithUrl(Protocol):
+    app_id: object
+
+    def url(self, *, privacy: bool = False) -> str:
+        _ = privacy
+        return ""
+
+
+class _AppriseClient(Protocol):
+    asset: object
+
+    def add(self, plugin: object) -> object: ...
+
+    def notify(self, *, title: str, body: str, notify_type: object) -> object: ...
+
+
+def _is_apprise_client(candidate: object) -> TypeGuard[_AppriseClient]:
+    return callable(getattr(candidate, "add", None)) and callable(
+        getattr(candidate, "notify", None)
+    )
+
+
+def _has_plugin_url(candidate: object) -> TypeGuard[_ApprisePluginWithUrl]:
+    return callable(getattr(candidate, "url", None))
 
 
 class NotificationEvent(StrEnum):
@@ -254,13 +282,7 @@ def _resolve_admin_routes() -> list[dict[str, str]]:
 
 
 def _normalize_user_id(value: object) -> int | None:
-    try:
-        user_id = int(value)
-    except TypeError, ValueError:
-        return None
-    if user_id < 1:
-        return None
-    return user_id
+    return normalize_positive_int(value)
 
 
 def _resolve_user_routes(user_id: int | None) -> list[dict[str, str]]:
@@ -359,8 +381,9 @@ def _plugin_label(plugin: object, fallback_scheme: str) -> str:
     app_id = getattr(plugin, "app_id", None)
     if app_id and str(app_id) != fallback_scheme:
         privacy_url: str | None = None
-        with suppress(Exception):
-            privacy_url = plugin.url(privacy=True)
+        if _has_plugin_url(plugin):
+            with suppress(Exception):
+                privacy_url = plugin.url(privacy=True)
 
         suffix = str(app_id)
         if privacy_url:
@@ -401,7 +424,7 @@ def _dispatch_to_apprise(
         with _capture_apprise_logs(min_level=logging.INFO) as apprise_records:
             try:
                 plugin = apprise.Apprise.instantiate(url, asset=getattr(apobj, "asset", None))
-            except Exception as exc:
+            except _APPRISE_DISPATCH_ERRORS as exc:
                 logger.warning(
                     "Failed to register notification route URL for scheme '%s': %s",
                     scheme,
@@ -435,7 +458,7 @@ def _dispatch_to_apprise(
 
             try:
                 delivered = bool(apobj.notify(title=title, body=body, notify_type=notify_type))
-            except Exception as exc:
+            except _APPRISE_DISPATCH_ERRORS as exc:
                 _log_apprise_records(apprise_records)
                 failed_delivery_urls += 1
                 logger.warning(
@@ -506,7 +529,7 @@ def _dispatch_to_apprise(
     return result
 
 
-def _create_apprise_client() -> object:
+def _create_apprise_client() -> _AppriseClient | None:
     if apprise is None:
         return None
 
@@ -516,7 +539,8 @@ def _create_apprise_client() -> object:
 
     apprise_asset_cls = getattr(apprise, "AppriseAsset", None)
     if apprise_asset_cls is None:
-        return apprise_cls()
+        client = apprise_cls()
+        return client if _is_apprise_client(client) else None
 
     try:
         asset = apprise_asset_cls(
@@ -526,17 +550,20 @@ def _create_apprise_client() -> object:
         )
     except TypeError:
         # Support older Apprise versions that do not expose image_url_logo.
-        asset = apprise_asset_cls(
-            app_id=_APPRISE_APP_ID,
-            app_desc=_APPRISE_APP_DESC,
-        )
-    except Exception:
-        return apprise_cls()
+        try:
+            asset = apprise_asset_cls(
+                app_id=_APPRISE_APP_ID,
+                app_desc=_APPRISE_APP_DESC,
+            )
+        except TypeError:
+            client = apprise_cls()
+            return client if _is_apprise_client(client) else None
 
     try:
-        return apprise_cls(asset=asset)
-    except Exception:
-        return apprise_cls()
+        client = apprise_cls(asset=asset)
+    except TypeError:
+        client = apprise_cls()
+    return client if _is_apprise_client(client) else None
 
 
 def _send_admin_event(
@@ -556,7 +583,7 @@ def notify_admin(event: NotificationEvent, context: NotificationContext) -> None
 
     try:
         _executor.submit(_dispatch_admin_async, event, context, urls)
-    except Exception as exc:
+    except RuntimeError as exc:
         logger.warning("Failed to queue admin notification '%s': %s", event.value, exc)
 
 
@@ -575,7 +602,7 @@ def notify_user(
 
     try:
         _executor.submit(_dispatch_user_async, normalized_user_id, event, context, urls)
-    except Exception as exc:
+    except RuntimeError as exc:
         logger.warning(
             "Failed to queue user notification '%s' for user_id=%s: %s",
             event.value,

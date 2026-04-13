@@ -1,3 +1,5 @@
+"""Custom script execution helpers for post-processing hooks."""
+
 from __future__ import annotations
 
 import json
@@ -48,6 +50,8 @@ def resolve_custom_script_target(target_path: Path, destination: Path, path_mode
 
 @dataclass(frozen=True)
 class CustomScriptExecution:
+    """Resolved command inputs for a single custom script run."""
+
     script_path: str
     target_arg: Path
     target_abs: Path
@@ -59,6 +63,8 @@ class CustomScriptExecution:
 
 @dataclass(frozen=True)
 class CustomScriptTransferSummary:
+    """Transfer metadata exposed to custom post-process scripts."""
+
     op_counts: dict[str, int]
     use_hardlink: bool
     is_torrent: bool
@@ -67,6 +73,8 @@ class CustomScriptTransferSummary:
 
 @dataclass(frozen=True)
 class CustomScriptContext:
+    """Runtime context exposed to custom post-process scripts."""
+
     task: DownloadTask
     phase: str
     output_mode: str
@@ -87,6 +95,7 @@ def prepare_custom_script_execution(
     phase: str,
     payload: dict[str, Any] | None = None,
 ) -> CustomScriptExecution:
+    """Resolve script arguments and payload for a custom hook invocation."""
     mode = (path_mode or "absolute").strip().lower()
     if mode != "relative":
         mode = "absolute"
@@ -110,6 +119,7 @@ def run_custom_script(
     status_callback: Callable[[str, str | None], None],
     timeout_seconds: int = DEFAULT_CUSTOM_SCRIPT_TIMEOUT_SECONDS,
 ) -> bool:
+    """Run a prepared custom script and report success."""
     cwd: str | None = None
     if execution.mode == "relative":
         # Make relative paths unambiguous by running the script from the destination folder.
@@ -274,7 +284,8 @@ def maybe_run_custom_script(
         )
         return True
 
-    path_mode = core_config.config.get("CUSTOM_SCRIPT_PATH_MODE", "absolute")
+    configured_path_mode = core_config.config.get("CUSTOM_SCRIPT_PATH_MODE", "absolute")
+    path_mode = configured_path_mode if isinstance(configured_path_mode, str) else "absolute"
 
     payload: dict[str, Any] | None = None
     if core_config.config.get("CUSTOM_SCRIPT_JSON_PAYLOAD", False):

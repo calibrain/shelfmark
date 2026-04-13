@@ -5,11 +5,13 @@ import json
 import re
 import time
 from dataclasses import replace
-from typing import TYPE_CHECKING, ClassVar, NoReturn
+from http import HTTPStatus
+from typing import TYPE_CHECKING, ClassVar, NoReturn, TypedDict
 from urllib.parse import quote
 
 import requests
-from bs4 import BeautifulSoup, NavigableString, Tag
+from bs4 import BeautifulSoup, Tag
+from bs4.element import NavigableString
 
 from shelfmark.config.env import DEBUG_SKIP_SOURCES, TMP_DIR
 from shelfmark.core.config import config
@@ -36,7 +38,7 @@ from shelfmark.release_sources import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterable
     from pathlib import Path
     from threading import Event
 
@@ -46,8 +48,133 @@ if TYPE_CHECKING:
 logger = setup_logger(__name__)
 
 
+class SourcePriorityEntry(TypedDict):
+    """Normalized source priority entry from config."""
+
+    id: str
+    enabled: bool
+
+
 def _raise_runtime_error(message: str) -> NoReturn:
     raise RuntimeError(message)
+
+
+def _coerce_str_list(value: object) -> list[str]:
+    """Return only string items from a config value."""
+    if not isinstance(value, list | tuple):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _get_supported_formats() -> list[str]:
+    """Return configured supported formats as a clean string list."""
+    return _coerce_str_list(config.SUPPORTED_FORMATS)
+
+
+def _parse_source_priority_entries(
+    value: object,
+    *,
+    allowed_ids: set[str] | None = None,
+    excluded_ids: set[str] | None = None,
+) -> list[SourcePriorityEntry]:
+    """Normalize orderable-list config values into typed source entries."""
+    if not isinstance(value, list):
+        return []
+
+    entries: list[SourcePriorityEntry] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+
+        source_id = item.get("id")
+        if not isinstance(source_id, str):
+            continue
+
+        if allowed_ids is not None and source_id not in allowed_ids:
+            continue
+        if excluded_ids is not None and source_id in excluded_ids:
+            continue
+
+        entries.append({"id": source_id, "enabled": bool(item.get("enabled", True))})
+
+    return entries
+
+
+def _html_response_text(response: str | tuple[str, str]) -> str:
+    """Extract the HTML body from downloader responses."""
+    if isinstance(response, tuple):
+        return response[0]
+    return response
+
+
+def _attr_to_str(value: object) -> str | None:
+    """Convert a BeautifulSoup attribute value to a plain string."""
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        for item in value:
+            if isinstance(item, str):
+                return item
+    return None
+
+
+def _get_attr(tag: Tag, attr: str) -> str | None:
+    """Safely fetch a tag attribute as a string."""
+    return _attr_to_str(tag.get(attr))
+
+
+def _first_stripped_text(tag: Tag | None) -> str | None:
+    """Return the first non-empty stripped string from a tag."""
+    if tag is None:
+        return None
+
+    for text in tag.stripped_strings:
+        return text
+    return None
+
+
+def _iter_child_tags(tag: Tag) -> Iterable[Tag]:
+    """Iterate only over child tags, skipping text nodes."""
+    for child in tag.children:
+        if isinstance(child, Tag):
+            yield child
+
+
+def _find_first_anchor_with_text(
+    container: BeautifulSoup | Tag,
+    text: str,
+    *,
+    contains: bool = False,
+) -> Tag | None:
+    """Find the first anchor whose text matches the requested value."""
+    expected = text.lower()
+    for anchor in container.find_all("a", href=True):
+        anchor_text = anchor.get_text(strip=True)
+        if not anchor_text:
+            continue
+        candidate = anchor_text.lower()
+        if candidate == expected or (contains and expected in candidate):
+            return anchor
+    return None
+
+
+def _find_text_node(container: BeautifulSoup | Tag, needle: str) -> NavigableString | None:
+    """Find a text node containing a case-insensitive substring."""
+    expected = needle.lower()
+    for text_node in container.find_all(string=True):
+        if isinstance(text_node, NavigableString) and expected in text_node.strip().lower():
+            return text_node
+    return None
+
+
+def _tag_has_class_containing(tag: Tag, needle: str) -> bool:
+    """Check whether a tag has a CSS class containing a substring."""
+    class_values = tag.get("class")
+    if isinstance(class_values, str):
+        return needle in class_values
+    if isinstance(class_values, list):
+        return any(isinstance(value, str) and needle in value for value in class_values)
+    return False
 
 
 _aa_slow_rotation = itertools.count()
@@ -68,6 +195,7 @@ _DOWNLOAD_SOURCES = [
 
 _SOURCE_FAILURE_THRESHOLD = 4
 _MIN_VALID_FILE_SIZE = 10 * 1024
+_AA_COUNTDOWN_MAX_SECONDS = 300
 
 # Sources that require Cloudflare bypass
 _CF_BYPASS_REQUIRED = frozenset({"aa-slow-nowait", "aa-slow-wait", "zlib", "welib"})
@@ -112,34 +240,26 @@ _LIBGEN_GET_PATTERNS = [
 ]
 
 
-def _get_source_priority() -> list[dict]:
+def _get_source_priority() -> list[SourcePriorityEntry]:
     """Get the full source priority list.
 
     Fast sources come from user config (FAST_SOURCES_DISPLAY).
     Slow sources come from user config.
     """
-    # Fast sources - always first, configurable via settings/env
-    fast_sources: list[dict] = []
-    configured_fast = config.get("FAST_SOURCES_DISPLAY") or []
+    fast_sources = _parse_source_priority_entries(
+        config.get("FAST_SOURCES_DISPLAY"),
+        allowed_ids={"aa-fast", "libgen"},
+    )
     has_donator_key = bool(config.get("AA_DONATOR_KEY"))
 
-    if isinstance(configured_fast, list):
-        for item in configured_fast:
-            if not isinstance(item, dict):
-                continue
-            source_id = item.get("id")
-            if source_id not in ("aa-fast", "libgen"):
-                continue
-            enabled = bool(item.get("enabled", True))
-            if source_id == "aa-fast" and not has_donator_key:
-                enabled = False
-            fast_sources.append({"id": source_id, "enabled": enabled})
+    for source in fast_sources:
+        if source["id"] == "aa-fast" and not has_donator_key:
+            source["enabled"] = False
 
-    # User's configured slow sources (config won't contain fast sources)
-    slow_sources = config.get("SOURCE_PRIORITY") or []
-
-    # Filter out any legacy fast source entries from old configs
-    slow_sources = [s for s in slow_sources if s["id"] not in ("aa-fast", "libgen")]
+    slow_sources = _parse_source_priority_entries(
+        config.get("SOURCE_PRIORITY"),
+        excluded_ids={"aa-fast", "libgen"},
+    )
 
     return fast_sources + slow_sources
 
@@ -163,7 +283,7 @@ def _normalize_size(size_str: str) -> str:
     return _SIZE_UNIT_PATTERN.sub(lambda m: m.group(1).upper(), size_str.strip())
 
 
-class SearchUnavailable(SourceUnavailableError):
+class SearchUnavailableError(SourceUnavailableError):
     """Raised when Anna's Archive cannot be reached via any mirror/DNS."""
 
 
@@ -178,7 +298,7 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
         List[BrowseRecord]: List of matching books
 
     Raises:
-        SearchUnavailable: If Anna's Archive cannot be reached
+        SearchUnavailableError: If Anna's Archive cannot be reached
         Exception: If parsing fails
 
     """
@@ -201,7 +321,7 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
         for value in filters.content:
             filters_query += f"&content={quote(value)}"
 
-    formats_to_use = filters.format or config.SUPPORTED_FORMATS
+    formats_to_use = filters.format or _get_supported_formats()
 
     index = 1
     for filter_type, filter_values in vars(filters).items():
@@ -224,33 +344,37 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
     html = downloader.html_get_page(url, selector=selector, allow_bypasser_fallback=False)
     if not html:
         # Network/mirror exhaustion path bubbles up so API can notify clients
-        raise SearchUnavailable(
-            "Unable to reach download source. Network restricted or mirrors are blocked."
-        )
+        msg = "Unable to reach download source. Network restricted or mirrors are blocked."
+        raise SearchUnavailableError(msg)
 
     if "No files found." in html:
         logger.info("No books found for query: %s", query)
         return []
 
-    soup = BeautifulSoup(html, "html.parser")
-    tbody: Tag | NavigableString | None = soup.find("table")
+    soup = BeautifulSoup(_html_response_text(html), "html.parser")
+    tbody = soup.find("table")
 
-    if not tbody:
+    if tbody is None:
         logger.warning("No results table found for query: %s", query)
-        raise RuntimeError("No books found. Please try another query.")
+        msg = "No books found. Please try another query."
+        raise RuntimeError(msg)
+    if not isinstance(tbody, Tag):
+        msg = f"Expected results table tag, got {type(tbody).__name__}"
+        raise TypeError(msg)
 
     books = []
-    if isinstance(tbody, Tag):
-        for line_tr in tbody.find_all("tr"):
-            book = _parse_search_result_row(line_tr)
-            if book:
-                books.append(book)
+    for line_tr in tbody.find_all("tr"):
+        book = _parse_search_result_row(line_tr)
+        if book:
+            books.append(book)
+
+    supported_formats = _get_supported_formats()
 
     books.sort(
         key=lambda x: (
-            config.SUPPORTED_FORMATS.index(x.format)
-            if x.format in config.SUPPORTED_FORMATS
-            else len(config.SUPPORTED_FORMATS)
+            supported_formats.index(x.format)
+            if x.format in supported_formats
+            else len(supported_formats)
         )
     )
 
@@ -274,11 +398,10 @@ def get_book_info(book_id: str, *, fetch_download_count: bool = True) -> BrowseR
     html = downloader.html_get_page(url, selector=selector, allow_bypasser_fallback=False)
 
     if not html:
-        raise SearchUnavailable(
-            "Unable to reach download source. Network restricted or mirrors are blocked."
-        )
+        msg = "Unable to reach download source. Network restricted or mirrors are blocked."
+        raise SearchUnavailableError(msg)
 
-    soup = BeautifulSoup(html, "html.parser")
+    soup = BeautifulSoup(_html_response_text(html), "html.parser")
 
     return _parse_book_info_page(soup, book_id, fetch_download_count=fetch_download_count)
 
@@ -288,22 +411,52 @@ def _parse_search_result_row(row: Tag) -> BrowseRecord | None:
     try:
         if row.text.strip().lower().startswith("your ad here"):
             return None
+
         cells = row.find_all("td")
+        anchors = row.find_all("a", href=True)
+        if len(cells) < 11 or not anchors:
+            return None
+
+        record_id = (_get_attr(anchors[0], "href") or "").split("/")[-1]
+        if not record_id:
+            return None
+
         preview_img = cells[0].find("img")
-        preview = preview_img["src"] if preview_img else None
+        preview = _get_attr(preview_img, "src") if isinstance(preview_img, Tag) else None
+
+        title = _first_stripped_text(cells[1].find("span"))
+        author = _first_stripped_text(cells[2].find("span"))
+        publisher = _first_stripped_text(cells[3].find("span"))
+        year = _first_stripped_text(cells[4].find("span"))
+        language = _first_stripped_text(cells[7].find("span"))
+        content = _first_stripped_text(cells[8].find("span"))
+        file_format = _first_stripped_text(cells[9].find("span"))
+        size = _first_stripped_text(cells[10].find("span"))
+
+        if (
+            title is None
+            or author is None
+            or publisher is None
+            or year is None
+            or language is None
+            or content is None
+            or file_format is None
+            or size is None
+        ):
+            return None
 
         return BrowseRecord(
-            id=row.find_all("a")[0]["href"].split("/")[-1],
-            title=cells[1].find("span").next,
+            id=record_id,
+            title=title,
             source="direct_download",
             preview=preview,
-            author=cells[2].find("span").next,
-            publisher=cells[3].find("span").next,
-            year=cells[4].find("span").next,
-            language=cells[7].find("span").next,
-            content=cells[8].find("span").next.lower(),
-            format=cells[9].find("span").next.lower(),
-            size=cells[10].find("span").next,
+            author=author,
+            publisher=publisher,
+            year=year,
+            language=language,
+            content=content.lower() if content else None,
+            format=file_format.lower() if file_format else None,
+            size=size,
         )
     except (AttributeError, IndexError, KeyError, TypeError) as e:
         logger.error_trace(f"Error parsing search result row: {e}")
@@ -320,17 +473,30 @@ def _parse_book_info_page(
     data = soup.select_one("body > main > div:nth-of-type(1)")
 
     if not data:
-        raise RuntimeError(f"Failed to parse book info for ID: {book_id}")
+        msg = f"Failed to parse book info for ID: {book_id}"
+        raise RuntimeError(msg)
 
     preview: str = ""
 
     node = data.select_one("div:nth-of-type(1) > img")
-    if node:
-        preview_value = node.get("src", "")
-        preview = preview_value[0] if isinstance(preview_value, list) else preview_value
+    if isinstance(node, Tag):
+        preview = _get_attr(node, "src") or ""
 
-    data = soup.find_all("div", {"class": "main-inner"})[0].find_next("div")
-    divs = list(data.children)
+    main_inner = next(
+        (tag for tag in soup.find_all("div", {"class": "main-inner"}) if isinstance(tag, Tag)),
+        None,
+    )
+    if main_inner is None:
+        msg = f"Failed to parse book details for ID: {book_id}"
+        raise RuntimeError(msg)
+
+    details_container = main_inner.find_next("div")
+    if not isinstance(details_container, Tag):
+        msg = f"Expected details container tag for book ID {book_id}, got {type(details_container).__name__}"
+        raise TypeError(msg)
+
+    original_nodes = list(details_container.children)
+    divs = [node for node in original_nodes if isinstance(node, Tag)]
 
     slow_urls_no_waitlist: set[str] = set()
     slow_urls_with_waitlist: set[str] = set()
@@ -338,13 +504,20 @@ def _parse_book_info_page(
     for anchor in soup.find_all("a"):
         try:
             text = anchor.text.strip().lower()
-            href = anchor.get("href", "")
+            href = _get_attr(anchor, "href")
             if not href:
                 continue
 
             next_text = ""
-            if anchor.next and anchor.next.next:
-                next_text = getattr(anchor.next.next, "text", str(anchor.next.next)).strip().lower()
+            next_elements = anchor.next_elements
+            next(next_elements, None)
+            second_next = next(next_elements, None)
+            if second_next is not None:
+                next_text = (
+                    second_next.get_text(strip=True).lower()
+                    if isinstance(second_next, Tag)
+                    else str(second_next).strip().lower()
+                )
 
             if text.startswith("slow partner server") and "waitlist" in next_text:
                 if "no waitlist" in next_text:
@@ -377,19 +550,20 @@ def _parse_book_info_page(
             urls.append(abs_url)
             _url_source_types[abs_url] = "aa-slow-wait"
 
-    original_divs = divs
-    divs = [div for div in divs if div.text.strip() != ""]
+    divs = [div for div in divs if div.get_text(strip=True)]
 
     all_details = _find_in_divs(divs, " · ")
-    format = ""
+    file_format = ""
     size = ""
     content = ""
+    supported_formats = _get_supported_formats()
 
     for _details in all_details:
         _details = _details.split(" · ")
         for f in _details:
-            if format == "" and f.strip().lower() in config.SUPPORTED_FORMATS:
-                format = f.strip().lower()
+            stripped_lower = f.strip().lower()
+            if file_format == "" and stripped_lower in supported_formats:
+                file_format = f.strip().lower()
             if size == "" and any(u in f.strip().lower() for u in ("mb", "kb", "gb")):
                 size = _normalize_size(f)
             if content == "":
@@ -397,11 +571,11 @@ def _parse_book_info_page(
                     if ct in f.strip().lower():
                         content = ct
                         break
-        if format == "" or size == "":
+        if file_format == "" or size == "":
             for f in _details:
                 stripped = f.strip().lower()
-                if format == "" and stripped and " " not in stripped:
-                    format = stripped
+                if file_format == "" and stripped and " " not in stripped:
+                    file_format = stripped
                 if size == "" and "." in stripped:
                     size = _normalize_size(f)
 
@@ -418,14 +592,18 @@ def _parse_book_info_page(
         content=content,
         publisher=(_find_in_divs(divs, "icon-[mdi--company]", is_class=True) or [""])[0],
         author=(_find_in_divs(divs, "icon-[mdi--user-edit]", is_class=True) or [""])[0],
-        format=format,
+        format=file_format,
         size=size,
         description=description,
         download_urls=urls,
     )
 
     # Extract additional metadata
-    info = _extract_book_metadata(original_divs[-6])
+    metadata_node = original_nodes[-6]
+    if not isinstance(metadata_node, Tag):
+        msg = f"Expected metadata container tag for book ID {book_id}, got {type(metadata_node).__name__}"
+        raise TypeError(msg)
+    info = _extract_book_metadata(metadata_node)
 
     if fetch_download_count:
         try:
@@ -434,11 +612,11 @@ def _parse_book_info_page(
                 summary_url, selector=network.AAMirrorSelector(), allow_bypasser_fallback=False
             )
             if summary_response:
-                summary_data = json.loads(summary_response)
+                summary_data = json.loads(_html_response_text(summary_response))
                 if "downloads_total" in summary_data:
                     info["Downloads"] = [str(summary_data["downloads_total"])]
         except (
-            SearchUnavailable,
+            SearchUnavailableError,
             RuntimeError,
             json.JSONDecodeError,
             TypeError,
@@ -461,9 +639,9 @@ def _parse_book_info_page(
     return book_info
 
 
-def _find_in_divs(divs: list, text: str, *, is_class: bool = False) -> list[str]:
+def _find_in_divs(divs: list[Tag], text: str, *, is_class: bool = False) -> list[str]:
     """Find divs containing text or having a specific class."""
-    results = []
+    results: list[str] = []
     for div in divs:
         if is_class:
             if div.find(class_=text):
@@ -525,12 +703,12 @@ def _extract_book_metadata(metadata_divs: Tag) -> dict[str, list[str]]:
     info: dict[str, set[str]] = {}
 
     sub_datas = metadata_divs.find_all("div")[0]
-    for sub_data in sub_datas.children:
-        if sub_data.text.strip() == "":
+    for sub_data in _iter_child_tags(sub_datas):
+        if sub_data.get_text(strip=True) == "":
             continue
-        children = list(sub_data.children)
-        key = children[0].text.strip()
-        value = children[1].text.strip()
+        children = list(_iter_child_tags(sub_data))
+        key = children[0].get_text(strip=True)
+        value = children[1].get_text(strip=True)
         if key not in info:
             info[key] = set()
         info[key].add(value)
@@ -592,7 +770,7 @@ def _fetch_aa_page_urls(book_info: BrowseRecord, urls_by_source: dict[str, list[
     try:
         fresh_book_info = get_book_info(book_info.id, fetch_download_count=False)
         _group_urls_by_source(fresh_book_info.download_urls, urls_by_source)
-    except (SearchUnavailable, RuntimeError, TypeError, AttributeError) as e:
+    except (SearchUnavailableError, RuntimeError, TypeError, AttributeError) as e:
         logger.warning("Failed to fetch AA page: %s", e)
 
 
@@ -740,7 +918,7 @@ def _get_download_urls_from_welib(
             status_callback=status_callback,
         )
     except (
-        SearchUnavailable,
+        SearchUnavailableError,
         requests.exceptions.RequestException,
         RuntimeError,
         ValueError,
@@ -753,11 +931,11 @@ def _get_download_urls_from_welib(
         logger.warning("Welib page empty for %s", book_id)
         return []
 
-    soup = BeautifulSoup(html, "html.parser")
+    soup = BeautifulSoup(_html_response_text(html), "html.parser")
     links = [
-        downloader.get_absolute_url(url, a["href"])
+        downloader.get_absolute_url(url, href)
         for a in soup.find_all("a", href=True)
-        if "/slow_download/" in a["href"]
+        if (href := _get_attr(a, "href")) and "/slow_download/" in href
     ]
     return list(dict.fromkeys(links))  # Dedupe while preserving order
 
@@ -780,7 +958,7 @@ def _extract_libgen_download_url(link: str, cancel_flag: Event | None = None) ->
             verify=network.get_ssl_verify(link),
         )
 
-        if response.status_code != 200:
+        if response.status_code != HTTPStatus.OK:
             logger.debug("Libgen fast: %s returned %s", link, response.status_code)
             return ""
 
@@ -947,7 +1125,11 @@ def _get_download_url(
         page = downloader.html_get_page(
             link, selector=sel, cancel_flag=cancel_flag, status_callback=status_callback
         )
-        return downloader.get_absolute_url(link, json.loads(page).get("download_url", ""))
+        page_data = json.loads(_html_response_text(page))
+        download_url = page_data.get("download_url", "")
+        return (
+            downloader.get_absolute_url(link, download_url) if isinstance(download_url, str) else ""
+        )
 
     if "/ads.php?md5=" in link and any(domain in link for domain in _get_libgen_domains()):
         return _extract_libgen_download_url(link, cancel_flag)
@@ -958,7 +1140,7 @@ def _get_download_url(
     if not html:
         return ""
 
-    soup = BeautifulSoup(html, "html.parser")
+    soup = BeautifulSoup(_html_response_text(html), "html.parser")
     url = ""
 
     # Z-Library
@@ -971,9 +1153,9 @@ def _get_download_url(
                 link, selector=sel, cancel_flag=cancel_flag, status_callback=status_callback
             )
             if html:
-                soup = BeautifulSoup(html, "html.parser")
+                soup = BeautifulSoup(_html_response_text(html), "html.parser")
                 dl = soup.find("a", href=True, class_="addDownloadedBook")
-        url = dl["href"] if dl else ""
+        url = (_get_attr(dl, "href") or "") if isinstance(dl, Tag) else ""
 
     # AA slow download / partner servers
     elif "/slow_download/" in link:
@@ -982,9 +1164,11 @@ def _get_download_url(
         )
 
     else:
-        get_btn = soup.find("a", string="GET") or soup.find("a", string="Download")
+        get_btn = _find_first_anchor_with_text(soup, "GET") or _find_first_anchor_with_text(
+            soup, "Download"
+        )
         if get_btn:
-            url = get_btn.get("href", "")
+            url = _get_attr(get_btn, "href") or ""
         else:
             logger.warning("Unknown source type, couldn't find download link: %s", link)
             url = ""
@@ -1010,24 +1194,30 @@ def _extract_slow_download_url(
         if url.startswith("http") and "/slow_download/" not in url:
             return url
 
-    dl_link = soup.find("a", href=True, string="📚 Download now")
-    if not dl_link:
-        dl_link = soup.find("a", href=True, string=lambda s: s and "Download now" in s)
+    dl_link = _find_first_anchor_with_text(soup, "📚 Download now") or _find_first_anchor_with_text(
+        soup, "Download now", contains=True
+    )
     if dl_link:
-        return dl_link["href"]
+        return _get_attr(dl_link, "href") or ""
 
     for a_tag in soup.find_all("a", href=True):
         if a_tag.has_attr("download"):
-            href = a_tag["href"]
+            href = _get_attr(a_tag, "href")
+            if not href:
+                continue
             if href.startswith("http") and "/slow_download/" not in href:
                 return href
 
-    for span in soup.find_all("span", class_=lambda c: c and "whitespace-normal" in c):
+    for span in soup.find_all("span"):
+        if not _tag_has_class_containing(span, "whitespace-normal"):
+            continue
         text = span.get_text(strip=True)
         if text.startswith(("http://", "https://")) and "/slow_download/" not in text:
             return text
 
-    for span in soup.find_all("span", class_=lambda c: c and "bg-gray-200" in c):
+    for span in soup.find_all("span"):
+        if not _tag_has_class_containing(span, "bg-gray-200"):
+            continue
         text = span.get_text(strip=True)
         if text.startswith(("http://", "https://")):
             return text
@@ -1038,33 +1228,33 @@ def _extract_slow_download_url(
         if url.startswith("http") and "/slow_download/" not in url:
             return url
 
-    copy_text = soup.find(string=lambda s: s and "copy this url" in s.lower())
+    copy_text = _find_text_node(soup, "copy this url")
     if copy_text and copy_text.parent:
         parent = copy_text.parent
         next_link = parent.find_next("a", href=True)
-        if next_link and next_link.get("href"):
-            return next_link["href"]
+        if isinstance(next_link, Tag):
+            next_href = _get_attr(next_link, "href")
+            if next_href:
+                return next_href
         code_elem = parent.find_next("code")
-        if code_elem:
+        if isinstance(code_elem, Tag):
             return code_elem.get_text(strip=True)
         for sibling in parent.find_next_siblings():
             text = (
-                sibling.get_text(strip=True)
-                if hasattr(sibling, "get_text")
-                else str(sibling).strip()
+                sibling.get_text(strip=True) if isinstance(sibling, Tag) else str(sibling).strip()
             )
             if text.startswith("http"):
                 return text
 
     countdown_seconds = _extract_countdown_seconds(soup, html_str)
     if countdown_seconds > 0:
-        MAX_COUNTDOWN_SECONDS = 600
-        sleep_time = min(countdown_seconds, MAX_COUNTDOWN_SECONDS)
-        if countdown_seconds > MAX_COUNTDOWN_SECONDS:
+        max_countdown_seconds = 600
+        sleep_time = min(countdown_seconds, max_countdown_seconds)
+        if countdown_seconds > max_countdown_seconds:
             logger.warning(
                 "Countdown %ss exceeds max, capping at %ss",
                 countdown_seconds,
-                MAX_COUNTDOWN_SECONDS,
+                max_countdown_seconds,
             )
         logger.info("AA waitlist: %ss for %s", sleep_time, title)
 
@@ -1099,14 +1289,16 @@ def _extract_slow_download_url(
 def _extract_countdown_seconds(soup: BeautifulSoup, html_str: str) -> int:
     """Extract countdown timer seconds from AA slow download page."""
     countdown_elem = soup.find("span", class_="js-partner-countdown")
-    if countdown_elem:
+    if isinstance(countdown_elem, Tag):
         seconds = _parse_countdown_seconds_from_element(countdown_elem)
         if seconds is not None:
             return seconds
 
-    for elem in soup.find_all(
-        ["span", "div"], class_=lambda c: c and ("timer" in c.lower() or "countdown" in c.lower())
-    ):
+    for elem in soup.find_all(["span", "div"]):
+        if not (
+            _tag_has_class_containing(elem, "timer") or _tag_has_class_containing(elem, "countdown")
+        ):
+            continue
         seconds = _parse_countdown_seconds_from_element(elem)
         if seconds is not None:
             return seconds
@@ -1114,36 +1306,36 @@ def _extract_countdown_seconds(soup: BeautifulSoup, html_str: str) -> int:
     countdown_attr = re.search(r'data-countdown=["\'](\d+)["\']', html_str)
     if countdown_attr:
         seconds = int(countdown_attr.group(1))
-        if 0 < seconds < 300:
+        if 0 < seconds < _AA_COUNTDOWN_MAX_SECONDS:
             return seconds
 
     js_countdown = re.search(r"countdown:\s*(\d+)", html_str)
     if js_countdown:
         seconds = int(js_countdown.group(1))
-        if 0 < seconds < 300:
+        if 0 < seconds < _AA_COUNTDOWN_MAX_SECONDS:
             return seconds
     js_var = re.search(r"(?:var|let|const)\s+countdown\s*=\s*(\d+)", html_str)
     if js_var:
         seconds = int(js_var.group(1))
-        if 0 < seconds < 300:
+        if 0 < seconds < _AA_COUNTDOWN_MAX_SECONDS:
             return seconds
 
     countdown_secs = re.search(r"countdownSeconds\s*=\s*(\d+)", html_str)
     if countdown_secs:
         seconds = int(countdown_secs.group(1))
-        if 0 < seconds < 300:
+        if 0 < seconds < _AA_COUNTDOWN_MAX_SECONDS:
             return seconds
 
     json_countdown = re.search(r'["\']countdown[_-]?seconds["\']\s*:\s*(\d+)', html_str)
     if json_countdown:
         seconds = int(json_countdown.group(1))
-        if 0 < seconds < 300:
+        if 0 < seconds < _AA_COUNTDOWN_MAX_SECONDS:
             return seconds
 
     wait_text = re.search(r"wait\s+(\d+)\s+seconds", html_str, re.IGNORECASE)
     if wait_text:
         seconds = int(wait_text.group(1))
-        if 0 < seconds < 300:
+        if 0 < seconds < _AA_COUNTDOWN_MAX_SECONDS:
             return seconds
 
     return 0
@@ -1156,7 +1348,7 @@ def _parse_countdown_seconds_from_element(element: Tag) -> int | None:
     except ValueError, TypeError:
         return None
 
-    if 0 < seconds < 300:
+    if 0 < seconds < _AA_COUNTDOWN_MAX_SECONDS:
         return seconds
     return None
 
@@ -1204,6 +1396,7 @@ class DirectDownloadSource(ReleaseSource):
     supported_content_types: ClassVar[list[str]] = ["ebook"]  # Direct downloads only support ebooks
 
     def __init__(self) -> None:
+        """Initialize per-instance search state for direct downloads."""
         # Tracks which search method was used in the last search() call
         # "isbn" = ISBN search returned results, "title_author" = title+author was used
         self._last_search_type: str = "title_author"
@@ -1307,6 +1500,7 @@ class DirectDownloadSource(ReleaseSource):
 
         Args:
             book: Book metadata from provider
+            plan: Precomputed search plan with normalized queries and filters.
             expand_search: If True, skip ISBN and use title+author directly
             languages: Language codes to filter by (overrides book.language/config)
             content_type: Ignored - Direct download uses format filtering instead
@@ -1347,7 +1541,7 @@ class DirectDownloadSource(ReleaseSource):
                         self._last_search_type = "isbn"
                         return [_browse_record_to_release(record) for record in results]
                     logger.debug("No ISBN results, falling back to title+author")
-                except SearchUnavailable:
+                except SearchUnavailableError:
                     raise
                 except (ValueError, TypeError, AttributeError, RuntimeError) as e:
                     logger.warning("ISBN search failed: %s", e)
@@ -1372,7 +1566,7 @@ class DirectDownloadSource(ReleaseSource):
                     if bi.id not in seen_ids:
                         seen_ids.add(bi.id)
                         all_results.append(bi)
-            except SearchUnavailable:
+            except SearchUnavailableError:
                 raise
             except Exception:
                 logger.exception("Search error")
@@ -1392,7 +1586,7 @@ class DirectDownloadSource(ReleaseSource):
                         if bi.id not in seen_ids:
                             seen_ids.add(bi.id)
                             all_results.append(bi)
-                except SearchUnavailable:
+                except SearchUnavailableError:
                     raise
                 except Exception:
                     logger.exception("Search error")
@@ -1477,7 +1671,7 @@ class DirectDownloadHandler(DownloadHandler):
         progress_callback: Callable[[float], None],
         status_callback: Callable[[str, str | None], None],
     ) -> str | None:
-        """Internal method to execute the download with fetched browse record.
+        """Execute the direct-download flow with a fetched browse record.
 
         This contains the core download logic: cascade through sources,
         handle bypass, move to final location.

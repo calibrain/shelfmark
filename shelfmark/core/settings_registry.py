@@ -10,8 +10,10 @@ from typing import TYPE_CHECKING, Any
 from werkzeug.utils import secure_filename
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.request_helpers import coerce_bool, normalize_optional_text
 
 logger = setup_logger(__name__)
+_SETTINGS_LIVE_APPLY_ERRORS = (OSError, RuntimeError, TypeError, ValueError)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Iterator
@@ -26,7 +28,7 @@ class FieldBase:
     key: str  # Environment variable / config key
     label: str  # Display label in UI
     description: str = ""  # Help text
-    default: object = None  # Default value if not set
+    default: Any = None  # Default value if not set
     required: bool = False  # Whether field must have a value
     env_var: str | None = None  # Override env var name (defaults to key)
     env_supported: bool = True  # Whether this setting can be set via ENV var (False = UI-only)
@@ -114,6 +116,8 @@ class TagListField(FieldBase):
 
 @dataclass
 class OrderableListField(FieldBase):
+    """Settings field for ordered, toggleable option lists."""
+
     # Options can be a list or a callable that returns a list (for lazy evaluation)
     # Each option: {id, label, description?, disabledReason?, isLocked?, section?, isPinned?}
     # - isLocked: toggle is disabled (can't enable/disable)
@@ -154,9 +158,11 @@ class CustomComponentField:
     universal_only: bool = False
 
     def get_field_type(self) -> str:
+        """Return the serialized field type for this custom component."""
         return "CustomComponentField"
 
     def get_bind_keys(self) -> list[str]:
+        """Return the config keys this custom component reads or writes."""
         if self.bind_keys:
             return self.bind_keys
         return [f.key for f in self.value_fields if getattr(f, "key", None)]
@@ -164,6 +170,8 @@ class CustomComponentField:
 
 @dataclass
 class ActionButton:
+    """Definition for a custom action button in the settings UI."""
+
     key: str  # Action identifier
     label: str  # Button text
     description: str = ""  # Help text
@@ -179,8 +187,10 @@ class ActionButton:
     disabled_when: dict[str, Any] | None = (
         None  # Conditional disable: {"field": "key", "value": "expected", "reason": "..."}
     )
+    universal_only: bool = False  # Only show in Universal search mode (hide in Direct mode)
 
     def get_field_type(self) -> str:
+        """Return the serialized field type for this action button."""
         return "ActionButton"
 
 
@@ -206,11 +216,12 @@ class HeadingField:
     universal_only: bool = False  # Only show in Universal search mode (hide in Direct mode)
 
     def get_field_type(self) -> str:
+        """Return the serialized field type for this heading field."""
         return "HeadingField"
 
 
 # Type alias for all field types
-SettingsField = (
+ValueField = (
     TextField
     | PasswordField
     | NumberField
@@ -220,10 +231,9 @@ SettingsField = (
     | TagListField
     | OrderableListField
     | TableField
-    | CustomComponentField
-    | ActionButton
-    | HeadingField
 )
+
+SettingsField = ValueField | CustomComponentField | ActionButton | HeadingField
 
 
 @dataclass
@@ -255,6 +265,7 @@ _REGISTRY_LOCK = Lock()
 
 
 def register_group(name: str, display_name: str, icon: str | None = None, order: int = 100) -> None:
+    """Register a settings group used to organize tabs in the UI."""
     with _REGISTRY_LOCK:
         group = SettingsGroup(
             name=name,
@@ -273,6 +284,8 @@ def register_settings(
     order: int = 100,
     group: str | None = None,
 ) -> Callable[[Callable[[], list[SettingsField]]], Callable[[], list[SettingsField]]]:
+    """Register a settings tab and its field factory."""
+
     def decorator(func: Callable[[], list[SettingsField]]) -> Callable[[], list[SettingsField]]:
         with _REGISTRY_LOCK:
             fields = func()
@@ -297,6 +310,7 @@ def register_settings(
 
 
 def register_on_save(tab_name: str, handler: Callable[[dict[str, Any]], dict[str, Any]]) -> None:
+    """Register an on-save hook for a settings tab."""
     with _REGISTRY_LOCK:
         _ON_SAVE_HANDLERS[tab_name] = handler
         logger.debug("Registered on_save handler for tab: %s", tab_name)
@@ -319,23 +333,21 @@ def get_all_settings_tabs() -> list[SettingsTab]:
     return sorted(_SETTINGS_REGISTRY.values(), key=lambda t: (t.order, t.name))
 
 
-def _iter_value_fields(tab: SettingsTab) -> Iterator[SettingsField]:
+def _iter_value_fields(tab: SettingsTab) -> Iterator[FieldBase]:
     """Yield value-bearing fields for a tab."""
     for settings_field in tab.fields:
         if isinstance(settings_field, CustomComponentField):
             for value_field in settings_field.value_fields:
-                if isinstance(value_field, (ActionButton, HeadingField, CustomComponentField)):
-                    continue
-                yield value_field
+                if isinstance(value_field, FieldBase):
+                    yield value_field
             continue
-        if isinstance(settings_field, (ActionButton, HeadingField)):
-            continue
-        yield settings_field
+        if isinstance(settings_field, FieldBase):
+            yield settings_field
 
 
 def get_settings_field_map(
     tab_name: str | None = None,
-) -> dict[str, tuple[SettingsField, str]]:
+) -> dict[str, tuple[FieldBase, str]]:
     """Return key -> (field, tab_name) map for value-bearing settings fields."""
     tabs: list[SettingsTab]
     if tab_name:
@@ -346,7 +358,7 @@ def get_settings_field_map(
     else:
         tabs = get_all_settings_tabs()
 
-    field_map: dict[str, tuple[SettingsField, str]] = {}
+    field_map: dict[str, tuple[FieldBase, str]] = {}
     for tab in tabs:
         for settings_field in _iter_value_fields(tab):
             field_map[settings_field.key] = (settings_field, tab.name)
@@ -355,7 +367,7 @@ def get_settings_field_map(
 
 def get_user_overridable_fields(
     tab_name: str | None = None,
-) -> dict[str, tuple[SettingsField, str]]:
+) -> dict[str, tuple[FieldBase, str]]:
     """Return key -> (field, tab_name) map for fields marked user_overridable."""
     field_map = get_settings_field_map(tab_name=tab_name)
     return {
@@ -407,6 +419,7 @@ def _ensure_config_dir(tab_name: str) -> None:
 
 
 def load_config_file(tab_name: str) -> dict[str, Any]:
+    """Load a settings tab config file, returning an empty dict on failure."""
     config_path = _get_config_file_path(tab_name)
 
     if not config_path.exists():
@@ -421,6 +434,7 @@ def load_config_file(tab_name: str) -> dict[str, Any]:
 
 
 def save_config_file(tab_name: str, values: dict[str, Any]) -> bool:
+    """Merge and save persisted settings values for a tab."""
     try:
         _ensure_config_dir(tab_name)
         config_path = _get_config_file_path(tab_name)
@@ -506,6 +520,7 @@ def initialize_default_configs() -> bool:
 
 
 def sync_env_to_config() -> None:
+    """Sync supported environment-backed settings into config files."""
     # Initialize default configs first (for fresh installs)
     initialize_default_configs()
 
@@ -653,13 +668,16 @@ def migrate_mirror_settings() -> None:
 def migrate_legacy_settings() -> None:
     """Migrate legacy settings to new unified file destination format.
 
-    Maps old settings to new:
-    - PROCESSING_MODE + USE_BOOK_TITLE -> FILE_ORGANIZATION
-    - INGEST_DIR / LIBRARY_PATH -> DESTINATION
-    - LIBRARY_TEMPLATE -> TEMPLATE
+    Maps stable legacy settings to the current download model:
+    - INGEST_DIR -> DESTINATION
+    - USE_BOOK_TITLE -> FILE_ORGANIZATION
     - USE_CONTENT_TYPE_DIRECTORIES -> AA_CONTENT_TYPE_ROUTING
     - INGEST_DIR_* -> AA_CONTENT_TYPE_DIR_*
     - TORRENT_HARDLINK -> HARDLINK_TORRENTS / HARDLINK_TORRENTS_AUDIOBOOK
+
+    Intentionally ignores the short-lived pre-1.0 library-mode settings
+    (`PROCESSING_MODE`, `LIBRARY_PATH`, `LIBRARY_TEMPLATE`, etc.), which were
+    replaced before the first stable release shipped.
     """
     # Load existing downloads config
     downloads_config = load_config_file("downloads")
@@ -670,17 +688,19 @@ def migrate_legacy_settings() -> None:
 
     # Skip migration if no legacy settings exist (fresh install)
     legacy_keys = {
-        "PROCESSING_MODE",
         "INGEST_DIR",
-        "LIBRARY_PATH",
         "USE_BOOK_TITLE",
-        "LIBRARY_TEMPLATE",
-        "PROCESSING_MODE_AUDIOBOOK",
         "INGEST_DIR_AUDIOBOOK",
-        "LIBRARY_PATH_AUDIOBOOK",
-        "LIBRARY_TEMPLATE_AUDIOBOOK",
         "TORRENT_HARDLINK",
         "USE_CONTENT_TYPE_DIRECTORIES",
+        "INGEST_DIR_BOOK_FICTION",
+        "INGEST_DIR_BOOK_NON_FICTION",
+        "INGEST_DIR_BOOK_UNKNOWN",
+        "INGEST_DIR_MAGAZINE",
+        "INGEST_DIR_COMIC_BOOK",
+        "INGEST_DIR_STANDARDS_DOCUMENT",
+        "INGEST_DIR_MUSICAL_SCORE",
+        "INGEST_DIR_OTHER",
     }
     if not any(key in downloads_config for key in legacy_keys):
         return
@@ -688,48 +708,18 @@ def migrate_legacy_settings() -> None:
     migrated_downloads = {}
     migrated_sources = {}
 
-    # === BOOKS MIGRATION ===
-    old_mode = downloads_config.get("PROCESSING_MODE", "ingest")
     old_ingest_dir = downloads_config.get("INGEST_DIR", "/cwa-book-ingest")
-    old_library_path = downloads_config.get("LIBRARY_PATH", "")
     old_use_book_title = downloads_config.get("USE_BOOK_TITLE", True)
-    old_library_template = downloads_config.get("LIBRARY_TEMPLATE", "{Author}/{Title}")
 
-    # Map PROCESSING_MODE + USE_BOOK_TITLE -> FILE_ORGANIZATION
-    if old_mode == "library":
-        migrated_downloads["FILE_ORGANIZATION"] = "organize"
-        migrated_downloads["DESTINATION"] = old_library_path or "/books"
-        migrated_downloads["TEMPLATE"] = old_library_template
+    migrated_downloads["DESTINATION"] = old_ingest_dir
+    if old_use_book_title:
+        migrated_downloads["FILE_ORGANIZATION"] = "rename"
     else:
-        if old_use_book_title:
-            migrated_downloads["FILE_ORGANIZATION"] = "rename"
-            migrated_downloads["TEMPLATE"] = "{Author} - {Title} ({Year})"
-        else:
-            migrated_downloads["FILE_ORGANIZATION"] = "none"
-        migrated_downloads["DESTINATION"] = old_ingest_dir
-
-    # === AUDIOBOOKS MIGRATION ===
-    old_mode_ab = downloads_config.get("PROCESSING_MODE_AUDIOBOOK", "ingest")
-    old_ingest_dir_ab = downloads_config.get("INGEST_DIR_AUDIOBOOK", "")
-    old_library_path_ab = downloads_config.get("LIBRARY_PATH_AUDIOBOOK", "")
-    old_library_template_ab = downloads_config.get("LIBRARY_TEMPLATE_AUDIOBOOK", "{Author}/{Title}")
-
-    if old_mode_ab == "library":
-        migrated_downloads["FILE_ORGANIZATION_AUDIOBOOK"] = "organize"
-        migrated_downloads["DESTINATION_AUDIOBOOK"] = old_library_path_ab or ""
-        migrated_downloads["TEMPLATE_AUDIOBOOK"] = old_library_template_ab
-    else:
-        migrated_downloads["FILE_ORGANIZATION_AUDIOBOOK"] = "rename"
-        migrated_downloads["TEMPLATE_AUDIOBOOK"] = "{Author} - {Title}"
-        if old_ingest_dir_ab:
-            migrated_downloads["DESTINATION_AUDIOBOOK"] = old_ingest_dir_ab
+        migrated_downloads["FILE_ORGANIZATION"] = "none"
 
     # === HARDLINK MIGRATION ===
     old_torrent_hardlink = downloads_config.get("TORRENT_HARDLINK")
     if old_torrent_hardlink is not None:
-        # Books default to False (ingest folder use case)
-        # Audiobooks default to True (library folder use case)
-        # But if explicitly set, apply to both
         migrated_downloads["HARDLINK_TORRENTS"] = old_torrent_hardlink
         migrated_downloads["HARDLINK_TORRENTS_AUDIOBOOK"] = old_torrent_hardlink
 
@@ -820,10 +810,8 @@ def migrate_download_to_browser_settings() -> None:
         logger.exception("Failed to migrate download-to-browser settings")
 
 
-def get_setting_value(field: SettingsField, tab_name: str) -> object:
-    if isinstance(field, (ActionButton, HeadingField, CustomComponentField)):
-        return None  # Actions and headings don't have values
-
+def get_setting_value(field: FieldBase, tab_name: str) -> object:
+    """Resolve the effective value for a settings field."""
     # 1. Check environment variable (if supported for this field)
     if field.env_supported:
         env_var_name = field.get_env_var_name()
@@ -840,7 +828,7 @@ def get_setting_value(field: SettingsField, tab_name: str) -> object:
     return field.default
 
 
-def _parse_env_value(value: str, field: SettingsField) -> object:
+def _parse_env_value(value: str, field: FieldBase) -> object:
     """Parse an environment variable value to the appropriate type."""
     if isinstance(field, CheckboxField):
         return value.lower() in ("true", "1", "yes", "on")
@@ -872,10 +860,8 @@ def _parse_env_value(value: str, field: SettingsField) -> object:
         return value
 
 
-def is_value_from_env(field: SettingsField) -> bool:
+def is_value_from_env(field: FieldBase) -> bool:
     """Check if a field's value comes from an environment variable."""
-    if isinstance(field, (ActionButton, HeadingField, CustomComponentField)):
-        return False
     # UI-only settings never come from ENV (env_supported=False)
     if not getattr(field, "env_supported", True):
         return False
@@ -901,7 +887,7 @@ def serialize_field(
     """
     # CustomComponentField has a custom structure - handle separately
     if isinstance(field, CustomComponentField):
-        result: dict[str, Any] = {
+        component_result: dict[str, Any] = {
             "key": field.key,
             "label": field.label,
             "type": field.get_field_type(),
@@ -922,31 +908,31 @@ def serialize_field(
                 )
                 serialized_bound_field["hiddenInUi"] = True
                 bound_fields.append(serialized_bound_field)
-            result["boundFields"] = bound_fields
+            component_result["boundFields"] = bound_fields
         if field.show_when:
-            result["showWhen"] = field.show_when
+            component_result["showWhen"] = field.show_when
         if field.universal_only:
-            result["universalOnly"] = True
-        return result
+            component_result["universalOnly"] = True
+        return component_result
 
     # HeadingField has a different structure - handle separately
     if isinstance(field, HeadingField):
-        result: dict[str, Any] = {
+        heading_result: dict[str, Any] = {
             "key": field.key,
             "type": field.get_field_type(),
             "title": field.title,
             "description": field.description,
         }
         if field.description_by_auth_mode:
-            result["descriptionByAuthMode"] = field.description_by_auth_mode
+            heading_result["descriptionByAuthMode"] = field.description_by_auth_mode
         if field.link_url:
-            result["linkUrl"] = field.link_url
-            result["linkText"] = field.link_text or field.link_url
+            heading_result["linkUrl"] = field.link_url
+            heading_result["linkText"] = field.link_text or field.link_url
         if field.show_when:
-            result["showWhen"] = field.show_when
+            heading_result["showWhen"] = field.show_when
         if field.universal_only:
-            result["universalOnly"] = True
-        return result
+            heading_result["universalOnly"] = True
+        return heading_result
 
     result: dict[str, Any] = {
         "key": field.key,
@@ -1149,12 +1135,12 @@ def _apply_dns_settings(config: Config) -> None:
     try:
         from shelfmark.download import network
 
-        provider = config.get("CUSTOM_DNS", "auto")
-        use_doh = config.get("USE_DOH", False)
+        provider = normalize_optional_text(config.get("CUSTOM_DNS", "auto")) or "auto"
+        use_doh = coerce_bool(config.get("USE_DOH", False), default=False)
         manual_servers = None
 
         if provider == "manual":
-            manual_dns = config.get("CUSTOM_DNS_MANUAL", "")
+            manual_dns = normalize_optional_text(config.get("CUSTOM_DNS_MANUAL", ""))
             if manual_dns:
                 # Parse comma-separated server list
                 manual_servers = [s.strip() for s in manual_dns.split(",") if s.strip()]
@@ -1162,7 +1148,7 @@ def _apply_dns_settings(config: Config) -> None:
         network.set_dns_provider(provider, manual_servers, use_doh=use_doh)
     except ImportError:
         pass  # Network module not available
-    except Exception as e:
+    except _SETTINGS_LIVE_APPLY_ERRORS as e:
         logger.warning("Failed to apply DNS settings: %s", e)
 
 
@@ -1179,11 +1165,12 @@ def _apply_aa_mirror_settings(config: Config) -> None:
         network.init_aa(force=True)
     except ImportError:
         pass  # Network module not available
-    except Exception as e:
+    except _SETTINGS_LIVE_APPLY_ERRORS as e:
         logger.warning("Failed to apply AA mirror settings: %s", e)
 
 
 def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
+    """Validate, persist, and post-process updates for a settings tab."""
     tab = get_settings_tab(tab_name)
     if not tab:
         return {
@@ -1290,7 +1277,7 @@ def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
                 )
 
                 _apply_ssl_warning_suppression()
-            except Exception as e:
+            except _SETTINGS_LIVE_APPLY_ERRORS as e:
                 logger.warning("Failed to apply certificate validation setting: %s", e)
 
         # Apply AA mirror settings changes live (mirrors tab)

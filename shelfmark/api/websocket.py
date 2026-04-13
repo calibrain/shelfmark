@@ -1,14 +1,17 @@
 """WebSocket manager for real-time status updates."""
 
+from __future__ import annotations
+
 import logging
 import threading
 from typing import TYPE_CHECKING, Any
 
-from flask import Flask
 from flask_socketio import SocketIO, join_room, leave_room
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+
+    from flask import Flask
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +20,7 @@ class WebSocketManager:
     """Manages WebSocket connections and broadcasts."""
 
     def __init__(self) -> None:
+        """Initialize in-memory connection and room tracking."""
         self.socketio: SocketIO | None = None
         self._enabled = False
         self._connection_count = 0
@@ -51,6 +55,11 @@ class WebSocketManager:
     def is_enabled(self) -> bool:
         """Check if WebSocket is enabled and ready."""
         return self._enabled and self.socketio is not None
+
+    def _get_socketio(self) -> SocketIO | None:
+        if not self._enabled:
+            return None
+        return self.socketio
 
     def set_queue_status_fn(self, fn: Callable) -> None:
         """Set the queue_status function reference for per-room filtering."""
@@ -122,12 +131,13 @@ class WebSocketManager:
 
     def broadcast_status_update(self, status_data: dict[str, Any]) -> None:
         """Broadcast status update to all connected clients, filtered by user room."""
-        if not self.is_enabled():
+        socketio = self._get_socketio()
+        if socketio is None:
             return
 
         try:
             # Admins (and no-auth users) get full status
-            self.socketio.emit("status_update", status_data, to="admins")
+            socketio.emit("status_update", status_data, to="admins")
 
             # Each user room gets filtered status
             with self._rooms_lock:
@@ -143,12 +153,16 @@ class WebSocketManager:
 
     def _broadcast_status_update_to_room(self, room: str) -> None:
         """Broadcast status update to one user room."""
+        socketio = self._get_socketio()
+        if socketio is None:
+            return
+
         try:
             # Extract user_id from room name "user_123"
             uid = int(room.split("_", 1)[1])
             filtered = self._queue_status_fn(user_id=uid) if self._queue_status_fn else None
             if filtered is not None:
-                self.socketio.emit("status_update", filtered, to=room)
+                socketio.emit("status_update", filtered, to=room)
         except Exception:
             logger.exception("Failed to send status update for room %s", room)
 
@@ -156,19 +170,20 @@ class WebSocketManager:
         self, book_id: str, progress: float, status: str, user_id: int | None = None
     ) -> None:
         """Broadcast download progress update for a specific book."""
-        if not self.is_enabled():
+        socketio = self._get_socketio()
+        if socketio is None:
             return
 
         try:
             data = {"book_id": book_id, "progress": progress, "status": status}
             # Admins always see all progress
-            self.socketio.emit("download_progress", data, to="admins")
+            socketio.emit("download_progress", data, to="admins")
             # If task belongs to a specific user, send to their room too
             if user_id is not None:
                 room = f"user_{user_id}"
                 with self._rooms_lock:
                     if room in self._user_rooms:
-                        self.socketio.emit("download_progress", data, to=room)
+                        socketio.emit("download_progress", data, to=room)
             logger.debug("Broadcasted progress for book %s: %s%%", book_id, progress)
         except Exception:
             logger.exception("Error broadcasting download progress")
@@ -182,7 +197,8 @@ class WebSocketManager:
         phase: str = "searching",
     ) -> None:
         """Broadcast search status update for a release source search."""
-        if not self.is_enabled():
+        socketio = self._get_socketio()
+        if socketio is None:
             return
 
         try:
@@ -193,7 +209,7 @@ class WebSocketManager:
                 "message": message,
                 "phase": phase,
             }
-            self.socketio.emit("search_status", data)
+            socketio.emit("search_status", data)
         except Exception:
             logger.exception("Error broadcasting search status")
 

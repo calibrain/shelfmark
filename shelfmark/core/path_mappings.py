@@ -21,6 +21,8 @@ _WINDOWS_DRIVE_PREFIX_LENGTH = 2
 
 @dataclass(frozen=True)
 class RemotePathMapping:
+    """Mapping from a remote path prefix to a local path prefix."""
+
     host: str
     remote_path: str
     local_path: str
@@ -49,6 +51,7 @@ def _normalize_host(host: str) -> str:
 
 
 def parse_remote_path_mappings(value: object) -> list[RemotePathMapping]:
+    """Parse configured remote-path mapping rows into normalized mappings."""
     if not value or not isinstance(value, list):
         return []
 
@@ -79,6 +82,7 @@ def remap_remote_to_local_with_match(
     host: str,
     remote_path: str | Path,
 ) -> tuple[Path, bool]:
+    """Remap a remote path and report whether a configured mapping matched."""
     host_normalized = _normalize_host(host)
     remote_normalized = _normalize_prefix(str(remote_path))
 
@@ -124,6 +128,7 @@ def remap_remote_to_local_with_match(
 def remap_remote_to_local(
     *, mappings: Iterable[RemotePathMapping], host: str, remote_path: str | Path
 ) -> Path:
+    """Remap a remote path to a local path using the configured mappings."""
     remapped, _ = remap_remote_to_local_with_match(
         mappings=mappings,
         host=host,

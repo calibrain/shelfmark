@@ -21,9 +21,11 @@ COMMON_RESOLUTIONS = [
 
 # Current screen size (module-level singleton)
 _current_screen_size: tuple[int, int] | None = None
+_RNG = random.SystemRandom()
 
 
 def get_screen_size() -> tuple[int, int]:
+    """Return the current synthetic screen size, generating one if needed."""
     global _current_screen_size
     if _current_screen_size is None:
         _current_screen_size = _generate_screen_size()
@@ -36,6 +38,7 @@ def get_screen_size() -> tuple[int, int]:
 
 
 def rotate_screen_size() -> tuple[int, int]:
+    """Rotate to a new synthetic screen size and return it."""
     global _current_screen_size
     old_size = _current_screen_size
     _current_screen_size = _generate_screen_size()
@@ -56,6 +59,7 @@ def rotate_screen_size() -> tuple[int, int]:
 
 
 def clear_screen_size() -> None:
+    """Clear the cached synthetic screen size."""
     global _current_screen_size
     _current_screen_size = None
 
@@ -63,4 +67,4 @@ def clear_screen_size() -> None:
 def _generate_screen_size() -> tuple[int, int]:
     resolutions = [(w, h) for w, h, _ in COMMON_RESOLUTIONS]
     weights = [weight for _, _, weight in COMMON_RESOLUTIONS]
-    return random.choices(resolutions, weights=weights)[0]
+    return _RNG.choices(resolutions, weights=weights)[0]

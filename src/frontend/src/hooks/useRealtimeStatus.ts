@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { StatusData } from '../types';
-import { getStatus } from '../services/api';
+
 import { useSocket } from '../contexts/SocketContext';
+import { getStatus } from '../services/api';
+import type { StatusData } from '../types';
+import { useMountEffect } from './useMountEffect';
 
 interface UseRealtimeStatusOptions {
   pollInterval?: number;
@@ -31,15 +33,17 @@ export const useRealtimeStatus = ({
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
 
   // Polling function
-  const pollStatus = useCallback(async () => {
-    try {
-      const data = await getStatus();
-      setStatus(data);
-      setError(null);
-    } catch (err) {
-      console.error('Error polling status:', err);
-      setError('Failed to fetch status');
-    }
+  const pollStatus = useCallback(() => {
+    void (async () => {
+      try {
+        const data = await getStatus();
+        setStatus(data);
+        setError(null);
+      } catch (err) {
+        console.error('Error polling status:', err);
+        setError('Failed to fetch status');
+      }
+    })();
   }, []);
 
   // Start polling
@@ -64,7 +68,7 @@ export const useRealtimeStatus = ({
   useEffect(() => {
     if (!socket) {
       startPolling();
-      return;
+      return undefined;
     }
 
     // Listen for status updates
@@ -75,9 +79,13 @@ export const useRealtimeStatus = ({
     };
 
     // Listen for download progress
-    const handleDownloadProgress = (data: { book_id: string; progress: number; status: string }) => {
+    const handleDownloadProgress = (data: {
+      book_id: string;
+      progress: number;
+      status: string;
+    }) => {
       console.debug('[WS] download_progress:', data.book_id, `${data.progress.toFixed(1)}%`);
-      setStatus(prev => {
+      setStatus((prev) => {
         const newStatus = { ...prev };
 
         if (newStatus.downloading?.[data.book_id]) {
@@ -111,30 +119,21 @@ export const useRealtimeStatus = ({
     };
   }, [socket, connected, startPolling, stopPolling]);
 
-  // Handle connection state changes
-  useEffect(() => {
-    if (connected) {
-      stopPolling();
-    } else {
-      startPolling();
-    }
-  }, [connected, startPolling, stopPolling]);
-
   // Force refresh function
   const forceRefresh = useCallback(async () => {
     if (socket?.connected) {
       socket.emit('request_status');
     } else {
-      await pollStatus();
+      pollStatus();
     }
   }, [socket, pollStatus]);
 
   // Cleanup polling on unmount
-  useEffect(() => {
+  useMountEffect(() => {
     return () => {
       stopPolling();
     };
-  }, [stopPolling]);
+  });
 
   return {
     status,

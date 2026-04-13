@@ -1,5 +1,7 @@
 """Prowlarr API client for connection testing, indexer listing, and search."""
 
+from collections.abc import Mapping
+from contextlib import suppress
 from http import HTTPStatus
 from typing import Any
 
@@ -9,18 +11,52 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.network import get_ssl_verify
 from shelfmark.release_sources.prowlarr.torznab import parse_torznab_xml
+from shelfmark.release_sources.prowlarr.utils import coerce_int_like
 
 logger = setup_logger(__name__)
 
 _HTTP_STATUS_UNAUTHORIZED = HTTPStatus.UNAUTHORIZED
 _BOOK_CATEGORY_RANGE_START = 7000
 _BOOK_CATEGORY_RANGE_END = 8000
+_PROWLARR_CLIENT_ERRORS = (
+    requests.exceptions.RequestException,
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
+
+
+def _normalize_json_object(payload: object, *, context: str) -> dict[str, Any]:
+    """Return a JSON object payload with string keys or raise on unexpected shapes."""
+    if not isinstance(payload, Mapping):
+        msg = f"Unexpected {context} response payload"
+        raise TypeError(msg)
+
+    normalized: dict[str, Any] = {}
+    for key, value in payload.items():
+        if not isinstance(key, str):
+            msg = f"Unexpected {context} response payload"
+            raise TypeError(msg)
+        normalized[key] = value
+
+    return normalized
+
+
+def _normalize_json_object_list(payload: object, *, context: str) -> list[dict[str, Any]]:
+    """Return a list of JSON objects or raise on unexpected item shapes."""
+    if not isinstance(payload, list):
+        msg = f"Unexpected {context} response payload"
+        raise TypeError(msg)
+
+    return [_normalize_json_object(item, context=context) for item in payload]
 
 
 class ProwlarrClient:
     """Client for interacting with the Prowlarr API."""
 
     def __init__(self, url: str, api_key: str, timeout: int = 30) -> None:
+        """Initialize the API client with base URL, key, and timeout."""
         self.base_url = normalize_http_url(url)
         self.api_key = api_key
         self.timeout = timeout
@@ -54,11 +90,9 @@ class ProwlarrClient:
             )
 
             if not response.ok:
-                try:
+                with suppress(Exception):
                     error_body = response.text[:500]
                     logger.error("Prowlarr API error response: %s", error_body)
-                except Exception:
-                    pass
 
             response.raise_for_status()
             return response.json()
@@ -82,7 +116,10 @@ class ProwlarrClient:
         """Test connection to Prowlarr. Returns (success, message)."""
         logger.info("Testing Prowlarr connection to: %s", self.base_url)
         try:
-            data = self._request("GET", "/api/v1/system/status")
+            data = _normalize_json_object(
+                self._request("GET", "/api/v1/system/status"),
+                context="Prowlarr status",
+            )
             version = data.get("version", "unknown")
         except requests.exceptions.ConnectionError:
             return False, "Could not connect to Prowlarr. Check the URL."
@@ -91,7 +128,7 @@ class ProwlarrClient:
             if e.response is not None and e.response.status_code == _HTTP_STATUS_UNAUTHORIZED:
                 return False, "Invalid API key"
             return False, f"HTTP error {status}"
-        except Exception as e:
+        except _PROWLARR_CLIENT_ERRORS as e:
             return False, f"Connection failed: {e!s}"
         else:
             logger.info("Prowlarr connection successful: version %s", version)
@@ -100,8 +137,11 @@ class ProwlarrClient:
     def get_indexers(self) -> list[dict[str, Any]]:
         """Get all configured indexers."""
         try:
-            return self._request("GET", "/api/v1/indexer")
-        except Exception:
+            return _normalize_json_object_list(
+                self._request("GET", "/api/v1/indexer"),
+                context="Prowlarr indexer list",
+            )
+        except _PROWLARR_CLIENT_ERRORS:
             logger.exception("Failed to get indexers")
             return []
 
@@ -124,12 +164,8 @@ class ProwlarrClient:
         enriched_ids: list[int] = []
 
         for idx in self.get_enabled_indexers_detailed():
-            idx_id = idx.get("id")
-            if idx_id is None:
-                continue
-            try:
-                idx_id_int = int(idx_id)
-            except TypeError, ValueError:
+            idx_id_int = coerce_int_like(idx.get("id"))
+            if idx_id_int is None:
                 continue
 
             if restrict_to is not None and idx_id_int not in restrict_to:
@@ -215,11 +251,9 @@ class ProwlarrClient:
                 verify=get_ssl_verify(url),
             )
             if not response.ok:
-                try:
+                with suppress(Exception):
                     error_body = response.text[:500]
                     logger.error("Prowlarr Torznab error response: %s", error_body)
-                except Exception:
-                    pass
             response.raise_for_status()
 
             results = parse_torznab_xml(response.text)

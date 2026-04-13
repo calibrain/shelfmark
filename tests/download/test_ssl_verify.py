@@ -4,10 +4,10 @@ import warnings
 
 import pytest
 
-
 # ---------------------------------------------------------------------------
 # get_ssl_verify()
 # ---------------------------------------------------------------------------
+
 
 class TestGetSslVerify:
     """Tests for get_ssl_verify() return values across all modes."""
@@ -15,31 +15,51 @@ class TestGetSslVerify:
     def test_enabled_returns_true(self, monkeypatch):
         import shelfmark.download.network as network
 
-        monkeypatch.setattr(network.app_config, "get", lambda k, d="": "enabled" if k == "CERTIFICATE_VALIDATION" else d)
+        monkeypatch.setattr(
+            network.app_config,
+            "get",
+            lambda k, d="": "enabled" if k == "CERTIFICATE_VALIDATION" else d,
+        )
         assert network.get_ssl_verify("https://example.com") is True
 
     def test_enabled_returns_true_for_local_url(self, monkeypatch):
         import shelfmark.download.network as network
 
-        monkeypatch.setattr(network.app_config, "get", lambda k, d="": "enabled" if k == "CERTIFICATE_VALIDATION" else d)
+        monkeypatch.setattr(
+            network.app_config,
+            "get",
+            lambda k, d="": "enabled" if k == "CERTIFICATE_VALIDATION" else d,
+        )
         assert network.get_ssl_verify("https://localhost:8080") is True
 
     def test_disabled_returns_false_for_public_url(self, monkeypatch):
         import shelfmark.download.network as network
 
-        monkeypatch.setattr(network.app_config, "get", lambda k, d="": "disabled" if k == "CERTIFICATE_VALIDATION" else d)
+        monkeypatch.setattr(
+            network.app_config,
+            "get",
+            lambda k, d="": "disabled" if k == "CERTIFICATE_VALIDATION" else d,
+        )
         assert network.get_ssl_verify("https://example.com") is False
 
     def test_disabled_returns_false_for_local_url(self, monkeypatch):
         import shelfmark.download.network as network
 
-        monkeypatch.setattr(network.app_config, "get", lambda k, d="": "disabled" if k == "CERTIFICATE_VALIDATION" else d)
+        monkeypatch.setattr(
+            network.app_config,
+            "get",
+            lambda k, d="": "disabled" if k == "CERTIFICATE_VALIDATION" else d,
+        )
         assert network.get_ssl_verify("https://192.168.1.1:9091") is False
 
     def test_disabled_returns_false_with_no_url(self, monkeypatch):
         import shelfmark.download.network as network
 
-        monkeypatch.setattr(network.app_config, "get", lambda k, d="": "disabled" if k == "CERTIFICATE_VALIDATION" else d)
+        monkeypatch.setattr(
+            network.app_config,
+            "get",
+            lambda k, d="": "disabled" if k == "CERTIFICATE_VALIDATION" else d,
+        )
         assert network.get_ssl_verify() is False
 
     def test_default_when_unset_returns_true(self, monkeypatch):
@@ -58,7 +78,11 @@ class TestGetSslVerifyDisabledLocal:
         import shelfmark.download.network as network
 
         self.network = network
-        monkeypatch.setattr(network.app_config, "get", lambda k, d="": "disabled_local" if k == "CERTIFICATE_VALIDATION" else d)
+        monkeypatch.setattr(
+            network.app_config,
+            "get",
+            lambda k, d="": "disabled_local" if k == "CERTIFICATE_VALIDATION" else d,
+        )
 
     # --- Should return False (local addresses) ---
 
@@ -132,6 +156,7 @@ class TestGetSslVerifyDisabledLocal:
 # _apply_ssl_warning_suppression()
 # ---------------------------------------------------------------------------
 
+
 class TestApplySslWarningSuppression:
     """Tests for urllib3 InsecureRequestWarning suppression toggling."""
 
@@ -139,6 +164,7 @@ class TestApplySslWarningSuppression:
     def _reset_suppression_flag(self):
         """Ensure the module-level flag is clean before each test."""
         import shelfmark.download.network as network
+
         original = network._ssl_warnings_suppressed
         yield
         network._ssl_warnings_suppressed = original
@@ -148,7 +174,11 @@ class TestApplySslWarningSuppression:
         import shelfmark.download.network as network
 
         network._ssl_warnings_suppressed = False
-        monkeypatch.setattr(network.app_config, "get", lambda k, d="": "enabled" if k == "CERTIFICATE_VALIDATION" else d)
+        monkeypatch.setattr(
+            network.app_config,
+            "get",
+            lambda k, d="": "enabled" if k == "CERTIFICATE_VALIDATION" else d,
+        )
 
         filters_before = list(warnings.filters)
         network._apply_ssl_warning_suppression()
@@ -158,12 +188,17 @@ class TestApplySslWarningSuppression:
 
     def test_disabled_mode_suppresses_warnings(self, monkeypatch):
         import urllib3
+
         import shelfmark.download.network as network
 
-        monkeypatch.setattr(network.app_config, "get", lambda k, d="": "disabled" if k == "CERTIFICATE_VALIDATION" else d)
+        monkeypatch.setattr(
+            network.app_config,
+            "get",
+            lambda k, d="": "disabled" if k == "CERTIFICATE_VALIDATION" else d,
+        )
         network._apply_ssl_warning_suppression()
 
-        with warnings.catch_warnings(record=True) as w:
+        with warnings.catch_warnings(record=True):
             warnings.simplefilter("always")
             warnings.warn("test", urllib3.exceptions.InsecureRequestWarning)
 
@@ -171,35 +206,60 @@ class TestApplySslWarningSuppression:
         # should be empty after suppression is applied. However, our catch_warnings
         # with "always" takes precedence within the context manager. Instead, check
         # that the filter was installed.
-        filters = [f for f in warnings.filters if len(f) >= 3 and f[2] is urllib3.exceptions.InsecureRequestWarning]
+        filters = [
+            f
+            for f in warnings.filters
+            if len(f) >= 3 and f[2] is urllib3.exceptions.InsecureRequestWarning
+        ]
         assert len(filters) > 0
 
     def test_disabled_local_mode_suppresses_warnings(self, monkeypatch):
         import urllib3
+
         import shelfmark.download.network as network
 
-        monkeypatch.setattr(network.app_config, "get", lambda k, d="": "disabled_local" if k == "CERTIFICATE_VALIDATION" else d)
+        monkeypatch.setattr(
+            network.app_config,
+            "get",
+            lambda k, d="": "disabled_local" if k == "CERTIFICATE_VALIDATION" else d,
+        )
         network._apply_ssl_warning_suppression()
 
-        filters = [f for f in warnings.filters if len(f) >= 3 and f[2] is urllib3.exceptions.InsecureRequestWarning]
+        filters = [
+            f
+            for f in warnings.filters
+            if len(f) >= 3 and f[2] is urllib3.exceptions.InsecureRequestWarning
+        ]
         assert len(filters) > 0
 
     def test_enabled_mode_restores_warnings(self, monkeypatch):
         import urllib3
+
         import shelfmark.download.network as network
 
         # First suppress
-        monkeypatch.setattr(network.app_config, "get", lambda k, d="": "disabled" if k == "CERTIFICATE_VALIDATION" else d)
+        monkeypatch.setattr(
+            network.app_config,
+            "get",
+            lambda k, d="": "disabled" if k == "CERTIFICATE_VALIDATION" else d,
+        )
         network._apply_ssl_warning_suppression()
 
         # Then restore
-        monkeypatch.setattr(network.app_config, "get", lambda k, d="": "enabled" if k == "CERTIFICATE_VALIDATION" else d)
+        monkeypatch.setattr(
+            network.app_config,
+            "get",
+            lambda k, d="": "enabled" if k == "CERTIFICATE_VALIDATION" else d,
+        )
         network._apply_ssl_warning_suppression()
 
         # "default" filter should be present for InsecureRequestWarning
         default_filters = [
-            f for f in warnings.filters
-            if len(f) >= 3 and f[0] == "default" and f[2] is urllib3.exceptions.InsecureRequestWarning
+            f
+            for f in warnings.filters
+            if len(f) >= 3
+            and f[0] == "default"
+            and f[2] is urllib3.exceptions.InsecureRequestWarning
         ]
         assert len(default_filters) > 0
 
@@ -208,12 +268,12 @@ class TestApplySslWarningSuppression:
 # Settings registration
 # ---------------------------------------------------------------------------
 
+
 class TestCertificateValidationSetting:
     """Tests for the CERTIFICATE_VALIDATION settings field registration."""
 
     def _get_network_fields(self):
         import shelfmark.config.settings  # noqa: F401 — ensure settings tabs are registered
-
         from shelfmark.core.settings_registry import get_settings_tab
 
         tab = get_settings_tab("network")
@@ -249,14 +309,16 @@ class TestCertificateValidationSetting:
 # Live-apply on settings save
 # ---------------------------------------------------------------------------
 
+
 def test_update_settings_certificate_validation_triggers_suppression(monkeypatch):
     """Changing CERTIFICATE_VALIDATION via update_settings calls _apply_ssl_warning_suppression."""
     import shelfmark.config.settings  # noqa: F401 — ensure settings tabs are registered
-
     from shelfmark.core.config import config as config_obj
     from shelfmark.core.settings_registry import update_settings
 
-    monkeypatch.setattr("shelfmark.core.settings_registry.save_config_file", lambda _tab, _values: True)
+    monkeypatch.setattr(
+        "shelfmark.core.settings_registry.save_config_file", lambda _tab, _values: True
+    )
     monkeypatch.setattr(config_obj, "refresh", lambda: None)
 
     called = {"count": 0}
@@ -272,3 +334,41 @@ def test_update_settings_certificate_validation_triggers_suppression(monkeypatch
 
     assert result["success"] is True
     assert called["count"] == 1
+
+
+def test_update_settings_certificate_validation_logs_live_apply_failure(monkeypatch):
+    """Runtime live-apply failures should warn without failing the save."""
+    import shelfmark.config.settings  # noqa: F401
+    import shelfmark.core.settings_registry as registry
+    from shelfmark.core.config import config as config_obj
+    from shelfmark.core.settings_registry import update_settings
+
+    monkeypatch.setattr(
+        "shelfmark.core.settings_registry.save_config_file", lambda _tab, _values: True
+    )
+    monkeypatch.setattr(config_obj, "refresh", lambda: None)
+
+    import shelfmark.download.network as network
+
+    monkeypatch.setattr(
+        network,
+        "_apply_ssl_warning_suppression",
+        lambda: (_ for _ in ()).throw(RuntimeError("ssl apply failed")),
+    )
+
+    warnings_logged: list[tuple[str, tuple[object, ...]]] = []
+    monkeypatch.setattr(
+        registry.logger,
+        "warning",
+        lambda message, *args: warnings_logged.append((str(message), args)),
+    )
+
+    result = update_settings("network", {"CERTIFICATE_VALIDATION": "disabled"})
+
+    assert result["success"] is True
+    assert len(warnings_logged) == 1
+    message, args = warnings_logged[0]
+    assert message == "Failed to apply certificate validation setting: %s"
+    assert len(args) == 1
+    assert isinstance(args[0], RuntimeError)
+    assert str(args[0]) == "ssl apply failed"

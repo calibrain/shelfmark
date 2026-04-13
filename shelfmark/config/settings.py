@@ -4,6 +4,37 @@ import json
 from pathlib import Path
 from typing import Any
 
+from shelfmark.config import env
+from shelfmark.config.booklore_settings import (
+    check_booklore_connection,
+    get_booklore_library_options,
+    get_booklore_path_options,
+)
+from shelfmark.config.download_settings_handlers import (
+    check_audiobook_destination,
+    check_books_destination,
+)
+from shelfmark.config.email_settings import check_email_connection
+from shelfmark.core.logger import setup_logger
+from shelfmark.core.settings_registry import (
+    ActionButton,
+    CheckboxField,
+    HeadingField,
+    MultiSelectField,
+    NumberField,
+    OrderableListField,
+    PasswordField,
+    SelectField,
+    SettingsField,
+    TableField,
+    TagListField,
+    TextField,
+    load_config_file,
+    register_group,
+    register_on_save,
+    register_settings,
+)
+
 
 def _on_save_advanced(values: dict[str, Any]) -> dict[str, Any]:
     """Validate advanced settings before persisting."""
@@ -64,16 +95,9 @@ def _on_save_advanced(values: dict[str, Any]) -> dict[str, Any]:
     return {"error": False, "values": values}
 
 
-from shelfmark.config import env
-from shelfmark.config.booklore_settings import (
-    get_booklore_library_options,
-    get_booklore_path_options,
-    test_booklore_connection,
-)
-from shelfmark.config.email_settings import test_email_connection
-from shelfmark.core.logger import setup_logger
-
 logger = setup_logger(__name__)
+_SMTP_PORT_MAX = 65535
+_EMAIL_ATTACHMENT_LIMIT_MB_MAX = 600
 
 # Log bootstrap configuration values at DEBUG level
 logger.debug("Bootstrap configuration:")
@@ -116,25 +140,6 @@ def _log_external_bypasser_warning() -> None:
             "or consider using the internal bypasser which integrates with the app's DNS system."
         )
 
-
-from shelfmark.core.settings_registry import (
-    ActionButton,
-    CheckboxField,
-    HeadingField,
-    MultiSelectField,
-    NumberField,
-    OrderableListField,
-    PasswordField,
-    SelectField,
-    SettingsField,
-    TableField,
-    TagListField,
-    TextField,
-    load_config_file,
-    register_group,
-    register_on_save,
-    register_settings,
-)
 
 register_group("direct_download", "Direct Download", icon="download", order=20)
 
@@ -254,6 +259,11 @@ _LANGUAGE_OPTIONS = [
 ]
 
 
+def _string_setting(value: object) -> str:
+    """Normalize free-form string settings used by select option builders."""
+    return value if isinstance(value, str) else str(value or "")
+
+
 def _get_aa_base_url_options() -> list[dict[str, str]]:
     """Build AA URL options dynamically, including additional mirrors from config."""
     from shelfmark.core.config import config
@@ -268,7 +278,7 @@ def _get_aa_base_url_options() -> list[dict[str, str]]:
     # If AA_BASE_URL is configured to a custom mirror that isn't present in the
     # defaults/additional list, include it so the UI can display the active value.
     configured_url = normalize_http_url(
-        config.get("AA_BASE_URL", "auto"),
+        _string_setting(config.get("AA_BASE_URL", "auto")),
         default_scheme="https",
         allow_special=("auto",),
     )
@@ -299,10 +309,10 @@ def _get_zlib_mirror_options() -> list[dict[str, str]]:
         options.append({"value": url, "label": domain})
 
     # Add custom mirrors
-    additional = config.get("ZLIB_ADDITIONAL_URLS", "")
+    additional = _string_setting(config.get("ZLIB_ADDITIONAL_URLS", ""))
     if additional:
-        for url in additional.split(","):
-            url = url.strip()
+        for raw_url in additional.split(","):
+            url = raw_url.strip()
             if url and url not in DEFAULT_ZLIB_MIRRORS:
                 domain = url.replace("https://", "").replace("http://", "").split("/")[0]
                 options.append({"value": url, "label": f"{domain} (custom)"})
@@ -323,10 +333,10 @@ def _get_welib_mirror_options() -> list[dict[str, str]]:
         options.append({"value": url, "label": domain})
 
     # Add custom mirrors
-    additional = config.get("WELIB_ADDITIONAL_URLS", "")
+    additional = _string_setting(config.get("WELIB_ADDITIONAL_URLS", ""))
     if additional:
-        for url in additional.split(","):
-            url = url.strip()
+        for raw_url in additional.split(","):
+            url = raw_url.strip()
             if url and url not in DEFAULT_WELIB_MIRRORS:
                 domain = url.replace("https://", "").replace("http://", "").split("/")[0]
                 options.append({"value": url, "label": f"{domain} (custom)"})
@@ -534,7 +544,8 @@ def search_mode_settings() -> list[SettingsField]:
 @register_settings("network", "Network", icon="globe", order=10)
 def network_settings() -> list[SettingsField]:
     """Network and connectivity settings."""
-    # Check if Tor is currently enabled.
+    # Avoid querying the live config singleton while settings are still being
+    # registered, which can recurse back into this module during import.
     tor_enabled = env.USING_TOR
 
     # When Tor is enabled, DNS/proxy settings are overridden by iptables rules
@@ -612,14 +623,14 @@ def network_settings() -> list[SettingsField]:
             description=(
                 "All traffic is routed through Tor. Requires container restart to change."
                 if tor_enabled
-                else "Route all traffic through Tor for enhanced privacy."
+                else "Route all traffic through Tor for enhanced privacy. Requires root startup."
             ),
             default=tor_enabled,  # Reflects actual state from env var
             disabled=True,  # Tor state requires container restart
             disabled_reason=(
                 "Tor routing is active. Set USING_TOR=false and restart to disable."
                 if tor_enabled
-                else "Set USING_TOR=true env var and restart with NET_ADMIN/NET_RAW capabilities."
+                else "Set USING_TOR=true env var and restart as root."
             ),
         ),
         SelectField(
@@ -777,10 +788,10 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
         except TypeError, ValueError:
             return {"error": True, "message": "SMTP port must be a number", "values": values}
 
-        if port < 1 or port > 65535:
+        if port < 1 or port > _SMTP_PORT_MAX:
             return {
                 "error": True,
-                "message": "SMTP port must be between 1 and 65535",
+                "message": f"SMTP port must be between 1 and {_SMTP_PORT_MAX}",
                 "values": values,
             }
 
@@ -818,10 +829,13 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
                 "values": values,
             }
 
-        if attachment_limit_mb < 1 or attachment_limit_mb > 600:
+        if attachment_limit_mb < 1 or attachment_limit_mb > _EMAIL_ATTACHMENT_LIMIT_MB_MAX:
             return {
                 "error": True,
-                "message": "Attachment size limit (MB) must be between 1 and 600",
+                "message": (
+                    "Attachment size limit (MB) must be between 1 and "
+                    f"{_EMAIL_ATTACHMENT_LIMIT_MB_MAX}"
+                ),
                 "values": values,
             }
 
@@ -905,6 +919,17 @@ def download_settings() -> list[SettingsField]:
             required=True,
             env_var="INGEST_DIR",  # Legacy env var name for backwards compatibility
             user_overridable=True,
+            show_when={
+                "field": "BOOKS_OUTPUT_MODE",
+                "value": "folder",
+            },
+        ),
+        ActionButton(
+            key="test_destination",
+            label="Test Destination",
+            description="Check that Shelfmark can create and write to this destination.",
+            style="primary",
+            callback=check_books_destination,
             show_when={
                 "field": "BOOKS_OUTPUT_MODE",
                 "value": "folder",
@@ -1049,7 +1074,7 @@ def download_settings() -> list[SettingsField]:
             label="Test Connection",
             description="Verify your Grimmory configuration",
             style="primary",
-            callback=test_booklore_connection,
+            callback=check_booklore_connection,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
         ),
         HeadingField(
@@ -1157,7 +1182,7 @@ def download_settings() -> list[SettingsField]:
             label="Test SMTP Connection",
             description="Verify your SMTP configuration (connect + optional login).",
             style="primary",
-            callback=test_email_connection,
+            callback=check_email_connection,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},
         ),
         # === AUDIOBOOKS SECTION ===
@@ -1173,6 +1198,14 @@ def download_settings() -> list[SettingsField]:
             label="Destination",
             description="Directory where downloaded audiobook files are saved. Leave empty to use the Books destination.",
             user_overridable=True,
+            universal_only=True,
+        ),
+        ActionButton(
+            key="test_destination_audiobook",
+            label="Test Destination",
+            description="Check that Shelfmark can create and write to this audiobook destination.",
+            style="primary",
+            callback=check_audiobook_destination,
             universal_only=True,
         ),
         SelectField(
@@ -1358,7 +1391,7 @@ def _get_slow_source_defaults() -> list[dict[str, str | bool]]:
     "download_sources", "Download Sources", icon="download", order=21, group="direct_download"
 )
 def download_source_settings() -> list[SettingsField]:
-    """Settings for download source behavior."""
+    """Return settings for download source behavior."""
     return [
         PasswordField(
             key="AA_DONATOR_KEY",
@@ -1466,7 +1499,7 @@ def download_source_settings() -> list[SettingsField]:
     "cloudflare_bypass", "Cloudflare Bypass", icon="shield", order=22, group="direct_download"
 )
 def cloudflare_bypass_settings() -> list[SettingsField]:
-    """Settings for Cloudflare bypass behavior."""
+    """Return settings for Cloudflare bypass behavior."""
     return [
         CheckboxField(
             key="USE_CF_BYPASS",

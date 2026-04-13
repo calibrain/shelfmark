@@ -3,7 +3,8 @@
 import re
 from contextlib import suppress
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
+from http import HTTPStatus
 from typing import Any, ClassVar
 from urllib.parse import urlparse
 
@@ -12,7 +13,7 @@ import requests
 from shelfmark.core.cache import cache_key, cacheable, get_metadata_cache
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.request_helpers import coerce_int
+from shelfmark.core.request_helpers import coerce_bool, coerce_int, normalize_optional_text
 from shelfmark.core.settings_registry import (
     ActionButton,
     CheckboxField,
@@ -30,6 +31,7 @@ from shelfmark.metadata_providers import (
     MetadataCapability,
     MetadataProvider,
     MetadataSearchOptions,
+    SearchField,
     SearchResult,
     SearchType,
     SortOrder,
@@ -42,6 +44,10 @@ logger = setup_logger(__name__)
 
 HARDCOVER_API_URL = "https://api.hardcover.app/v1/graphql"
 HARDCOVER_PAGE_SIZE = 25  # Hardcover API returns max 25 results per page
+HARDCOVER_MIN_AUTHOR_PARTS = 2
+HARDCOVER_MIN_TYPEAHEAD_QUERY_LENGTH = 2
+HARDCOVER_MAX_SERIES_OPTIONS = 7
+HARDCOVER_API_KEY_MIN_LENGTH = 100
 HARDCOVER_LIST_URL_PATTERN = re.compile(
     r"^/(?:@([\w.-]+)/)?lists?/([\w-]+)/?$",
     re.IGNORECASE,
@@ -541,6 +547,12 @@ def _normalize_series_position(value: Any) -> float | None:
         return None
 
 
+def _normalize_hardcover_api_key(value: object) -> str:
+    """Normalize Hardcover API keys, stripping copied auth-header prefixes."""
+    normalized_value = normalize_optional_text(value) or ""
+    return normalized_value.removeprefix("Bearer ").strip()
+
+
 def _normalize_search_text(value: str) -> str:
     """Normalize free-text search input for matching and caching."""
     return " ".join(value.split()).strip()
@@ -693,11 +705,11 @@ def _simplify_author_for_search(author: str) -> str | None:
     # Handle "Last, First ..." -> "First ... Last"
     if "," in normalized:
         parts = [p.strip() for p in normalized.split(",") if p.strip()]
-        if len(parts) >= 2:
+        if len(parts) >= HARDCOVER_MIN_AUTHOR_PARTS:
             normalized = " ".join([*parts[1:], parts[0]]).strip()
 
     tokens = normalized.split(" ")
-    if len(tokens) < 2:
+    if len(tokens) < HARDCOVER_MIN_AUTHOR_PARTS:
         return None
 
     keep_suffixes = {"jr", "jr.", "sr", "sr.", "ii", "iii", "iv", "v"}
@@ -851,7 +863,7 @@ class HardcoverProvider(MetadataProvider):
             sort=SortOrder.SERIES_ORDER,
         ),
     )
-    search_fields: ClassVar[tuple[TextSearchField | DynamicSelectSearchField, ...]] = (
+    search_fields: ClassVar[tuple[SearchField, ...]] = (
         TextSearchField(
             key="author",
             label="Author",
@@ -883,8 +895,7 @@ class HardcoverProvider(MetadataProvider):
     def __init__(self, api_key: str | None = None) -> None:
         """Initialize provider with optional API key (falls back to config)."""
         raw_key = api_key or app_config.get("HARDCOVER_API_KEY", "")
-        # Strip "Bearer " prefix if user pasted the full auth header from Hardcover
-        self.api_key = raw_key.removeprefix("Bearer ").strip() if raw_key else ""
+        self.api_key = _normalize_hardcover_api_key(raw_key)
         self.session = requests.Session()
         if self.api_key:
             self.session.headers.update(
@@ -1044,10 +1055,8 @@ class HardcoverProvider(MetadataProvider):
         if not selected:
             return SearchResult(books=[], page=page, total_found=0, has_more=False)
 
-        list_id_raw = selected.get("id")
-        try:
-            list_id = int(list_id_raw)
-        except TypeError, ValueError:
+        list_id = coerce_int(selected.get("id"), 0)
+        if list_id < 1:
             return SearchResult(books=[], page=page, total_found=0, has_more=False)
 
         return self._fetch_list_books_by_id(list_id, page, limit)
@@ -1117,7 +1126,7 @@ class HardcoverProvider(MetadataProvider):
     ) -> list[dict[str, Any]]:
         """Run a Hardcover search request for field-level typeahead options."""
         normalized_query = _normalize_search_text(query)
-        if not self.api_key or len(normalized_query) < 2:
+        if not self.api_key or len(normalized_query) < HARDCOVER_MIN_TYPEAHEAD_QUERY_LENGTH:
             return []
 
         result = self._execute_query(
@@ -1159,9 +1168,8 @@ class HardcoverProvider(MetadataProvider):
             if not _query_matches_author_name(query, author_name):
                 continue
 
-            try:
-                author_id = int(item.get("id"))
-            except TypeError, ValueError:
+            author_id = coerce_int(item.get("id"), 0)
+            if author_id < 1:
                 continue
 
             if author_id not in author_ids:
@@ -1224,9 +1232,15 @@ class HardcoverProvider(MetadataProvider):
             weights=TITLE_SUGGESTION_WEIGHTS,
         )
 
-        exclude_compilations = app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False)
-        exclude_unreleased = app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False)
-        current_year = datetime.now().year
+        exclude_compilations = coerce_bool(
+            app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False),
+            default=False,
+        )
+        exclude_unreleased = coerce_bool(
+            app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False),
+            default=False,
+        )
+        current_year = datetime.now(UTC).year
 
         options: list[dict[str, str]] = []
         seen_labels: set[str] = set()
@@ -1327,7 +1341,7 @@ class HardcoverProvider(MetadataProvider):
             if description:
                 option["description"] = description
             options.append(option)
-            if len(options) >= 7:
+            if len(options) >= HARDCOVER_MAX_SERIES_OPTIONS:
                 break
 
         return options
@@ -1370,9 +1384,8 @@ class HardcoverProvider(MetadataProvider):
             item = _unwrap_hit_document(hit)
             if item is None:
                 continue
-            try:
-                series_id = int(item.get("id"))
-            except TypeError, ValueError:
+            series_id = coerce_int(item.get("id"), 0)
+            if series_id < 1:
                 continue
             name = str(item.get("name") or "").strip()
             if not name:
@@ -1423,7 +1436,7 @@ class HardcoverProvider(MetadataProvider):
             str(series_data.get("name") or "").strip() if isinstance(series_data, dict) else ""
         )
         allow_split_parts = _series_allows_split_parts(series_name)
-        today = datetime.now().date()
+        today = datetime.now(UTC).date()
 
         book_series_rows = (
             series_data.get("book_series", []) if isinstance(series_data, dict) else []
@@ -1516,7 +1529,7 @@ class HardcoverProvider(MetadataProvider):
 
     @cacheable(ttl=120, key_prefix="hardcover:user_lists")
     def _get_user_lists_cached(self, _cache_user_id: str) -> list[dict[str, str]]:
-        """Cached wrapper keyed by Hardcover user id to avoid cross-user cache leakage."""
+        """Return cached user lists keyed by Hardcover user id."""
         return self._fetch_user_lists()
 
     def _fetch_current_user_books_by_status(
@@ -1544,7 +1557,7 @@ class HardcoverProvider(MetadataProvider):
         page: int,
         limit: int,
     ) -> SearchResult:
-        """Cached wrapper keyed by Hardcover user id and status shelf."""
+        """Return cached status-shelf books keyed by user id and shelf."""
         return self._fetch_user_books_by_status(status_id, page, limit)
 
     def _fetch_user_books_by_status(self, status_id: int, page: int, limit: int) -> SearchResult:
@@ -1706,10 +1719,11 @@ class HardcoverProvider(MetadataProvider):
 
         book_id_int = coerce_int(book_id, 0)
         if book_id_int < 1:
-            raise ValueError("book_id must be a valid Hardcover book id")
+            msg = "book_id must be a valid Hardcover book id"
+            raise ValueError(msg)
 
         state = self._fetch_book_target_state(book_id_int)
-        options = [
+        options: list[dict[str, Any]] = [
             dict(option)
             for option in self.get_user_lists()
             if option.get("group") in HARDCOVER_WRITABLE_TARGET_GROUPS
@@ -1722,21 +1736,31 @@ class HardcoverProvider(MetadataProvider):
 
         return options
 
-    def set_book_target_state(self, book_id: str, target: str, selected: bool) -> dict[str, Any]:
+    def set_book_target_state(
+        self,
+        book_id: str,
+        target: str,
+        *,
+        selected: bool,
+    ) -> dict[str, Any]:
         """Set whether a Hardcover book belongs to a status shelf or user list."""
         if not self.api_key:
-            raise ValueError("Hardcover is not configured")
+            msg = "Hardcover is not configured"
+            raise ValueError(msg)
 
         book_id_int = coerce_int(book_id, 0)
         if book_id_int < 1:
-            raise ValueError("book_id must be a valid Hardcover book id")
+            msg = "book_id must be a valid Hardcover book id"
+            raise ValueError(msg)
 
         selected_target = str(target or "").strip()
         if not selected_target:
-            raise ValueError("target is required")
+            msg = "target is required"
+            raise ValueError(msg)
 
         if selected_target not in self._get_writable_targets():
-            raise ValueError("Unsupported Hardcover target")
+            msg = "Unsupported Hardcover target"
+            raise ValueError(msg)
 
         state = self._fetch_book_target_state(book_id_int)
         status_ids_to_invalidate: set[int] = set()
@@ -1769,7 +1793,8 @@ class HardcoverProvider(MetadataProvider):
             if changed:
                 list_ids_to_invalidate.add(list_id)
         else:
-            raise ValueError("Unsupported Hardcover target")
+            msg = "Unsupported Hardcover target"
+            raise ValueError(msg)
 
         if changed:
             self._invalidate_book_target_caches(
@@ -1787,13 +1812,15 @@ class HardcoverProvider(MetadataProvider):
     def _unwrap_me_data(result: dict | None) -> dict:
         """Extract and validate the ``me`` payload from a GraphQL result."""
         if not isinstance(result, dict):
-            raise HardcoverTargetPayloadError("Hardcover could not load book targets")
+            msg = "Hardcover could not load book targets"
+            raise HardcoverTargetPayloadError(msg)
 
         me_data = result.get("me", {})
         if isinstance(me_data, list) and me_data:
             me_data = me_data[0]
         if not isinstance(me_data, dict):
-            raise HardcoverTargetPayloadError("Hardcover returned an invalid target payload")
+            msg = "Hardcover returned an invalid target payload"
+            raise HardcoverTargetPayloadError(msg)
         return me_data
 
     def _fetch_book_target_state(self, book_id: int) -> HardcoverBookTargetState:
@@ -1900,7 +1927,7 @@ class HardcoverProvider(MetadataProvider):
             return {bid: [] for bid in book_ids}
 
         states = self._fetch_book_target_states_batch(int_ids)
-        writable_options = [
+        writable_options: list[dict[str, Any]] = [
             dict(option)
             for option in self.get_user_lists()
             if option.get("group") in HARDCOVER_WRITABLE_TARGET_GROUPS
@@ -2052,7 +2079,8 @@ class HardcoverProvider(MetadataProvider):
         try:
             return int(value.split(":", 1)[1])
         except (IndexError, ValueError) as exc:
-            raise ValueError(f"Invalid Hardcover {label}") from exc
+            msg = f"Invalid Hardcover {label}"
+            raise ValueError(msg) from exc
 
     @staticmethod
     def _check_mutation_result(result: Any, key: str, *, check_error: bool = True) -> None:
@@ -2071,7 +2099,8 @@ class HardcoverProvider(MetadataProvider):
                     raise ValueError(error_text)
             if payload.get("id") is not None:
                 return
-        raise RuntimeError("Hardcover could not complete this action")
+        msg = "Hardcover could not complete this action"
+        raise RuntimeError(msg)
 
     def search(self, options: MetadataSearchOptions) -> list[BookMetadata]:
         """Search for books using Hardcover's search API."""
@@ -2115,8 +2144,14 @@ class HardcoverProvider(MetadataProvider):
             resolved_series = self._resolve_series_search_value(series_value_from_field)
             if not resolved_series:
                 return SearchResult(books=[], page=options.page, total_found=0, has_more=False)
-            exclude_compilations = app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False)
-            exclude_unreleased = app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False)
+            exclude_compilations = coerce_bool(
+                app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False),
+                default=False,
+            )
+            exclude_unreleased = coerce_bool(
+                app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False),
+                default=False,
+            )
             return self._fetch_series_books_by_id(
                 int(resolved_series["id"]),
                 options.page,
@@ -2133,14 +2168,20 @@ class HardcoverProvider(MetadataProvider):
 
         # Build cache key from options (include fields and settings for cache differentiation)
         fields_key = ":".join(f"{k}={v}" for k, v in sorted(options.fields.items()))
-        exclude_compilations = app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False)
-        exclude_unreleased = app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False)
+        exclude_compilations = coerce_bool(
+            app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False),
+            default=False,
+        )
+        exclude_unreleased = coerce_bool(
+            app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False),
+            default=False,
+        )
         cache_key = f"{options.query}:{options.search_type.value}:{options.sort.value}:{options.limit}:{options.page}:{fields_key}:excl_comp={exclude_compilations}:excl_unrel={exclude_unreleased}"
         return self._search_cached(cache_key, options)
 
     @cacheable(ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="hardcover:search")
     def _search_cached(self, cache_key: str, options: MetadataSearchOptions) -> SearchResult:
-        """Cached search implementation."""
+        """Return cached Hardcover search results."""
         # Determine query and fields based on custom search fields
         # Note: Hardcover API requires 'weights' when using 'fields' parameter
         author_value = options.fields.get("author", "").strip()
@@ -2193,9 +2234,15 @@ class HardcoverProvider(MetadataProvider):
             hits, found_count = _extract_typesense_hits(result)
 
             # Parse hits, filtering compilations and unreleased books if enabled
-            exclude_compilations = app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False)
-            exclude_unreleased = app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False)
-            current_year = datetime.now().year
+            exclude_compilations = coerce_bool(
+                app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False),
+                default=False,
+            )
+            exclude_unreleased = coerce_bool(
+                app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False),
+                default=False,
+            )
+            current_year = datetime.now(UTC).year
             books = []
             for hit in hits:
                 item = _unwrap_hit_document(hit)
@@ -2416,29 +2463,34 @@ class HardcoverProvider(MetadataProvider):
         except requests.Timeout as e:
             logger.warning("Hardcover API request timed out")
             if raise_on_error:
-                raise RuntimeError("Hardcover API request timed out") from e
+                msg = "Hardcover API request timed out"
+                raise RuntimeError(msg) from e
             return None
         except requests.HTTPError as e:
-            if e.response.status_code == 401:
+            if e.response.status_code == HTTPStatus.UNAUTHORIZED:
                 logger.exception("Hardcover API key is invalid")
                 if raise_on_error:
-                    raise RuntimeError("Hardcover API key is invalid") from e
+                    msg = "Hardcover API key is invalid"
+                    raise RuntimeError(msg) from e
             else:
                 logger.exception("Hardcover API HTTP error")
                 if raise_on_error:
-                    raise RuntimeError(f"Hardcover API HTTP error: {e}") from e
+                    msg = f"Hardcover API HTTP error: {e}"
+                    raise RuntimeError(msg) from e
             return None
         except HardcoverGraphQLError:
             raise
         except ValueError as e:
             logger.exception("Hardcover API returned invalid JSON")
             if raise_on_error:
-                raise RuntimeError("Hardcover API returned an invalid response") from e
+                msg = "Hardcover API returned an invalid response"
+                raise RuntimeError(msg) from e
             return None
         except (TypeError, requests.RequestException) as e:
             logger.exception("Hardcover API request failed")
             if raise_on_error:
-                raise RuntimeError("Hardcover API request failed") from e
+                msg = "Hardcover API request failed"
+                raise RuntimeError(msg) from e
             return None
 
     def _parse_search_result(self, item: dict) -> BookMetadata | None:
@@ -2694,8 +2746,7 @@ def _test_hardcover_connection(current_values: dict[str, Any] | None = None) -> 
 
     # Use current form values first, fall back to saved config
     raw_key = current_values.get("HARDCOVER_API_KEY") or app_config.get("HARDCOVER_API_KEY", "")
-    # Strip "Bearer " prefix if user pasted the full auth header from Hardcover
-    api_key = raw_key.removeprefix("Bearer ").strip() if raw_key else ""
+    api_key = _normalize_hardcover_api_key(raw_key)
 
     key_len = len(api_key) if api_key else 0
     logger.debug("Hardcover test: key length=%s", key_len)
@@ -2705,10 +2756,13 @@ def _test_hardcover_connection(current_values: dict[str, Any] | None = None) -> 
         _save_connected_user(None, None)
         return {"success": False, "message": "API key is required"}
 
-    if key_len < 100:
+    if key_len < HARDCOVER_API_KEY_MIN_LENGTH:
         return {
             "success": False,
-            "message": f"API key seems too short ({key_len} chars). Expected 500+ chars.",
+            "message": (
+                f"API key seems too short ({key_len} chars). "
+                f"Expected {HARDCOVER_API_KEY_MIN_LENGTH}+ chars."
+            ),
         }
 
     connection_result = {"success": False, "message": "API request failed - check your API key"}

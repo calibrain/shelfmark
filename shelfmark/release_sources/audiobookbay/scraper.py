@@ -40,6 +40,30 @@ SIZE_PATTERN = re.compile(r"File Size:\s*([\d.]+)\s*([A-Za-z]+)")
 INFO_HASH_LABEL_PATTERN = re.compile(r"Info Hash", re.IGNORECASE)
 
 
+def _coerce_non_negative_float(value: object, default: float) -> float:
+    """Return a non-negative float config value or the provided default."""
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int | float) and value >= 0:
+        return float(value)
+    return default
+
+
+def _coerce_markup_to_html(value: str | tuple[str, str]) -> str:
+    """Normalize downloader output to the HTML markup string."""
+    if isinstance(value, str):
+        return value
+    html, _response_url = value
+    return html
+
+
+def _coerce_attribute_to_str(value: object) -> str:
+    """Return a plain string HTML attribute value, or an empty string."""
+    if isinstance(value, str):
+        return value
+    return ""
+
+
 def _build_search_url(
     hostname: str,
     page: int,
@@ -129,7 +153,7 @@ def search_audiobookbay(
 
     """
     results = []
-    rate_limit_delay = config.get("ABB_RATE_LIMIT_DELAY", 1.0)
+    rate_limit_delay = _coerce_non_negative_float(config.get("ABB_RATE_LIMIT_DELAY", 1.0), 1.0)
     session = requests.Session()
 
     # Bootstrap ABB session cookie (PHPSESSID). ABB increasingly serves reliable
@@ -221,7 +245,7 @@ def search_audiobookbay(
                     title = title_elem.text.strip()
 
                     # Extract link (relative, needs hostname prefix)
-                    href = title_elem.get("href", "")
+                    href = _coerce_attribute_to_str(title_elem.get("href", ""))
                     if not href:
                         continue
 
@@ -235,7 +259,13 @@ def search_audiobookbay(
                         "img"
                     )
                     if cover_elem:
-                        cover = _normalize_result_url(cover_elem.get("src", ""), hostname) or None
+                        cover = (
+                            _normalize_result_url(
+                                _coerce_attribute_to_str(cover_elem.get("src", "")),
+                                hostname,
+                            )
+                            or None
+                        )
 
                     # Extract language from .postInfo
                     language = None
@@ -328,25 +358,29 @@ def extract_magnet_link(details_url: str, hostname: str = "audiobookbay.lu") -> 
         _bootstrap_abb_session(hostname, session, DETAIL_PAGE_RETRY_ATTEMPTS)
 
         # Fetch detail page
-        detail_html = downloader.html_get_page(
-            details_url,
-            retry=DETAIL_PAGE_RETRY_ATTEMPTS,
-            use_bypasser=False,
-            allow_bypasser_fallback=False,
-            success_delay=0,
-            session=session,
-        )
-
-        if not detail_html:
-            session = requests.Session()
-            _bootstrap_abb_session(hostname, session, DETAIL_PAGE_RETRY_ATTEMPTS)
-            detail_html = downloader.html_get_page(
+        detail_html = _coerce_markup_to_html(
+            downloader.html_get_page(
                 details_url,
                 retry=DETAIL_PAGE_RETRY_ATTEMPTS,
                 use_bypasser=False,
                 allow_bypasser_fallback=False,
                 success_delay=0,
                 session=session,
+            )
+        )
+
+        if not detail_html:
+            session = requests.Session()
+            _bootstrap_abb_session(hostname, session, DETAIL_PAGE_RETRY_ATTEMPTS)
+            detail_html = _coerce_markup_to_html(
+                downloader.html_get_page(
+                    details_url,
+                    retry=DETAIL_PAGE_RETRY_ATTEMPTS,
+                    use_bypasser=False,
+                    allow_bypasser_fallback=False,
+                    success_delay=0,
+                    session=session,
+                )
             )
 
         if not detail_html:

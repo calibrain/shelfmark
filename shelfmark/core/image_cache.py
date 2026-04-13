@@ -13,6 +13,7 @@ from urllib.parse import urlparse
 import requests
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.request_helpers import coerce_int
 from shelfmark.download.network import get_ssl_verify
 
 if TYPE_CHECKING:
@@ -485,13 +486,12 @@ class ImageCacheService:
         """Check that a URL is safe to fetch (no SSRF to internal resources)."""
         try:
             parsed = urlparse(url)
-        except Exception:
+            hostname = parsed.hostname
+        except ValueError:
             return False
 
         if parsed.scheme not in ("http", "https"):
             return False
-
-        hostname = parsed.hostname
         if not hostname:
             return False
 
@@ -570,7 +570,7 @@ class ImageCacheService:
             is_404 = e.response is not None and e.response.status_code == HTTP_NOT_FOUND
             self.put_negative(cache_id, transient=not is_404)
             return None
-        except Exception:
+        except requests.exceptions.RequestException:
             return None
         else:
             return cached_data
@@ -595,8 +595,8 @@ def get_image_cache() -> ImageCacheService:
                 from shelfmark.core.config import config
 
                 cache_dir = CONFIG_DIR / "covers"
-                max_size_mb = config.get("COVERS_CACHE_MAX_SIZE_MB", 500)
-                ttl_days = config.get("COVERS_CACHE_TTL", 0)
+                max_size_mb = coerce_int(config.get("COVERS_CACHE_MAX_SIZE_MB", 500), 500)
+                ttl_days = coerce_int(config.get("COVERS_CACHE_TTL", 0), 0)
                 ttl_seconds = ttl_days * 86400 if ttl_days > 0 else 0
 
                 _instance = ImageCacheService(

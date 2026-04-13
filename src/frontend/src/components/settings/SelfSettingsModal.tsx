@@ -1,23 +1,29 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+
+import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
+import { useEscapeKey } from '../../hooks/useEscapeKey';
+import { useMountEffect } from '../../hooks/useMountEffect';
+import type { AdminUser, DeliveryPreferencesResponse } from '../../services/api';
 import {
-  AdminUser,
-  DeliveryPreferencesResponse,
   getSelfUserEditContext,
   testSelfNotificationPreferences,
   updateSelfUser,
 } from '../../services/api';
+import {
+  getStoredThemePreference,
+  setThemePreference,
+  THEME_FIELD,
+} from '../../utils/themePreference';
 import { SelectField } from './fields';
 import { FieldWrapper } from './shared';
-import { UserAccountCardContent, UserEditActions, UserIdentityHeader } from './users/UserCard';
 import {
   DEFAULT_SELF_USER_OVERRIDE_SECTIONS,
   normalizeUserOverrideSections,
   UserOverridesSections,
-  type UserOverrideSectionId,
 } from './users';
-import { PerUserSettings } from './users/types';
+import type { PerUserSettings } from './users/types';
+import { UserAccountCardContent, UserEditActions, UserIdentityHeader } from './users/UserCard';
 import { useUserOverridesState } from './users/useUserOverridesState';
-import { getStoredThemePreference, setThemePreference, THEME_FIELD } from '../../utils/themePreference';
 
 interface SelfSettingsModalProps {
   isOpen: boolean;
@@ -55,27 +61,73 @@ export const SelfSettingsModal = ({
   onSettingsSaved,
 }: SelfSettingsModalProps) => {
   const [isClosing, setIsClosing] = useState(false);
+  const [sessionVersion, setSessionVersion] = useState(0);
+
+  const handleRequestClose = useCallback(() => {
+    setIsClosing(true);
+    setTimeout(() => {
+      onClose();
+      setIsClosing(false);
+      setSessionVersion((current) => current + 1);
+    }, 150);
+  }, [onClose]);
+
+  useBodyScrollLock(isOpen);
+
+  if (!isOpen && !isClosing) {
+    return null;
+  }
+
+  return (
+    <SelfSettingsModalSession
+      key={sessionVersion}
+      isOpen={isOpen}
+      isClosing={isClosing}
+      onRequestClose={handleRequestClose}
+      onShowToast={onShowToast}
+      onSettingsSaved={onSettingsSaved}
+    />
+  );
+};
+
+interface SelfSettingsModalSessionProps {
+  isOpen: boolean;
+  isClosing: boolean;
+  onRequestClose: () => void;
+  onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+  onSettingsSaved?: () => void;
+}
+
+const SelfSettingsModalSession = ({
+  isOpen,
+  isClosing,
+  onRequestClose,
+  onShowToast,
+  onSettingsSaved,
+}: SelfSettingsModalSessionProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [originalUser, setOriginalUser] = useState<AdminUser | null>(null);
-  const [deliveryPreferences, setDeliveryPreferences] = useState<DeliveryPreferencesResponse | null>(null);
-  const [searchPreferences, setSearchPreferences] = useState<DeliveryPreferencesResponse | null>(null);
-  const [notificationPreferences, setNotificationPreferences] = useState<DeliveryPreferencesResponse | null>(null);
-  const [visibleSections, setVisibleSections] = useState<UserOverrideSectionId[]>(
-    DEFAULT_SELF_USER_OVERRIDE_SECTIONS
+  const [deliveryPreferences, setDeliveryPreferences] =
+    useState<DeliveryPreferencesResponse | null>(null);
+  const [searchPreferences, setSearchPreferences] = useState<DeliveryPreferencesResponse | null>(
+    null,
   );
+  const [notificationPreferences, setNotificationPreferences] =
+    useState<DeliveryPreferencesResponse | null>(null);
+  const [visibleSections, setVisibleSections] = useState(DEFAULT_SELF_USER_OVERRIDE_SECTIONS);
 
   const [editPassword, setEditPassword] = useState('');
   const [editPasswordConfirm, setEditPasswordConfirm] = useState('');
 
-  const [themeValue, setThemeValue] = useState<string>(getStoredThemePreference());
+  const [themeValue, setThemeValue] = useState(getStoredThemePreference());
 
   const preferenceGroups = useMemo(
     () => [deliveryPreferences, searchPreferences, notificationPreferences],
-    [deliveryPreferences, searchPreferences, notificationPreferences]
+    [deliveryPreferences, searchPreferences, notificationPreferences],
   );
   const {
     userSettings,
@@ -98,7 +150,7 @@ export const SelfSettingsModal = ({
       setSearchPreferences(context.searchPreferences || null);
       setNotificationPreferences(context.notificationPreferences || null);
       setVisibleSections(
-        normalizeUserOverrideSections(context.visibleUserSettingsSections, 'self')
+        normalizeUserOverrideSections(context.visibleUserSettingsSections, 'self'),
       );
       applyUserOverridesContext({
         settings: (context.user.settings || {}) as PerUserSettings,
@@ -113,56 +165,24 @@ export const SelfSettingsModal = ({
     }
   }, [applyUserOverridesContext]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    setIsClosing(false);
+  useMountEffect(() => {
     void loadEditContext();
-  }, [isOpen, loadEditContext]);
-
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [isOpen]);
+  });
 
   const handleClose = useCallback(() => {
     if (isSaving) {
       return;
     }
-    setIsClosing(true);
-    setTimeout(() => {
-      onClose();
-      setIsClosing(false);
-    }, 150);
-  }, [isSaving, onClose]);
+    onRequestClose();
+  }, [isSaving, onRequestClose]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        handleClose();
-      }
-    };
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen, handleClose]);
+  useEscapeKey(isOpen, handleClose);
 
   const hasProfileChanges = Boolean(
-    editingUser
-    && originalUser
-    && (
-      editingUser.email !== originalUser.email
-      || editingUser.display_name !== originalUser.display_name
-    )
+    editingUser &&
+    originalUser &&
+    (editingUser.email !== originalUser.email ||
+      editingUser.display_name !== originalUser.display_name),
   );
 
   const hasPasswordChanges = editPassword.length > 0 || editPasswordConfirm.length > 0;
@@ -189,15 +209,12 @@ export const SelfSettingsModal = ({
       settings?: Record<string, unknown>;
     } = {};
 
-    if (
-      editingUser.edit_capabilities.canEditEmail
-      && editingUser.email !== originalUser.email
-    ) {
+    if (editingUser.edit_capabilities.canEditEmail && editingUser.email !== originalUser.email) {
       payload.email = editingUser.email;
     }
     if (
-      editingUser.edit_capabilities.canEditDisplayName
-      && editingUser.display_name !== originalUser.display_name
+      editingUser.edit_capabilities.canEditDisplayName &&
+      editingUser.display_name !== originalUser.display_name
     ) {
       payload.display_name = editingUser.display_name;
     }
@@ -246,26 +263,27 @@ export const SelfSettingsModal = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
+      <button
+        type="button"
         className={`absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity duration-150 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
         onClick={handleClose}
+        tabIndex={-1}
+        aria-label="Close account settings"
       />
 
       <div
-        className={`relative w-full max-w-3xl h-[85vh] max-h-[750px] rounded-xl border border-(--border-muted) shadow-2xl flex flex-col overflow-hidden ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
+        className={`relative flex h-[85vh] max-h-[750px] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-(--border-muted) shadow-2xl ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         style={{ background: 'var(--bg)' }}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
       >
         <header className="flex items-center justify-between border-b border-(--border-muted) px-6 py-4">
-          <h3 id={titleId} className="sr-only">My Account</h3>
+          <h3 id={titleId} className="sr-only">
+            My Account
+          </h3>
           {editingUser ? (
-            <UserIdentityHeader
-              user={editingUser}
-              showAuthSource
-              showInactiveState={false}
-            />
+            <UserIdentityHeader user={editingUser} showAuthSource showInactiveState={false} />
           ) : (
             <div className="text-sm font-medium">My Account</div>
           )}
@@ -273,11 +291,17 @@ export const SelfSettingsModal = ({
             <button
               type="button"
               onClick={handleClose}
-              className="p-2 rounded-full hover-action transition-colors text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="hover-action rounded-full p-2 text-gray-500 transition-colors hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:text-gray-100"
               aria-label="Close account settings"
               disabled={isSaving}
             >
-              <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+              <svg
+                className="h-5 w-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+              >
                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
               </svg>
             </button>
@@ -285,69 +309,85 @@ export const SelfSettingsModal = ({
         </header>
 
         <div className="flex-1 overflow-y-auto px-6 py-5">
-          {showInitialLoadingState ? (
-            <div className="h-full flex items-center justify-center text-sm opacity-60">
-              Loading account settings...
-            </div>
-          ) : showInitialLoadErrorState ? (
-            <div className="h-full flex flex-col items-center justify-center gap-3 text-center">
-              <p className="text-sm opacity-70">{loadError}</p>
-              <button
-                type="button"
-                onClick={() => { void loadEditContext(); }}
-                className="px-4 py-2 rounded-lg text-sm font-medium border border-(--border-muted) bg-(--bg-soft) hover:bg-(--hover-surface) transition-colors"
-              >
-                Retry
-              </button>
-            </div>
-          ) : editingUser ? (
-            <div className="space-y-5">
-              <FieldWrapper field={THEME_FIELD}>
-                <SelectField
-                  field={THEME_FIELD}
-                  value={themeValue}
-                  onChange={(value) => {
-                    setThemeValue(value);
-                    setThemePreference(value);
-                  }}
-                />
-              </FieldWrapper>
+          {(() => {
+            if (showInitialLoadingState) {
+              return (
+                <div className="flex h-full items-center justify-center text-sm opacity-60">
+                  Loading account settings...
+                </div>
+              );
+            }
 
-              <UserAccountCardContent
-                user={editingUser}
-                onUserChange={setEditingUser}
-                onSave={() => {}}
-                saving={isSaving}
-                onCancel={handleClose}
-                hideEditActions
-                editPassword={editPassword}
-                onEditPasswordChange={setEditPassword}
-                editPasswordConfirm={editPasswordConfirm}
-                onEditPasswordConfirmChange={setEditPasswordConfirm}
-                preferencesPlacement="after"
-                preferencesPanel={{
-                  hideTitle: true,
-                  children: (
-                    <UserOverridesSections
-                      scope="self"
-                      sections={visibleSections}
-                      deliveryPreferences={deliveryPreferences}
-                      searchPreferences={searchPreferences}
-                      notificationPreferences={notificationPreferences}
-                      isUserOverridable={isUserOverridable}
-                      userSettings={userSettings}
-                      setUserSettings={setUserSettings}
-                      onTestNotificationRoutes={handleTestNotificationRoutes}
+            if (showInitialLoadErrorState) {
+              return (
+                <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
+                  <p className="text-sm opacity-70">{loadError}</p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void loadEditContext();
+                    }}
+                    className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface)"
+                  >
+                    Retry
+                  </button>
+                </div>
+              );
+            }
+
+            if (editingUser) {
+              return (
+                <div className="space-y-5">
+                  <FieldWrapper field={THEME_FIELD}>
+                    <SelectField
+                      field={THEME_FIELD}
+                      value={themeValue}
+                      onChange={(value) => {
+                        setThemeValue(value);
+                        setThemePreference(value);
+                      }}
                     />
-                  ),
-                }}
-              />
-            </div>
-          ) : (
-            <div className="h-full flex items-center justify-center text-sm opacity-60">
-              Unable to load account details.
-            </div>
-          )}
+                  </FieldWrapper>
+
+                  <UserAccountCardContent
+                    user={editingUser}
+                    onUserChange={setEditingUser}
+                    onSave={() => undefined}
+                    saving={isSaving}
+                    onCancel={handleClose}
+                    hideEditActions
+                    editPassword={editPassword}
+                    onEditPasswordChange={setEditPassword}
+                    editPasswordConfirm={editPasswordConfirm}
+                    onEditPasswordConfirmChange={setEditPasswordConfirm}
+                    preferencesPlacement="after"
+                    preferencesPanel={{
+                      hideTitle: true,
+                      children: (
+                        <UserOverridesSections
+                          scope="self"
+                          sections={visibleSections}
+                          deliveryPreferences={deliveryPreferences}
+                          searchPreferences={searchPreferences}
+                          notificationPreferences={notificationPreferences}
+                          isUserOverridable={isUserOverridable}
+                          userSettings={userSettings}
+                          setUserSettings={setUserSettings}
+                          onTestNotificationRoutes={handleTestNotificationRoutes}
+                        />
+                      ),
+                    }}
+                  />
+                </div>
+              );
+            }
+
+            return (
+              <div className="flex h-full items-center justify-center text-sm opacity-60">
+                Unable to load account details.
+              </div>
+            );
+          })()}
         </div>
 
         <footer className="flex items-center justify-end gap-3 border-t border-(--border-muted) px-6 py-4">

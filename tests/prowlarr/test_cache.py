@@ -3,7 +3,6 @@ Tests for the Prowlarr release cache.
 """
 
 import time
-import pytest
 
 # Import the cache module
 from shelfmark.release_sources.prowlarr import cache
@@ -106,7 +105,9 @@ class TestProwlarrCache:
         def cache_operations():
             try:
                 for i in range(100):
-                    cache.cache_release(f"thread-{threading.current_thread().name}-{i}", {"data": i})
+                    cache.cache_release(
+                        f"thread-{threading.current_thread().name}-{i}", {"data": i}
+                    )
                     cache.get_release(f"thread-{threading.current_thread().name}-{i}")
             except Exception as e:
                 errors.append(e)

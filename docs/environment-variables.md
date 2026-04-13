@@ -331,7 +331,7 @@ Directory where downloaded files are saved. Use {User} for per-user folders (e.g
 
 **File Organization**
 
-Choose how downloaded book files are named and organized. 
+Choose how downloaded book files are named and organized.
 
 - **Type:** string (choice)
 - **Default:** `rename`
@@ -777,7 +777,7 @@ Custom label for the OIDC sign-in button on the login page.
 | `CUSTOM_DNS` | DNS provider for domain resolution. 'Auto' rotates through providers on failure. | string (choice) | `auto` |
 | `CUSTOM_DNS_MANUAL` | Comma-separated list of DNS server IP addresses (e.g., 8.8.8.8, 1.1.1.1). | string | _none_ |
 | `USE_DOH` | Use encrypted DNS queries for improved reliability and privacy. | boolean | `true` |
-| `USING_TOR` | Route all traffic through Tor for enhanced privacy. | boolean | `false` |
+| `USING_TOR` | Route all traffic through Tor for enhanced privacy. Requires root startup. | boolean | `false` |
 | `PROXY_MODE` | Choose proxy type. SOCKS5 handles all traffic through a single proxy. | string (choice) | `none` |
 | `HTTP_PROXY` | HTTP proxy URL (e.g., http://proxy:8080) | string | _none_ |
 | `HTTPS_PROXY` | HTTPS proxy URL (leave empty to use HTTP proxy for HTTPS) | string | _none_ |
@@ -829,7 +829,7 @@ Use encrypted DNS queries for improved reliability and privacy.
 
 **Tor Routing**
 
-Route all traffic through Tor for enhanced privacy.
+Route all traffic through Tor for enhanced privacy. Requires root startup.
 
 - **Type:** boolean
 - **Default:** `false`

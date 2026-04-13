@@ -1,28 +1,21 @@
-import { useState, useEffect, useCallback, useMemo } from 'react';
+import { useState, useCallback, useMemo } from 'react';
+
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { useEscapeKey } from '../hooks/useEscapeKey';
+import { useMountEffect } from '../hooks/useMountEffect';
+import type { OnboardingStep } from '../services/api';
 import {
   getOnboarding,
   saveOnboarding,
   skipOnboarding,
   executeSettingsAction,
-  OnboardingStep,
 } from '../services/api';
-import {
-  SettingsField,
-  TextFieldConfig,
-  PasswordFieldConfig,
-  CheckboxFieldConfig,
-  SelectFieldConfig,
-  MultiSelectFieldConfig,
-  TagListFieldConfig,
-  HeadingFieldConfig,
-  ActionButtonConfig,
-  ActionResult,
-  ShowWhenCondition,
-} from '../types/settings';
-import { FieldWrapper } from './settings/shared';
+import type { SettingsField, ActionResult, ShowWhenCondition } from '../types/settings';
+import { toBooleanValue, toStringArray, toStringValue } from '../utils/objectHelpers';
 import {
   TextField,
   PasswordField,
+  NumberField,
   CheckboxField,
   SelectField,
   MultiSelectField,
@@ -30,6 +23,7 @@ import {
   HeadingField,
   ActionButton,
 } from './settings/fields';
+import { FieldWrapper } from './settings/shared';
 
 interface OnboardingModalProps {
   isOpen: boolean;
@@ -40,7 +34,7 @@ interface OnboardingModalProps {
 
 function evaluateShowWhenCondition(
   showWhen: ShowWhenCondition,
-  values: Record<string, unknown>
+  values: Record<string, unknown>,
 ): boolean {
   const currentValue = values[showWhen.field];
 
@@ -52,15 +46,12 @@ function evaluateShowWhenCondition(
   }
 
   return Array.isArray(showWhen.value)
-    ? showWhen.value.includes(currentValue as string)
+    ? typeof currentValue === 'string' && showWhen.value.includes(currentValue)
     : currentValue === showWhen.value;
 }
 
 // Check if a field should be visible based on showWhen condition
-function isFieldVisible(
-  field: SettingsField,
-  values: Record<string, unknown>
-): boolean {
+function isFieldVisible(field: SettingsField, values: Record<string, unknown>): boolean {
   if ('hiddenInUi' in field && field.hiddenInUi) {
     return false;
   }
@@ -76,10 +67,7 @@ function isFieldVisible(
 }
 
 // Check if a step should be visible based on its showWhen conditions (all must be true)
-function isStepVisible(
-  step: OnboardingStep,
-  values: Record<string, unknown>
-): boolean {
+function isStepVisible(step: OnboardingStep, values: Record<string, unknown>): boolean {
   if (!step.showWhen || step.showWhen.length === 0) return true;
 
   // All conditions must be true (AND logic)
@@ -95,14 +83,14 @@ const renderField = (
   value: unknown,
   onChange: (value: unknown) => void,
   onAction: () => Promise<ActionResult>,
-  isDisabled: boolean
+  isDisabled: boolean,
 ) => {
   switch (field.type) {
     case 'TextField':
       return (
         <TextField
-          field={field as TextFieldConfig}
-          value={(value as string) ?? ''}
+          field={field}
+          value={toStringValue(value) ?? ''}
           onChange={onChange}
           disabled={isDisabled}
         />
@@ -110,8 +98,17 @@ const renderField = (
     case 'PasswordField':
       return (
         <PasswordField
-          field={field as PasswordFieldConfig}
-          value={(value as string) ?? ''}
+          field={field}
+          value={toStringValue(value) ?? ''}
+          onChange={onChange}
+          disabled={isDisabled}
+        />
+      );
+    case 'NumberField':
+      return (
+        <NumberField
+          field={field}
+          value={typeof value === 'number' ? value : field.value}
           onChange={onChange}
           disabled={isDisabled}
         />
@@ -119,8 +116,8 @@ const renderField = (
     case 'CheckboxField':
       return (
         <CheckboxField
-          field={field as CheckboxFieldConfig}
-          value={(value as boolean) ?? false}
+          field={field}
+          value={toBooleanValue(value) ?? false}
           onChange={onChange}
           disabled={isDisabled}
         />
@@ -128,8 +125,8 @@ const renderField = (
     case 'SelectField':
       return (
         <SelectField
-          field={field as SelectFieldConfig}
-          value={(value as string) ?? ''}
+          field={field}
+          value={toStringValue(value) ?? ''}
           onChange={onChange}
           disabled={isDisabled}
         />
@@ -137,8 +134,8 @@ const renderField = (
     case 'MultiSelectField':
       return (
         <MultiSelectField
-          field={field as MultiSelectFieldConfig}
-          value={(value as string[]) ?? []}
+          field={field}
+          value={toStringArray(value) ?? []}
           onChange={onChange}
           disabled={isDisabled}
         />
@@ -146,22 +143,20 @@ const renderField = (
     case 'TagListField':
       return (
         <TagListField
-          field={field as TagListFieldConfig}
-          value={(value as string[]) ?? []}
+          field={field}
+          value={toStringArray(value) ?? []}
           onChange={(v) => onChange(v)}
           disabled={isDisabled}
         />
       );
     case 'ActionButton':
-      return (
-        <ActionButton
-          field={field as ActionButtonConfig}
-          onAction={onAction}
-          disabled={isDisabled}
-        />
-      );
+      return <ActionButton field={field} onAction={onAction} disabled={isDisabled} />;
     case 'HeadingField':
-      return <HeadingField field={field as HeadingFieldConfig} />;
+      return <HeadingField field={field} />;
+    case 'OrderableListField':
+    case 'TableField':
+    case 'CustomComponentField':
+      return <div>Unsupported onboarding field type: {field.type}</div>;
     default:
       return <div>Unknown field type</div>;
   }
@@ -173,18 +168,55 @@ export const OnboardingModal = ({
   onComplete,
   onShowToast,
 }: OnboardingModalProps) => {
+  const [isClosing, setIsClosing] = useState(false);
+  const [sessionVersion, setSessionVersion] = useState(0);
+
+  const handleClose = useCallback(() => {
+    setIsClosing(true);
+    setTimeout(() => {
+      onClose();
+      setIsClosing(false);
+      setSessionVersion((current) => current + 1);
+    }, 150);
+  }, [onClose]);
+
+  useBodyScrollLock(isOpen);
+  useEscapeKey(isOpen, handleClose);
+
+  if (!isOpen && !isClosing) return null;
+
+  return (
+    <OnboardingModalSession
+      key={sessionVersion}
+      isClosing={isClosing}
+      handleClose={handleClose}
+      onComplete={onComplete}
+      onShowToast={onShowToast}
+    />
+  );
+};
+
+interface OnboardingModalSessionProps {
+  isClosing: boolean;
+  handleClose: () => void;
+  onComplete: () => void;
+  onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+}
+
+const OnboardingModalSession = ({
+  isClosing,
+  handleClose,
+  onComplete,
+  onShowToast,
+}: OnboardingModalSessionProps) => {
   const [steps, setSteps] = useState<OnboardingStep[]>([]);
   const [values, setValues] = useState<Record<string, unknown>>({});
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
-  const [isClosing, setIsClosing] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Fetch onboarding config on mount
-  useEffect(() => {
-    if (!isOpen) return;
-
+  useMountEffect(() => {
     const fetchOnboarding = async () => {
       try {
         setIsLoading(true);
@@ -200,8 +232,8 @@ export const OnboardingModal = ({
       }
     };
 
-    fetchOnboarding();
-  }, [isOpen]);
+    void fetchOnboarding();
+  });
 
   // Get visible steps based on current values
   const visibleSteps = useMemo(() => {
@@ -235,15 +267,6 @@ export const OnboardingModal = ({
       setCurrentStepIndex(currentStepIndex - 1);
     }
   }, [currentStepIndex]);
-
-  // Handle close with animation
-  const handleClose = useCallback(() => {
-    setIsClosing(true);
-    setTimeout(() => {
-      setIsClosing(false);
-      onClose();
-    }, 150);
-  }, [onClose]);
 
   // Handle skip
   const handleSkip = useCallback(async () => {
@@ -297,47 +320,17 @@ export const OnboardingModal = ({
         };
       }
     },
-    [currentStep, values]
+    [currentStep, values],
   );
-
-  // Handle ESC key
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleEscape = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        handleClose();
-      }
-    };
-
-    document.addEventListener('keydown', handleEscape);
-    return () => document.removeEventListener('keydown', handleEscape);
-  }, [isOpen, handleClose]);
-
-  // Prevent body scroll when open
-  useEffect(() => {
-    if (isOpen) {
-      const previousOverflow = document.body.style.overflow;
-      document.body.style.overflow = 'hidden';
-      return () => {
-        document.body.style.overflow = previousOverflow;
-      };
-    }
-  }, [isOpen]);
-
-  if (!isOpen && !isClosing) return null;
 
   // Loading state
   if (isLoading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center">
         <div className="absolute inset-0 bg-black/50 backdrop-blur-xs" />
-        <div
-          className="relative rounded-xl p-8 shadow-2xl"
-          style={{ background: 'var(--bg)' }}
-        >
+        <div className="relative rounded-xl p-8 shadow-2xl" style={{ background: 'var(--bg)' }}>
           <div className="flex items-center gap-3">
-            <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+            <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24">
               <circle
                 className="opacity-25"
                 cx="12"
@@ -364,15 +357,21 @@ export const OnboardingModal = ({
   if (error) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center">
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-xs" onClick={handleClose} />
+        <button
+          type="button"
+          className="absolute inset-0 bg-black/50 backdrop-blur-xs"
+          onClick={handleClose}
+          tabIndex={-1}
+          aria-label="Close setup wizard"
+        />
         <div
-          className="relative rounded-xl p-8 shadow-2xl max-w-md"
+          className="relative max-w-md rounded-xl p-8 shadow-2xl"
           style={{ background: 'var(--bg)' }}
         >
-          <div className="text-center space-y-4">
+          <div className="space-y-4 text-center">
             <div className="text-red-500">
               <svg
-                className="w-12 h-12 mx-auto"
+                className="mx-auto h-12 w-12"
                 xmlns="http://www.w3.org/2000/svg"
                 fill="none"
                 viewBox="0 0 24 24"
@@ -388,10 +387,9 @@ export const OnboardingModal = ({
             </div>
             <p className="text-sm">{error}</p>
             <button
+              type="button"
               onClick={handleClose}
-              className="px-4 py-2 rounded-lg text-sm font-medium
-                       bg-(--bg-soft) border border-(--border-muted)
-                       hover:bg-(--hover-surface) transition-colors"
+              className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface)"
             >
               Close
             </button>
@@ -409,24 +407,21 @@ export const OnboardingModal = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className={`absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity duration-150
-                    ${isClosing ? 'opacity-0' : 'opacity-100'}`}
+        className={`absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity duration-150 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
       />
 
       {/* Modal */}
       <div
-        className={`relative w-full max-w-xl rounded-xl
-                    border border-(--border-muted) shadow-2xl
-                    ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
+        className={`relative w-full max-w-xl rounded-xl border border-(--border-muted) shadow-2xl ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         style={{ background: 'var(--bg)' }}
         role="dialog"
         aria-modal="true"
         aria-label="Setup Wizard"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-(--border-muted)">
+        <div className="flex items-center justify-between border-b border-(--border-muted) px-6 py-4">
           <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-8 h-8 rounded-full bg-sky-500/20 text-sky-500 text-sm font-medium">
+            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-500/20 text-sm font-medium text-sky-500">
               {currentStepIndex + 1}
             </div>
             <div>
@@ -437,8 +432,9 @@ export const OnboardingModal = ({
             </div>
           </div>
           <button
+            type="button"
             onClick={handleClose}
-            className="p-1.5 rounded-lg hover:bg-(--hover-surface) transition-colors"
+            className="rounded-lg p-1.5 transition-colors hover:bg-(--hover-surface)"
             aria-label="Close"
           >
             <svg
@@ -447,7 +443,7 @@ export const OnboardingModal = ({
               viewBox="0 0 24 24"
               strokeWidth={1.5}
               stroke="currentColor"
-              className="w-5 h-5"
+              className="h-5 w-5"
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
             </svg>
@@ -463,7 +459,7 @@ export const OnboardingModal = ({
         </div>
 
         {/* Content */}
-        <div className="px-6 py-5 space-y-5 min-h-[280px]">
+        <div className="min-h-[280px] space-y-5 px-6 py-5">
           {visibleFields.map((field) => {
             const isDisabled = 'fromEnv' in field ? (field.fromEnv ?? false) : false;
             return (
@@ -473,7 +469,7 @@ export const OnboardingModal = ({
                   values[field.key],
                   (v) => handleChange(field.key, v),
                   () => handleAction(field.key),
-                  isDisabled
+                  isDisabled,
                 )}
               </FieldWrapper>
             );
@@ -481,13 +477,15 @@ export const OnboardingModal = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-4 border-t border-(--border-muted) flex items-center justify-between h-[68px]">
+        <div className="flex h-[68px] items-center justify-between border-t border-(--border-muted) px-6 py-4">
           <div>
             <button
-              onClick={handleSkip}
+              type="button"
+              onClick={() => {
+                void handleSkip();
+              }}
               disabled={isSaving || !isFirstStep}
-              className={`px-4 py-2 rounded-lg text-sm font-medium
-                         ${isFirstStep ? 'opacity-60 hover:opacity-100 transition-opacity' : 'invisible'}`}
+              className={`rounded-lg px-4 py-2 text-sm font-medium ${isFirstStep ? 'opacity-60 transition-opacity hover:opacity-100' : 'invisible'}`}
             >
               Skip setup
             </button>
@@ -496,12 +494,10 @@ export const OnboardingModal = ({
           <div className="flex gap-3">
             {!isFirstStep && (
               <button
+                type="button"
                 onClick={handleBack}
                 disabled={isSaving}
-                className="px-4 py-2 rounded-lg text-sm font-medium
-                         bg-(--bg-soft) border border-(--border-muted)
-                         hover:bg-(--hover-surface) transition-colors
-                         disabled:opacity-50 disabled:cursor-not-allowed"
+                className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface) disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Back
               </button>
@@ -509,17 +505,16 @@ export const OnboardingModal = ({
 
             {isLastStep ? (
               <button
-                onClick={handleFinish}
+                type="button"
+                onClick={() => {
+                  void handleFinish();
+                }}
                 disabled={isSaving}
-                className="px-5 py-2 rounded-lg text-sm font-medium
-                         bg-sky-600 text-white
-                         hover:bg-sky-700 transition-colors
-                         disabled:opacity-50 disabled:cursor-not-allowed
-                         flex items-center gap-2"
+                className="flex items-center gap-2 rounded-lg bg-sky-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 {isSaving ? (
                   <>
-                    <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
+                    <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
                       <circle
                         className="opacity-25"
                         cx="12"
@@ -543,13 +538,10 @@ export const OnboardingModal = ({
               </button>
             ) : (
               <button
+                type="button"
                 onClick={handleNext}
                 disabled={isSaving}
-                className="px-5 py-2 rounded-lg text-sm font-medium
-                         bg-sky-600 text-white
-                         hover:bg-sky-700 transition-colors
-                         disabled:opacity-50 disabled:cursor-not-allowed
-                         flex items-center gap-1"
+                className="flex items-center gap-1 rounded-lg bg-sky-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 Next
                 <svg
@@ -558,9 +550,13 @@ export const OnboardingModal = ({
                   viewBox="0 0 24 24"
                   strokeWidth={2}
                   stroke="currentColor"
-                  className="w-4 h-4"
+                  className="h-4 w-4"
                 >
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M8.25 4.5l7.5 7.5-7.5 7.5" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M8.25 4.5l7.5 7.5-7.5 7.5"
+                  />
                 </svg>
               </button>
             )}

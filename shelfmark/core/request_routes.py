@@ -45,9 +45,12 @@ from shelfmark.core.requests_service import (
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from flask.typing import ResponseReturnValue
+
     from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
+_NOTIFICATION_TRIGGER_ERRORS = (RuntimeError, TypeError, ValueError)
 
 
 def _error_response(
@@ -80,7 +83,8 @@ def _require_request_endpoints_available(
     return None
 
 
-def _require_db_user_id() -> tuple[int | None, object | None]:
+def _require_db_user_id() -> tuple[int | None, ResponseReturnValue | None]:
+    """Return the logged-in DB user id or a ready-made error response."""
     raw_user_id = session.get("db_user_id")
     if raw_user_id is None:
         return None, _error_response(
@@ -88,26 +92,26 @@ def _require_db_user_id() -> tuple[int | None, object | None]:
             403,
             code="user_identity_unavailable",
         )
-    try:
-        return int(raw_user_id), None
-    except TypeError, ValueError:
+    normalized_user_id = normalize_positive_int(raw_user_id)
+    if normalized_user_id is None:
         return None, _error_response(
             "User identity is unavailable for request workflow",
             403,
             code="user_identity_unavailable",
         )
+    return normalized_user_id, None
 
 
-def _require_admin_user_id() -> tuple[int | None, object | None]:
+def _require_admin_user_id() -> tuple[int | None, ResponseReturnValue | None]:
     if not session.get("is_admin", False):
         return None, (jsonify({"error": "Admin access required"}), 403)
     raw_admin_id = session.get("db_user_id")
     if raw_admin_id is None:
         return None, (jsonify({"error": "Admin user identity unavailable"}), 403)
-    try:
-        return int(raw_admin_id), None
-    except TypeError, ValueError:
+    normalized_admin_user_id = normalize_positive_int(raw_admin_id)
+    if normalized_admin_user_id is None:
         return None, (jsonify({"error": "Admin user identity unavailable"}), 403)
+    return normalized_admin_user_id, None
 
 
 def _resolve_effective_policy(
@@ -256,13 +260,8 @@ def _resolve_request_user_context(
         msg = "Admin required"
         raise RequestServiceError(msg, status_code=403)
 
-    try:
-        target_user_id = int(on_behalf_of_user_id)
-    except (TypeError, ValueError) as exc:
-        msg = "Invalid on_behalf_of_user_id"
-        raise RequestServiceError(msg, status_code=400) from exc
-
-    if target_user_id <= 0:
+    target_user_id = normalize_positive_int(on_behalf_of_user_id)
+    if target_user_id is None:
         msg = "Invalid on_behalf_of_user_id"
         raise RequestServiceError(msg, status_code=400)
 
@@ -508,7 +507,7 @@ def _notify_admin_for_request_event(
     owner_user_id = normalize_positive_int(request_row.get("user_id"))
     try:
         notify_admin(event, context)
-    except Exception as exc:
+    except _NOTIFICATION_TRIGGER_ERRORS as exc:
         logger.warning(
             "Failed to trigger admin notification for request event '%s': %s",
             event.value,
@@ -518,7 +517,7 @@ def _notify_admin_for_request_event(
         return
     try:
         notify_user(owner_user_id, event, context)
-    except Exception as exc:
+    except _NOTIFICATION_TRIGGER_ERRORS as exc:
         logger.warning(
             "Failed to trigger user notification for request event '%s' (user_id=%s): %s",
             event.value,
@@ -538,7 +537,7 @@ def register_request_routes(
     """Register request policy and request lifecycle routes."""
 
     @app.route("/api/request-policy", methods=["GET"])
-    def api_request_policy() -> Response | tuple[Response, int]:
+    def api_request_policy() -> ResponseReturnValue:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -550,12 +549,7 @@ def register_request_routes(
             if db_gate is not None:
                 return db_gate
         else:
-            raw_id = session.get("db_user_id")
-            if raw_id is not None:
-                try:
-                    db_user_id = int(raw_id)
-                except TypeError, ValueError:
-                    db_user_id = None
+            db_user_id = normalize_positive_int(session.get("db_user_id"))
 
         global_settings, user_settings, effective, requests_enabled = _resolve_effective_policy(
             user_db,
@@ -615,7 +609,7 @@ def register_request_routes(
         )
 
     @app.route("/api/requests", methods=["POST"])
-    def api_create_request() -> Response | tuple[Response, int]:
+    def api_create_request() -> ResponseReturnValue:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -681,7 +675,7 @@ def register_request_routes(
         return jsonify(created), 201
 
     @app.route("/api/requests/batch", methods=["POST"])
-    def api_create_requests_batch() -> Response | tuple[Response, int]:
+    def api_create_requests_batch() -> ResponseReturnValue:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -795,14 +789,20 @@ def register_request_routes(
         return jsonify(ordered_results), status_code
 
     @app.route("/api/requests", methods=["GET"])
-    def api_list_requests() -> Response | tuple[Response, int]:
+    def api_list_requests() -> ResponseReturnValue:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
 
         db_user_id, db_gate = _require_db_user_id()
-        if db_gate is not None or db_user_id is None:
+        if db_gate is not None:
             return db_gate
+        if db_user_id is None:
+            return _error_response(
+                "User identity is unavailable for request workflow",
+                403,
+                code="user_identity_unavailable",
+            )
 
         status = request.args.get("status")
         limit = request.args.get("limit", type=int)
@@ -820,14 +820,20 @@ def register_request_routes(
         return jsonify(rows)
 
     @app.route("/api/requests/<int:request_id>", methods=["DELETE"])
-    def api_cancel_request(request_id: int) -> Response | tuple[Response, int]:
+    def api_cancel_request(request_id: int) -> ResponseReturnValue:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
 
         db_user_id, db_gate = _require_db_user_id()
-        if db_gate is not None or db_user_id is None:
+        if db_gate is not None:
             return db_gate
+        if db_user_id is None:
+            return _error_response(
+                "User identity is unavailable for request workflow",
+                403,
+                code="user_identity_unavailable",
+            )
 
         try:
             updated = cancel_request(
@@ -868,7 +874,7 @@ def register_request_routes(
         return jsonify(updated)
 
     @app.route("/api/admin/requests", methods=["GET"])
-    def api_admin_list_requests() -> Response | tuple[Response, int]:
+    def api_admin_list_requests() -> ResponseReturnValue:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -889,7 +895,7 @@ def register_request_routes(
         return jsonify(rows)
 
     @app.route("/api/admin/requests/count", methods=["GET"])
-    def api_admin_request_counts() -> Response | tuple[Response, int]:
+    def api_admin_request_counts() -> ResponseReturnValue:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -906,7 +912,7 @@ def register_request_routes(
         )
 
     @app.route("/api/admin/requests/<int:request_id>/fulfil", methods=["POST"])
-    def api_admin_fulfil_request(request_id: int) -> Response | tuple[Response, int]:
+    def api_admin_fulfil_request(request_id: int) -> ResponseReturnValue:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -914,6 +920,8 @@ def register_request_routes(
         admin_user_id, admin_gate = _require_admin_user_id()
         if admin_gate is not None:
             return admin_gate
+        if admin_user_id is None:
+            return jsonify({"error": "Admin user identity unavailable"}), 403
 
         data = request.get_json(silent=True) or {}
         if not isinstance(data, dict):
@@ -970,7 +978,7 @@ def register_request_routes(
         return jsonify(updated)
 
     @app.route("/api/admin/requests/<int:request_id>/reject", methods=["POST"])
-    def api_admin_reject_request(request_id: int) -> Response | tuple[Response, int]:
+    def api_admin_reject_request(request_id: int) -> ResponseReturnValue:
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -978,6 +986,8 @@ def register_request_routes(
         admin_user_id, admin_gate = _require_admin_user_id()
         if admin_gate is not None:
             return admin_gate
+        if admin_user_id is None:
+            return jsonify({"error": "Admin user identity unavailable"}), 403
 
         data = request.get_json(silent=True) or {}
         if not isinstance(data, dict):

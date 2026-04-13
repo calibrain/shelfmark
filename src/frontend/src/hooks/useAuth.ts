@@ -1,9 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LoginCredentials } from '../types';
-import { login, logout, checkAuth } from '../services/api';
+
 import { useSocket } from '../contexts/SocketContext';
+import { login, logout, checkAuth } from '../services/api';
+import type { LoginCredentials } from '../types';
 import { getReturnToFromSearch } from '../utils/authRedirect';
+import { useMountEffect } from './useMountEffect';
 
 interface UseAuthOptions {
   onLogoutSuccess?: () => void;
@@ -36,18 +38,18 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
   const { socket } = useSocket();
   const postLoginPath = getReturnToFromSearch(location.search);
 
-  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
-  const [authRequired, setAuthRequired] = useState<boolean>(true);
-  const [authChecked, setAuthChecked] = useState<boolean>(false);
-  const [isAdmin, setIsAdmin] = useState<boolean>(false);
-  const [authMode, setAuthMode] = useState<string>('none');
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [authRequired, setAuthRequired] = useState(true);
+  const [authChecked, setAuthChecked] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [authMode, setAuthMode] = useState('none');
   const [username, setUsername] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
   const [oidcButtonLabel, setOidcButtonLabel] = useState<string | null>(null);
-  const [hideLocalAuth, setHideLocalAuth] = useState<boolean>(false);
-  const [oidcAutoRedirect, setOidcAutoRedirect] = useState<boolean>(false);
+  const [hideLocalAuth, setHideLocalAuth] = useState(false);
+  const [oidcAutoRedirect, setOidcAutoRedirect] = useState(false);
   const [loginError, setLoginError] = useState<string | null>(null);
-  const [isLoggingIn, setIsLoggingIn] = useState<boolean>(false);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const applyAuthResponse = useCallback((response: Awaited<ReturnType<typeof checkAuth>>) => {
     setAuthRequired(response.auth_required !== false);
@@ -72,7 +74,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
   }, [socket]);
 
   // Check authentication on mount
-  useEffect(() => {
+  useMountEffect(() => {
     const verifyAuth = async () => {
       try {
         applyAuthResponse(await checkAuth());
@@ -85,12 +87,12 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
         setAuthChecked(true);
       }
     };
-    verifyAuth();
-  }, [applyAuthResponse]);
+    void verifyAuth();
+  });
 
   // Re-sync auth when returning to the tab, so role/session changes in
   // another tab/profile don't leave stale local auth state.
-  useEffect(() => {
+  useMountEffect(() => {
     const verifyAuthOnFocus = async () => {
       try {
         applyAuthResponse(await checkAuth());
@@ -115,7 +117,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
       window.removeEventListener('focus', handleFocus);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [applyAuthResponse]);
+  });
 
   const refreshAuth = useCallback(async () => {
     try {
@@ -125,30 +127,33 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
     }
   }, [applyAuthResponse]);
 
-  const handleLogin = useCallback(async (credentials: LoginCredentials) => {
-    setIsLoggingIn(true);
-    setLoginError(null);
-    try {
-      const response = await login(credentials);
-      if (response.success) {
-        // Re-check auth to get updated session state
-        applyAuthResponse(await checkAuth());
-        refreshSocketSession();
-        setLoginError(null);
-        navigate(postLoginPath, { replace: true });
-      } else {
-        setLoginError(response.error || 'Login failed');
+  const handleLogin = useCallback(
+    async (credentials: LoginCredentials) => {
+      setIsLoggingIn(true);
+      setLoginError(null);
+      try {
+        const response = await login(credentials);
+        if (response.success) {
+          // Re-check auth to get updated session state
+          applyAuthResponse(await checkAuth());
+          refreshSocketSession();
+          setLoginError(null);
+          void navigate(postLoginPath, { replace: true });
+        } else {
+          setLoginError(response.error || 'Login failed');
+        }
+      } catch (error) {
+        if (error instanceof Error) {
+          setLoginError(error.message || 'Login failed');
+        } else {
+          setLoginError('Login failed');
+        }
+      } finally {
+        setIsLoggingIn(false);
       }
-    } catch (error) {
-      if (error instanceof Error) {
-        setLoginError(error.message || 'Login failed');
-      } else {
-        setLoginError('Login failed');
-      }
-    } finally {
-      setIsLoggingIn(false);
-    }
-  }, [navigate, applyAuthResponse, postLoginPath, refreshSocketSession]);
+    },
+    [navigate, applyAuthResponse, postLoginPath, refreshSocketSession],
+  );
 
   const handleLogout = useCallback(async () => {
     try {
@@ -169,7 +174,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
       }
       refreshSocketSession();
       onLogoutSuccess?.();
-      navigate('/login', { replace: true });
+      void navigate('/login', { replace: true });
     } catch (error) {
       console.error('Logout failed:', error);
       showToast?.('Logout failed', 'error');

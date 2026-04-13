@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import requests
 
-from shelfmark.bypass import BypassCancelledException
+from shelfmark.bypass import BypassCancelledError
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
@@ -18,6 +18,7 @@ if TYPE_CHECKING:
     from shelfmark.download import network
 
 logger = setup_logger(__name__)
+_RNG = random.SystemRandom()
 
 # Timeout constants (seconds)
 CONNECT_TIMEOUT = 10
@@ -30,11 +31,30 @@ BACKOFF_BASE = 1.0
 BACKOFF_CAP = 10.0
 
 
+def _coerce_config_str(value: object, default: str) -> str:
+    """Return a string config value or a safe default."""
+    if isinstance(value, str):
+        return value
+    return default
+
+
+def _coerce_timeout_ms(value: object, default: int) -> int:
+    """Return a positive timeout in milliseconds or the default."""
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int) and value > 0:
+        return value
+    return default
+
+
 def _fetch_via_bypasser(target_url: str) -> str | None:
     """Make a single request to the external bypasser service. Returns HTML or None."""
-    raw_bypasser_url = config.get("EXT_BYPASSER_URL", "http://flaresolverr:8191")
-    bypasser_path = config.get("EXT_BYPASSER_PATH", "/v1")
-    bypasser_timeout = config.get("EXT_BYPASSER_TIMEOUT", 60000)
+    raw_bypasser_url = _coerce_config_str(
+        config.get("EXT_BYPASSER_URL", "http://flaresolverr:8191"),
+        "http://flaresolverr:8191",
+    )
+    bypasser_path = _coerce_config_str(config.get("EXT_BYPASSER_PATH", "/v1"), "/v1")
+    bypasser_timeout = _coerce_timeout_ms(config.get("EXT_BYPASSER_TIMEOUT", 60000), 60000)
 
     bypasser_url = normalize_http_url(raw_bypasser_url)
     if not bypasser_url or not bypasser_path:
@@ -102,7 +122,7 @@ def _check_cancelled(cancel_flag: Event | None, context: str) -> None:
     if cancel_flag and cancel_flag.is_set():
         logger.info("External bypasser cancelled %s", context)
         msg = "Bypass cancelled"
-        raise BypassCancelledException(msg)
+        raise BypassCancelledError(msg)
 
 
 def _sleep_with_cancellation(seconds: float, cancel_flag: Event | None) -> None:
@@ -136,7 +156,7 @@ def get_bypassed_page(
         if attempt == MAX_RETRY:
             break
 
-        delay = min(BACKOFF_CAP, BACKOFF_BASE * (2 ** (attempt - 1))) + random.random()
+        delay = min(BACKOFF_CAP, BACKOFF_BASE * (2 ** (attempt - 1))) + _RNG.random()
         logger.info(
             "External bypasser attempt %s/%s failed, retrying in %.1fs",
             attempt,

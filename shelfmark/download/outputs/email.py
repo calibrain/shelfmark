@@ -1,3 +1,5 @@
+"""Email output integration for delivering completed downloads as attachments."""
+
 from __future__ import annotations
 
 import mimetypes
@@ -44,6 +46,8 @@ class EmailOutputError(Exception):
 
 @dataclass(frozen=True)
 class EmailSmtpConfig:
+    """SMTP connection settings for the email output."""
+
     host: str
     port: int
     security: str
@@ -57,25 +61,31 @@ class EmailSmtpConfig:
 
 def _parse_int(value: Any, label: str, *, minimum: int = 1) -> int:
     if value is None or value == "":
-        raise EmailOutputError(f"{label} is required")
+        msg = f"{label} is required"
+        raise EmailOutputError(msg)
+    if not isinstance(value, (int, float, str)):
+        msg = f"{label} must be a number"
+        raise EmailOutputError(msg)
     try:
         parsed = int(value)
     except (TypeError, ValueError) as exc:
-        raise EmailOutputError(f"{label} must be a number") from exc
+        msg = f"{label} must be a number"
+        raise EmailOutputError(msg) from exc
     if parsed < minimum:
-        raise EmailOutputError(f"{label} must be >= {minimum}")
+        msg = f"{label} must be >= {minimum}"
+        raise EmailOutputError(msg)
     return parsed
 
 
 def build_email_smtp_config(values: Mapping[str, Any]) -> EmailSmtpConfig:
+    """Build and validate SMTP settings for the email output."""
     host = str(values.get("EMAIL_SMTP_HOST", "") or "").strip()
     port = _parse_int(values.get("EMAIL_SMTP_PORT", 587), "SMTP port", minimum=1)
 
     security = str(values.get("EMAIL_SMTP_SECURITY", SECURITY_STARTTLS) or "").strip().lower()
     if security not in ALLOWED_SECURITY:
-        raise EmailOutputError(
-            f"SMTP security must be one of: {', '.join(sorted(ALLOWED_SECURITY))}"
-        )
+        msg = f"SMTP security must be one of: {', '.join(sorted(ALLOWED_SECURITY))}"
+        raise EmailOutputError(msg)
 
     username = str(values.get("EMAIL_SMTP_USERNAME", "") or "").strip()
     password = values.get("EMAIL_SMTP_PASSWORD", "") or ""
@@ -88,9 +98,11 @@ def build_email_smtp_config(values: Mapping[str, Any]) -> EmailSmtpConfig:
     allow_unverified_tls = bool(values.get("EMAIL_ALLOW_UNVERIFIED_TLS", False))
 
     if not host:
-        raise EmailOutputError("SMTP host is required")
+        msg = "SMTP host is required"
+        raise EmailOutputError(msg)
     if username and not password:
-        raise EmailOutputError("SMTP password is required when username is set")
+        msg = "SMTP password is required when username is set"
+        raise EmailOutputError(msg)
 
     if not from_addr:
         # If From is not configured, fall back to the SMTP username if it is an email address.
@@ -98,9 +110,8 @@ def build_email_smtp_config(values: Mapping[str, Any]) -> EmailSmtpConfig:
         if username_email and "@" in username_email:
             from_addr = f"Shelfmark <{username_email}>"
         else:
-            raise EmailOutputError(
-                "From address is required (or set SMTP username to an email address)."
-            )
+            msg = "From address is required (or set SMTP username to an email address)."
+            raise EmailOutputError(msg)
 
     return EmailSmtpConfig(
         host=host,
@@ -127,6 +138,15 @@ def _get_email_settings() -> dict[str, Any]:
         "EMAIL_SMTP_TIMEOUT_SECONDS": core_config.config.get("EMAIL_SMTP_TIMEOUT_SECONDS", 60),
         "EMAIL_ALLOW_UNVERIFIED_TLS": core_config.config.get("EMAIL_ALLOW_UNVERIFIED_TLS", False),
     }
+
+
+def _parse_attachment_limit_mb(value: object) -> int:
+    if not isinstance(value, (int, float, str)):
+        return 25
+    try:
+        return int(value)
+    except TypeError, ValueError:
+        return 25
 
 
 def _render_subject(template: str, task: DownloadTask) -> str:
@@ -161,6 +181,7 @@ def compose_email_message(
     recipient: str,
     files: list[Path],
 ) -> EmailMessage:
+    """Compose the outbound email message for a completed download."""
     message = EmailMessage()
     message["From"] = smtp_config.from_addr
     message["To"] = recipient
@@ -220,9 +241,11 @@ def test_smtp_connection(smtp_config: EmailSmtpConfig) -> None:
         if smtp_config.username:
             smtp.login(smtp_config.username, smtp_config.password)
     except smtplib.SMTPAuthenticationError as exc:
-        raise EmailOutputError("SMTP authentication failed") from exc
+        msg = "SMTP authentication failed"
+        raise EmailOutputError(msg) from exc
     except (smtplib.SMTPConnectError, smtplib.SMTPServerDisconnected, TimeoutError, OSError) as exc:
-        raise EmailOutputError(f"Could not connect to SMTP server: {exc}") from exc
+        msg = f"Could not connect to SMTP server: {exc}"
+        raise EmailOutputError(msg) from exc
     finally:
         if smtp is not None:
             with suppress(Exception):
@@ -232,6 +255,7 @@ def test_smtp_connection(smtp_config: EmailSmtpConfig) -> None:
 
 
 def send_email_message(smtp_config: EmailSmtpConfig, message: EmailMessage) -> None:
+    """Send a prepared email message using the configured SMTP transport."""
     smtp: smtplib.SMTP | None = None
     try:
         if smtp_config.security == SECURITY_SSL:
@@ -259,9 +283,11 @@ def send_email_message(smtp_config: EmailSmtpConfig, message: EmailMessage) -> N
 
         smtp.send_message(message)
     except smtplib.SMTPAuthenticationError as exc:
-        raise EmailOutputError("SMTP authentication failed") from exc
+        msg = "SMTP authentication failed"
+        raise EmailOutputError(msg) from exc
     except (smtplib.SMTPException, TimeoutError, OSError) as exc:
-        raise EmailOutputError(f"Failed to send email: {exc}") from exc
+        msg = f"Failed to send email: {exc}"
+        raise EmailOutputError(msg) from exc
     finally:
         if smtp is not None:
             with suppress(Exception):
@@ -348,10 +374,7 @@ def _post_process_email(
     success = False
     try:
         limit_mb_raw = core_config.config.get("EMAIL_ATTACHMENT_SIZE_LIMIT_MB", 25)
-        try:
-            attachment_limit_mb = int(limit_mb_raw)
-        except TypeError, ValueError:
-            attachment_limit_mb = 25
+        attachment_limit_mb = _parse_attachment_limit_mb(limit_mb_raw)
 
         if attachment_limit_mb > 0:
             limit_bytes = attachment_limit_mb * 1024 * 1024
@@ -428,7 +451,7 @@ def _post_process_email(
         logger.warning("Task %s: email send failed: %s", task.task_id, exc)
         status_callback("error", str(exc))
         return None
-    except Exception as exc:
+    except (OSError, TypeError, ValueError) as exc:
         logger.error_trace("Task %s: unexpected error sending email: %s", task.task_id, exc)
         status_callback("error", f"Email send failed: {exc}")
         return None
@@ -454,6 +477,7 @@ def process_email_output(
     *,
     preserve_source_on_failure: bool = False,
 ) -> str | None:
+    """Process a completed download through the email output."""
     return _post_process_email(
         temp_file,
         task,

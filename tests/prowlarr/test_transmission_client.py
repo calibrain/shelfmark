@@ -5,11 +5,10 @@ These tests mock the transmission-rpc library to test the client logic
 without requiring a running Transmission instance.
 """
 
-from unittest.mock import MagicMock, patch
-from datetime import timedelta
-import pytest
 import sys
 import types
+from datetime import timedelta
+from unittest.mock import MagicMock, patch
 
 from shelfmark.download.clients import DownloadStatus
 
@@ -55,8 +54,10 @@ class MockSession:
 
 def make_config_getter(values):
     """Create a config.get function that returns values from a dict."""
+
     def getter(key, default=""):
         return values.get(key, default)
+
     return getter
 
 
@@ -284,7 +285,7 @@ class TestTransmissionClientTestConnection:
         )
 
         mock_client_instance = MagicMock()
-        mock_client_instance.get_session.side_effect = Exception("Connection refused")
+        mock_client_instance.get_session.side_effect = RuntimeError("Connection refused")
 
         mock_transmission_rpc = create_mock_transmission_rpc_module()
         mock_transmission_rpc.Client.return_value = mock_client_instance
@@ -627,9 +628,7 @@ class TestTransmissionClientRemove:
             result = client.remove("abc123", delete_files=True)
 
             assert result is True
-            mock_client_instance.remove_torrent.assert_called_once_with(
-                "abc123", delete_data=True
-            )
+            mock_client_instance.remove_torrent.assert_called_once_with("abc123", delete_data=True)
 
     def test_remove_failure(self, monkeypatch):
         """Test failed torrent removal."""
@@ -645,7 +644,7 @@ class TestTransmissionClientRemove:
         )
 
         mock_client_instance = MagicMock()
-        mock_client_instance.remove_torrent.side_effect = Exception("Not found")
+        mock_client_instance.remove_torrent.side_effect = RuntimeError("Not found")
 
         mock_transmission_rpc = create_mock_transmission_rpc_module()
         mock_transmission_rpc.Client.return_value = mock_client_instance

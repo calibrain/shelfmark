@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useCallback, useState } from 'react';
 
 const STORAGE_KEY = 'cwa-config-banner-dismissed';
 
@@ -19,20 +19,23 @@ export const ConfigSetupBanner = ({
   onContinue,
   settingsEnabled,
 }: ConfigSetupBannerProps) => {
-  const [autoShowVisible, setAutoShowVisible] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
-
-  // Auto-show mode: check localStorage on mount
-  useEffect(() => {
-    if (settingsEnabled !== undefined) {
-      const dismissed = localStorage.getItem(STORAGE_KEY);
-      setAutoShowVisible(!settingsEnabled && dismissed !== 'true');
+  const [dismissed, setDismissed] = useState(() => {
+    if (typeof window === 'undefined') {
+      return false;
     }
-  }, [settingsEnabled]);
+
+    try {
+      return window.localStorage.getItem(STORAGE_KEY) === 'true';
+    } catch {
+      return false;
+    }
+  });
 
   // Determine if we should show based on controlled or auto-show mode
   const isControlledMode = controlledOpen !== undefined;
-  const isVisible = isControlledMode ? controlledOpen : autoShowVisible;
+  const isAutoShowVisible = settingsEnabled !== undefined ? !settingsEnabled && !dismissed : false;
+  const isVisible = isControlledMode ? controlledOpen : isAutoShowVisible;
 
   const handleClose = useCallback(() => {
     setIsClosing(true);
@@ -41,12 +44,15 @@ export const ConfigSetupBanner = ({
       if (isControlledMode) {
         onClose?.();
       } else {
-        // Auto-show mode: save to localStorage
-        localStorage.setItem(STORAGE_KEY, 'true');
-        setAutoShowVisible(false);
+        try {
+          window.localStorage.setItem(STORAGE_KEY, 'true');
+        } catch {
+          // Best effort only.
+        }
+        setDismissed(true);
       }
     }, 150);
-  }, [isControlledMode, onClose]);
+  }, [isControlledMode, onClose, setDismissed]);
 
   const handleContinue = useCallback(() => {
     setIsClosing(true);
@@ -64,31 +70,30 @@ export const ConfigSetupBanner = ({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
-      <div
-        className={`absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity duration-150
-                    ${isClosing ? 'opacity-0' : 'opacity-100'}`}
+      <button
+        type="button"
+        className={`absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity duration-150 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
         onClick={handleClose}
+        aria-label="Close settings setup dialog"
       />
 
       {/* Modal */}
       <div
-        className={`relative w-full max-w-lg rounded-xl
-                    border border-(--border-muted) shadow-2xl
-                    overflow-hidden
-                    ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
+        className={`relative z-10 w-full max-w-lg overflow-hidden rounded-xl border border-(--border-muted) shadow-2xl ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         style={{ background: 'var(--bg)' }}
         role="dialog"
         aria-modal="true"
         aria-label="Settings Setup Information"
       >
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-4 border-b border-(--border-muted)">
+        <div className="flex items-center justify-between border-b border-(--border-muted) px-5 py-4">
           <h2 className="text-lg font-semibold">
             {showContinueButton ? 'Config Volume Required' : 'New Feature: Settings Page'}
           </h2>
           <button
+            type="button"
             onClick={handleClose}
-            className="p-1.5 rounded-lg hover:bg-(--hover-surface) transition-colors"
+            className="rounded-lg p-1.5 transition-colors hover:bg-(--hover-surface)"
             aria-label="Close"
           >
             <svg
@@ -97,7 +102,7 @@ export const ConfigSetupBanner = ({
               viewBox="0 0 24 24"
               strokeWidth={1.5}
               stroke="currentColor"
-              className="w-5 h-5"
+              className="h-5 w-5"
             >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
             </svg>
@@ -105,7 +110,7 @@ export const ConfigSetupBanner = ({
         </div>
 
         {/* Content */}
-        <div className="px-5 py-4 space-y-4">
+        <div className="space-y-4 px-5 py-4">
           <p className="text-sm opacity-80">
             {showContinueButton
               ? 'To save settings, add a config volume to your Docker Compose file:'
@@ -113,20 +118,25 @@ export const ConfigSetupBanner = ({
           </p>
 
           {/* Code snippet */}
-          <div className="rounded-lg overflow-hidden border border-(--border-muted)">
-            <div className="px-3 py-1.5 text-xs font-medium opacity-60 border-b border-(--border-muted)"
-                 style={{ background: 'var(--bg-soft)' }}>
+          <div className="overflow-hidden rounded-lg border border-(--border-muted)">
+            <div
+              className="border-b border-(--border-muted) px-3 py-1.5 text-xs font-medium opacity-60"
+              style={{ background: 'var(--bg-soft)' }}
+            >
               docker-compose.yml
             </div>
             <pre
-              className="px-3 py-3 text-sm overflow-x-auto"
+              className="overflow-x-auto px-3 py-3 text-sm"
               style={{ background: 'var(--bg-soft)' }}
             >
               <code>
-                <span className="opacity-60">services:</span>{'\n'}
-                <span className="opacity-60">{'  '}shelfmark:</span>{'\n'}
+                <span className="opacity-60">services:</span>
+                {'\n'}
+                <span className="opacity-60">{'  '}shelfmark:</span>
+                {'\n'}
                 {'    '}volumes:{'\n'}
-                {'      '}- <span className="text-blue-400">/path/to/config</span>:<span className="text-green-400">/config</span>
+                {'      '}- <span className="text-blue-400">/path/to/config</span>:
+                <span className="text-green-400">/config</span>
               </code>
             </pre>
           </div>
@@ -139,32 +149,29 @@ export const ConfigSetupBanner = ({
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-4 border-t border-(--border-muted) flex justify-end gap-3">
+        <div className="flex justify-end gap-3 border-t border-(--border-muted) px-5 py-4">
           {showContinueButton ? (
             <>
               <button
+                type="button"
                 onClick={handleClose}
-                className="px-4 py-2 rounded-lg text-sm font-medium
-                           bg-(--bg-soft) border border-(--border-muted)
-                           hover:bg-(--hover-surface) transition-colors"
+                className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface)"
               >
                 Close
               </button>
               <button
+                type="button"
                 onClick={handleContinue}
-                className="px-4 py-2 rounded-lg text-sm font-medium
-                           bg-(--primary-color) text-white
-                           hover:bg-(--primary-dark) transition-colors"
+                className="rounded-lg bg-(--primary-color) px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-(--primary-dark)"
               >
                 Continue to Settings
               </button>
             </>
           ) : (
             <button
+              type="button"
               onClick={handleClose}
-              className="px-4 py-2 rounded-lg text-sm font-medium
-                         bg-(--primary-color) text-white
-                         hover:bg-(--primary-dark) transition-colors"
+              className="rounded-lg bg-(--primary-color) px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-(--primary-dark)"
             >
               Got it
             </button>

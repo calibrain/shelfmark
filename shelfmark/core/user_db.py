@@ -116,6 +116,14 @@ WHERE dismissed_at IS NOT NULL;
 """
 
 
+def _require_loaded_user(user: dict[str, Any] | None) -> dict[str, Any]:
+    """Return a loaded user row or raise when the DB insert result is inconsistent."""
+    if user is None:
+        msg = "Failed to load newly created user"
+        raise RuntimeError(msg)
+    return user
+
+
 def get_users_db_path(config_dir: str | None = None) -> str:
     """Return the configured users database path."""
     root = config_dir or os.environ.get("CONFIG_DIR", "/config")
@@ -175,6 +183,7 @@ class UserDB:
     _VALID_AUTH_SOURCES: ClassVar[frozenset[str]] = frozenset(AUTH_SOURCE_SET)
 
     def __init__(self, db_path: str) -> None:
+        """Initialize the user database wrapper for the given SQLite path."""
         self._db_path = db_path
         self._lock = threading.Lock()
 
@@ -273,7 +282,8 @@ class UserDB:
     ) -> dict[str, Any]:
         """Create a new user. Raises ValueError if username or oidc_subject already exists."""
         if auth_source not in self._VALID_AUTH_SOURCES:
-            raise ValueError(f"Invalid auth_source: {auth_source}")
+            msg = f"Invalid auth_source: {auth_source}"
+            raise ValueError(msg)
         with self._lock:
             conn = self._connect()
             try:
@@ -294,9 +304,14 @@ class UserDB:
                 )
                 conn.commit()
                 user_id = cursor.lastrowid
-                return self._get_user_by_id(conn, user_id)
+                if not isinstance(user_id, int):
+                    msg = "Failed to create user"
+                    raise TypeError(msg)
+                created_user = self._get_user_by_id(conn, user_id)
+                return _require_loaded_user(created_user)
             except sqlite3.IntegrityError as e:
-                raise ValueError(f"User already exists: {e}") from e
+                msg = f"User already exists: {e}"
+                raise ValueError(msg) from e
             finally:
                 conn.close()
 
@@ -337,25 +352,35 @@ class UserDB:
             "role",
         }
     )
+    _USER_UPDATE_STATEMENTS: ClassVar[dict[str, str]] = {
+        "email": "UPDATE users SET email = ? WHERE id = ?",
+        "display_name": "UPDATE users SET display_name = ? WHERE id = ?",
+        "password_hash": "UPDATE users SET password_hash = ? WHERE id = ?",
+        "oidc_subject": "UPDATE users SET oidc_subject = ? WHERE id = ?",
+        "auth_source": "UPDATE users SET auth_source = ? WHERE id = ?",
+        "role": "UPDATE users SET role = ? WHERE id = ?",
+    }
 
-    def update_user(self, user_id: int, **kwargs) -> None:
+    def update_user(self, user_id: int, **kwargs: object) -> None:
         """Update user fields. Raises ValueError if user not found or invalid column."""
         if not kwargs:
             return
         for k in kwargs:
             if k not in self._ALLOWED_UPDATE_COLUMNS:
-                raise ValueError(f"Invalid column: {k}")
+                msg = f"Invalid column: {k}"
+                raise ValueError(msg)
         if "auth_source" in kwargs and kwargs["auth_source"] not in self._VALID_AUTH_SOURCES:
-            raise ValueError(f"Invalid auth_source: {kwargs['auth_source']}")
+            msg = f"Invalid auth_source: {kwargs['auth_source']}"
+            raise ValueError(msg)
         with self._lock:
             conn = self._connect()
             try:
                 # Verify user exists
                 if not self._get_user_by_id(conn, user_id):
-                    raise ValueError(f"User {user_id} not found")
-                sets = ", ".join(f"{k} = ?" for k in kwargs)
-                values = [*list(kwargs.values()), user_id]
-                conn.execute(f"UPDATE users SET {sets} WHERE id = ?", values)
+                    msg = f"User {user_id} not found"
+                    raise ValueError(msg)
+                for column, value in kwargs.items():
+                    conn.execute(self._USER_UPDATE_STATEMENTS[column], (value, user_id))
                 conn.commit()
             finally:
                 conn.close()
@@ -371,14 +396,9 @@ class UserDB:
                 ).fetchall()
                 request_item_keys = [f"request:{row['id']}" for row in request_rows]
                 if request_item_keys:
-                    placeholders = ",".join("?" for _ in request_item_keys)
-                    conn.execute(
-                        f"""
-                        DELETE FROM activity_view_state
-                        WHERE item_type = 'request'
-                          AND item_key IN ({placeholders})
-                        """,
-                        request_item_keys,
+                    conn.executemany(
+                        "DELETE FROM activity_view_state WHERE item_type = 'request' AND item_key = ?",
+                        [(item_key,) for item_key in request_item_keys],
                     )
                 conn.execute(
                     "DELETE FROM activity_view_state WHERE viewer_scope = ?",
@@ -461,7 +481,8 @@ class UserDB:
         try:
             return json.dumps(value)
         except TypeError as exc:
-            raise ValueError(f"{field} must be JSON-serializable") from exc
+            msg = f"{field} must be JSON-serializable"
+            raise ValueError(msg) from exc
 
     @staticmethod
     def _parse_request_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
@@ -543,7 +564,8 @@ class UserDB:
         ).fetchone()
         parsed = self._parse_request_row(row)
         if parsed is None:
-            raise ValueError(f"Request {request_id} not found after creation")
+            msg = f"Request {request_id} not found after creation"
+            raise ValueError(msg)
         return parsed
 
     def create_request(
@@ -566,11 +588,14 @@ class UserDB:
     ) -> dict[str, Any]:
         """Create a download request row and return the created record."""
         if not isinstance(book_data, dict):
-            raise TypeError("book_data must be an object")
+            msg = "book_data must be an object"
+            raise TypeError(msg)
         if release_data is not None and not isinstance(release_data, dict):
-            raise TypeError("release_data must be an object when provided")
+            msg = "release_data must be an object when provided"
+            raise TypeError(msg)
         if not content_type:
-            raise ValueError("content_type is required")
+            msg = "content_type is required"
+            raise ValueError(msg)
 
         normalized_status = normalize_request_status(status)
         normalized_delivery_state = normalize_delivery_state(delivery_state)
@@ -690,27 +715,46 @@ class UserDB:
             "last_failure_reason",
         }
     )
+    _REQUEST_UPDATE_STATEMENTS: ClassVar[dict[str, str]] = {
+        "status": "UPDATE download_requests SET status = ? WHERE id = ?",
+        "source_hint": "UPDATE download_requests SET source_hint = ? WHERE id = ?",
+        "content_type": "UPDATE download_requests SET content_type = ? WHERE id = ?",
+        "request_level": "UPDATE download_requests SET request_level = ? WHERE id = ?",
+        "policy_mode": "UPDATE download_requests SET policy_mode = ? WHERE id = ?",
+        "book_data": "UPDATE download_requests SET book_data = ? WHERE id = ?",
+        "release_data": "UPDATE download_requests SET release_data = ? WHERE id = ?",
+        "note": "UPDATE download_requests SET note = ? WHERE id = ?",
+        "admin_note": "UPDATE download_requests SET admin_note = ? WHERE id = ?",
+        "reviewed_by": "UPDATE download_requests SET reviewed_by = ? WHERE id = ?",
+        "reviewed_at": "UPDATE download_requests SET reviewed_at = ? WHERE id = ?",
+        "delivery_state": "UPDATE download_requests SET delivery_state = ? WHERE id = ?",
+        "delivery_updated_at": "UPDATE download_requests SET delivery_updated_at = ? WHERE id = ?",
+        "last_failure_reason": "UPDATE download_requests SET last_failure_reason = ? WHERE id = ?",
+    }
 
     def update_request(
         self,
         request_id: int,
         expected_current_status: str | None = None,
-        **kwargs,
+        **kwargs: object,
     ) -> dict[str, Any]:
         """Update request fields and return the updated record."""
         if not kwargs:
             request = self.get_request(request_id)
             if request is None:
-                raise ValueError(f"Request {request_id} not found")
+                msg = f"Request {request_id} not found"
+                raise ValueError(msg)
             if expected_current_status is not None:
                 normalized_expected_status = normalize_request_status(expected_current_status)
                 if request["status"] != normalized_expected_status:
-                    raise ValueError("Request state changed before update")
+                    msg = "Request state changed before update"
+                    raise ValueError(msg)
             return request
 
         for key in kwargs:
             if key not in self._ALLOWED_REQUEST_UPDATE_COLUMNS:
-                raise ValueError(f"Invalid request column: {key}")
+                msg = f"Invalid request column: {key}"
+                raise ValueError(msg)
 
         with self._lock:
             conn = self._connect()
@@ -721,12 +765,14 @@ class UserDB:
                 ).fetchone()
                 current = self._parse_request_row(row)
                 if current is None:
-                    raise ValueError(f"Request {request_id} not found")
+                    msg = f"Request {request_id} not found"
+                    raise ValueError(msg)
 
                 if expected_current_status is not None:
                     normalized_expected_status = normalize_request_status(expected_current_status)
                     if current["status"] != normalized_expected_status:
-                        raise ValueError("Request state changed before update")
+                        msg = "Request state changed before update"
+                        raise ValueError(msg)
 
                 updates = dict(kwargs)
 
@@ -746,35 +792,35 @@ class UserDB:
                 if "delivery_updated_at" in updates:
                     delivery_updated_at = updates["delivery_updated_at"]
                     if delivery_updated_at is not None and not isinstance(delivery_updated_at, str):
-                        raise TypeError("delivery_updated_at must be a string when provided")
+                        msg = "delivery_updated_at must be a string when provided"
+                        raise TypeError(msg)
 
                 if "content_type" in updates and not updates["content_type"]:
-                    raise ValueError("content_type is required")
+                    msg = "content_type is required"
+                    raise ValueError(msg)
 
                 if "request_level" in updates:
                     updates["request_level"] = normalize_request_level(updates["request_level"])
 
                 if "book_data" in updates:
                     if not isinstance(updates["book_data"], dict):
-                        raise TypeError("book_data must be an object")
+                        msg = "book_data must be an object"
+                        raise TypeError(msg)
                     updates["book_data"] = self._serialize_json(updates["book_data"], "book_data")
 
                 if "release_data" in updates:
                     if updates["release_data"] is not None and not isinstance(
                         updates["release_data"], dict
                     ):
-                        raise TypeError("release_data must be an object when provided")
+                        msg = "release_data must be an object when provided"
+                        raise TypeError(msg)
                     updates["release_data"] = self._serialize_json(
                         updates["release_data"],
                         "release_data",
                     )
 
-                set_clause = ", ".join(f"{column} = ?" for column in updates)
-                values = [*list(updates.values()), request_id]
-                conn.execute(
-                    f"UPDATE download_requests SET {set_clause} WHERE id = ?",
-                    values,
-                )
+                for column, value in updates.items():
+                    conn.execute(self._REQUEST_UPDATE_STATEMENTS[column], (value, request_id))
                 conn.commit()
 
                 updated_row = conn.execute(
@@ -783,7 +829,8 @@ class UserDB:
                 ).fetchone()
                 parsed = self._parse_request_row(updated_row)
                 if parsed is None:
-                    raise ValueError(f"Request {request_id} not found after update")
+                    msg = f"Request {request_id} not found after update"
+                    raise ValueError(msg)
                 return parsed
             finally:
                 conn.close()
@@ -865,7 +912,8 @@ class UserDB:
                 ).fetchone()
                 current = self._parse_request_row(row)
                 if current is None:
-                    raise ValueError(f"Request {request_id} not found")
+                    msg = f"Request {request_id} not found"
+                    raise ValueError(msg)
 
                 conn.execute(
                     """
@@ -893,7 +941,8 @@ class UserDB:
                 conn.commit()
                 parsed = self._parse_request_row(updated_row)
                 if parsed is None:
-                    raise ValueError(f"Request {request_id} not found after rollback")
+                    msg = f"Request {request_id} not found after rollback"
+                    raise ValueError(msg)
                 return parsed
             finally:
                 conn.close()

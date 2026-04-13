@@ -1,6 +1,8 @@
-import { useEffect, useRef } from 'react';
+import { useMemo } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { parseUrlSearchParams, ParsedUrlSearch } from '../utils/parseUrlSearchParams';
+
+import type { ParsedUrlSearch } from '../utils/parseUrlSearchParams';
+import { parseUrlSearchParams } from '../utils/parseUrlSearchParams';
 
 interface UseUrlSearchOptions {
   /** Only process URL params after auth check and config are loaded */
@@ -26,29 +28,24 @@ interface UseUrlSearchReturn {
  *   enabled: isAuthenticated && config !== null,
  * });
  *
- * useEffect(() => {
- *   if (wasProcessed && parsedParams?.hasSearchParams) {
- *     // Trigger search with parsed params
- *   }
- * }, [wasProcessed, parsedParams]);
+ * // React to the parsed params once processing is complete.
+ * if (wasProcessed && parsedParams?.hasSearchParams) {
+ *   // Trigger search with parsed params
+ * }
  */
 export function useUrlSearch({ enabled }: UseUrlSearchOptions): UseUrlSearchReturn {
   const [searchParams] = useSearchParams();
-  const processedRef = useRef(false);
-  const parsedRef = useRef<ParsedUrlSearch | null>(null);
-
-  useEffect(() => {
-    if (enabled && !processedRef.current) {
-      const parsed = parseUrlSearchParams(searchParams);
-      if (parsed.hasSearchParams || parsed.contentType) {
-        parsedRef.current = parsed;
-      }
-      processedRef.current = true;
+  const parsedParams = useMemo(() => {
+    if (!enabled) {
+      return null;
     }
+
+    const parsed = parseUrlSearchParams(searchParams);
+    return parsed.hasSearchParams || parsed.contentType ? parsed : null;
   }, [enabled, searchParams]);
 
   return {
-    parsedParams: parsedRef.current,
-    wasProcessed: processedRef.current,
+    parsedParams,
+    wasProcessed: enabled,
   };
 }

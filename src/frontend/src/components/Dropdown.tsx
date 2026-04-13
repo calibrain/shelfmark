@@ -1,4 +1,7 @@
-import { ReactNode, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import type { ReactNode } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+
+import { useDismiss } from '../hooks/useDismiss';
 
 // Find the closest scrollable ancestor element
 function getScrollableAncestor(element: HTMLElement | null): HTMLElement | null {
@@ -15,11 +18,14 @@ function getScrollableAncestor(element: HTMLElement | null): HTMLElement | null 
 }
 
 // Simple throttle function to limit how often a function can be called
-function throttle<T extends (...args: unknown[]) => void>(fn: T, delay: number): T {
+function throttle<Args extends unknown[]>(
+  fn: (...args: Args) => void,
+  delay: number,
+): (...args: Args) => void {
   let lastCall = 0;
   let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
-  return ((...args: unknown[]) => {
+  return (...args: Args) => {
     const now = Date.now();
     const timeSinceLastCall = now - lastCall;
 
@@ -34,7 +40,7 @@ function throttle<T extends (...args: unknown[]) => void>(fn: T, delay: number):
         fn(...args);
       }, delay - timeSinceLastCall);
     }
-  }) as T;
+  };
 }
 
 interface DropdownProps {
@@ -71,45 +77,43 @@ export const Dropdown = ({
   const containerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [panelDirection, setPanelDirection] = useState<'down' | 'up'>('down');
-  const [resolvedAlign, setResolvedAlign] = useState<'left' | 'right'>(align === 'right' ? 'right' : 'left');
+  const [resolvedAlign, setResolvedAlign] = useState<'left' | 'right'>(
+    align === 'right' ? 'right' : 'left',
+  );
+  let triggerBorderRadius = '0.5rem';
+  if (triggerChrome === 'minimal') {
+    triggerBorderRadius = '0';
+  } else if (isOpen) {
+    triggerBorderRadius = panelDirection === 'down' ? '0.5rem 0.5rem 0 0' : '0 0 0.5rem 0.5rem';
+  }
+
+  let panelOffsetClassName = '';
+  if (panelDirection === 'down') {
+    panelOffsetClassName = renderTrigger ? 'mt-2' : '';
+  } else {
+    panelOffsetClassName = renderTrigger ? 'bottom-full mb-2' : 'bottom-full';
+  }
+
+  let panelBorderRadius = '0.5rem';
+  if (!renderTrigger) {
+    panelBorderRadius = panelDirection === 'down' ? '0 0 0.5rem 0.5rem' : '0.5rem 0.5rem 0 0';
+  }
 
   const toggleOpen = () => {
     if (disabled) return;
-    setIsOpen(prev => {
+    setIsOpen((prev) => {
       const next = !prev;
       onOpenChange?.(next);
       return next;
     });
   };
 
-  const close = () => {
+  const close = useCallback(() => {
     setIsOpen(false);
     onOpenChange?.(false);
-  };
+  }, [onOpenChange]);
 
-  useEffect(() => {
-    if (!isOpen) return;
-
-    const handleClick = (event: MouseEvent) => {
-      if (containerRef.current && !containerRef.current.contains(event.target as Node)) {
-        close();
-      }
-    };
-
-    const handleEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        close();
-      }
-    };
-
-    document.addEventListener('mousedown', handleClick);
-    document.addEventListener('keydown', handleEscape);
-
-    return () => {
-      document.removeEventListener('mousedown', handleClick);
-      document.removeEventListener('keydown', handleEscape);
-    };
-  }, [isOpen]);
+  useDismiss(isOpen, [containerRef], close);
 
   // Memoize the panel direction calculation
   const updatePanelDirection = useCallback(() => {
@@ -125,9 +129,7 @@ export const Dropdown = ({
     const containerBottom = scrollableAncestor
       ? scrollableAncestor.getBoundingClientRect().bottom
       : window.innerHeight;
-    const containerTop = scrollableAncestor
-      ? scrollableAncestor.getBoundingClientRect().top
-      : 0;
+    const containerTop = scrollableAncestor ? scrollableAncestor.getBoundingClientRect().top : 0;
 
     const spaceBelow = containerBottom - rect.bottom - 8;
     const spaceAbove = rect.top - containerTop - 8;
@@ -154,7 +156,9 @@ export const Dropdown = ({
   }, [align]);
 
   useLayoutEffect(() => {
-    if (!isOpen) return;
+    if (!isOpen) {
+      return undefined;
+    }
 
     // Throttle scroll/resize handlers to reduce layout thrashing
     const throttledUpdate = throttle(updatePanelDirection, 100);
@@ -172,7 +176,10 @@ export const Dropdown = ({
   return (
     <div className={widthClassName} ref={containerRef}>
       {label && (
-        <label className="block text-xs font-medium text-gray-500 dark:text-gray-400 mb-1.5" onClick={toggleOpen}>
+        <label
+          className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400"
+          onClick={toggleOpen}
+        >
           {label}
         </label>
       )}
@@ -184,20 +191,12 @@ export const Dropdown = ({
             type="button"
             onClick={toggleOpen}
             disabled={disabled}
-            className={`w-full px-3 py-2 text-sm border flex items-center justify-between gap-2 text-left focus:outline-hidden focus-visible:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 ${triggerChrome !== 'minimal' ? 'dropdown-trigger' : ''} ${buttonClassName}`}
+            className={`flex w-full items-center justify-between gap-2 border px-3 py-2 text-left text-sm focus:outline-hidden focus-visible:ring-0 focus-visible:ring-offset-0 focus-visible:outline-hidden ${triggerChrome !== 'minimal' ? 'dropdown-trigger' : ''} ${buttonClassName}`}
             style={{
               color: 'var(--text)',
               borderColor: triggerChrome === 'minimal' ? 'transparent' : 'var(--border-muted)',
               borderWidth: triggerChrome === 'minimal' ? 0 : undefined,
-              borderRadius: isOpen
-                ? triggerChrome === 'minimal'
-                  ? '0'
-                  : panelDirection === 'down'
-                    ? '0.5rem 0.5rem 0 0'
-                    : '0 0 0.5rem 0.5rem'
-                : triggerChrome === 'minimal'
-                  ? '0'
-                  : '0.5rem',
+              borderRadius: triggerBorderRadius,
             }}
           >
             <span className="min-w-0 flex-1 truncate">
@@ -219,18 +218,12 @@ export const Dropdown = ({
           <div
             ref={panelRef}
             className={`absolute ${resolvedAlign === 'right' ? 'right-0' : 'left-0'} ${
-              panelDirection === 'down'
-                ? renderTrigger ? 'mt-2' : ''
-                : renderTrigger ? 'bottom-full mb-2' : 'bottom-full'
-            } border z-20 ${panelDirection === 'down' ? 'shadow-lg' : ''} ${panelClassName || widthClassName}`}
+              panelOffsetClassName
+            } z-20 border ${panelDirection === 'down' ? 'shadow-lg' : ''} ${panelClassName || widthClassName}`}
             style={{
               background: 'var(--bg)',
               borderColor: 'var(--border-muted)',
-              borderRadius: renderTrigger
-                ? '0.5rem'
-                : panelDirection === 'down'
-                  ? '0 0 0.5rem 0.5rem'
-                  : '0.5rem 0.5rem 0 0',
+              borderRadius: panelBorderRadius,
               marginTop: !renderTrigger && panelDirection === 'down' ? '-1px' : undefined,
               marginBottom: !renderTrigger && panelDirection === 'up' ? '-1px' : undefined,
             }}

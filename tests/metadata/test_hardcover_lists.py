@@ -257,7 +257,9 @@ class TestHardcoverLists:
             ],
         )
         monkeypatch.setattr(provider, "_resolve_current_user_id", lambda: "user-123")
-        monkeypatch.setattr("shelfmark.metadata_providers.hardcover.get_metadata_cache", lambda: cache_stub)
+        monkeypatch.setattr(
+            "shelfmark.metadata_providers.hardcover.get_metadata_cache", lambda: cache_stub
+        )
 
         def fake_execute(query: str, variables, raise_on_error: bool = False):
             if "query GetBookTargetMembership" in query:
@@ -283,7 +285,7 @@ class TestHardcoverLists:
         result = provider.set_book_target_state(
             "123",
             "status:1",
-            True,
+            selected=True,
         )
 
         assert result == {"changed": True, "deselected_target": "status:2"}
@@ -315,7 +317,9 @@ class TestHardcoverLists:
             ],
         )
         monkeypatch.setattr(provider, "_resolve_current_user_id", lambda: "user-123")
-        monkeypatch.setattr("shelfmark.metadata_providers.hardcover.get_metadata_cache", lambda: cache_stub)
+        monkeypatch.setattr(
+            "shelfmark.metadata_providers.hardcover.get_metadata_cache", lambda: cache_stub
+        )
 
         def fake_execute(query: str, variables, raise_on_error: bool = False):
             if "query GetBookTargetMembership" in query:
@@ -336,7 +340,7 @@ class TestHardcoverLists:
 
         monkeypatch.setattr(provider, "_execute_query", fake_execute)
 
-        result = provider.set_book_target_state("123", "id:42", False)
+        result = provider.set_book_target_state("123", "id:42", selected=False)
 
         assert result == {"changed": True}
         assert cache_stub.invalidated == [
@@ -362,7 +366,7 @@ class TestHardcoverLists:
         )
 
         try:
-            provider.set_book_target_state("123", "id:99", True)
+            provider.set_book_target_state("123", "id:99", selected=True)
         except ValueError as exc:
             assert str(exc) == "Unsupported Hardcover target"
         else:

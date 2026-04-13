@@ -2,25 +2,23 @@
 Tests for the naming module - template parsing and library path building.
 """
 
-import pytest
-from pathlib import Path
-import tempfile
-import os
 import shutil
+import tempfile
+from pathlib import Path
+
+import pytest
 
 from shelfmark.core.naming import (
-    natural_sort_key,
     assign_part_numbers,
-    parse_naming_template,
     build_library_path,
-    sanitize_filename,
-    sanitize_path_component,
     format_series_position,
+    natural_sort_key,
+    parse_naming_template,
+    sanitize_filename,
 )
 
 
 class TestNaturalSortAndAssignment:
-
     def test_natural_sort_simple_numbers(self):
         files = ["Part 2.mp3", "Part 10.mp3", "Part 1.mp3"]
         assert sorted(files, key=natural_sort_key) == ["Part 1.mp3", "Part 2.mp3", "Part 10.mp3"]
@@ -28,7 +26,10 @@ class TestNaturalSortAndAssignment:
     def test_natural_sort_cd_track_pattern(self):
         files = ["CD2_Track10.mp3", "CD1_Track2.mp3", "CD1_Track10.mp3", "CD2_Track1.mp3"]
         assert sorted(files, key=natural_sort_key) == [
-            "CD1_Track2.mp3", "CD1_Track10.mp3", "CD2_Track1.mp3", "CD2_Track10.mp3"
+            "CD1_Track2.mp3",
+            "CD1_Track10.mp3",
+            "CD2_Track1.mp3",
+            "CD2_Track10.mp3",
         ]
 
     def test_assign_part_numbers_empty(self):
@@ -37,12 +38,17 @@ class TestNaturalSortAndAssignment:
     def test_assign_part_numbers_sorted(self):
         files = [Path("Part 3.mp3"), Path("Part 1.mp3"), Path("Part 2.mp3")]
         assert assign_part_numbers(files) == [
-            (Path("Part 1.mp3"), "01"), (Path("Part 2.mp3"), "02"), (Path("Part 3.mp3"), "03")
+            (Path("Part 1.mp3"), "01"),
+            (Path("Part 2.mp3"), "02"),
+            (Path("Part 3.mp3"), "03"),
         ]
 
     def test_assign_part_numbers_custom_padding(self):
         files = [Path("a.mp3"), Path("b.mp3")]
-        assert assign_part_numbers(files, zero_pad_width=3) == [(Path("a.mp3"), "001"), (Path("b.mp3"), "002")]
+        assert assign_part_numbers(files, zero_pad_width=3) == [
+            (Path("a.mp3"), "001"),
+            (Path("b.mp3"), "002"),
+        ]
 
     def test_no_false_positives_fahrenheit_451(self):
         files = [Path("Fahrenheit 451 - Part 2.mp3"), Path("Fahrenheit 451 - Part 1.mp3")]
@@ -56,8 +62,7 @@ class TestParseNamingTemplate:
     def test_simple_substitution(self):
         """Test basic token replacement."""
         result = parse_naming_template(
-            "{Author}/{Title}",
-            {"Author": "Brandon Sanderson", "Title": "The Way of Kings"}
+            "{Author}/{Title}", {"Author": "Brandon Sanderson", "Title": "The Way of Kings"}
         )
         assert result == "Brandon Sanderson/The Way of Kings"
 
@@ -66,19 +71,20 @@ class TestParseNamingTemplate:
         template = "{Author}/{Series/}{Title}"
 
         # With series
-        result = parse_naming_template(template, {
-            "Author": "Brandon Sanderson",
-            "Series": "Stormlight Archive",
-            "Title": "The Way of Kings"
-        })
+        result = parse_naming_template(
+            template,
+            {
+                "Author": "Brandon Sanderson",
+                "Series": "Stormlight Archive",
+                "Title": "The Way of Kings",
+            },
+        )
         assert result == "Brandon Sanderson/Stormlight Archive/The Way of Kings"
 
         # Without series
-        result = parse_naming_template(template, {
-            "Author": "Brandon Sanderson",
-            "Series": None,
-            "Title": "The Way of Kings"
-        })
+        result = parse_naming_template(
+            template, {"Author": "Brandon Sanderson", "Series": None, "Title": "The Way of Kings"}
+        )
         assert result == "Brandon Sanderson/The Way of Kings"
 
     def test_conditional_prefix(self):
@@ -86,17 +92,13 @@ class TestParseNamingTemplate:
         template = "{Title}{ - Subtitle}"
 
         # With subtitle
-        result = parse_naming_template(template, {
-            "Title": "The Way of Kings",
-            "Subtitle": "Journey Before Destination"
-        })
+        result = parse_naming_template(
+            template, {"Title": "The Way of Kings", "Subtitle": "Journey Before Destination"}
+        )
         assert result == "The Way of Kings - Journey Before Destination"
 
         # Without subtitle
-        result = parse_naming_template(template, {
-            "Title": "The Way of Kings",
-            "Subtitle": None
-        })
+        result = parse_naming_template(template, {"Title": "The Way of Kings", "Subtitle": None})
         assert result == "The Way of Kings"
 
     def test_subtitle_token(self):
@@ -104,7 +106,7 @@ class TestParseNamingTemplate:
         metadata = {
             "Author": "Brandon Sanderson",
             "Title": "The Way of Kings",
-            "Subtitle": "Book One of the Stormlight Archive"
+            "Subtitle": "Book One of the Stormlight Archive",
         }
 
         # Subtitle after title
@@ -117,11 +119,7 @@ class TestParseNamingTemplate:
 
     def test_part_number_token(self):
         """Test PartNumber in templates."""
-        metadata = {
-            "Author": "Brandon Sanderson",
-            "Title": "The Way of Kings",
-            "PartNumber": "01"
-        }
+        metadata = {"Author": "Brandon Sanderson", "Title": "The Way of Kings", "PartNumber": "01"}
 
         # Literal " - Part " in template
         result = parse_naming_template("{Author}/{Title} - Part {PartNumber}", metadata)
@@ -133,11 +131,7 @@ class TestParseNamingTemplate:
 
     def test_part_number_without_value(self):
         """Test PartNumber when not provided."""
-        metadata = {
-            "Author": "Brandon Sanderson",
-            "Title": "The Way of Kings",
-            "PartNumber": None
-        }
+        metadata = {"Author": "Brandon Sanderson", "Title": "The Way of Kings", "PartNumber": None}
 
         # Conditional prefix: " - " only appears if PartNumber has value
         result = parse_naming_template("{Author}/{Title}{ - PartNumber}", metadata)
@@ -162,24 +156,19 @@ class TestParseNamingTemplate:
     def test_year_token(self):
         """Test year in templates."""
         result = parse_naming_template(
-            "{Author}/{Title} ({Year})",
-            {"Author": "Sanderson", "Title": "Book", "Year": 2010}
+            "{Author}/{Title} ({Year})", {"Author": "Sanderson", "Title": "Book", "Year": 2010}
         )
         assert result == "Sanderson/Book (2010)"
 
     def test_case_insensitive_tokens(self):
         """Test that token matching is case-insensitive."""
-        result = parse_naming_template(
-            "{author}/{TITLE}",
-            {"Author": "Sanderson", "Title": "Book"}
-        )
+        result = parse_naming_template("{author}/{TITLE}", {"Author": "Sanderson", "Title": "Book"})
         assert result == "Sanderson/Book"
 
     def test_special_characters_sanitized(self):
         """Test that special characters are sanitized."""
         result = parse_naming_template(
-            "{Author}/{Title}",
-            {"Author": "Author: Name", "Title": "Book: Subtitle?"}
+            "{Author}/{Title}", {"Author": "Author: Name", "Title": "Book: Subtitle?"}
         )
         assert ":" not in result
         assert "?" not in result
@@ -198,21 +187,23 @@ class TestParseNamingTemplate:
         template = "{Author}/{Series/}{SeriesPosition - }{Title}{ - Subtitle} ({Year})"
 
         # All fields present
-        result = parse_naming_template(template, {
-            "Author": "Brandon Sanderson",
-            "Series": "Stormlight",
-            "SeriesPosition": 1,
-            "Title": "The Way of Kings",
-            "Subtitle": "Epic Fantasy",
-            "Year": 2010
-        })
+        result = parse_naming_template(
+            template,
+            {
+                "Author": "Brandon Sanderson",
+                "Series": "Stormlight",
+                "SeriesPosition": 1,
+                "Title": "The Way of Kings",
+                "Subtitle": "Epic Fantasy",
+                "Year": 2010,
+            },
+        )
         assert result == "Brandon Sanderson/Stormlight/1 - The Way of Kings - Epic Fantasy (2010)"
 
         # Minimal fields
-        result = parse_naming_template(template, {
-            "Author": "Brandon Sanderson",
-            "Title": "The Way of Kings"
-        })
+        result = parse_naming_template(
+            template, {"Author": "Brandon Sanderson", "Title": "The Way of Kings"}
+        )
         assert result == "Brandon Sanderson/The Way of Kings"
 
 
@@ -222,72 +213,60 @@ class TestArbitraryPrefixSuffix:
     def test_vol_prefix_with_value(self):
         """Test {Vol. SeriesPosition - } with a value."""
         result = parse_naming_template(
-            "{Vol. SeriesPosition - }{Title}",
-            {"SeriesPosition": 2, "Title": "Book Title"}
+            "{Vol. SeriesPosition - }{Title}", {"SeriesPosition": 2, "Title": "Book Title"}
         )
         assert result == "Vol. 2 - Book Title"
 
     def test_vol_prefix_without_value(self):
         """Test {Vol. SeriesPosition - } without a value produces nothing."""
         result = parse_naming_template(
-            "{Vol. SeriesPosition - }{Title}",
-            {"SeriesPosition": None, "Title": "Book Title"}
+            "{Vol. SeriesPosition - }{Title}", {"SeriesPosition": None, "Title": "Book Title"}
         )
         assert result == "Book Title"
 
     def test_vol_prefix_empty_string(self):
         """Test {Vol. SeriesPosition - } with empty string produces nothing."""
         result = parse_naming_template(
-            "{Vol. SeriesPosition - }{Title}",
-            {"SeriesPosition": "", "Title": "Book Title"}
+            "{Vol. SeriesPosition - }{Title}", {"SeriesPosition": "", "Title": "Book Title"}
         )
         assert result == "Book Title"
 
     def test_book_x_of_series_pattern(self):
         """Test {Book SeriesPosition of the Series} pattern."""
         result = parse_naming_template(
-            "{Book SeriesPosition of the Series}",
-            {"SeriesPosition": 2, "Series": "Stormlight"}
+            "{Book SeriesPosition of the Series}", {"SeriesPosition": 2, "Series": "Stormlight"}
         )
         assert result == "Book 2 of the Series"
 
     def test_case_insensitive_arbitrary_prefix(self):
         """Test case-insensitive token matching with arbitrary prefix."""
         result = parse_naming_template(
-            "{vol. seriesposition - }{Title}",
-            {"SeriesPosition": 3, "Title": "Book"}
+            "{vol. seriesposition - }{Title}", {"SeriesPosition": 3, "Title": "Book"}
         )
         assert result == "vol. 3 - Book"
 
     def test_arbitrary_prefix_with_part_number(self):
         """Test arbitrary prefix with PartNumber token."""
-        result = parse_naming_template(
-            "{Part PartNumber}",
-            {"PartNumber": "05"}
-        )
+        result = parse_naming_template("{Part PartNumber}", {"PartNumber": "05"})
         assert result == "Part 05"
 
     def test_arbitrary_prefix_part_number_empty(self):
         """Test arbitrary prefix with empty PartNumber."""
         result = parse_naming_template(
-            "{Title}{Part PartNumber}",
-            {"Title": "Book", "PartNumber": None}
+            "{Title}{Part PartNumber}", {"Title": "Book", "PartNumber": None}
         )
         assert result == "Book"
 
     def test_no_variable_in_block_unchanged(self):
         """Test that blocks without known variables are left unchanged."""
-        result = parse_naming_template(
-            "{literal text}",
-            {"Title": "Book"}
-        )
+        result = parse_naming_template("{literal text}", {"Title": "Book"})
         assert result == "{literal text}"
 
     def test_mixed_legacy_and_new_syntax(self):
         """Test mixed template with both legacy and new syntax."""
         result = parse_naming_template(
             "{Author}/{Vol. SeriesPosition - }{Title}",
-            {"Author": "Sanderson", "SeriesPosition": 1, "Title": "Mistborn"}
+            {"Author": "Sanderson", "SeriesPosition": 1, "Title": "Mistborn"},
         )
         assert result == "Sanderson/Vol. 1 - Mistborn"
 
@@ -295,48 +274,39 @@ class TestArbitraryPrefixSuffix:
         """Test mixed template when series position is empty."""
         result = parse_naming_template(
             "{Author}/{Vol. SeriesPosition - }{Title}",
-            {"Author": "Sanderson", "SeriesPosition": None, "Title": "Elantris"}
+            {"Author": "Sanderson", "SeriesPosition": None, "Title": "Elantris"},
         )
         assert result == "Sanderson/Elantris"
 
     def test_subtitle_with_arbitrary_prefix(self):
         """Test Subtitle token with arbitrary prefix text."""
         result = parse_naming_template(
-            "{Title}{: Subtitle}",
-            {"Title": "Main", "Subtitle": "Secondary"}
+            "{Title}{: Subtitle}", {"Title": "Main", "Subtitle": "Secondary"}
         )
         assert result == "Main: Secondary"
 
     def test_year_with_arbitrary_prefix_suffix(self):
         """Test Year with arbitrary text around it."""
-        result = parse_naming_template(
-            "{Title} {(Year)}",
-            {"Title": "Book", "Year": 2020}
-        )
+        result = parse_naming_template("{Title} {(Year)}", {"Title": "Book", "Year": 2020})
         assert result == "Book (2020)"
 
     def test_year_empty_with_arbitrary_prefix_suffix(self):
         """Test Year with arbitrary text when Year is empty."""
-        result = parse_naming_template(
-            "{Title} {(Year)}",
-            {"Title": "Book", "Year": None}
-        )
+        result = parse_naming_template("{Title} {(Year)}", {"Title": "Book", "Year": None})
         # Note: trailing space gets cleaned up
         assert result == "Book"
 
     def test_series_position_longest_match(self):
         """Test that SeriesPosition matches before Series."""
         result = parse_naming_template(
-            "{SeriesPosition - }{Series}",
-            {"SeriesPosition": 1, "Series": "Stormlight"}
+            "{SeriesPosition - }{Series}", {"SeriesPosition": 1, "Series": "Stormlight"}
         )
         assert result == "1 - Stormlight"
 
     def test_arbitrary_prefix_float_position(self):
         """Test arbitrary prefix with float series position."""
         result = parse_naming_template(
-            "{Vol. SeriesPosition - }{Title}",
-            {"SeriesPosition": 1.5, "Title": "Novella"}
+            "{Vol. SeriesPosition - }{Title}", {"SeriesPosition": 1.5, "Title": "Novella"}
         )
         assert result == "Vol. 1.5 - Novella"
 
@@ -345,21 +315,26 @@ class TestArbitraryPrefixSuffix:
         template = "{Author}/{Series/}{Vol. SeriesPosition - }{Title}{: Subtitle} {(Year)}"
 
         # All fields present
-        result = parse_naming_template(template, {
-            "Author": "Brandon Sanderson",
-            "Series": "Stormlight Archive",
-            "SeriesPosition": 1,
-            "Title": "The Way of Kings",
-            "Subtitle": "Epic Fantasy",
-            "Year": 2010
-        })
-        assert result == "Brandon Sanderson/Stormlight Archive/Vol. 1 - The Way of Kings: Epic Fantasy (2010)"
+        result = parse_naming_template(
+            template,
+            {
+                "Author": "Brandon Sanderson",
+                "Series": "Stormlight Archive",
+                "SeriesPosition": 1,
+                "Title": "The Way of Kings",
+                "Subtitle": "Epic Fantasy",
+                "Year": 2010,
+            },
+        )
+        assert (
+            result
+            == "Brandon Sanderson/Stormlight Archive/Vol. 1 - The Way of Kings: Epic Fantasy (2010)"
+        )
 
         # Minimal fields
-        result = parse_naming_template(template, {
-            "Author": "Brandon Sanderson",
-            "Title": "Standalone Novel"
-        })
+        result = parse_naming_template(
+            template, {"Author": "Brandon Sanderson", "Title": "Standalone Novel"}
+        )
         assert result == "Brandon Sanderson/Standalone Novel"
 
 
@@ -369,10 +344,7 @@ class TestBuildLibraryPath:
     def test_basic_path(self):
         """Test basic path building."""
         path = build_library_path(
-            "/books",
-            "{Author}/{Title}",
-            {"Author": "Sanderson", "Title": "Book"},
-            extension="epub"
+            "/books", "{Author}/{Title}", {"Author": "Sanderson", "Title": "Book"}, extension="epub"
         )
         assert path == Path("/books/Sanderson/Book.epub")
 
@@ -382,7 +354,7 @@ class TestBuildLibraryPath:
             "/books",
             "{Author}/{Title}{ - Subtitle}",
             {"Author": "Sanderson", "Title": "Book", "Subtitle": "A Novel"},
-            extension="epub"
+            extension="epub",
         )
         assert path == Path("/books/Sanderson/Book - A Novel.epub")
 
@@ -392,37 +364,26 @@ class TestBuildLibraryPath:
             "/audiobooks",
             "{Author}/{Title} - Part {PartNumber}",
             {"Author": "Sanderson", "Title": "Book", "PartNumber": "01"},
-            extension="mp3"
+            extension="mp3",
         )
         assert path == Path("/audiobooks/Sanderson/Book - Part 01.mp3")
 
     def test_path_traversal_prevented(self):
         """Test that path traversal is prevented."""
         path = build_library_path(
-            "/books",
-            "{Author}/{Title}",
-            {"Author": "../etc", "Title": "passwd"},
-            extension="txt"
+            "/books", "{Author}/{Title}", {"Author": "../etc", "Title": "passwd"}, extension="txt"
         )
         assert path == Path("/books/etc/passwd.txt")
 
     def test_fallback_to_title(self):
         """Test fallback when template produces empty result."""
-        path = build_library_path(
-            "/books",
-            "{Series/}{Title}",
-            {"Title": "Book"},
-            extension="epub"
-        )
+        path = build_library_path("/books", "{Series/}{Title}", {"Title": "Book"}, extension="epub")
         assert "Book" in str(path)
 
     def test_no_extension(self):
         """Test path without extension."""
         path = build_library_path(
-            "/books",
-            "{Author}/{Title}",
-            {"Author": "Sanderson", "Title": "Book"},
-            extension=None
+            "/books", "{Author}/{Title}", {"Author": "Sanderson", "Title": "Book"}, extension=None
         )
         assert path == Path("/books/Sanderson/Book")
 
@@ -430,16 +391,19 @@ class TestBuildLibraryPath:
 class TestSanitizeFilename:
     """Tests for filename sanitization."""
 
-    @pytest.mark.parametrize("input_name,expected", [
-        ("normal_file", "normal_file"),
-        ("file:with:colons", "file_with_colons"),
-        ("file*with*stars", "file_with_stars"),
-        ("file?with?questions", "file_with_questions"),
-        ('file"with"quotes', "file_with_quotes"),
-        ("file<with>angles", "file_with_angles"),
-        ("file|with|pipes", "file_with_pipes"),
-        ("file/with/slash", "file_with_slash"),
-    ])
+    @pytest.mark.parametrize(
+        "input_name,expected",
+        [
+            ("normal_file", "normal_file"),
+            ("file:with:colons", "file_with_colons"),
+            ("file*with*stars", "file_with_stars"),
+            ("file?with?questions", "file_with_questions"),
+            ('file"with"quotes', "file_with_quotes"),
+            ("file<with>angles", "file_with_angles"),
+            ("file|with|pipes", "file_with_pipes"),
+            ("file/with/slash", "file_with_slash"),
+        ],
+    )
     def test_invalid_chars_replaced(self, input_name, expected):
         """Test that invalid characters are replaced."""
         assert sanitize_filename(input_name) == expected
@@ -516,7 +480,7 @@ class TestIntegration:
         # Use assign_part_numbers to sort and number sequentially
         files_with_parts = assign_part_numbers(files)
 
-        for file_path, part_num in files_with_parts:
+        for _file_path, part_num in files_with_parts:
             file_metadata = {**base_metadata, "PartNumber": part_num}
             path = build_library_path("/audiobooks", template, file_metadata, extension="mp3")
 
@@ -667,10 +631,7 @@ class TestFilesystemOperations:
 
     def test_special_characters_in_folder_names(self, temp_library):
         """Test that special characters are sanitized in folder names."""
-        metadata = {
-            "Author": "Author: With Colons",
-            "Title": "Book? With <Special> Characters*"
-        }
+        metadata = {"Author": "Author: With Colons", "Title": "Book? With <Special> Characters*"}
         template = "{Author}/{Title}"
 
         path = build_library_path(str(temp_library), template, metadata, extension="epub")

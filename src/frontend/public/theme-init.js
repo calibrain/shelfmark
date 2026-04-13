@@ -1,10 +1,13 @@
 // Apply theme immediately before first paint to prevent flash.
 // This runs as a blocking script before the app bundle loads.
-(function() {
+(function () {
   var saved = localStorage.getItem('preferred-theme') || 'auto';
-  var theme = saved === 'auto'
-    ? (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light')
-    : saved;
+  var theme =
+    saved === 'auto'
+      ? window.matchMedia('(prefers-color-scheme: dark)').matches
+        ? 'dark'
+        : 'light'
+      : saved;
 
   var dark = theme === 'dark';
   var bg = dark ? '#121212' : '#f8f8f8';

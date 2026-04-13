@@ -10,7 +10,7 @@ import time
 from contextlib import suppress
 from dataclasses import dataclass, field
 from enum import Enum, auto
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Self
 
 from shelfmark.core.logger import setup_logger
 
@@ -78,6 +78,7 @@ class IRCClient:
         use_tls: bool = True,
         version: str = "Shelfmark 1.0",
     ) -> None:
+        """Initialize the IRC client with connection settings and defaults."""
         if not nick:
             msg = "IRC nickname is required"
             raise IRCError(msg)
@@ -99,6 +100,14 @@ class IRCClient:
 
         # Track online servers (elevated users in channel)
         self.online_servers: set[str] = set()
+
+    def _require_socket(self) -> socket.socket:
+        """Return the active socket or raise when the client is disconnected."""
+        sock = self._socket
+        if sock is None:
+            msg = "Not connected"
+            raise IRCError(msg)
+        return sock
 
     def connect(self) -> None:
         """Connect to IRC server, send USER/NICK, and wait for welcome."""
@@ -131,14 +140,14 @@ class IRCClient:
         # Wait for 001 (RPL_WELCOME) which confirms registration is complete
         # Server may take time for hostname lookup, ident check, etc.
         logger.debug("Waiting for server welcome (001)...")
-        self._socket.settimeout(2.0)  # Short timeout for polling
+        sock.settimeout(2.0)  # Short timeout for polling
 
         start = time.time()
         timeout = 30.0  # Max wait for registration
 
         while time.time() - start < timeout:
             try:
-                data = self._socket.recv(RECV_BUFFER)
+                data = sock.recv(RECV_BUFFER)
                 if not data:
                     msg = "Connection closed during registration"
                     raise IRCConnectionError(msg)
@@ -161,7 +170,7 @@ class IRCClient:
 
                 # 001 = RPL_WELCOME - registration complete
                 if " 001 " in line:
-                    self._socket.settimeout(SOCKET_TIMEOUT)  # Restore timeout
+                    sock.settimeout(SOCKET_TIMEOUT)  # Restore timeout
                     self._connected = True
                     logger.info("Connected as %s", self.nick)
                     return
@@ -199,9 +208,10 @@ class IRCClient:
         self.online_servers.clear()
 
         if wait_for_join:
+            sock = self._require_socket()
             # Use a short socket timeout during join so we can check elapsed time
-            original_timeout = self._socket.gettimeout()
-            self._socket.settimeout(2.0)  # 2 second recv timeout
+            original_timeout = sock.gettimeout()
+            sock.settimeout(2.0)  # 2 second recv timeout
 
             try:
                 start = time.time()
@@ -210,7 +220,7 @@ class IRCClient:
                 while time.time() - start < timeout:
                     # Read data with short timeout
                     try:
-                        data = self._socket.recv(RECV_BUFFER)
+                        data = sock.recv(RECV_BUFFER)
                         if not data:
                             break
                         self._buffer += data.decode("utf-8", errors="replace")
@@ -254,7 +264,7 @@ class IRCClient:
 
             finally:
                 # Restore original socket timeout
-                self._socket.settimeout(original_timeout)
+                sock.settimeout(original_timeout)
 
     def send_message(self, target: str, message: str) -> None:
         """Send a PRIVMSG to a channel or user."""
@@ -288,6 +298,7 @@ class IRCClient:
 
     def _recv_lines(self) -> Iterator[str]:
         """Receive and yield complete CRLF-delimited IRC lines."""
+        sock = self._require_socket()
         while True:
             # Check if we have a complete line in buffer
             while "\r\n" in self._buffer:
@@ -297,7 +308,7 @@ class IRCClient:
 
             # Read more data
             try:
-                data = self._socket.recv(RECV_BUFFER)
+                data = sock.recv(RECV_BUFFER)
                 if not data:
                     return  # Connection closed
                 self._buffer += data.decode("utf-8", errors="replace")
@@ -456,9 +467,11 @@ class IRCClient:
         """Check if currently connected."""
         return self._connected and self._socket is not None
 
-    def __enter__(self) -> IRCClient:
+    def __enter__(self) -> Self:
+        """Connect and return the IRC client for context-manager usage."""
         self.connect()
         return self
 
-    def __exit__(self, *args) -> None:
+    def __exit__(self, *args: object) -> None:
+        """Disconnect the IRC client when leaving a context manager."""
         self.disconnect()

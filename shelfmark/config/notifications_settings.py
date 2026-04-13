@@ -143,6 +143,7 @@ def _extract_unique_route_urls(routes: list[dict[str, Any]]) -> list[str]:
 
 
 def build_notification_test_result(routes_input: Any, *, scope_label: str) -> dict[str, Any]:
+    """Validate routes and return a test-notification result payload."""
     invalid_event_count = _count_invalid_route_events(routes_input)
     if invalid_event_count:
         return {

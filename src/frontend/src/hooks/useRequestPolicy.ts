@@ -1,13 +1,14 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+
 import { fetchRequestPolicy } from '../services/api';
-import { ContentType, RequestPolicyMode, RequestPolicyResponse } from '../types';
+import type { RequestPolicyMode, RequestPolicyResponse } from '../types';
+import { policyTrace } from '../utils/policyTrace';
 import {
   DEFAULT_POLICY_TTL_MS,
   RequestPolicyCache,
   resolveDefaultModeFromPolicy,
   resolveSourceModeFromPolicy,
 } from './requestPolicyCore';
-import { policyTrace } from '../utils/policyTrace';
 
 interface UseRequestPolicyOptions {
   enabled: boolean;
@@ -21,8 +22,8 @@ interface UseRequestPolicyReturn {
   isAdmin: boolean;
   requestsEnabled: boolean;
   allowNotes: boolean;
-  getDefaultMode: (contentType: ContentType | string) => RequestPolicyMode;
-  getSourceMode: (source: string, contentType: ContentType | string) => RequestPolicyMode;
+  getDefaultMode: (contentType: string) => RequestPolicyMode;
+  getSourceMode: (source: string, contentType: string) => RequestPolicyMode;
   refresh: (options?: { force?: boolean }) => Promise<RequestPolicyResponse | null>;
 }
 
@@ -33,23 +34,10 @@ export function useRequestPolicy({
 }: UseRequestPolicyOptions): UseRequestPolicyReturn {
   const [policy, setPolicy] = useState<RequestPolicyResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
-  const cacheRef = useRef<RequestPolicyCache | null>(null);
-
-  if (!cacheRef.current) {
-    cacheRef.current = new RequestPolicyCache(fetchRequestPolicy, ttlMs);
-  }
-
-  useEffect(() => {
-    cacheRef.current?.setTtlMs(ttlMs);
-  }, [ttlMs]);
+  const cache = useMemo(() => new RequestPolicyCache(fetchRequestPolicy, ttlMs), [ttlMs]);
 
   const fetchPolicy = useCallback(
     async (force: boolean): Promise<RequestPolicyResponse | null> => {
-      const cache = cacheRef.current;
-      if (!cache) {
-        return null;
-      }
-
       if (!enabled) {
         cache.reset();
         setPolicy(null);
@@ -80,44 +68,40 @@ export function useRequestPolicy({
         setIsLoading(false);
       }
     },
-    [enabled, isAdmin]
+    [cache, enabled, isAdmin],
   );
 
-  useEffect(() => {
-    if (!enabled) {
-      cacheRef.current?.reset();
-      setPolicy(null);
-      return;
-    }
-    void fetchPolicy(true);
-  }, [enabled, fetchPolicy]);
-
   const getDefaultMode = useCallback(
-    (contentType: ContentType | string): RequestPolicyMode => {
-      const effectiveIsAdmin = policy ? Boolean(policy.is_admin) : isAdmin;
-      return resolveDefaultModeFromPolicy(policy, effectiveIsAdmin, contentType);
+    (contentType: string): RequestPolicyMode => {
+      const effectivePolicy = enabled ? policy : null;
+      const effectiveIsAdmin = effectivePolicy ? effectivePolicy.is_admin : isAdmin;
+      return resolveDefaultModeFromPolicy(effectivePolicy, effectiveIsAdmin, contentType);
     },
-    [policy, isAdmin]
+    [enabled, policy, isAdmin],
   );
 
   const getSourceMode = useCallback(
-    (source: string, contentType: ContentType | string): RequestPolicyMode => {
-      const effectiveIsAdmin = policy ? Boolean(policy.is_admin) : isAdmin;
-      return resolveSourceModeFromPolicy(policy, effectiveIsAdmin, source, contentType);
+    (source: string, contentType: string): RequestPolicyMode => {
+      const effectivePolicy = enabled ? policy : null;
+      const effectiveIsAdmin = effectivePolicy ? effectivePolicy.is_admin : isAdmin;
+      return resolveSourceModeFromPolicy(effectivePolicy, effectiveIsAdmin, source, contentType);
     },
-    [policy, isAdmin]
+    [enabled, policy, isAdmin],
   );
 
-  const refresh = useCallback(async (options: { force?: boolean } = {}) => {
-    return fetchPolicy(Boolean(options.force));
-  }, [fetchPolicy]);
+  const refresh = useCallback(
+    async (options: { force?: boolean } = {}) => {
+      return fetchPolicy(options.force === true);
+    },
+    [fetchPolicy],
+  );
 
   return {
-    policy,
-    isLoading,
-    isAdmin: policy ? Boolean(policy.is_admin) : isAdmin,
-    requestsEnabled: Boolean(policy?.requests_enabled),
-    allowNotes: policy?.allow_notes ?? true,
+    policy: enabled ? policy : null,
+    isLoading: enabled ? isLoading : false,
+    isAdmin: enabled && policy ? policy.is_admin : isAdmin,
+    requestsEnabled: enabled ? (policy?.requests_enabled ?? false) : false,
+    allowNotes: enabled ? (policy?.allow_notes ?? true) : true,
     getDefaultMode,
     getSourceMode,
     refresh,

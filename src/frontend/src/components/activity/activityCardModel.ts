@@ -1,6 +1,6 @@
-import { RequestRecord } from '../../types';
+import type { RequestRecord } from '../../types';
 import { isActiveDownloadStatus } from './activityStyles.js';
-import { ActivityItem, ActivityVisualStatus } from './activityTypes';
+import type { ActivityItem, ActivityVisualStatus } from './activityTypes';
 
 export type ActivityCardAction =
   | {
@@ -18,7 +18,7 @@ export type ActivityCardAction =
       requestId: number;
     };
 
-export interface ActivityCardBadge {
+interface ActivityCardBadge {
   key: 'download' | 'request' | 'status';
   text: string;
   visualStatus: ActivityVisualStatus;
@@ -26,7 +26,7 @@ export interface ActivityCardBadge {
   progress?: number;
 }
 
-export interface ActivityCardModel {
+interface ActivityCardModel {
   badges: ActivityCardBadge[];
   noteLine?: string;
   actions: ActivityCardAction[];
@@ -65,12 +65,13 @@ const getRequestBadge = (item: ActivityItem, isAdmin: boolean): ActivityCardBadg
     : item.visualStatus;
   const failureReason = item.requestRecord?.last_failure_reason?.trim() || null;
   const hasFailureReason = requestVisualStatus === 'pending' && Boolean(failureReason);
-  const hasInFlightLinkedDownload = (
+  const hasInFlightLinkedDownload =
     item.kind === 'download' &&
     requestVisualStatus === 'fulfilled' &&
-    isActiveDownloadStatus(item.visualStatus)
-  );
-  let visualStatus: ActivityVisualStatus = hasInFlightLinkedDownload ? 'resolving' : requestVisualStatus;
+    isActiveDownloadStatus(item.visualStatus);
+  let visualStatus: ActivityVisualStatus = hasInFlightLinkedDownload
+    ? 'resolving'
+    : requestVisualStatus;
   if (hasFailureReason) {
     visualStatus = 'error';
   }
@@ -78,8 +79,8 @@ const getRequestBadge = (item: ActivityItem, isAdmin: boolean): ActivityCardBadg
   let text = item.statusLabel;
   if (hasInFlightLinkedDownload) {
     text = 'Approved';
-  } else if (hasFailureReason) {
-    text = failureReason as string;
+  } else if (hasFailureReason && failureReason) {
+    text = failureReason;
   } else if (requestVisualStatus === 'pending') {
     text = getPendingRequestText(item, isAdmin);
   } else if (requestVisualStatus === 'fulfilled') {
@@ -138,12 +139,10 @@ const buildRequestNoteLine = (item: ActivityItem): string | undefined => {
   }
   if (
     item.adminNote &&
-    (
-      requestStatus === 'rejected' ||
+    (requestStatus === 'rejected' ||
       requestStatus === 'fulfilled' ||
       item.visualStatus === 'rejected' ||
-      item.visualStatus === 'fulfilled'
-    )
+      item.visualStatus === 'fulfilled')
   ) {
     return `"${item.adminNote}"`;
   }
@@ -227,10 +226,7 @@ const buildActions = (item: ActivityItem, isAdmin: boolean): ActivityCardAction[
   return [];
 };
 
-export const buildActivityCardModel = (
-  item: ActivityItem,
-  isAdmin: boolean
-): ActivityCardModel => {
+export const buildActivityCardModel = (item: ActivityItem, isAdmin: boolean): ActivityCardModel => {
   return {
     badges: buildBadges(item, isAdmin),
     noteLine: buildRequestNoteLine(item),

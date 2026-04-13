@@ -1,21 +1,30 @@
 import { useMemo, useState } from 'react';
-import { AdminUser, DeliveryPreferencesResponse, DownloadDefaults } from '../../../services/api';
-import { CreateUserFormState, INITIAL_CREATE_FORM } from './types';
-import { UserEditContext } from './useUsersFetch';
+
+import type {
+  AdminUser,
+  DeliveryPreferencesResponse,
+  DownloadDefaults,
+} from '../../../services/api';
+import { INITIAL_CREATE_FORM } from './types';
 import { useUserOverridesState } from './useUserOverridesState';
+import type { UserEditContext } from './useUsersFetch';
 
 export const useUserForm = () => {
-  const [createForm, setCreateForm] = useState<CreateUserFormState>({ ...INITIAL_CREATE_FORM });
+  const [createForm, setCreateForm] = useState({ ...INITIAL_CREATE_FORM });
   const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
   const [editPassword, setEditPassword] = useState('');
   const [editPasswordConfirm, setEditPasswordConfirm] = useState('');
   const [downloadDefaults, setDownloadDefaults] = useState<DownloadDefaults | null>(null);
-  const [deliveryPreferences, setDeliveryPreferences] = useState<DeliveryPreferencesResponse | null>(null);
-  const [searchPreferences, setSearchPreferences] = useState<DeliveryPreferencesResponse | null>(null);
-  const [notificationPreferences, setNotificationPreferences] = useState<DeliveryPreferencesResponse | null>(null);
+  const [deliveryPreferences, setDeliveryPreferences] =
+    useState<DeliveryPreferencesResponse | null>(null);
+  const [searchPreferences, setSearchPreferences] = useState<DeliveryPreferencesResponse | null>(
+    null,
+  );
+  const [notificationPreferences, setNotificationPreferences] =
+    useState<DeliveryPreferencesResponse | null>(null);
   const preferenceGroups = useMemo(
     () => [deliveryPreferences, searchPreferences, notificationPreferences],
-    [deliveryPreferences, searchPreferences, notificationPreferences]
+    [deliveryPreferences, searchPreferences, notificationPreferences],
   );
   const {
     userSettings,
@@ -23,6 +32,7 @@ export const useUserForm = () => {
     userOverridableSettings,
     isUserOverridable,
     hasUserSettingsChanges,
+    hasUserSettingsChangesFor,
     applyUserOverridesContext,
     resetUserOverridesState,
   } = useUserOverridesState({ preferenceGroups });
@@ -83,6 +93,7 @@ export const useUserForm = () => {
     userSettings,
     setUserSettings,
     hasUserSettingsChanges,
+    hasUserSettingsChangesFor,
     userOverridableSettings,
     isUserOverridable,
   };

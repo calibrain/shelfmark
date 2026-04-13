@@ -36,6 +36,43 @@ from .parser import SearchResult, extract_results_from_zip, parse_results_file
 logger = setup_logger(__name__)
 
 
+def _config_text(key: str) -> str:
+    """Read a string config value with whitespace trimmed."""
+    value = config.get(key, "")
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _config_port(key: str, default: int) -> int:
+    """Read an IRC port value from config, accepting ints and numeric strings."""
+    value = config.get(key, default)
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        stripped = value.strip()
+        if stripped:
+            try:
+                return int(stripped)
+            except ValueError:
+                return default
+    return default
+
+
+def _config_bool(key: str, default: bool) -> bool:
+    """Read a boolean config value from config."""
+    value = config.get(key, default)
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        normalized = value.strip().lower()
+        if normalized in {"1", "true", "yes", "on"}:
+            return True
+        if normalized in {"0", "false", "no", "off"}:
+            return False
+    return default
+
+
 def _emit_status(message: str, phase: str = "searching") -> None:
     """Emit search status to frontend via WebSocket."""
     ws_manager.broadcast_search_status(
@@ -75,14 +112,15 @@ class IRCReleaseSource(ReleaseSource):
     can_be_default = False  # Exclude from default source options (requires deliberate selection)
 
     def __init__(self) -> None:
+        """Initialize per-search IRC source state."""
         # Track online servers from most recent search
         self._online_servers: set[str] | None = None
 
     def is_available(self) -> bool:
         """Check if IRC is configured (server, channel, and nick are set)."""
-        server = config.get("IRC_SERVER", "")
-        channel = config.get("IRC_CHANNEL", "")
-        nick = config.get("IRC_NICK", "")
+        server = _config_text("IRC_SERVER")
+        channel = _config_text("IRC_CHANNEL")
+        nick = _config_text("IRC_NICK")
         return bool(server and channel and nick)
 
     def get_column_config(self) -> ReleaseColumnConfig:
@@ -161,12 +199,12 @@ class IRCReleaseSource(ReleaseSource):
         _enforce_rate_limit()
 
         # Get IRC settings
-        server = config.get("IRC_SERVER", "")
-        port = config.get("IRC_PORT", 6697)
-        use_tls = config.get("IRC_USE_TLS", True)
-        channel = config.get("IRC_CHANNEL", "")
-        nick = config.get("IRC_NICK", "")
-        search_bot = config.get("IRC_SEARCH_BOT", "")
+        server = _config_text("IRC_SERVER")
+        port = _config_port("IRC_PORT", 6697)
+        use_tls = _config_bool("IRC_USE_TLS", True)
+        channel = _config_text("IRC_CHANNEL")
+        nick = _config_text("IRC_NICK")
+        search_bot = _config_text("IRC_SEARCH_BOT")
 
         client = None
         try:

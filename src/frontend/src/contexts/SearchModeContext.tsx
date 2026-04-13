@@ -1,5 +1,7 @@
-import { createContext, useContext, ReactNode } from 'react';
-import { SearchMode } from '../types';
+import type { ReactNode } from 'react';
+import { createContext, useContext, useMemo } from 'react';
+
+import type { SearchMode } from '../types';
 
 interface SearchModeContextValue {
   searchMode: SearchMode;
@@ -22,9 +24,10 @@ interface SearchModeProviderProps {
 }
 
 export function SearchModeProvider({ searchMode, children }: SearchModeProviderProps) {
-  return (
-    <SearchModeContext.Provider value={{ searchMode, isUniversalMode: searchMode === 'universal' }}>
-      {children}
-    </SearchModeContext.Provider>
+  const value = useMemo(
+    () => ({ searchMode, isUniversalMode: searchMode === 'universal' }),
+    [searchMode],
   );
+
+  return <SearchModeContext.Provider value={value}>{children}</SearchModeContext.Provider>;
 }

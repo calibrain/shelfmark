@@ -54,6 +54,7 @@ sanitize_path_component = sanitize_filename
 
 
 def format_series_position(position: str | float | None) -> str:
+    """Format a series position for naming templates."""
     if position is None:
         return ""
 
@@ -95,36 +96,37 @@ def parse_naming_template(
     *,
     allow_path_separators: bool = True,
 ) -> str:
+    """Render a naming template with Shelfmark metadata placeholders."""
     if not template:
         return ""
 
     # Normalize metadata keys to lowercase for case-insensitive matching
     normalized = {k.lower(): v for k, v in metadata.items()}
 
-    def find_token(content: str) -> tuple[str | None, int]:
+    def find_placeholder(content: str) -> tuple[str | None, int]:
         content_lower = content.lower()
-        for token in KNOWN_TOKENS:
-            idx = content_lower.find(token)
+        for placeholder_name in KNOWN_TOKENS:
+            idx = content_lower.find(placeholder_name)
             if idx != -1:
-                return token, idx
+                return placeholder_name, idx
         return None, -1
 
-    def token_value(token: str) -> str:
-        value = normalized.get(token)
-        if token == "seriesposition":
+    def placeholder_value(placeholder_name: str) -> str:
+        value = normalized.get(placeholder_name)
+        if placeholder_name == "seriesposition":
             value = format_series_position(value)
         if value is None:
             return ""
         return str(value).strip()
 
     def render_block(content: str) -> str | None:
-        token, idx = find_token(content)
-        if token is None:
+        placeholder_name, idx = find_placeholder(content)
+        if placeholder_name is None:
             return None
 
         prefix = content[:idx]
-        suffix = content[idx + len(token) :]
-        value = token_value(token)
+        suffix = content[idx + len(placeholder_name) :]
+        value = placeholder_value(placeholder_name)
         if not value:
             return ""
 
@@ -153,10 +155,10 @@ def parse_naming_template(
                 include_literal = False
                 if idx + 1 < len(matches) and match.end() == matches[idx + 1].start():
                     next_content = matches[idx + 1].group(1)
-                    next_token, _next_idx = find_token(next_content)
-                    if next_token is not None:
+                    next_placeholder_name, _next_idx = find_placeholder(next_content)
+                    if next_placeholder_name is not None:
                         conditional_literal = True
-                        include_literal = bool(token_value(next_token))
+                        include_literal = bool(placeholder_value(next_placeholder_name))
                 if include_literal:
                     parts.append(content)
                 elif not conditional_literal and re.search(r"\s", content):
@@ -194,6 +196,7 @@ def build_library_path(
     metadata: Mapping[str, str | int | float | None],
     extension: str | None = None,
 ) -> Path:
+    """Build a final library path from a template and metadata."""
     relative = parse_naming_template(template, metadata, allow_path_separators=True)
 
     if not relative:

@@ -17,11 +17,11 @@ const readEnabledState = (): boolean => {
   }
 };
 
-export const isPolicyTraceEnabled = (): boolean => {
+const isPolicyTraceEnabled = (): boolean => {
   return readEnabledState();
 };
 
-export const setPolicyTraceEnabled = (enabled: boolean): void => {
+const setPolicyTraceEnabled = (enabled: boolean): void => {
   if (typeof window === 'undefined') {
     return;
   }

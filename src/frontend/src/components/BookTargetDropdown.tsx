@@ -1,11 +1,11 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { DropdownList, type DropdownListOption } from './DropdownList';
-import {
-  setBookTargetState,
-  type BookTargetOption,
-} from '../services/api';
-import { loadBookTargets } from '../utils/bookTargetLoader';
+import type { ReactNode } from 'react';
+import { useCallback, useMemo, useState } from 'react';
+
+import { useMountEffect } from '../hooks/useMountEffect';
+import { setBookTargetState, type BookTargetOption } from '../services/api';
 import { emitBookTargetChange, onBookTargetChange } from '../utils/bookTargetEvents';
+import { loadBookTargets } from '../utils/bookTargetLoader';
+import { DropdownList, type DropdownListOption } from './DropdownList';
 
 interface BookTargetDropdownProps {
   provider: string;
@@ -79,12 +79,37 @@ export const BookTargetDropdown = ({
   className,
   onOpenChange,
 }: BookTargetDropdownProps) => {
+  return (
+    <BookTargetDropdownSession
+      key={`${provider}:${bookId}`}
+      provider={provider}
+      bookId={bookId}
+      onShowToast={onShowToast}
+      widthClassName={widthClassName}
+      variant={variant}
+      align={align}
+      className={className}
+      onOpenChange={onOpenChange}
+    />
+  );
+};
+
+const BookTargetDropdownSession = ({
+  provider,
+  bookId,
+  onShowToast,
+  widthClassName = 'w-full sm:w-56',
+  variant = 'default',
+  align = 'auto',
+  className,
+  onOpenChange,
+}: BookTargetDropdownProps) => {
   const [options, setOptions] = useState<BookTargetOption[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [pendingTargets, setPendingTargets] = useState<Set<string>>(new Set());
+  const [pendingTargets, setPendingTargets] = useState(new Set<string>());
 
-  useEffect(() => {
+  useMountEffect(() => {
     let isMounted = true;
 
     const run = async () => {
@@ -113,15 +138,15 @@ export const BookTargetDropdown = ({
     return () => {
       isMounted = false;
     };
-  }, [provider, bookId]);
+  });
 
   // Sync from changes made by other BookTargetDropdown instances for the same book
-  useEffect(() => {
+  useMountEffect(() => {
     return onBookTargetChange((event) => {
       if (event.provider !== provider || event.bookId !== bookId) return;
       setOptions((prev) => updateOptionChecked(prev, event.target, event.selected));
     });
-  }, [provider, bookId]);
+  });
 
   const selectedValues = useMemo(
     () => options.filter((option) => option.checked).map((option) => option.value),
@@ -150,102 +175,113 @@ export const BookTargetDropdown = ({
     }));
   }, [isLoading, loadError, options, pendingTargets]);
 
-  const handleChange = useCallback((nextValue: string[] | string) => {
-    if (!Array.isArray(nextValue)) {
-      return;
-    }
+  const handleChange = useCallback(
+    (nextValue: string[] | string) => {
+      if (!Array.isArray(nextValue)) {
+        return;
+      }
 
-    const nextSelected = new Set(nextValue);
-    const currentSelected = new Set(selectedValues);
-    const toggledTarget =
-      nextValue.find((value) => !currentSelected.has(value))
-      ?? selectedValues.find((value) => !nextSelected.has(value));
+      const nextSelected = new Set(nextValue);
+      const currentSelected = new Set(selectedValues);
+      const toggledTarget =
+        nextValue.find((value) => !currentSelected.has(value)) ??
+        selectedValues.find((value) => !nextSelected.has(value));
 
-    if (!toggledTarget || pendingTargets.has(toggledTarget)) {
-      return;
-    }
+      if (!toggledTarget || pendingTargets.has(toggledTarget)) {
+        return;
+      }
 
-    const selected = nextSelected.has(toggledTarget);
-    const toggledOption = options.find((option) => option.value === toggledTarget);
-    if (!toggledOption) {
-      return;
-    }
+      const selected = nextSelected.has(toggledTarget);
+      const toggledOption = options.find((option) => option.value === toggledTarget);
+      if (!toggledOption) {
+        return;
+      }
 
-    setPendingTargets((prev) => new Set(prev).add(toggledTarget));
-    setOptions((prev) => updateOptionChecked(prev, toggledTarget, selected));
+      setPendingTargets((prev) => new Set(prev).add(toggledTarget));
+      setOptions((prev) => updateOptionChecked(prev, toggledTarget, selected));
 
-    void (async () => {
-      try {
-        const result = await setBookTargetState(provider, bookId, toggledTarget, selected);
-        setOptions((prev) => updateOptionChecked(prev, toggledTarget, result.selected));
+      void (async () => {
+        try {
+          const result = await setBookTargetState(provider, bookId, toggledTarget, selected);
+          setOptions((prev) => updateOptionChecked(prev, toggledTarget, result.selected));
 
-        if (result.changed) {
-          emitBookTargetChange({
-            provider,
-            bookId,
-            target: toggledTarget,
-            selected: result.selected,
-          });
-          // When a status was implicitly deselected, sync other instances
-          if (result.deselectedTarget) {
-            setOptions((prev) => updateOptionChecked(prev, result.deselectedTarget!, false));
+          if (result.changed) {
             emitBookTargetChange({
               provider,
               bookId,
-              target: result.deselectedTarget,
-              selected: false,
+              target: toggledTarget,
+              selected: result.selected,
             });
+            // When a status was implicitly deselected, sync other instances
+            const deselectedTarget = result.deselectedTarget;
+            if (deselectedTarget) {
+              setOptions((prev) => updateOptionChecked(prev, deselectedTarget, false));
+              emitBookTargetChange({
+                provider,
+                bookId,
+                target: deselectedTarget,
+                selected: false,
+              });
+            }
+            const label = stripCountSuffix(toggledOption.label);
+            onShowToast?.(`${result.selected ? 'Added to' : 'Removed from'} ${label}`, 'success');
           }
-          const label = stripCountSuffix(toggledOption.label);
-          onShowToast?.(
-            `${result.selected ? 'Added to' : 'Removed from'} ${label}`,
-            'success',
-          );
+        } catch (error) {
+          setOptions((prev) => updateOptionChecked(prev, toggledTarget, !selected));
+          const message =
+            error instanceof Error ? error.message : 'Failed to update Hardcover list';
+          onShowToast?.(message, 'error');
+        } finally {
+          setPendingTargets((prev) => {
+            const nextPending = new Set(prev);
+            nextPending.delete(toggledTarget);
+            return nextPending;
+          });
         }
-      } catch (error) {
-        setOptions((prev) => updateOptionChecked(prev, toggledTarget, !selected));
-        const message = error instanceof Error ? error.message : 'Failed to update Hardcover list';
-        onShowToast?.(message, 'error');
-      } finally {
-        setPendingTargets((prev) => {
-          const nextPending = new Set(prev);
-          nextPending.delete(toggledTarget);
-          return nextPending;
-        });
-      }
-    })();
-  }, [bookId, onShowToast, options, pendingTargets, provider, selectedValues]);
+      })();
+    },
+    [bookId, onShowToast, options, pendingTargets, provider, selectedValues],
+  );
 
-  const customTrigger = variant === 'pill'
-    ? ({ toggle }: { isOpen: boolean; toggle: () => void }) => {
-        const count = selectedValues.length;
-        return (
-          <button
-            type="button"
-            onClick={toggle}
-            className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-medium rounded-full transition-colors text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 focus:outline-hidden`}
-          >
-            <BookmarkIcon className="w-3 h-3" />
-            Hardcover Lists{count > 0 ? ` (${count})` : ''}
-          </button>
-        );
+  let customTrigger: ((props: { isOpen: boolean; toggle: () => void }) => ReactNode) | undefined;
+  if (variant === 'pill') {
+    customTrigger = ({ toggle }: { isOpen: boolean; toggle: () => void }) => {
+      const count = selectedValues.length;
+      return (
+        <button
+          type="button"
+          onClick={toggle}
+          className={`inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-100 focus:outline-hidden dark:bg-emerald-900/20 dark:text-emerald-400 dark:hover:bg-emerald-900/40`}
+        >
+          <BookmarkIcon className="h-3 w-3" />
+          Hardcover Lists{count > 0 ? ` (${count})` : ''}
+        </button>
+      );
+    };
+  } else if (variant === 'icon') {
+    customTrigger = ({ toggle }: { isOpen: boolean; toggle: () => void }) => {
+      const count = selectedValues.length;
+      let title = 'Hardcover Lists';
+      if (count > 0) {
+        title = `On ${count} Hardcover list${count > 1 ? 's' : ''}`;
       }
-    : variant === 'icon'
-    ? ({ toggle }: { isOpen: boolean; toggle: () => void }) => {
-        const count = selectedValues.length;
-        return (
-          <button
-            type="button"
-            onClick={(e) => { e.stopPropagation(); toggle(); }}
-            className={`flex items-center justify-center rounded-full transition-colors duration-200 focus:outline-hidden ${className ?? 'p-1.5 sm:p-2 text-gray-600 dark:text-gray-200 hover-action'}`}
-            aria-label="Hardcover Lists"
-            title={count > 0 ? `On ${count} Hardcover list${count > 1 ? 's' : ''}` : 'Hardcover Lists'}
-          >
-            <BookmarkIcon className={`w-4 h-4 sm:w-5 sm:h-5 ${count > 0 ? 'fill-current' : ''}`} />
-          </button>
-        );
-      }
-    : undefined;
+
+      return (
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            toggle();
+          }}
+          className={`flex items-center justify-center rounded-full transition-colors duration-200 focus:outline-hidden ${className ?? 'hover-action p-1.5 text-gray-600 sm:p-2 dark:text-gray-200'}`}
+          aria-label="Hardcover Lists"
+          title={title}
+        >
+          <BookmarkIcon className={`h-4 w-4 sm:h-5 sm:w-5 ${count > 0 ? 'fill-current' : ''}`} />
+        </button>
+      );
+    };
+  }
 
   return (
     <DropdownList

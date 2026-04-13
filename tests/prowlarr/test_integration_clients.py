@@ -1,5 +1,4 @@
-"""
-Integration tests for download clients.
+"""Integration tests for download clients.
 
 These tests require the Docker test stack to be running:
     docker compose -f docker-compose.test-clients.yml up -d
@@ -11,66 +10,146 @@ These tests use the actual Docker stack configuration. Before running:
 2. Configure clients via the cwabd UI at http://localhost:8084/settings
 """
 
-import subprocess
+import threading
 import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
 import pytest
 
 from shelfmark.core.config import config
 from shelfmark.core.settings_registry import save_config_file
 from shelfmark.download.clients import DownloadStatus
 
-
 # Test magnet link (Ubuntu ISO - legal, small metadata)
 TEST_MAGNET = "magnet:?xt=urn:btih:3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0&dn=ubuntu-22.04.3-live-server-amd64.iso"
+
+_MINIMAL_NZB = b"""<?xml version="1.0" encoding="utf-8"?>
+<nzb xmlns="http://www.newzbin.com/DTD/2003/nzb">
+  <file poster="Shelfmark" date="1710000000" subject="Integration_Book.nzb">
+    <groups>
+      <group>alt.binaries.test</group>
+    </groups>
+    <segments>
+      <segment bytes="1" number="1">integration-message-id</segment>
+    </segments>
+  </file>
+</nzb>
+"""
+
+
+def _make_nzb_handler(request_paths: list[str]):
+    class NZBFixtureHandler(BaseHTTPRequestHandler):
+        response_body = _MINIMAL_NZB
+
+        def do_GET(self):
+            request_paths.append(self.path)
+            if not self.path.endswith(".nzb"):
+                self.send_response(404)
+                self.end_headers()
+                return
+
+            self.send_response(200)
+            self.send_header("Content-Type", "application/x-nzb")
+            self.send_header("Content-Length", str(len(self.response_body)))
+            self.end_headers()
+            self.wfile.write(self.response_body)
+
+        def log_message(self, format, *args):  # noqa: A002
+            return
+
+    return NZBFixtureHandler
+
+
+@pytest.fixture
+def nzb_fixture_server():
+    """Serve a tiny NZB file for live usenet client integration tests."""
+    request_paths: list[str] = []
+    server = ThreadingHTTPServer(("127.0.0.1", 0), _make_nzb_handler(request_paths))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+
+    try:
+        yield {
+            "base_url": f"http://127.0.0.1:{server.server_address[1]}",
+            "request_paths": request_paths,
+        }
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
+
+
+def _wait_for_live_status(client, download_id: str, *, attempts: int = 10, delay: float = 0.5):
+    """Give live usenet clients a short window to register a queued job."""
+    last_status = None
+    for _ in range(attempts):
+        last_status = client.get_status(download_id)
+        if last_status.state_value != "error":
+            return last_status
+        time.sleep(delay)
+    return last_status
 
 
 # ============ Configuration Setup Functions ============
 
+
 def _setup_transmission_config():
     """Set up Transmission configuration via config files and refresh config."""
-    save_config_file("prowlarr_clients", {
-        "PROWLARR_TORRENT_CLIENT": "transmission",
-        "TRANSMISSION_URL": "http://transmission:9091",
-        "TRANSMISSION_USERNAME": "admin",
-        "TRANSMISSION_PASSWORD": "admin",
-        "TRANSMISSION_CATEGORY": "test",
-    })
+    save_config_file(
+        "prowlarr_clients",
+        {
+            "PROWLARR_TORRENT_CLIENT": "transmission",
+            "TRANSMISSION_URL": "http://transmission:9091",
+            "TRANSMISSION_USERNAME": "admin",
+            "TRANSMISSION_PASSWORD": "admin",
+            "TRANSMISSION_CATEGORY": "test",
+        },
+    )
     config.refresh()
 
 
 def _setup_qbittorrent_config():
     """Set up qBittorrent configuration via config files and refresh config."""
-    save_config_file("prowlarr_clients", {
-        "PROWLARR_TORRENT_CLIENT": "qbittorrent",
-        "QBITTORRENT_URL": "http://qbittorrent:8080",
-        "QBITTORRENT_USERNAME": "admin",
-        "QBITTORRENT_PASSWORD": "admin123",
-        "QBITTORRENT_CATEGORY": "test",
-    })
+    save_config_file(
+        "prowlarr_clients",
+        {
+            "PROWLARR_TORRENT_CLIENT": "qbittorrent",
+            "QBITTORRENT_URL": "http://qbittorrent:8080",
+            "QBITTORRENT_USERNAME": "admin",
+            "QBITTORRENT_PASSWORD": "admin123",
+            "QBITTORRENT_CATEGORY": "test",
+        },
+    )
     config.refresh()
 
 
 def _setup_deluge_config():
     """Set up Deluge configuration via config files and refresh config."""
-    save_config_file("prowlarr_clients", {
-        "PROWLARR_TORRENT_CLIENT": "deluge",
-        "DELUGE_HOST": "deluge",
-        "DELUGE_PORT": "8112",
-        "DELUGE_PASSWORD": "deluge",
-        "DELUGE_CATEGORY": "test",
-    })
+    save_config_file(
+        "prowlarr_clients",
+        {
+            "PROWLARR_TORRENT_CLIENT": "deluge",
+            "DELUGE_HOST": "deluge",
+            "DELUGE_PORT": "8112",
+            "DELUGE_PASSWORD": "deluge",
+            "DELUGE_CATEGORY": "test",
+        },
+    )
     config.refresh()
 
 
 def _setup_nzbget_config():
     """Set up NZBGet configuration via config files and refresh config."""
-    save_config_file("prowlarr_clients", {
-        "PROWLARR_USENET_CLIENT": "nzbget",
-        "NZBGET_URL": "http://nzbget:6789",
-        "NZBGET_USERNAME": "nzbget",
-        "NZBGET_PASSWORD": "tegbzn6789",
-        "NZBGET_CATEGORY": "test",
-    })
+    save_config_file(
+        "prowlarr_clients",
+        {
+            "PROWLARR_USENET_CLIENT": "nzbget",
+            "NZBGET_URL": "http://nzbget:6789",
+            "NZBGET_USERNAME": "nzbget",
+            "NZBGET_PASSWORD": "tegbzn6789",
+            "NZBGET_CATEGORY": "test",
+        },
+    )
     config.refresh()
 
 
@@ -79,12 +158,15 @@ def _setup_sabnzbd_config():
     api_key = _get_sabnzbd_api_key()
     if not api_key:
         return False
-    save_config_file("prowlarr_clients", {
-        "PROWLARR_USENET_CLIENT": "sabnzbd",
-        "SABNZBD_URL": "http://sabnzbd:8080",
-        "SABNZBD_API_KEY": api_key,
-        "SABNZBD_CATEGORY": "test",
-    })
+    save_config_file(
+        "prowlarr_clients",
+        {
+            "PROWLARR_USENET_CLIENT": "sabnzbd",
+            "SABNZBD_URL": "http://sabnzbd:8080",
+            "SABNZBD_API_KEY": api_key,
+            "SABNZBD_CATEGORY": "test",
+        },
+    )
     config.refresh()
     return True
 
@@ -92,6 +174,7 @@ def _setup_sabnzbd_config():
 def _get_sabnzbd_api_key():
     """Extract SABnzbd API key from config file."""
     import re
+
     # Try mounted config paths (from docker-compose volumes)
     config_paths = [
         "/sabnzbd-config/sabnzbd.ini",
@@ -99,7 +182,7 @@ def _get_sabnzbd_api_key():
     ]
     for config_path in config_paths:
         try:
-            with open(config_path, "r") as f:
+            with open(config_path) as f:
                 content = f.read()
                 match = re.search(r"api_key\s*=\s*(\S+)", content)
                 if match:
@@ -111,11 +194,13 @@ def _get_sabnzbd_api_key():
 
 # ============ Client Factory Functions ============
 
+
 def _try_get_transmission_client():
     """Try to get a working Transmission client, or None if unavailable."""
     _setup_transmission_config()
     try:
         from shelfmark.download.clients.transmission import TransmissionClient
+
         client = TransmissionClient()
         client.test_connection()
         return client
@@ -128,6 +213,7 @@ def _try_get_qbittorrent_client():
     _setup_qbittorrent_config()
     try:
         from shelfmark.download.clients.qbittorrent import QBittorrentClient
+
         client = QBittorrentClient()
         success, _ = client.test_connection()
         if success:
@@ -142,6 +228,7 @@ def _try_get_deluge_client():
     _setup_deluge_config()
     try:
         from shelfmark.download.clients.deluge import DelugeClient
+
         client = DelugeClient()
         success, _ = client.test_connection()
         if success:
@@ -156,6 +243,7 @@ def _try_get_nzbget_client():
     _setup_nzbget_config()
     try:
         from shelfmark.download.clients.nzbget import NZBGetClient
+
         client = NZBGetClient()
         success, _ = client.test_connection()
         if success:
@@ -171,6 +259,7 @@ def _try_get_sabnzbd_client():
         return None
     try:
         from shelfmark.download.clients.sabnzbd import SABnzbdClient
+
         client = SABnzbdClient()
         success, _ = client.test_connection()
         if success:
@@ -182,12 +271,15 @@ def _try_get_sabnzbd_client():
 
 # ============ Fixtures ============
 
+
 @pytest.fixture(scope="module")
 def transmission_client():
     """Get Transmission client if available, skip test otherwise."""
     client = _try_get_transmission_client()
     if client is None:
-        pytest.skip("Transmission not available - ensure docker-compose.test-clients.yml is running")
+        pytest.skip(
+            "Transmission not available - ensure docker-compose.test-clients.yml is running"
+        )
     return client
 
 
@@ -196,7 +288,9 @@ def qbittorrent_client():
     """Get qBittorrent client if available, skip test otherwise."""
     client = _try_get_qbittorrent_client()
     if client is None:
-        pytest.skip("qBittorrent not available - ensure docker-compose.test-clients.yml is running and check temp password")
+        pytest.skip(
+            "qBittorrent not available - ensure docker-compose.test-clients.yml is running and check temp password"
+        )
     return client
 
 
@@ -223,7 +317,9 @@ def sabnzbd_client():
     """Get SABnzbd client if available, skip test otherwise."""
     client = _try_get_sabnzbd_client()
     if client is None:
-        pytest.skip("SABnzbd not available - ensure docker-compose.test-clients.yml is running and setup wizard completed")
+        pytest.skip(
+            "SABnzbd not available - ensure docker-compose.test-clients.yml is running and setup wizard completed"
+        )
     return client
 
 
@@ -312,7 +408,15 @@ class TestTransmissionIntegration:
             assert 0 <= status.progress <= 100
 
             # State should be a known value
-            valid_states = {"downloading", "complete", "error", "seeding", "paused", "queued", "fetching_metadata"}
+            valid_states = {
+                "downloading",
+                "complete",
+                "error",
+                "seeding",
+                "paused",
+                "queued",
+                "fetching_metadata",
+            }
             assert status.state.value in valid_states
 
             # Complete should be boolean
@@ -397,7 +501,17 @@ class TestQBittorrentIntegration:
 
             assert 0 <= status.progress <= 100
 
-            valid_states = {"downloading", "complete", "error", "seeding", "paused", "queued", "fetching_metadata", "stalled", "checking"}
+            valid_states = {
+                "downloading",
+                "complete",
+                "error",
+                "seeding",
+                "paused",
+                "queued",
+                "fetching_metadata",
+                "stalled",
+                "checking",
+            }
             state_value = status.state.value if hasattr(status.state, "value") else status.state
             assert state_value in valid_states
 
@@ -482,7 +596,16 @@ class TestDelugeIntegration:
 
             assert 0 <= status.progress <= 100
 
-            valid_states = {"downloading", "complete", "error", "seeding", "paused", "queued", "fetching_metadata", "checking"}
+            valid_states = {
+                "downloading",
+                "complete",
+                "error",
+                "seeding",
+                "paused",
+                "queued",
+                "fetching_metadata",
+                "checking",
+            }
             assert status.state.value in valid_states
 
             assert isinstance(status.complete, bool)
@@ -505,6 +628,24 @@ class TestNZBGetIntegration:
         assert success, f"Connection failed: {message}"
         assert "NZBGet" in message
 
+    def test_add_status_and_remove_nzb(self, nzbget_client, nzb_fixture_server):
+        """Exercise the live NZBGet contract with a real queued NZB."""
+        client = nzbget_client
+        url = f"{nzb_fixture_server['base_url']}/Integration_Book.nzb"
+
+        download_id = client.add_download(url=url, name="Integration_Book")
+        assert download_id.isdigit()
+
+        status = _wait_for_live_status(client, download_id)
+        assert status is not None
+        assert status.complete is False
+        assert 0 <= status.progress <= 100
+        assert status.message
+        assert status.state_value in {"queued", "downloading", "paused", "processing", "unknown"}
+        assert nzb_fixture_server["request_paths"] == ["/Integration_Book.nzb"]
+
+        assert client.remove(download_id, delete_files=True) is True
+
 
 @pytest.mark.integration
 class TestSABnzbdIntegration:
@@ -520,3 +661,34 @@ class TestSABnzbdIntegration:
 
         assert success, f"Connection failed: {message}"
         assert "SABnzbd" in message
+
+    def test_add_find_status_and_remove_nzb(self, sabnzbd_client, nzb_fixture_server):
+        """Exercise the live SABnzbd contract with queue and lookup behavior."""
+        client = sabnzbd_client
+        url = f"{nzb_fixture_server['base_url']}/Integration_Book.nzb"
+
+        nzo_id = client.add_download(url=url, name="Integration_Book")
+        assert nzo_id
+        assert nzo_id.startswith("SABnzbd_nzo_")
+
+        found = None
+        for _ in range(10):
+            found = client.find_existing(url)
+            if found is not None:
+                break
+            time.sleep(0.5)
+
+        assert found is not None
+        found_id, found_status = found
+        assert found_id == nzo_id
+        assert isinstance(found_status, DownloadStatus)
+
+        status = _wait_for_live_status(client, nzo_id)
+        assert status is not None
+        assert status.complete is False
+        assert 0 <= status.progress <= 100
+        assert status.message
+        assert status.state_value in {"queued", "downloading", "processing", "paused"}
+        assert nzb_fixture_server["request_paths"] == ["/Integration_Book.nzb"]
+
+        assert client.remove(nzo_id, delete_files=True, archive=False) is True

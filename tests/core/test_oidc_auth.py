@@ -5,11 +5,10 @@ Tests the OIDCAuth helper: login URL generation, callback handling,
 user provisioning, and group claim parsing.
 """
 
-
 import os
 import tempfile
-import pytest
 
+import pytest
 
 MOCK_DISCOVERY = {
     "issuer": "https://auth.example.com",
@@ -40,6 +39,7 @@ def db_path():
 @pytest.fixture
 def user_db(db_path):
     from shelfmark.core.user_db import UserDB
+
     db = UserDB(db_path)
     db.initialize()
     return db
@@ -50,6 +50,7 @@ class TestParseGroupClaims:
 
     def test_parse_groups_list(self):
         from shelfmark.core.oidc_auth import parse_group_claims
+
         id_token = {"groups": ["admins", "users", "shelfmark-admins"]}
         groups = parse_group_claims(id_token, "groups")
         assert "shelfmark-admins" in groups
@@ -57,24 +58,28 @@ class TestParseGroupClaims:
 
     def test_parse_groups_comma_separated_string(self):
         from shelfmark.core.oidc_auth import parse_group_claims
+
         id_token = {"groups": "admins, users, shelfmark-admins"}
         groups = parse_group_claims(id_token, "groups")
         assert "shelfmark-admins" in groups
 
     def test_parse_groups_pipe_separated_string(self):
         from shelfmark.core.oidc_auth import parse_group_claims
+
         id_token = {"groups": "admins|users|shelfmark-admins"}
         groups = parse_group_claims(id_token, "groups")
         assert "shelfmark-admins" in groups
 
     def test_parse_groups_missing_claim(self):
         from shelfmark.core.oidc_auth import parse_group_claims
+
         id_token = {"email": "user@example.com"}
         groups = parse_group_claims(id_token, "groups")
         assert groups == []
 
     def test_parse_groups_empty(self):
         from shelfmark.core.oidc_auth import parse_group_claims
+
         id_token = {"groups": []}
         groups = parse_group_claims(id_token, "groups")
         assert groups == []
@@ -116,6 +121,7 @@ class TestExtractUserInfo:
 
     def test_extract_standard_claims(self):
         from shelfmark.core.oidc_auth import extract_user_info
+
         id_token = {
             "sub": "user-123",
             "email": "john@example.com",
@@ -130,6 +136,7 @@ class TestExtractUserInfo:
 
     def test_extract_falls_back_to_email_for_username(self):
         from shelfmark.core.oidc_auth import extract_user_info
+
         id_token = {
             "sub": "user-123",
             "email": "john@example.com",
@@ -140,6 +147,7 @@ class TestExtractUserInfo:
 
     def test_extract_falls_back_to_sub_for_username(self):
         from shelfmark.core.oidc_auth import extract_user_info
+
         id_token = {
             "sub": "user-123",
         }
@@ -148,6 +156,7 @@ class TestExtractUserInfo:
 
     def test_extract_handles_missing_optional_fields(self):
         from shelfmark.core.oidc_auth import extract_user_info
+
         id_token = {"sub": "user-123"}
         info = extract_user_info(id_token)
         assert info["oidc_subject"] == "user-123"
@@ -160,6 +169,7 @@ class TestProvisionOIDCUser:
 
     def test_provision_creates_new_user(self, user_db):
         from shelfmark.core.oidc_auth import provision_oidc_user
+
         user_info = {
             "oidc_subject": "sub-123",
             "username": "john",
@@ -174,6 +184,7 @@ class TestProvisionOIDCUser:
 
     def test_provision_creates_admin_user(self, user_db):
         from shelfmark.core.oidc_auth import provision_oidc_user
+
         user_info = {
             "oidc_subject": "sub-123",
             "username": "john",
@@ -185,6 +196,7 @@ class TestProvisionOIDCUser:
 
     def test_provision_returns_existing_user(self, user_db):
         from shelfmark.core.oidc_auth import provision_oidc_user
+
         user_info = {
             "oidc_subject": "sub-123",
             "username": "john",
@@ -197,6 +209,7 @@ class TestProvisionOIDCUser:
 
     def test_provision_updates_existing_user_info(self, user_db):
         from shelfmark.core.oidc_auth import provision_oidc_user
+
         user_info = {
             "oidc_subject": "sub-123",
             "username": "john",
@@ -214,6 +227,7 @@ class TestProvisionOIDCUser:
 
     def test_provision_updates_admin_role(self, user_db):
         from shelfmark.core.oidc_auth import provision_oidc_user
+
         user_info = {
             "oidc_subject": "sub-123",
             "username": "john",
@@ -229,6 +243,7 @@ class TestProvisionOIDCUser:
     def test_provision_preserves_role_when_group_auth_disabled(self, user_db):
         """When is_admin=None (group auth disabled), DB role should be preserved."""
         from shelfmark.core.oidc_auth import provision_oidc_user
+
         user_info = {
             "oidc_subject": "sub-123",
             "username": "john",
@@ -246,6 +261,7 @@ class TestProvisionOIDCUser:
     def test_provision_handles_duplicate_username(self, user_db):
         """If OIDC subject is new but username exists, append suffix."""
         from shelfmark.core.oidc_auth import provision_oidc_user
+
         # Create a local user with the same username
         user_db.create_user(username="john", password_hash="hash")
 
@@ -263,6 +279,7 @@ class TestProvisionOIDCUser:
     def test_provision_links_to_existing_user_by_email(self, user_db):
         """When allow_email_link=True and emails match, link to existing local user."""
         from shelfmark.core.oidc_auth import provision_oidc_user
+
         user_db.create_user(
             username="localuser",
             email="shared@example.com",
@@ -276,7 +293,10 @@ class TestProvisionOIDCUser:
             "display_name": "OIDC User",
         }
         user = provision_oidc_user(
-            user_db, user_info, is_admin=False, allow_email_link=True,
+            user_db,
+            user_info,
+            is_admin=False,
+            allow_email_link=True,
         )
         assert user["username"] == "localuser"
         assert user["oidc_subject"] == "oidc-sub-789"
@@ -286,6 +306,7 @@ class TestProvisionOIDCUser:
     def test_provision_does_not_link_by_email_when_disabled(self, user_db):
         """When allow_email_link=False (default), don't link by email."""
         from shelfmark.core.oidc_auth import provision_oidc_user
+
         user_db.create_user(
             username="localuser",
             email="shared@example.com",
@@ -299,7 +320,10 @@ class TestProvisionOIDCUser:
             "display_name": "OIDC User",
         }
         user = provision_oidc_user(
-            user_db, user_info, is_admin=False, allow_email_link=False,
+            user_db,
+            user_info,
+            is_admin=False,
+            allow_email_link=False,
         )
         # Should create a new user, not link to existing
         assert user["username"] == "oidcuser"

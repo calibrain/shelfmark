@@ -14,6 +14,7 @@ def build_filename(
     year: str | None = None,
     fmt: str | None = None,
 ) -> str:
+    """Build a filesystem-safe filename from book metadata."""
     parts = []
     if author:
         parts.append(author)
@@ -62,6 +63,8 @@ ACTIVE_QUEUE_STATUSES: frozenset[QueueStatus] = frozenset(
 
 
 class SearchMode(StrEnum):
+    """Search modes supported by the Shelfmark UI and API."""
+
     DIRECT = "direct"
     UNIVERSAL = "universal"
 
@@ -83,6 +86,8 @@ class QueueItem:
 
 @dataclass
 class DownloadTask:
+    """Mutable download task state tracked throughout the pipeline."""
+
     task_id: str  # Unique ID (e.g., AA MD5 hash, Prowlarr GUID)
     source: str  # Handler name ("direct_download", "prowlarr")
     title: str  # Display title for queue sidebar

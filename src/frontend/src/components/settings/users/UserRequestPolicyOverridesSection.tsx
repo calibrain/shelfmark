@@ -1,4 +1,4 @@
-import {
+import type {
   CustomComponentFieldConfig,
   HeadingFieldConfig,
   SelectFieldConfig,
@@ -6,14 +6,15 @@ import {
   TableFieldConfig,
 } from '../../../types/settings';
 import { HeadingField } from '../fields';
-import { PerUserSettings } from './types';
 import { RequestPolicyGrid } from './RequestPolicyGrid';
+import type { RequestPolicyRuleRow } from './requestPolicyGridUtils';
 import {
   normalizeRequestPolicyDefaults,
   normalizeRequestPolicyRules,
   normalizeExplicitRulesForPersistence,
   parseSourceCapabilitiesFromRulesField,
 } from './requestPolicyGridUtils';
+import type { PerUserSettings } from './types';
 
 interface UserRequestPolicyOverridesSectionProps {
   usersTab: SettingsTab;
@@ -36,11 +37,16 @@ const requestPolicyHeading: HeadingFieldConfig = {
   type: 'HeadingField',
   key: 'request_policy_overrides_heading',
   title: 'Requests',
-  description: 'Custom request settings for this user. Reset any to fall back to the global defaults.',
+  description:
+    'Custom request settings for this user. Reset any to fall back to the global defaults.',
 };
 
 const hasOwnNonNull = (settings: PerUserSettings, key: keyof PerUserSettings): boolean => {
-  return Object.prototype.hasOwnProperty.call(settings, key) && settings[key] !== null && settings[key] !== undefined;
+  return (
+    Object.prototype.hasOwnProperty.call(settings, key) &&
+    settings[key] !== null &&
+    settings[key] !== undefined
+  );
 };
 
 const toBoolean = (value: unknown): boolean => {
@@ -51,6 +57,14 @@ const toBoolean = (value: unknown): boolean => {
     return ['1', 'true', 'yes', 'on'].includes(value.trim().toLowerCase());
   }
   return Boolean(value);
+};
+
+const toStoredRequestPolicyRule = (rule: RequestPolicyRuleRow): Record<string, unknown> => {
+  return {
+    source: rule.source,
+    content_type: rule.content_type,
+    mode: rule.mode,
+  };
 };
 
 export const UserRequestPolicyOverridesSection = ({
@@ -64,7 +78,7 @@ export const UserRequestPolicyOverridesSection = ({
   const effectiveRequestsEnabled = toBoolean(
     requestsEnabledOverridePresent
       ? userSettings.REQUESTS_ENABLED
-      : globalUsersSettingsValues.REQUESTS_ENABLED
+      : globalUsersSettingsValues.REQUESTS_ENABLED,
   );
   if (!effectiveRequestsEnabled) {
     return null;
@@ -72,19 +86,19 @@ export const UserRequestPolicyOverridesSection = ({
 
   const requestPolicyEditorField = usersTab.fields.find(
     (field): field is CustomComponentFieldConfig =>
-      field.key === 'request_policy_editor' && field.type === 'CustomComponentField'
+      field.key === 'request_policy_editor' && field.type === 'CustomComponentField',
   );
   const rulesField = requestPolicyEditorField?.boundFields?.find(
     (field): field is TableFieldConfig =>
-      field.key === 'REQUEST_POLICY_RULES' && field.type === 'TableField'
+      field.key === 'REQUEST_POLICY_RULES' && field.type === 'TableField',
   );
   const defaultEbookField = requestPolicyEditorField?.boundFields?.find(
     (field): field is SelectFieldConfig =>
-      field.key === 'REQUEST_POLICY_DEFAULT_EBOOK' && field.type === 'SelectField'
+      field.key === 'REQUEST_POLICY_DEFAULT_EBOOK' && field.type === 'SelectField',
   );
   const defaultAudioField = requestPolicyEditorField?.boundFields?.find(
     (field): field is SelectFieldConfig =>
-      field.key === 'REQUEST_POLICY_DEFAULT_AUDIOBOOK' && field.type === 'SelectField'
+      field.key === 'REQUEST_POLICY_DEFAULT_AUDIOBOOK' && field.type === 'SelectField',
   );
 
   if (!rulesField) {
@@ -121,7 +135,10 @@ export const UserRequestPolicyOverridesSection = ({
     ...explicitUserRules.map((row) => row.source),
   ]);
 
-  const setRulesOverride = (nextRulesRaw: typeof explicitUserRules, nextDefaults = effectiveDefaults) => {
+  const setRulesOverride = (
+    nextRulesRaw: typeof explicitUserRules,
+    nextDefaults = effectiveDefaults,
+  ) => {
     const normalized = normalizeExplicitRulesForPersistence({
       explicitRules: nextRulesRaw,
       baseRules: globalRules,
@@ -134,14 +151,14 @@ export const UserRequestPolicyOverridesSection = ({
       if (normalized.length === 0) {
         delete next.REQUEST_POLICY_RULES;
       } else {
-        next.REQUEST_POLICY_RULES = normalized as unknown as Array<Record<string, unknown>>;
+        next.REQUEST_POLICY_RULES = normalized.map(toStoredRequestPolicyRule);
       }
       return next;
     });
   };
 
   const hasAnyRequestOverrides = REQUEST_POLICY_OVERRIDE_KEYS.some((key) =>
-    hasOwnNonNull(userSettings, key)
+    hasOwnNonNull(userSettings, key),
   );
 
   return (

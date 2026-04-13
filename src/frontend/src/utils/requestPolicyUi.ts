@@ -1,8 +1,8 @@
-import { ButtonStateInfo, RequestPolicyMode } from '../types';
+import type { ButtonStateInfo, RequestPolicyMode } from '../types';
 
 export const applyDirectPolicyModeToButtonState = (
   baseState: ButtonStateInfo,
-  mode: RequestPolicyMode
+  mode: RequestPolicyMode,
 ): ButtonStateInfo => {
   if (baseState.state !== 'download') {
     return baseState;
@@ -21,7 +21,7 @@ export const applyDirectPolicyModeToButtonState = (
 
 export const applyUniversalPolicyModeToButtonState = (
   baseState: ButtonStateInfo,
-  mode: RequestPolicyMode
+  mode: RequestPolicyMode,
 ): ButtonStateInfo => {
   if (baseState.state !== 'download') {
     return baseState;

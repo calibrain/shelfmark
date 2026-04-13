@@ -1,6 +1,6 @@
 """Download queue orchestration and worker management.
 
-Two-stage architecture: handlers stage to TMP_DIR, orchestrator moves to INGEST_DIR
+Two-stage architecture: handlers stage to TMP_DIR, orchestrator delivers to the configured destination
 with archive extraction and custom script support.
 """
 
@@ -33,6 +33,7 @@ from shelfmark.release_sources import (
 )
 
 logger = setup_logger(__name__)
+_RNG = random.SystemRandom()
 
 
 # =============================================================================
@@ -108,20 +109,31 @@ def _parse_release_search_mode(value: object) -> SearchMode:
 
 
 def _optional_number(value: object) -> float | None:
+    if isinstance(value, bool):
+        return float(value)
     if isinstance(value, (int, float)) and not isinstance(value, bool):
         return float(value)
-    try:
-        return float(value)
-    except TypeError, ValueError:
-        return None
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return None
+    return None
 
 
 def _optional_positive_int(value: object) -> int | None:
     if isinstance(value, bool):
         return None
-    try:
+    if isinstance(value, int):
+        parsed = value
+    elif isinstance(value, float):
         parsed = int(value)
-    except TypeError, ValueError:
+    elif isinstance(value, str):
+        try:
+            parsed = int(value)
+        except ValueError:
+            return None
+    else:
         return None
     return parsed if parsed > 0 else None
 
@@ -131,6 +143,19 @@ def _seed_time_seconds_to_minutes(value: object) -> int | None:
     if seed_time_seconds is None:
         return None
     return (seed_time_seconds + 59) // 60
+
+
+def _config_float(value: object, default: float) -> float:
+    if isinstance(value, bool) or value is None:
+        return default
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError:
+            return default
+    return default
 
 
 def _build_retry_resolution_fields(
@@ -263,7 +288,7 @@ def queue_release(
         error_msg = f"Missing required field in release data: {e}"
         logger.warning(error_msg)
         return False, error_msg
-    except Exception as e:
+    except (AttributeError, OSError, RuntimeError, TypeError) as e:
         error_msg = f"Error queueing release: {e}"
         logger.error_trace(error_msg)
         return False, error_msg
@@ -303,7 +328,7 @@ def get_book_data(task_id: str) -> tuple[bytes | None, DownloadTask | None]:
 
         with Path(path).open("rb") as f:
             return f.read(), task
-    except Exception as e:
+    except OSError as e:
         logger.error_trace(f"Error getting book data: {e}")
         if task:
             task.download_path = None
@@ -513,7 +538,7 @@ def _task_to_dict(
         "priority": task.priority,
         "added_time": task.added_time,
         "progress": task.progress,
-        "status": task.status,
+        "status": retry_status.value if isinstance(retry_status, QueueStatus) else task.status,
         "status_message": task.status_message,
         "download_path": task.download_path,
         "user_id": task.user_id,
@@ -545,7 +570,7 @@ def _capture_task_error(
             task.last_error_type = normalized_type
 
 
-def _format_download_exception_message(exc: Exception) -> str:
+def _format_download_exception_message(exc: BaseException) -> str:
     if isinstance(exc, PermissionError) and "/cwa-book-ingest" in str(exc):
         return "Destination misconfigured. Go to Settings → Downloads to update."
     if isinstance(exc, PermissionError):
@@ -555,141 +580,122 @@ def _format_download_exception_message(exc: Exception) -> str:
 
 def _download_task(task_id: str, cancel_flag: Event) -> str | None:
     """Download a task via appropriate handler, then post-process to ingest."""
-    try:
-        # Check for cancellation before starting
-        if cancel_flag.is_set():
-            logger.info("Task %s: cancelled before starting", task_id)
-            return None
-
-        task = book_queue.get_task(task_id)
-        if not task:
-            logger.error("Task not found in queue: %s", task_id)
-            return None
-
-        title_label = task.title or "Unknown title"
-        logger.info(
-            "Task %s: starting download (%s) - %s",
-            task_id,
-            get_source_display_name(task.source),
-            title_label,
-        )
-
-        def progress_callback(progress: float) -> None:
-            update_download_progress(task_id, progress)
-
-        def status_callback(status: str, message: str | None = None) -> None:
-            status_key = status.lower()
-            if status_key == "error":
-                _capture_task_error(
-                    task,
-                    message=message or "Download failed",
-                    exc_type="StatusCallbackError",
-                )
-                return
-            # Don't propagate terminal statuses to the queue here. Output modules
-            # call status_callback("complete") before returning the download path,
-            # but _process_single_download needs to set download_path on the task
-            # first so the terminal hook captures it for history persistence.
-            if status_key in ("complete", "cancelled"):
-                if message is not None:
-                    book_queue.update_status_message(task_id, message)
-                return
-            update_download_status(task_id, status, message)
-
-        # Get the download handler based on the task's source
-        handler = get_handler(task.source)
-        temp_file: Path | None = None
-
-        if task.staged_path:
-            staged_file = Path(task.staged_path)
-            if run_blocking_io(staged_file.exists):
-                temp_file = staged_file
-                logger.info("Task %s: reusing staged file for retry: %s", task_id, staged_file)
-            else:
-                task.staged_path = None
-
-        if temp_file is None:
-            temp_path = handler.download(
-                task,
-                cancel_flag,
-                progress_callback,
-                status_callback,
-            )
-
-            # Handler returns temp path - orchestrator handles post-processing
-            if not temp_path:
-                return None
-
-            temp_file = Path(temp_path)
-            if not run_blocking_io(temp_file.exists):
-                logger.error("Handler returned non-existent path: %s", temp_path)
-                _capture_task_error(
-                    task,
-                    message=f"Download file missing: {temp_path}",
-                    exc_type="MissingDownloadPath",
-                )
-                return None
-
-        # Check cancellation before post-processing
-        if cancel_flag.is_set():
-            logger.info("Task %s: cancelled before post-processing", task_id)
-            if not is_torrent_source(temp_file, task):
-                safe_cleanup_path(temp_file, task)
-            return None
-
-        logger.info("Task %s: download finished; starting post-processing", task_id)
-        logger.debug("Task %s: post-processing input path: %s", task_id, temp_file)
-        task.staged_path = str(temp_file)
-        preserve_source_on_failure = True
-
-        # Post-processing: output routing + file processing pipeline
-        result = post_process_download(
-            temp_file,
-            task,
-            cancel_flag,
-            status_callback,
-            preserve_source_on_failure=preserve_source_on_failure,
-        )
-
-        if cancel_flag.is_set():
-            logger.info("Task %s: post-processing cancelled", task_id)
-        elif result:
-            logger.info("Task %s: post-processing complete", task_id)
-            logger.debug("Task %s: post-processing result: %s", task_id, result)
-        else:
-            logger.warning("Task %s: post-processing failed", task_id)
-            if not task.last_error_message:
-                _capture_task_error(
-                    task,
-                    message="Download failed",
-                    exc_type="UnknownFailure",
-                )
-
-        try:
-            handler.post_process_cleanup(task, success=bool(result))
-        except Exception as e:
-            logger.warning("Post-processing cleanup hook failed for %s: %s", task_id, e)
-
-        if result:
-            task.staged_path = None
-            _clear_task_error_state(task)
-
-    except Exception as e:
-        if cancel_flag.is_set():
-            logger.info("Task %s: cancelled during error handling", task_id)
-        else:
-            logger.error_trace("Task %s: error downloading: %s", task_id, e)
-            task = book_queue.get_task(task_id)
-            if task:
-                _capture_task_error(
-                    task,
-                    message=_format_download_exception_message(e),
-                    exc_type=type(e).__name__,
-                )
+    # Check for cancellation before starting
+    if cancel_flag.is_set():
+        logger.info("Task %s: cancelled before starting", task_id)
         return None
 
+    task = book_queue.get_task(task_id)
+    if not task:
+        logger.error("Task not found in queue: %s", task_id)
+        return None
+
+    title_label = task.title or "Unknown title"
+    logger.info(
+        "Task %s: starting download (%s) - %s",
+        task_id,
+        get_source_display_name(task.source),
+        title_label,
+    )
+
+    def progress_callback(progress: float) -> None:
+        update_download_progress(task_id, progress)
+
+    def status_callback(status: str, message: str | None = None) -> None:
+        status_key = status.lower()
+        if status_key == "error":
+            _capture_task_error(
+                task,
+                message=message or "Download failed",
+                exc_type="StatusCallbackError",
+            )
+            return
+        # Don't propagate terminal statuses to the queue here. Output modules
+        # call status_callback("complete") before returning the download path,
+        # but _process_single_download needs to set download_path on the task
+        # first so the terminal hook captures it for history persistence.
+        if status_key in ("complete", "cancelled"):
+            if message is not None:
+                book_queue.update_status_message(task_id, message)
+            return
+        update_download_status(task_id, status, message)
+
+    # Get the download handler based on the task's source
+    handler = get_handler(task.source)
+    temp_file: Path | None = None
+
+    if task.staged_path:
+        staged_file = Path(task.staged_path)
+        if run_blocking_io(staged_file.exists):
+            temp_file = staged_file
+            logger.info("Task %s: reusing staged file for retry: %s", task_id, staged_file)
+        else:
+            task.staged_path = None
+
+    if temp_file is None:
+        temp_path = handler.download(
+            task,
+            cancel_flag,
+            progress_callback,
+            status_callback,
+        )
+
+        # Handler returns temp path - orchestrator handles post-processing
+        if not temp_path:
+            return None
+
+        temp_file = Path(temp_path)
+        if not run_blocking_io(temp_file.exists):
+            logger.error("Handler returned non-existent path: %s", temp_path)
+            _capture_task_error(
+                task,
+                message=f"Download file missing: {temp_path}",
+                exc_type="MissingDownloadPath",
+            )
+            return None
+
+    # Check cancellation before post-processing
+    if cancel_flag.is_set():
+        logger.info("Task %s: cancelled before post-processing", task_id)
+        if not is_torrent_source(temp_file, task):
+            safe_cleanup_path(temp_file, task)
+        return None
+
+    logger.info("Task %s: download finished; starting post-processing", task_id)
+    logger.debug("Task %s: post-processing input path: %s", task_id, temp_file)
+    task.staged_path = str(temp_file)
+    preserve_source_on_failure = True
+
+    # Post-processing: output routing + file processing pipeline
+    result = post_process_download(
+        temp_file,
+        task,
+        cancel_flag,
+        status_callback,
+        preserve_source_on_failure=preserve_source_on_failure,
+    )
+
+    if cancel_flag.is_set():
+        logger.info("Task %s: post-processing cancelled", task_id)
+    elif result:
+        logger.info("Task %s: post-processing complete", task_id)
+        logger.debug("Task %s: post-processing result: %s", task_id, result)
     else:
-        return result
+        logger.warning("Task %s: post-processing failed", task_id)
+        if not task.last_error_message:
+            _capture_task_error(
+                task,
+                message="Download failed",
+                exc_type="UnknownFailure",
+            )
+
+    handler.post_process_cleanup(task, success=bool(result))
+
+    if result:
+        task.staged_path = None
+        _clear_task_error_state(task)
+
+    return result
 
 
 def update_download_progress(book_id: str, progress: float) -> None:
@@ -707,6 +713,7 @@ def update_download_progress(book_id: str, progress: float) -> None:
     # Broadcast progress via WebSocket with throttling
     if ws_manager:
         current_time = time.time()
+        progress_update_interval = _config_float(config.DOWNLOAD_PROGRESS_UPDATE_INTERVAL, 1.0)
         should_broadcast = False
 
         with _progress_lock:
@@ -718,7 +725,7 @@ def update_download_progress(book_id: str, progress: float) -> None:
             should_broadcast = (
                 progress <= _PROGRESS_BROADCAST_START_PERCENT
                 or progress >= _PROGRESS_BROADCAST_COMPLETE_PERCENT
-                or time_elapsed >= config.DOWNLOAD_PROGRESS_UPDATE_INTERVAL
+                or time_elapsed >= progress_update_interval
                 or progress - last_progress >= _PROGRESS_BROADCAST_MIN_DELTA
             )
 
@@ -854,61 +861,39 @@ def _finalize_download_failure(task_id: str) -> None:
 
 def _process_single_download(task_id: str, cancel_flag: Event) -> None:
     """Process a single download job."""
-    try:
-        # Status will be updated through callbacks during download process
-        # (resolving -> downloading -> complete)
-        download_path = _download_task(task_id, cancel_flag)
+    # Status will be updated through callbacks during download process
+    # (resolving -> downloading -> complete)
+    download_path = _download_task(task_id, cancel_flag)
 
-        # Clean up progress tracking
-        _cleanup_progress_tracking(task_id)
+    # Clean up progress tracking
+    _cleanup_progress_tracking(task_id)
 
-        if cancel_flag.is_set():
-            book_queue.update_status(task_id, QueueStatus.CANCELLED)
-            # Broadcast cancellation
-            if ws_manager:
-                ws_manager.broadcast_status_update(queue_status())
-            return
-
-        if download_path:
-            book_queue.update_download_path(task_id, download_path)
-            book_queue.update_status(task_id, QueueStatus.COMPLETE)
-        else:
-            _finalize_download_failure(task_id)
-
-        # Broadcast final status (completed or error)
+    if cancel_flag.is_set():
+        book_queue.update_status(task_id, QueueStatus.CANCELLED)
+        # Broadcast cancellation
         if ws_manager:
             ws_manager.broadcast_status_update(queue_status())
+        return
 
-    except Exception as e:
-        # Clean up progress tracking even on error
-        _cleanup_progress_tracking(task_id)
+    if download_path:
+        book_queue.update_download_path(task_id, download_path)
+        book_queue.update_status(task_id, QueueStatus.COMPLETE)
+    else:
+        _finalize_download_failure(task_id)
 
-        if not cancel_flag.is_set():
-            logger.error_trace(f"Error in download processing: {e}")
-            task = book_queue.get_task(task_id)
-            if task:
-                _capture_task_error(
-                    task,
-                    message=f"Download failed: {type(e).__name__}: {e!s}",
-                    exc_type=type(e).__name__,
-                )
-            _finalize_download_failure(task_id)
-        else:
-            logger.info("Download cancelled: %s", task_id)
-            book_queue.update_status(task_id, QueueStatus.CANCELLED)
-
-        # Broadcast error/cancelled status
-        if ws_manager:
-            ws_manager.broadcast_status_update(queue_status())
+    # Broadcast final status (completed or error)
+    if ws_manager:
+        ws_manager.broadcast_status_update(queue_status())
 
 
 def concurrent_download_loop() -> None:
-    """Main download coordinator using ThreadPoolExecutor for concurrent downloads."""
-    max_workers = config.MAX_CONCURRENT_DOWNLOADS
+    """Run the main concurrent download coordinator."""
+    max_workers = normalize_positive_int(config.MAX_CONCURRENT_DOWNLOADS) or 1
+    main_loop_sleep_time = _config_float(config.MAIN_LOOP_SLEEP_TIME, 0.5)
     logger.info("Starting concurrent download loop with %s workers", max_workers)
 
     with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="Download") as executor:
-        active_futures: dict[Future, str] = {}  # Track active download futures
+        active_futures: dict[Future, tuple[str, Event]] = {}  # Track active download futures
         stalled_tasks: set[str] = set()  # Track tasks already cancelled due to stall
 
         while True:
@@ -916,17 +901,52 @@ def concurrent_download_loop() -> None:
                 # Clean up completed futures
                 completed_futures = [f for f in active_futures if f.done()]
                 for future in completed_futures:
-                    task_id = active_futures.pop(future)
+                    task_id, cancel_flag = active_futures.pop(future)
                     stalled_tasks.discard(task_id)
-                    try:
-                        future.result()  # This will raise any exceptions from the worker
-                    except Exception as e:
-                        logger.error_trace(f"Future exception for {task_id}: {e}")
+                    if future.cancelled():
+                        _cleanup_progress_tracking(task_id)
+                        if cancel_flag.is_set():
+                            logger.info("Download cancelled: %s", task_id)
+                            book_queue.update_status(task_id, QueueStatus.CANCELLED)
+                        else:
+                            logger.warning("Future cancelled unexpectedly for %s", task_id)
+                            task = book_queue.get_task(task_id)
+                            if task:
+                                _capture_task_error(
+                                    task,
+                                    message="Download failed: CancelledError",
+                                    exc_type="CancelledError",
+                                )
+                            _finalize_download_failure(task_id)
+                        if ws_manager:
+                            ws_manager.broadcast_status_update(queue_status())
+                        continue
+
+                    worker_error = future.exception()
+                    if worker_error is None:
+                        continue
+
+                    _cleanup_progress_tracking(task_id)
+                    if cancel_flag.is_set():
+                        logger.info("Download cancelled: %s", task_id)
+                        book_queue.update_status(task_id, QueueStatus.CANCELLED)
+                    else:
+                        logger.error_trace("Future exception for %s: %s", task_id, worker_error)
+                        task = book_queue.get_task(task_id)
+                        if task:
+                            _capture_task_error(
+                                task,
+                                message=_format_download_exception_message(worker_error),
+                                exc_type=type(worker_error).__name__,
+                            )
+                        _finalize_download_failure(task_id)
+                    if ws_manager:
+                        ws_manager.broadcast_status_update(queue_status())
 
                 # Check for stalled downloads (no activity in STALL_TIMEOUT seconds)
                 current_time = time.time()
                 with _progress_lock:
-                    for _future, task_id in list(active_futures.items()):
+                    for _future, (task_id, _cancel_flag) in list(active_futures.items()):
                         if task_id in stalled_tasks:
                             continue
                         last_active = _last_activity.get(task_id, current_time)
@@ -948,7 +968,7 @@ def concurrent_download_loop() -> None:
                     # Stagger concurrent downloads to avoid rate limiting on shared download servers
                     # Only delay if other downloads are already active
                     if active_futures:
-                        stagger_delay = random.uniform(2, 5)
+                        stagger_delay = _RNG.uniform(2, 5)
                         logger.debug("Staggering download start by %.1fs", stagger_delay)
                         time.sleep(stagger_delay)
 
@@ -956,11 +976,11 @@ def concurrent_download_loop() -> None:
 
                     # Submit download job to thread pool
                     future = executor.submit(_process_single_download, task_id, cancel_flag)
-                    active_futures[future] = task_id
+                    active_futures[future] = (task_id, cancel_flag)
 
                 # Brief sleep to prevent busy waiting
-                time.sleep(config.MAIN_LOOP_SLEEP_TIME)
-            except Exception as e:
+                time.sleep(main_loop_sleep_time)
+            except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError) as e:
                 logger.error_trace("Download coordinator loop error: %s", e)
                 time.sleep(COORDINATOR_LOOP_ERROR_RETRY_DELAY)
 

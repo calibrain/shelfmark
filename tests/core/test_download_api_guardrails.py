@@ -151,7 +151,7 @@ class TestReleaseDownloadEndpointGuardrails:
         assert captured["release_data"] == {**payload, "content_type": "audiobook"}
         assert captured["priority"] == 1
 
-    def test_non_json_payload_returns_500_current_behavior(self, main_module, client):
+    def test_non_json_payload_returns_400(self, main_module, client):
         with patch.object(main_module, "get_auth_mode", return_value="none"):
             with patch.object(main_module.backend, "queue_release") as mock_queue_release:
                 resp = client.post(
@@ -161,8 +161,8 @@ class TestReleaseDownloadEndpointGuardrails:
                 )
 
         body = resp.get_json()
-        assert resp.status_code == 500
-        assert "Unsupported Media Type" in body["error"]
+        assert resp.status_code == 400
+        assert body == {"error": "No data provided"}
         mock_queue_release.assert_not_called()
 
     def test_admin_can_queue_release_on_behalf_of_another_user(self, main_module, client):
@@ -282,7 +282,9 @@ class TestReleaseDownloadEndpointGuardrails:
         assert resp.get_json() == {"error": "User not found"}
         mock_queue_release.assert_not_called()
 
-    def test_on_behalf_release_download_returns_503_when_user_db_unavailable(self, main_module, client):
+    def test_on_behalf_release_download_returns_503_when_user_db_unavailable(
+        self, main_module, client
+    ):
         admin_user = _create_user(main_module, prefix="admin", role="admin")
         _set_authenticated_session(
             client,
@@ -326,7 +328,9 @@ class TestCancelDownloadEndpointGuardrails:
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
-                with patch.object(main_module.backend, "cancel_download", return_value=True) as mock_cancel:
+                with patch.object(
+                    main_module.backend, "cancel_download", return_value=True
+                ) as mock_cancel:
                     resp = client.delete("/api/download/direct-task-1/cancel")
 
         assert resp.status_code == 200
@@ -352,7 +356,9 @@ class TestCancelDownloadEndpointGuardrails:
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
-                with patch.object(main_module.backend, "cancel_download", return_value=True) as mock_cancel:
+                with patch.object(
+                    main_module.backend, "cancel_download", return_value=True
+                ) as mock_cancel:
                     resp = client.delete("/api/download/owned-task-1/cancel")
 
         assert resp.status_code == 403
@@ -397,7 +403,9 @@ class TestCancelDownloadEndpointGuardrails:
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
-                with patch.object(main_module.backend, "cancel_download", return_value=True) as mock_cancel:
+                with patch.object(
+                    main_module.backend, "cancel_download", return_value=True
+                ) as mock_cancel:
                     resp = client.delete("/api/download/requested-task-1/cancel")
 
         assert resp.status_code == 403
@@ -442,7 +450,9 @@ class TestCancelDownloadEndpointGuardrails:
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
-                with patch.object(main_module.backend, "cancel_download", return_value=True) as mock_cancel:
+                with patch.object(
+                    main_module.backend, "cancel_download", return_value=True
+                ) as mock_cancel:
                     resp = client.delete("/api/download/requested-task-2/cancel")
 
         assert resp.status_code == 200
@@ -487,14 +497,18 @@ class TestRetryDownloadEndpointGuardrails:
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
-                with patch.object(main_module.backend, "retry_download", return_value=(True, None)) as mock_retry:
+                with patch.object(
+                    main_module.backend, "retry_download", return_value=(True, None)
+                ) as mock_retry:
                     resp = client.post("/api/download/direct-task-retry-1/retry")
 
         assert resp.status_code == 200
         assert resp.get_json() == {"status": "queued", "book_id": "direct-task-retry-1"}
         mock_retry.assert_called_once_with("direct-task-retry-1")
 
-    def test_owner_can_retry_persisted_direct_download_when_live_task_is_missing(self, main_module, client):
+    def test_owner_can_retry_persisted_direct_download_when_live_task_is_missing(
+        self, main_module, client
+    ):
         user = _create_user(main_module, prefix="reader")
         _set_authenticated_session(
             client,
@@ -520,7 +534,7 @@ class TestRetryDownloadEndpointGuardrails:
             source_display_name="Direct Download",
             title="Persisted Direct Task",
             author="Direct Author",
-            format="epub",
+            file_format="epub",
             size="1 MB",
             preview=None,
             content_type="ebook",
@@ -561,7 +575,9 @@ class TestRetryDownloadEndpointGuardrails:
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
-                with patch.object(main_module.backend, "retry_download", return_value=(True, None)) as mock_retry:
+                with patch.object(
+                    main_module.backend, "retry_download", return_value=(True, None)
+                ) as mock_retry:
                     resp = client.post("/api/download/owned-task-retry-1/retry")
 
         assert resp.status_code == 403
@@ -587,7 +603,9 @@ class TestRetryDownloadEndpointGuardrails:
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
-                with patch.object(main_module.backend, "retry_download", return_value=(True, None)) as mock_retry:
+                with patch.object(
+                    main_module.backend, "retry_download", return_value=(True, None)
+                ) as mock_retry:
                     resp = client.post("/api/download/requested-retry-1/retry")
 
         assert resp.status_code == 403
@@ -632,14 +650,18 @@ class TestRetryDownloadEndpointGuardrails:
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
-                with patch.object(main_module.backend, "retry_download", return_value=(True, None)) as mock_retry:
+                with patch.object(
+                    main_module.backend, "retry_download", return_value=(True, None)
+                ) as mock_retry:
                     resp = client.post("/api/download/requested-retry-2/retry")
 
         assert resp.status_code == 403
         assert resp.get_json()["code"] == "requested_download_retry_forbidden"
         mock_retry.assert_not_called()
 
-    def test_retry_allows_request_linked_postprocess_error_with_staged_file(self, main_module, client, tmp_path):
+    def test_retry_allows_request_linked_postprocess_error_with_staged_file(
+        self, main_module, client, tmp_path
+    ):
         user = _create_user(main_module, prefix="requester")
         _set_authenticated_session(
             client,
@@ -666,7 +688,9 @@ class TestRetryDownloadEndpointGuardrails:
                     "get_task_status",
                     return_value=main_module.QueueStatus.ERROR,
                 ):
-                    with patch.object(main_module.backend, "retry_download", return_value=(True, None)) as mock_retry:
+                    with patch.object(
+                        main_module.backend, "retry_download", return_value=(True, None)
+                    ) as mock_retry:
                         resp = client.post("/api/download/requested-retry-postprocess-1/retry")
 
         assert resp.status_code == 200
@@ -705,7 +729,7 @@ class TestRetryDownloadEndpointGuardrails:
             source_display_name="Prowlarr",
             title="Persisted Requested Book",
             author="Request Author",
-            format="epub",
+            file_format="epub",
             size="1 MB",
             preview=None,
             content_type="ebook",

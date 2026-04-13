@@ -1,5 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
-import { MultiSelectFieldConfig } from '../../../types/settings';
+import { useLayoutEffect, useRef, useState } from 'react';
+
+import type { MultiSelectFieldConfig } from '../../../types/settings';
 import { DropdownList } from '../../DropdownList';
 
 interface MultiSelectFieldProps {
@@ -14,13 +15,22 @@ const COLLAPSE_THRESHOLD_OPTIONS = 12;
 // Approximate height for ~4 rows of pills (pills are ~32px + 8px gap)
 const COLLAPSED_HEIGHT = 156;
 const ALL_OPTION_VALUE = 'all';
+const EMPTY_SELECTION: string[] = [];
+
+interface OptionOrderState {
+  fieldKey: string;
+  optionsIdentity: string;
+  selectionIdentity: string;
+  pendingInternalSelectionIdentity: string | null;
+  sortedOptions: MultiSelectFieldConfig['options'];
+}
 
 /**
  * Sort options with selected items first, preserving relative order within each group
  */
 const sortOptionsWithSelectedFirst = (
   options: MultiSelectFieldConfig['options'],
-  selectedValues: string[]
+  selectedValues: string[],
 ): MultiSelectFieldConfig['options'] => {
   const selectedSet = new Set(selectedValues);
   const selectedOptions = options.filter((opt) => selectedSet.has(opt.value));
@@ -28,8 +38,19 @@ const sortOptionsWithSelectedFirst = (
   return [...selectedOptions, ...unselectedOptions];
 };
 
-export const MultiSelectField = ({ field, value, onChange, disabled }: MultiSelectFieldProps) => {
-  const selected = value ?? [];
+const getOptionsIdentity = (options: MultiSelectFieldConfig['options']): string =>
+  options.map((opt) => `${opt.value}\u0000${opt.label}\u0000${opt.childOf ?? ''}`).join('\u0001');
+
+const getSelectionIdentity = (values: string[]): string =>
+  values.toSorted((left, right) => left.localeCompare(right)).join('\u0001');
+
+export const MultiSelectField = ({
+  field,
+  value: fieldValue,
+  onChange,
+  disabled,
+}: MultiSelectFieldProps) => {
+  const selected = fieldValue ?? EMPTY_SELECTION;
   // disabled prop is already computed by SettingsContent.getDisabledState()
   const isDisabled = disabled ?? false;
 
@@ -51,22 +72,18 @@ export const MultiSelectField = ({ field, value, onChange, disabled }: MultiSele
     const normalizeValues = (values: string[]): string[] => {
       const deduped = new Set(
         values
-          .map((entry) => String(entry ?? '').trim())
-          .filter((entry) => entry.length > 0 && optionSet.has(entry))
+          .map((entry) => entry.trim())
+          .filter((entry) => entry.length > 0 && optionSet.has(entry)),
       );
-      return orderedOptions
-        .map((opt) => opt.value)
-        .filter((optValue) => deduped.has(optValue));
+      return orderedOptions.map((opt) => opt.value).filter((optValue) => deduped.has(optValue));
     };
 
     const selectedExplicit = normalizeValues(selected);
-    const allSelected = hasAllOption && (
-      selectedExplicit.includes(ALL_OPTION_VALUE)
-      || (
-        nonAllValues.length > 0
-        && nonAllValues.every((optValue) => selectedExplicit.includes(optValue))
-      )
-    );
+    const allSelected =
+      hasAllOption &&
+      (selectedExplicit.includes(ALL_OPTION_VALUE) ||
+        (nonAllValues.length > 0 &&
+          nonAllValues.every((optValue) => selectedExplicit.includes(optValue))));
 
     // Build parent -> children map for cascading selection
     const parentChildMap = new Map<string, string[]>();
@@ -118,7 +135,7 @@ export const MultiSelectField = ({ field, value, onChange, disabled }: MultiSele
           return;
         }
         if (allSelected && includesAll && nextValues.length < optionValues.length) {
-          onChange(nextValues.filter((value) => value !== ALL_OPTION_VALUE));
+          onChange(nextValues.filter((entry) => entry !== ALL_OPTION_VALUE));
           return;
         }
 
@@ -129,8 +146,8 @@ export const MultiSelectField = ({ field, value, onChange, disabled }: MultiSele
 
         // If user selects every specific option individually, collapse to "all".
         if (
-          nonAllValues.length > 0
-          && nonAllValues.every((optValue) => nextValues.includes(optValue))
+          nonAllValues.length > 0 &&
+          nonAllValues.every((optValue) => nextValues.includes(optValue))
         ) {
           onChange([ALL_OPTION_VALUE]);
           return;
@@ -163,7 +180,7 @@ export const MultiSelectField = ({ field, value, onChange, disabled }: MultiSele
 
     if (isDisabled) {
       return (
-        <div className="w-full px-3 py-2 rounded-lg border border-(--border-muted) bg-(--bg-soft) text-sm opacity-60 cursor-not-allowed">
+        <div className="w-full cursor-not-allowed rounded-lg border border-(--border-muted) bg-(--bg-soft) px-3 py-2 text-sm opacity-60">
           {summaryFormatter()}
         </div>
       );
@@ -186,49 +203,47 @@ export const MultiSelectField = ({ field, value, onChange, disabled }: MultiSele
   const [isExpanded, setIsExpanded] = useState(false);
   // Initialize based on option count to avoid flash of expanded content
   const [needsCollapse, setNeedsCollapse] = useState(
-    () => field.options.length > COLLAPSE_THRESHOLD_OPTIONS
+    () => field.options.length > COLLAPSE_THRESHOLD_OPTIONS,
   );
   const containerRef = useRef<HTMLDivElement>(null);
+  const optionsIdentity = getOptionsIdentity(field.options);
+  const selectionIdentity = getSelectionIdentity(selected);
+  const [optionOrderState, setOptionOrderState] = useState<OptionOrderState>(() => ({
+    fieldKey: field.key,
+    optionsIdentity,
+    selectionIdentity,
+    pendingInternalSelectionIdentity: null,
+    sortedOptions: sortOptionsWithSelectedFirst(field.options, selected),
+  }));
+  if (
+    optionOrderState.fieldKey !== field.key ||
+    optionOrderState.optionsIdentity !== optionsIdentity
+  ) {
+    setOptionOrderState({
+      fieldKey: field.key,
+      optionsIdentity,
+      selectionIdentity,
+      pendingInternalSelectionIdentity: null,
+      sortedOptions: sortOptionsWithSelectedFirst(field.options, selected),
+    });
+  } else if (optionOrderState.selectionIdentity !== selectionIdentity) {
+    const isInternalToggleConfirmation =
+      optionOrderState.pendingInternalSelectionIdentity !== null &&
+      optionOrderState.pendingInternalSelectionIdentity === selectionIdentity;
 
-  // Track the last value we set via onChange to detect external changes
-  const lastInternalValueRef = useRef<string[] | null>(null);
-
-  // Sorted options - initialized with selected items first, updated only on external changes
-  const [sortedOptions, setSortedOptions] = useState(() =>
-    sortOptionsWithSelectedFirst(field.options, selected)
-  );
-
-  // Detect external value changes (like after save or initial load) and re-sort
-  useEffect(() => {
-    // If the value changed and it's not from our own onChange call, re-sort
-    const lastInternal = lastInternalValueRef.current;
-    const isExternalChange =
-      lastInternal === null || // Initial mount
-      lastInternal.length !== selected.length ||
-      !lastInternal.every((v) => selected.includes(v));
-
-    // Only re-sort if the change wasn't triggered by user interaction
-    if (isExternalChange && lastInternal !== null) {
-      // Check if this is truly external (values differ in a way that suggests a save/reset)
-      const wasInternalToggle =
-        Math.abs(lastInternal.length - selected.length) === 1 &&
-        (lastInternal.every((v) => selected.includes(v)) ||
-          selected.every((v) => lastInternal.includes(v)));
-
-      if (!wasInternalToggle) {
-        setSortedOptions(sortOptionsWithSelectedFirst(field.options, selected));
-      }
-    }
-  }, [selected, field.options]);
-
-  // Update sortedOptions when field itself changes (different field or options refreshed)
-  useEffect(() => {
-    setSortedOptions(sortOptionsWithSelectedFirst(field.options, selected));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- intentionally omit 'selected' to avoid re-sorting on user toggle
-  }, [field.key, field.options]);
+    setOptionOrderState((current) => ({
+      ...current,
+      selectionIdentity,
+      pendingInternalSelectionIdentity: null,
+      sortedOptions: isInternalToggleConfirmation
+        ? current.sortedOptions
+        : sortOptionsWithSelectedFirst(field.options, selected),
+    }));
+  }
+  const sortedOptions = optionOrderState.sortedOptions;
 
   // Verify collapse need after render (handles edge cases where few options still fit)
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (containerRef.current) {
       if (field.options.length > COLLAPSE_THRESHOLD_OPTIONS) {
         const scrollHeight = containerRef.current.scrollHeight;
@@ -247,8 +262,10 @@ export const MultiSelectField = ({ field, value, onChange, disabled }: MultiSele
     } else {
       newValue = [...selected, optValue];
     }
-    // Track this as an internal change so we don't re-sort
-    lastInternalValueRef.current = newValue;
+    setOptionOrderState((current) => ({
+      ...current,
+      pendingInternalSelectionIdentity: getSelectionIdentity(newValue),
+    }));
     onChange(newValue);
   };
 
@@ -276,14 +293,11 @@ export const MultiSelectField = ({ field, value, onChange, disabled }: MultiSele
                 type="button"
                 onClick={() => toggleOption(opt.value)}
                 disabled={isDisabled}
-                className={`px-3 py-1.5 rounded-full text-sm font-medium
-                            transition-colors border
-                            disabled:opacity-60 disabled:cursor-not-allowed
-                            ${
-                              isSelected
-                                ? 'bg-sky-600 text-white border-sky-600'
-                                : 'bg-transparent border-(--border-muted) hover:bg-(--hover-surface)'
-                            }`}
+                className={`rounded-full border px-3 py-1.5 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+                  isSelected
+                    ? 'border-sky-600 bg-sky-600 text-white'
+                    : 'border-(--border-muted) bg-transparent hover:bg-(--hover-surface)'
+                }`}
               >
                 {opt.label}
               </button>
@@ -294,7 +308,7 @@ export const MultiSelectField = ({ field, value, onChange, disabled }: MultiSele
         {/* Gradient fade overlay when collapsed */}
         {isCollapsed && (
           <div
-            className="absolute bottom-0 left-0 right-0 h-20 pointer-events-none"
+            className="pointer-events-none absolute right-0 bottom-0 left-0 h-20"
             style={{
               background: 'linear-gradient(to top, var(--bg) 0%, transparent 85%)',
             }}
@@ -307,17 +321,11 @@ export const MultiSelectField = ({ field, value, onChange, disabled }: MultiSele
         <button
           type="button"
           onClick={() => setIsExpanded(!isExpanded)}
-          className="mt-2 text-sm text-sky-500 hover:text-sky-400
-                     transition-colors flex items-center gap-1"
+          className="mt-2 flex items-center gap-1 text-sm text-sky-500 transition-colors hover:text-sky-400"
         >
           {isExpanded ? (
             <>
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"
@@ -329,12 +337,7 @@ export const MultiSelectField = ({ field, value, onChange, disabled }: MultiSele
             </>
           ) : (
             <>
-              <svg
-                className="w-4 h-4"
-                fill="none"
-                viewBox="0 0 24 24"
-                stroke="currentColor"
-              >
+              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"

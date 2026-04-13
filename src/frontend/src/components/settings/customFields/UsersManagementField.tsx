@@ -1,9 +1,8 @@
-import { useCallback, useEffect, useLayoutEffect, useRef } from 'react';
-import {
-  AdminUser,
-  testAdminUserNotificationPreferences,
-} from '../../../services/api';
-import { CustomSettingsFieldRendererProps } from './types';
+import { useCallback, useLayoutEffect, useRef } from 'react';
+
+import { useMountEffect } from '../../../hooks/useMountEffect';
+import type { AdminUser } from '../../../services/api';
+import { testAdminUserNotificationPreferences } from '../../../services/api';
 import {
   canCreateLocalUsersForAuthMode,
   UserListView,
@@ -13,6 +12,7 @@ import {
   useUsersFetch,
   useUsersPanelState,
 } from '../users';
+import type { CustomSettingsFieldRendererProps } from './types';
 
 export const UsersManagementField = ({
   tab: usersTab,
@@ -27,13 +27,9 @@ export const UsersManagementField = ({
   const { route, openCreate, openEdit, openEditOverrides, backToList } = useUsersPanelState();
   const activeEditRequestIdRef = useRef(0);
 
-  const {
-    users,
-    loading,
-    loadError,
-    fetchUsers,
-    fetchUserEditContext,
-  } = useUsersFetch({ onShowToast });
+  const { users, loading, loadError, fetchUsers, fetchUserEditContext } = useUsersFetch({
+    onShowToast,
+  });
 
   const {
     createForm,
@@ -53,6 +49,7 @@ export const UsersManagementField = ({
     userSettings,
     setUserSettings,
     hasUserSettingsChanges,
+    hasUserSettingsChangesFor,
     beginEditing,
     applyUserEditContext,
     resetEditContext,
@@ -90,11 +87,11 @@ export const UsersManagementField = ({
     activeEditRequestIdRef.current += 1;
   }, []);
 
-  useEffect(() => {
+  useMountEffect(() => {
     return () => {
       invalidateEditContextRequest();
     };
-  }, [invalidateEditContextRequest]);
+  });
 
   const startEditing = async (user: AdminUser) => {
     const requestId = activeEditRequestIdRef.current + 1;
@@ -115,11 +112,16 @@ export const UsersManagementField = ({
   };
 
   const canCreateLocalUsers = canCreateLocalUsersForAuthMode(authMode || 'none');
-  const needsLocalAdmin = !users.some(u => u.role === 'admin' && u.auth_source === 'builtin');
+  const effectiveRouteKind = route.kind === 'create' && !canCreateLocalUsers ? 'list' : route.kind;
+  const activeEditUserId = route.kind === 'edit' ? route.userId : null;
+  const needsLocalAdmin = !users.some((u) => u.role === 'admin' && u.auth_source === 'builtin');
 
   const handleBackToList = () => {
     onUiStateChange('routeKind', 'list');
     invalidateEditContextRequest();
+    onUiStateChange('hasChanges', false);
+    onUiStateChange('isSaving', false);
+    onUiStateChange('onSave', undefined);
     clearEditState();
     backToList();
   };
@@ -131,17 +133,55 @@ export const UsersManagementField = ({
   };
 
   const handleCreate = async () => {
+    if (!canCreateLocalUsers) {
+      return;
+    }
     const ok = await createUser();
     if (ok) {
       onRefreshOverrideSummary?.();
-      onRefreshAuth?.();
+      void onRefreshAuth?.();
       backToList();
     }
   };
 
+  const handleSaveUserEdit = useCallback(async () => {
+    const ok = await saveEditedUser({ includeSettings: false });
+    if (ok) {
+      onRefreshOverrideSummary?.();
+      backToList();
+    }
+  }, [backToList, onRefreshOverrideSummary, saveEditedUser]);
+
+  const handleSaveUserOverrides = useCallback(async () => {
+    onUiStateChange('isSaving', true);
+    const ok = await saveEditedUser({
+      includeProfile: false,
+      includePassword: false,
+      includeSettings: true,
+    });
+    onUiStateChange('isSaving', false);
+    if (ok) {
+      onUiStateChange('hasChanges', false);
+      onUiStateChange('onSave', undefined);
+      onSettingsSaved?.();
+      onRefreshOverrideSummary?.();
+      backToList();
+    }
+  }, [backToList, onRefreshOverrideSummary, onSettingsSaved, onUiStateChange, saveEditedUser]);
+
+  const handleSaveUserOverridesRef = useRef(handleSaveUserOverrides);
+  handleSaveUserOverridesRef.current = handleSaveUserOverrides;
+
+  const triggerSaveUserOverrides = useCallback(async () => {
+    await handleSaveUserOverridesRef.current();
+  }, []);
+
   const handleOpenOverrides = () => {
     if (editingUser) {
       onUiStateChange('routeKind', 'edit-overrides');
+      onUiStateChange('hasChanges', hasUserSettingsChanges);
+      onUiStateChange('isSaving', saving);
+      onUiStateChange('onSave', triggerSaveUserOverrides);
       openEditOverrides(editingUser.id);
     }
   };
@@ -162,86 +202,60 @@ export const UsersManagementField = ({
   const handleBackToEdit = () => {
     if (editingUser) {
       onUiStateChange('routeKind', 'edit');
+      onUiStateChange('hasChanges', false);
+      onUiStateChange('isSaving', false);
+      onUiStateChange('onSave', undefined);
       openEdit(editingUser.id);
       return;
     }
     onUiStateChange('routeKind', 'list');
+    onUiStateChange('hasChanges', false);
+    onUiStateChange('isSaving', false);
+    onUiStateChange('onSave', undefined);
     backToList();
   };
 
-  useEffect(() => {
-    if (route.kind === 'create' && !canCreateLocalUsers) {
-      backToList();
-    }
-  }, [backToList, canCreateLocalUsers, route.kind]);
-
   useLayoutEffect(() => {
-    onUiStateChange('routeKind', route.kind);
-  }, [onUiStateChange, route.kind]);
+    onUiStateChange('routeKind', effectiveRouteKind);
+  }, [effectiveRouteKind, onUiStateChange]);
 
-  const handleSaveUserEdit = useCallback(async () => {
-    const ok = await saveEditedUser({ includeSettings: false });
-    if (ok) {
-      onRefreshOverrideSummary?.();
-      backToList();
-    }
-  }, [backToList, onRefreshOverrideSummary, saveEditedUser]);
+  const handleTestNotificationRoutes = useCallback(
+    async (routes: Array<Record<string, unknown>>) => {
+      if (!editingUser) {
+        return { success: false, message: 'No user selected for notification test.' };
+      }
+      return testAdminUserNotificationPreferences(editingUser.id, routes);
+    },
+    [editingUser],
+  );
 
-  const handleSaveUserOverrides = useCallback(async () => {
-    const ok = await saveEditedUser({
-      includeProfile: false,
-      includePassword: false,
-      includeSettings: true,
-    });
-    if (ok) {
-      onSettingsSaved?.();
-      onRefreshOverrideSummary?.();
-      backToList();
-    }
-  }, [backToList, onRefreshOverrideSummary, onSettingsSaved, saveEditedUser]);
+  const handleDeleteUser = useCallback(
+    async (userId: number) => {
+      const ok = await deleteUser(userId);
+      if (ok) {
+        onRefreshOverrideSummary?.();
+        void onRefreshAuth?.();
+      }
+      return ok;
+    },
+    [deleteUser, onRefreshAuth, onRefreshOverrideSummary],
+  );
 
-  const handleSaveUserOverridesRef = useRef(handleSaveUserOverrides);
-  useEffect(() => {
-    handleSaveUserOverridesRef.current = handleSaveUserOverrides;
-  }, [handleSaveUserOverrides]);
-
-  const triggerSaveUserOverrides = useCallback(async () => {
-    await handleSaveUserOverridesRef.current();
-  }, []);
-
-  const handleTestNotificationRoutes = useCallback(async (routes: Array<Record<string, unknown>>) => {
-    if (!editingUser) {
-      return { success: false, message: 'No user selected for notification test.' };
-    }
-    return testAdminUserNotificationPreferences(editingUser.id, routes);
-  }, [editingUser]);
-
-  const handleDeleteUser = useCallback(async (userId: number) => {
-    const ok = await deleteUser(userId);
-    if (ok) {
-      onRefreshOverrideSummary?.();
-      onRefreshAuth?.();
-    }
-    return ok;
-  }, [deleteUser, onRefreshAuth, onRefreshOverrideSummary]);
-
-  useEffect(() => {
-    if (route.kind !== 'edit-overrides') {
-      onUiStateChange('hasChanges', false);
-      onUiStateChange('isSaving', false);
-      onUiStateChange('onSave', undefined);
-      return;
-    }
-
-    onUiStateChange('hasChanges', hasUserSettingsChanges);
-    onUiStateChange('isSaving', saving);
-    onUiStateChange('onSave', triggerSaveUserOverrides);
-  }, [hasUserSettingsChanges, onUiStateChange, route.kind, saving, triggerSaveUserOverrides]);
+  const setUserSettingsWithSaveBarSync = useCallback(
+    (updater: (prev: typeof userSettings) => typeof userSettings) => {
+      setUserSettings((prev) => {
+        const next = updater(prev);
+        onUiStateChange('hasChanges', hasUserSettingsChangesFor(next));
+        return next;
+      });
+    },
+    [hasUserSettingsChangesFor, onUiStateChange, setUserSettings],
+  );
 
   if (route.kind === 'edit-overrides') {
     if (!editingUser || editingUser.id !== route.userId) {
       return (
-        <div className="flex items-center justify-center text-sm opacity-60 py-8">
+        <div className="flex items-center justify-center py-8 text-sm opacity-60">
           Loading user details...
         </div>
       );
@@ -257,7 +271,7 @@ export const UsersManagementField = ({
         notificationPreferences={notificationPreferences}
         isUserOverridable={isUserOverridable}
         userSettings={userSettings}
-        setUserSettings={(updater) => setUserSettings(updater)}
+        setUserSettings={setUserSettingsWithSaveBarSync}
         usersTab={usersTab}
         globalUsersSettingsValues={values}
         onTestNotificationRoutes={handleTestNotificationRoutes}
@@ -273,24 +287,31 @@ export const UsersManagementField = ({
       loadError={loadError}
       onRetryLoadUsers={() => void fetchUsers({ force: true })}
       onCreate={() => {
+        if (!canCreateLocalUsers) {
+          return;
+        }
         if (needsLocalAdmin) {
           setCreateForm({ ...createForm, role: 'admin' });
         }
         openCreate();
       }}
       needsLocalAdmin={needsLocalAdmin}
-      showCreateForm={route.kind === 'create'}
+      showCreateForm={effectiveRouteKind === 'create'}
       createForm={createForm}
       onCreateFormChange={setCreateForm}
       creating={creating}
       isFirstUser={users.length === 0}
-      onCreateSubmit={handleCreate}
+      onCreateSubmit={() => {
+        void handleCreate();
+      }}
       onCancelCreate={handleCancelCreate}
-      showEditForm={route.kind === 'edit'}
-      activeEditUserId={route.kind === 'edit' ? route.userId : null}
-      editingUser={route.kind === 'edit' ? editingUser : null}
+      showEditForm={effectiveRouteKind === 'edit'}
+      activeEditUserId={activeEditUserId}
+      editingUser={effectiveRouteKind === 'edit' ? editingUser : null}
       onEditingUserChange={setEditingUser}
-      onEditSave={handleSaveUserEdit}
+      onEditSave={() => {
+        void handleSaveUserEdit();
+      }}
       saving={saving}
       onCancelEdit={handleBackToList}
       editPassword={editPassword}
@@ -299,7 +320,9 @@ export const UsersManagementField = ({
       onEditPasswordConfirmChange={setEditPasswordConfirm}
       downloadDefaults={downloadDefaults}
       onOpenOverrides={handleOpenOverrides}
-      onEdit={handleEdit}
+      onEdit={(user) => {
+        void handleEdit(user);
+      }}
       onDelete={handleDeleteUser}
       deletingUserId={deletingUserId}
       onSyncCwa={handleSyncCwa}

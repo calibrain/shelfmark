@@ -6,14 +6,13 @@ interface FooterProps {
 
 export const Footer = ({ buildVersion, releaseVersion, debug }: FooterProps) => {
   // Determine version display - show "dev" if no version is set
-  const versionDisplay = releaseVersion && releaseVersion !== 'N/A'
-    ? releaseVersion
-    : 'dev';
+  const versionDisplay = releaseVersion && releaseVersion !== 'N/A' ? releaseVersion : 'dev';
 
   // Truncate long build versions (e.g., git hashes) to 7 chars
-  const truncatedBuild = buildVersion && buildVersion !== 'N/A'
-    ? buildVersion.length > 7 ? buildVersion.slice(0, 7) : buildVersion
-    : null;
+  let truncatedBuild: string | null = null;
+  if (buildVersion && buildVersion !== 'N/A') {
+    truncatedBuild = buildVersion.length > 7 ? buildVersion.slice(0, 7) : buildVersion;
+  }
 
   return (
     <footer
@@ -22,24 +21,27 @@ export const Footer = ({ buildVersion, releaseVersion, debug }: FooterProps) => 
         paddingBottom: 'calc(1rem + env(safe-area-inset-bottom))',
       }}
     >
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 flex items-baseline justify-center gap-2">
+      <div className="mx-auto flex max-w-7xl items-baseline justify-center gap-2 px-4 sm:px-6 lg:px-8">
         <a
           href="https://github.com/calibrain/shelfmark"
           target="_blank"
           rel="noopener noreferrer"
-          className="text-sm font-medium opacity-70 hover:opacity-100 transition-opacity"
+          className="text-sm font-medium opacity-70 transition-opacity hover:opacity-100"
         >
           Shelfmark
         </a>
         <span
-          className="text-xs opacity-40 font-normal"
+          className="text-xs font-normal opacity-40"
           title={buildVersion && buildVersion !== 'N/A' ? `Build: ${buildVersion}` : undefined}
         >
           {versionDisplay}
           {truncatedBuild && ` (${truncatedBuild})`}
         </span>
         {debug && (
-          <span className="text-xs px-1.5 py-0.5 rounded-sm opacity-60" style={{ background: 'var(--border-muted)' }}>
+          <span
+            className="rounded-sm px-1.5 py-0.5 text-xs opacity-60"
+            style={{ background: 'var(--border-muted)' }}
+          >
             Debug
           </span>
         )}

@@ -4,8 +4,8 @@ import sqlite3
 
 from shelfmark.core.auth_modes import (
     determine_auth_mode,
-    get_settings_tab_from_path,
     get_auth_check_admin_status,
+    get_settings_tab_from_path,
     is_settings_or_onboarding_path,
     load_active_auth_mode,
     requires_admin_for_settings_access,
@@ -122,14 +122,20 @@ class TestSettingsRestrictionPolicy:
         assert requires_admin_for_settings_access("/api/settings/users", users_config) is True
 
     def test_other_tabs_also_require_admin(self):
-        assert requires_admin_for_settings_access(
-            "/api/settings/general",
-            {"RESTRICT_SETTINGS_TO_ADMIN": False},
-        ) is True
-        assert requires_admin_for_settings_access(
-            "/api/settings/general",
-            {"RESTRICT_SETTINGS_TO_ADMIN": True},
-        ) is True
+        assert (
+            requires_admin_for_settings_access(
+                "/api/settings/general",
+                {"RESTRICT_SETTINGS_TO_ADMIN": False},
+            )
+            is True
+        )
+        assert (
+            requires_admin_for_settings_access(
+                "/api/settings/general",
+                {"RESTRICT_SETTINGS_TO_ADMIN": True},
+            )
+            is True
+        )
 
 
 class TestAuthCheckAdminStatus:

@@ -1,4 +1,4 @@
-# Routes all traffic through Tor - requires NET_ADMIN capability
+# Routes all traffic through Tor - requires root startup
 services:
   shelfmark-tor:
     image: ghcr.io/calibrain/shelfmark:latest

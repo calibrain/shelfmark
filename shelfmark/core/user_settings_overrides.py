@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 
 
 def get_settings_registry() -> ModuleType:
+    """Load settings modules and return the shared settings registry module."""
     # Ensure settings modules are loaded before reading registry metadata.
     import_module("shelfmark.config.notifications_settings")
     import_module("shelfmark.config.security")
@@ -23,6 +24,7 @@ def get_settings_registry() -> ModuleType:
 
 
 def get_ordered_user_overridable_fields(tab_name: str) -> list[tuple[str, Any]]:
+    """Return user-overridable fields for a tab in UI display order."""
     settings_registry = get_settings_registry()
     tab = settings_registry.get_settings_tab(tab_name)
     if not tab:
@@ -32,6 +34,7 @@ def get_ordered_user_overridable_fields(tab_name: str) -> list[tuple[str, Any]]:
 
 
 def build_user_preferences_payload(user_db: UserDB, user_id: int, tab_name: str) -> dict[str, Any]:
+    """Build the effective user-preferences payload for a settings tab."""
     from shelfmark.core.config import config as app_config
 
     settings_registry = get_settings_registry()

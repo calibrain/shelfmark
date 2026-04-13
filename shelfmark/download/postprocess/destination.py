@@ -1,3 +1,5 @@
+"""Destination planning helpers for post-processing outputs."""
+
 from __future__ import annotations
 
 import uuid
@@ -56,7 +58,7 @@ def validate_destination(
         )
         run_blocking_io(test_path.write_text, test_content)
         run_blocking_io(test_path.unlink, missing_ok=True)
-    except Exception as exc:
+    except OSError as exc:
         logger.debug("Destination write probe path: %s", test_path)
         log_path_permission_context("destination_write_probe", destination)
         logger.warning("Destination not writable: %s (%s)", destination, exc)

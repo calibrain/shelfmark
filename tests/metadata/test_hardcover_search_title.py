@@ -1,5 +1,3 @@
-import pytest
-
 from shelfmark.metadata_providers.hardcover import _compute_search_title
 
 

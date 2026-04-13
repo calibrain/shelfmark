@@ -74,6 +74,7 @@ pip-log.txt
 pip-delete-this-directory.txt
 
 # Unit test / coverage reports
+src/frontend/coverage/
 htmlcov/
 .tox/
 .nox/
@@ -231,6 +232,7 @@ pyrightconfig.json
 *.local.*
 AGENTS.md
 .claude/
+.nvmrc
 .playwright-mcp/
 frontend-dist/
 node_modules/

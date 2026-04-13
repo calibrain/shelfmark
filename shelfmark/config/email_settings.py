@@ -1,5 +1,8 @@
+"""Helpers for email settings validation and SMTP connection tests."""
+
 from __future__ import annotations
 
+import smtplib
 from typing import Any
 
 from shelfmark.core.config import config
@@ -10,7 +13,7 @@ from shelfmark.download.outputs.email import (
 )
 
 
-def test_email_connection(
+def check_email_connection(
     current_values: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Test SMTP connectivity using current form values (including unsaved changes)."""
@@ -41,7 +44,7 @@ def test_email_connection(
         test_smtp_connection(smtp_config)
     except EmailOutputError as exc:
         return {"success": False, "message": str(exc)}
-    except Exception as exc:
+    except (OSError, smtplib.SMTPException) as exc:
         return {"success": False, "message": f"SMTP test failed: {exc}"}
     else:
         return {"success": True, "message": "Connected to SMTP server"}

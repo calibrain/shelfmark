@@ -1,12 +1,28 @@
 import { useMemo, useRef, useState } from 'react';
-import { TagListFieldConfig } from '../../../types/settings';
+
+import type { TagListFieldConfig } from '../../../types/settings';
 
 interface TagListFieldProps {
   field: TagListFieldConfig;
   value: string[];
   onChange: (value: string[]) => void;
   disabled?: boolean;
-  requiredTags?: string[];  // Tags that cannot be removed
+  requiredTags?: string[]; // Tags that cannot be removed
+}
+
+function createTagEntries(tags: string[]): Array<{ key: string; tag: string; tagIndex: number }> {
+  const tagCounts = new Map<string, number>();
+
+  return tags.map((tag, tagIndex) => {
+    const nextCount = (tagCounts.get(tag) ?? 0) + 1;
+    tagCounts.set(tag, nextCount);
+
+    return {
+      key: nextCount === 1 ? tag : `${tag}-${nextCount}`,
+      tag,
+      tagIndex,
+    };
+  });
 }
 
 function normalizeTag(raw: string, normalizeUrls: boolean): string {
@@ -14,10 +30,7 @@ function normalizeTag(raw: string, normalizeUrls: boolean): string {
   if (!s) return '';
 
   // Strip wrapping quotes from pasted env/JSON style strings.
-  if (
-    (s.startsWith('"') && s.endsWith('"')) ||
-    (s.startsWith("'") && s.endsWith("'"))
-  ) {
+  if ((s.startsWith('"') && s.endsWith('"')) || (s.startsWith("'") && s.endsWith("'"))) {
     s = s.slice(1, -1).trim();
   }
 
@@ -36,7 +49,13 @@ function normalizeTag(raw: string, normalizeUrls: boolean): string {
   return s.trim();
 }
 
-export const TagListField = ({ field, value, onChange, disabled, requiredTags }: TagListFieldProps) => {
+export const TagListField = ({
+  field,
+  value,
+  onChange,
+  disabled,
+  requiredTags,
+}: TagListFieldProps) => {
   const isDisabled = disabled ?? false;
   const required = requiredTags ?? [];
   const inputRef = useRef<HTMLInputElement>(null);
@@ -44,6 +63,7 @@ export const TagListField = ({ field, value, onChange, disabled, requiredTags }:
   const normalizeUrls = field.normalizeUrls ?? true;
 
   const tags = useMemo(() => (value ?? []).map(String).filter((t) => t.trim() !== ''), [value]);
+  const tagEntries = useMemo(() => createTagEntries(tags), [tags]);
 
   const addFromRaw = (raw: string) => {
     if (isDisabled) return;
@@ -82,37 +102,28 @@ export const TagListField = ({ field, value, onChange, disabled, requiredTags }:
 
   return (
     <div
-      className={`w-full px-3 py-2 rounded-lg border border-(--border-muted)                  bg-(--bg-soft) text-sm
-                  focus-within:outline-hidden focus-within:ring-2 focus-within:ring-sky-500/50 focus-within:border-sky-500
-                  transition-colors
-                  ${isDisabled ? 'opacity-60 cursor-not-allowed' : 'cursor-text'}`}
-      onClick={() => {
-        if (isDisabled) return;
-        inputRef.current?.focus();
-      }}
+      className={`w-full rounded-lg border border-(--border-muted) bg-(--bg-soft) px-3 py-2 text-sm transition-colors focus-within:border-sky-500 focus-within:ring-2 focus-within:ring-sky-500/50 focus-within:outline-hidden ${isDisabled ? 'cursor-not-allowed opacity-60' : 'cursor-text'}`}
     >
-      <div className="flex flex-wrap gap-1 items-center min-h-5">
-        {tags.map((tag, idx) => (
+      <div className="flex min-h-5 flex-wrap items-center gap-1">
+        {tagEntries.map(({ key, tag, tagIndex }) => (
           <span
-            key={`${tag}-${idx}`}
-            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-md
-                       border border-(--border-muted) bg-(--bg)
-                       max-w-full"
+            key={key}
+            className="inline-flex max-w-full items-center gap-1 rounded-md border border-(--border-muted) bg-(--bg) px-2.5 py-1"
             title={tag}
           >
-            <span className="truncate max-w-88">{tag}</span>
+            <span className="max-w-88 truncate">{tag}</span>
             {!isDisabled && !isRequired(tag) && (
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  removeAt(idx);
+                  removeAt(tagIndex);
                 }}
-                className="p-0.5 rounded-sm hover:bg-(--hover-surface)"
+                className="rounded-sm p-0.5 hover:bg-(--hover-surface)"
                 aria-label={`Remove ${tag}`}
               >
                 <svg
-                  className="w-4 h-4"
+                  className="h-4 w-4"
                   xmlns="http://www.w3.org/2000/svg"
                   fill="none"
                   viewBox="0 0 24 24"
@@ -145,7 +156,7 @@ export const TagListField = ({ field, value, onChange, disabled, requiredTags }:
             }}
             onBlur={() => commitDraft()}
             placeholder={tags.length === 0 ? field.placeholder : ''}
-            className="flex-1 min-w-16 bg-transparent outline-hidden px-1 py-0"
+            className="min-w-16 flex-1 bg-transparent px-1 py-0 outline-hidden"
           />
         )}
 

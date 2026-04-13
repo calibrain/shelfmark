@@ -1,14 +1,18 @@
 """Shared download handler for external torrent/usenet clients."""
 
+from __future__ import annotations
+
+import errno
 import shutil
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Protocol, TypeGuard
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.request_helpers import normalize_optional_text
 from shelfmark.core.utils import is_audiobook
 from shelfmark.download.clients import (
     DownloadClient,
@@ -18,6 +22,7 @@ from shelfmark.download.clients import (
     list_configured_clients,
 )
 from shelfmark.download.fs import run_blocking_io
+from shelfmark.download.permissions_debug import log_path_permission_context
 from shelfmark.release_sources import DownloadHandler
 
 if TYPE_CHECKING:
@@ -27,9 +32,26 @@ if TYPE_CHECKING:
     from shelfmark.core.models import DownloadTask
 
 logger = setup_logger(__name__)
+_CLIENT_CLEANUP_ERRORS = (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError)
+
+
+class _SabnzbdLikeClient(Protocol):
+    name: str
+
+    def remove(
+        self, download_id: str, *, delete_files: bool = False, archive: bool = True
+    ) -> bool: ...
+
+
+def _is_sabnzbd_like_client(candidate: DownloadClient) -> TypeGuard[_SabnzbdLikeClient]:
+    return getattr(candidate, "name", "") == "sabnzbd"
+
 
 # How often to poll the download client for status (seconds)
 POLL_INTERVAL = 2
+WINDOWS_DRIVE_PREFIX_LENGTH = 2
+SECONDS_PER_MINUTE = 60
+SECONDS_PER_HOUR = 3600
 # How long to wait for completed files to appear (seconds)
 COMPLETED_PATH_RETRY_INTERVAL = 5
 COMPLETED_PATH_MAX_ATTEMPTS = 12  # 12 attempts * 5s = 60s grace period
@@ -58,7 +80,7 @@ def _diagnose_path_issue(path: str) -> str:
 
     """
     # Detect Windows-style paths (won't work in Linux containers)
-    if len(path) >= 2 and path[1] == ":":
+    if len(path) >= WINDOWS_DRIVE_PREFIX_LENGTH and path[1] == ":":
         return (
             f"Path '{path}' appears to be a Windows path. "
             f"Shelfmark runs in Linux and cannot access Windows paths directly. "
@@ -81,10 +103,34 @@ def _diagnose_path_issue(path: str) -> str:
     )
 
 
+def _format_probe_error(error: OSError | None) -> str:
+    """Render an OSError for inclusion in log/status messages."""
+    if error is None:
+        return "none"
+    code = errno.errorcode.get(error.errno, str(error.errno)) if error.errno else "?"
+    return f"{code}: {error.strerror or error}"
+
+
+def _probe_completed_path(path: Path) -> tuple[bool, OSError | None]:
+    """Probe a completed download path and preserve the underlying stat error.
+
+    `Path.exists()` silently converts every `OSError` to `False`, which hides
+    whether a failure is ENOENT (not yet written), EACCES (permission denied),
+    ESTALE (NFS stale handle), or something else. Callers need the real errno
+    to decide whether the condition is retryable and to surface diagnostics.
+    """
+    try:
+        run_blocking_io(path.stat)
+    except OSError as error:
+        return False, error
+    return True, None
+
+
 class ExternalClientHandler(DownloadHandler, ABC):
     """Shared lifecycle handler for sources that hand off to torrent/usenet clients."""
 
     def __init__(self) -> None:
+        """Initialize cleanup tracking for client-managed downloads."""
         # Track downloads that may need client-side cleanup after Shelfmark completes import.
         # task_id -> (client, download_id, protocol)
         self._cleanup_refs: dict[str, tuple[DownloadClient, str, str]] = {}
@@ -98,7 +144,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         """Resolve source-specific task metadata into a client download request."""
 
     def _on_download_complete(self, task: DownloadTask) -> None:
-        """Hook called after successful completion; override for source cleanup."""
+        """Run post-completion source cleanup hooks."""
         return
 
     def _get_client(self, protocol: str) -> DownloadClient | None:
@@ -110,7 +156,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         return list_configured_clients()
 
     def _poll_interval(self) -> float:
-        """Polling interval for status checks (seconds)."""
+        """Return the polling interval for status checks."""
         return POLL_INTERVAL
 
     def _completed_path_retry_interval(self) -> float:
@@ -135,9 +181,19 @@ class ExternalClientHandler(DownloadHandler, ABC):
             "sabnzbd": "SABNZBD_CATEGORY_AUDIOBOOK",
         }
         audiobook_key = audiobook_keys.get(client.name)
-        return config.get(audiobook_key, "") or None if audiobook_key else None
+        if audiobook_key is None:
+            return None
+        configured_category = config.get(audiobook_key, "")
+        normalized_category = normalize_optional_text(configured_category)
+        if normalized_category is not None:
+            return normalized_category
+        if configured_category is None:
+            return None
+        fallback_category = str(configured_category).strip()
+        return fallback_category or None
 
     def post_process_cleanup(self, task: DownloadTask, *, success: bool) -> None:
+        """Clean up external-client state after post-processing finishes."""
         if not success:
             self._cleanup_refs.pop(task.task_id, None)
             return
@@ -155,7 +211,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
             try:
                 self._delete_local_download_data(client, download_id)
                 self._remove_usenet_download(client, download_id, delete_files=True, archive=True)
-            except Exception as e:
+            except _CLIENT_CLEANUP_ERRORS as e:
                 logger.warning(
                     "Failed to cleanup usenet download %s in %s: %s",
                     download_id,
@@ -168,7 +224,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 return
             try:
                 client.remove(download_id, delete_files=False)
-            except Exception as e:
+            except _CLIENT_CLEANUP_ERRORS as e:
                 logger.warning(
                     "Failed to remove torrent %s from %s: %s",
                     download_id,
@@ -185,7 +241,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         archive: bool = True,
     ) -> None:
         """Remove a usenet download with SABnzbd-specific archive handling."""
-        if getattr(client, "name", "") == "sabnzbd":
+        if _is_sabnzbd_like_client(client):
             client.remove(download_id, delete_files=delete_files, archive=archive)
         else:
             client.remove(download_id, delete_files=delete_files)
@@ -194,7 +250,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         """Best-effort local deletion of client download data."""
         try:
             raw_path = client.get_download_path(download_id)
-        except Exception as e:
+        except _CLIENT_CLEANUP_ERRORS as e:
             logger.debug(
                 "Failed to resolve download path for %s %s: %s", client.name, download_id, e
             )
@@ -243,7 +299,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
             logger.info(
                 "Deleted local download data for %s %s: %s", client.name, download_id, delete_path
             )
-        except Exception as e:
+        except _CLIENT_CLEANUP_ERRORS as e:
             logger.warning(
                 "Failed to delete local download data for %s %s: %s", client.name, download_id, e
             )
@@ -275,7 +331,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
             # Permanent delete for failed usenet downloads (SABnzbd archive=0).
             self._delete_local_download_data(client, download_id)
             self._remove_usenet_download(client, download_id, delete_files=True, archive=False)
-        except Exception as e:
+        except _CLIENT_CLEANUP_ERRORS as e:
             logger.warning(
                 "Failed to remove download %s from %s after %s: %s",
                 download_id,
@@ -296,7 +352,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
             try:
                 self._delete_local_download_data(client, download_id)
                 self._remove_usenet_download(client, download_id, delete_files=True, archive=True)
-            except Exception as e:
+            except _CLIENT_CLEANUP_ERRORS as e:
                 logger.warning(
                     "Failed to remove download %s from %s after cancellation: %s",
                     download_id,
@@ -378,19 +434,21 @@ class ExternalClientHandler(DownloadHandler, ABC):
             remote_path=source_path_obj,
         )
 
-        if log_details:
-            remapped_exists = run_blocking_io(remapped.exists)
-            logger.debug(
-                "Remap result: %s -> %s (exists=%s, changed=%s, matched=%s)",
-                source_path_obj,
-                remapped,
-                remapped_exists,
-                remapped != source_path_obj,
-                matched_mapping,
-            )
-
         if matched_mapping:
-            if run_blocking_io(remapped.exists):
+            remapped_exists, remapped_error = _probe_completed_path(remapped)
+
+            if log_details:
+                logger.debug(
+                    "Remap result: %s -> %s (exists=%s, probe_error=%s, changed=%s, matched=%s)",
+                    source_path_obj,
+                    remapped,
+                    remapped_exists,
+                    _format_probe_error(remapped_error),
+                    remapped != source_path_obj,
+                    matched_mapping,
+                )
+
+            if remapped_exists:
                 logger.info(
                     "Remapped download path for %s (%s): %s -> %s",
                     client.name,
@@ -404,76 +462,76 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 f"Remapped path '{remapped}' does not exist. "
                 f"Check your Docker volume mounts match the Local Path in Settings > Advanced > Remote Path Mappings."
             )
+            failure_log = "Download path does not exist after remapping: %s -> %s (probe_error=%s). Client: %s, ID: %s."
+            failure_args = (
+                raw_path,
+                remapped,
+                _format_probe_error(remapped_error),
+                client.name,
+                download_id,
+            )
             if log_details:
-                logger.error(
-                    "Download path does not exist after remapping: %s -> %s. Client: %s, ID: %s.",
-                    raw_path,
-                    remapped,
-                    client.name,
-                    download_id,
-                )
+                log_path_permission_context("completed_download_remap", remapped)
+                logger.error(failure_log, *failure_args)
             else:
-                logger.debug(
-                    "Download path does not exist after remapping: %s -> %s. Client: %s, ID: %s.",
-                    raw_path,
-                    remapped,
-                    client.name,
-                    download_id,
-                )
+                logger.debug(failure_log, *failure_args)
             return None, message
 
-        if mappings:
-            if run_blocking_io(source_path_obj.exists):
+        source_exists, source_error = _probe_completed_path(source_path_obj)
+
+        if log_details:
+            logger.debug(
+                "Remap result: %s -> %s (exists=%s, probe_error=%s, changed=%s, matched=%s)",
+                source_path_obj,
+                remapped,
+                source_exists,
+                _format_probe_error(source_error),
+                remapped != source_path_obj,
+                matched_mapping,
+            )
+
+        if source_exists:
+            if mappings:
                 logger.info(
                     "No remote path mapping matched for %s (%s); using client path: %s",
                     client.name,
                     download_id,
                     source_path_obj,
                 )
-                return source_path_obj, None
+            return source_path_obj, None
 
-            hint = _diagnose_path_issue(raw_path)
+        hint = _diagnose_path_issue(raw_path)
+        if mappings:
             message = f"{hint} No remote path mapping matched for client '{client.name}'."
-            if log_details:
-                logger.error(
-                    "Download path does not exist and no remote path mapping matched for %s (%s): %s. %s",
-                    client.name,
-                    download_id,
-                    raw_path,
-                    hint,
-                )
-            else:
-                logger.debug(
-                    "Download path does not exist and no remote path mapping matched for %s (%s): %s. %s",
-                    client.name,
-                    download_id,
-                    raw_path,
-                    hint,
-                )
-            return None, message
-
-        if not run_blocking_io(source_path_obj.exists):
-            hint = _diagnose_path_issue(raw_path)
+            failure_label = "completed_download_original"
+            failure_log = "Download path does not exist and no remote path mapping matched for %s (%s): %s (probe_error=%s). %s"
+            failure_args = (
+                client.name,
+                download_id,
+                raw_path,
+                _format_probe_error(source_error),
+                hint,
+            )
+        else:
             message = hint
-            if log_details:
-                logger.error(
-                    "Download path does not exist: %s. Client: %s, ID: %s. %s",
-                    raw_path,
-                    client.name,
-                    download_id,
-                    hint,
-                )
-            else:
-                logger.debug(
-                    "Download path does not exist: %s. Client: %s, ID: %s. %s",
-                    raw_path,
-                    client.name,
-                    download_id,
-                    hint,
-                )
-            return None, message
+            failure_label = "completed_download_direct"
+            failure_log = (
+                "Download path does not exist: %s (probe_error=%s). Client: %s, ID: %s. %s"
+            )
+            failure_args = (
+                raw_path,
+                _format_probe_error(source_error),
+                client.name,
+                download_id,
+                hint,
+            )
 
-        return source_path_obj, None
+        if log_details:
+            log_path_permission_context(failure_label, source_path_obj)
+            logger.error(failure_log, *failure_args)
+        else:
+            logger.debug(failure_log, *failure_args)
+        return None, message
 
     def _wait_for_completed_path(
         self,
@@ -530,12 +588,15 @@ class ExternalClientHandler(DownloadHandler, ABC):
             msg += f" ({speed_mb:.1f} MB/s)"
 
         if status.eta and status.eta > 0:
-            if status.eta < 60:
+            if status.eta < SECONDS_PER_MINUTE:
                 msg += f" - {status.eta}s left"
-            elif status.eta < 3600:
-                msg += f" - {status.eta // 60}m left"
+            elif status.eta < SECONDS_PER_HOUR:
+                msg += f" - {status.eta // SECONDS_PER_MINUTE}m left"
             else:
-                msg += f" - {status.eta // 3600}h {(status.eta % 3600) // 60}m left"
+                msg += (
+                    f" - {status.eta // SECONDS_PER_HOUR}h "
+                    f"{(status.eta % SECONDS_PER_HOUR) // SECONDS_PER_MINUTE}m left"
+                )
 
         return msg
 

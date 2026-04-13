@@ -134,7 +134,8 @@ def extract_archive(
     elif suffix == "rar":
         extracted_files, warnings = _extract_rar(archive_path, output_dir)
     else:
-        raise ArchiveExtractionError(f"Unsupported archive format: {suffix}")
+        msg = f"Unsupported archive format: {suffix}"
+        raise ArchiveExtractionError(msg)
 
     is_audiobook = check_audiobook(content_type)
     file_type_label = "audiobook" if is_audiobook else "book"
@@ -174,7 +175,8 @@ def extract_archive_raw(
     if suffix == "rar":
         return _extract_rar(archive_path, output_dir)
 
-    raise ArchiveExtractionError(f"Unsupported archive format: {suffix}")
+    msg = f"Unsupported archive format: {suffix}"
+    raise ArchiveExtractionError(msg)
 
 
 def _extract_files_from_archive(archive: ArchiveType, output_dir: Path) -> list[Path]:
@@ -222,31 +224,37 @@ def _extract_zip(archive_path: Path, output_dir: Path) -> tuple[list[Path], list
             # Check for password protection
             for info in zf.infolist():
                 if info.flag_bits & 0x1:  # Encrypted flag
-                    raise PasswordProtectedError("ZIP archive is password protected")
+                    msg = "ZIP archive is password protected"
+                    raise PasswordProtectedError(msg)
 
             # Test archive integrity
             bad_file = zf.testzip()
             if bad_file:
-                raise CorruptedArchiveError(f"Corrupted file in archive: {bad_file}")
+                msg = f"Corrupted file in archive: {bad_file}"
+                raise CorruptedArchiveError(msg)
 
             return _extract_files_from_archive(zf, output_dir), []
 
     except zipfile.BadZipFile as e:
-        raise CorruptedArchiveError(f"Invalid or corrupted ZIP: {e}") from e
+        msg = f"Invalid or corrupted ZIP: {e}"
+        raise CorruptedArchiveError(msg) from e
     except PermissionError as e:
-        raise ArchiveExtractionError(f"Permission denied: {e}") from e
+        msg = f"Permission denied: {e}"
+        raise ArchiveExtractionError(msg) from e
 
 
 def _extract_rar(archive_path: Path, output_dir: Path) -> tuple[list[Path], list[str]]:
     """Extract files from a RAR archive."""
     if not RAR_AVAILABLE:
-        raise ArchiveExtractionError("RAR extraction not available - rarfile library not installed")
+        msg = "RAR extraction not available - rarfile library not installed"
+        raise ArchiveExtractionError(msg)
 
     try:
         with rarfile.RarFile(archive_path, "r") as rf:
             # Check for password protection
             if rf.needs_password():
-                raise PasswordProtectedError("RAR archive is password protected")
+                msg = "RAR archive is password protected"
+                raise PasswordProtectedError(msg)
 
             # Test archive integrity
             rf.testrar()
@@ -254,8 +262,11 @@ def _extract_rar(archive_path: Path, output_dir: Path) -> tuple[list[Path], list
             return _extract_files_from_archive(rf, output_dir), []
 
     except rarfile.BadRarFile as e:
-        raise CorruptedArchiveError(f"Invalid or corrupted RAR: {e}") from e
+        msg = f"Invalid or corrupted RAR: {e}"
+        raise CorruptedArchiveError(msg) from e
     except rarfile.RarCannotExec as e:
-        raise ArchiveExtractionError("unrar binary not found - install unrar package") from e
+        msg = "unrar binary not found - install unrar package"
+        raise ArchiveExtractionError(msg) from e
     except PermissionError as e:
-        raise ArchiveExtractionError(f"Permission denied: {e}") from e
+        msg = f"Permission denied: {e}"
+        raise ArchiveExtractionError(msg) from e

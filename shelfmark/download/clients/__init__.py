@@ -17,6 +17,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
 from functools import wraps
+from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, TypeVar, cast
 
@@ -39,6 +40,7 @@ RETRYABLE_EXCEPTIONS = (
 _MIN_RETRYABLE_STATUS = 500
 _MIN_PROGRESS_PERCENT = 0
 _MAX_PROGRESS_PERCENT = 100
+_RNG = random.SystemRandom()
 
 
 def with_retry(
@@ -47,7 +49,7 @@ def with_retry(
     max_delay: float = 10.0,
     jitter: float = 0.5,
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
-    """Decorator for retrying API calls with exponential backoff.
+    """Retry API calls with exponential backoff.
 
     Args:
         max_attempts: Maximum number of attempts (default 3)
@@ -68,7 +70,7 @@ def with_retry(
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
-        def wrapper(*args, **kwargs) -> T:
+        def wrapper(*args: object, **kwargs: object) -> T:
             last_exception = None
 
             for attempt in range(1, max_attempts + 1):
@@ -86,7 +88,7 @@ def with_retry(
                     # Calculate delay with exponential backoff
                     delay = min(base_delay * (2 ** (attempt - 1)), max_delay)
                     # Add jitter to prevent thundering herd
-                    delay += random.uniform(0, delay * jitter)
+                    delay += _RNG.uniform(0, delay * jitter)
                     _logger.debug(
                         "Retry %s/%s for %s after %.1fs (error: %s)",
                         attempt,
@@ -232,7 +234,7 @@ class DownloadClient(ABC):
         # Join and normalize
         return os.path.normpath(str(Path(valid[0]).joinpath(*valid[1:])))
 
-    def __init_subclass__(cls, **kwargs) -> None:
+    def __init_subclass__(cls, **kwargs: object) -> None:
         """Validate that subclasses define required class attributes."""
         super().__init_subclass__(**kwargs)
 
@@ -288,6 +290,7 @@ class DownloadClient(ABC):
             name: Display name for the download
             category: Category/label for organization (None = client default)
             expected_hash: Optional info_hash hint (torrents only)
+            **kwargs: Client-specific options passed through to the implementation.
 
         Returns:
             Client-specific download ID (hash for torrents, ID for NZBGet).
@@ -356,12 +359,32 @@ class DownloadClient(ABC):
 
 # Client registry: protocol -> list of client classes
 _CLIENTS: dict[str, list[type[DownloadClient]]] = {}
+_BUILTIN_CLIENT_MODULES = (
+    "shelfmark.download.clients.deluge",
+    "shelfmark.download.clients.nzbget",
+    "shelfmark.download.clients.qbittorrent",
+    "shelfmark.download.clients.rtorrent",
+    "shelfmark.download.clients.sabnzbd",
+    "shelfmark.download.clients.transmission",
+)
+_builtin_client_state = {"loaded": False}
+
+
+def _ensure_builtin_clients_registered() -> None:
+    """Import built-in client modules once to populate the registry."""
+    if _builtin_client_state["loaded"]:
+        return
+
+    for module_name in _BUILTIN_CLIENT_MODULES:
+        import_module(module_name)
+
+    _builtin_client_state["loaded"] = True
 
 
 def register_client(
     protocol: str,
 ) -> Callable[[type[DownloadClient]], type[DownloadClient]]:
-    """Decorator to register a download client for a protocol.
+    """Register a download client for a protocol.
 
     Multiple clients can be registered for the same protocol.
     The `is_configured()` method determines which one is active.
@@ -398,6 +421,8 @@ def get_client(protocol: str) -> DownloadClient | None:
         Configured client instance, or None if not available/configured.
 
     """
+    _ensure_builtin_clients_registered()
+
     if protocol not in _CLIENTS:
         return None
 
@@ -415,6 +440,8 @@ def list_configured_clients() -> list[str]:
         List of protocol names (e.g., ["torrent", "usenet"]).
 
     """
+    _ensure_builtin_clients_registered()
+
     result = []
     for protocol, client_classes in _CLIENTS.items():
         for cls in client_classes:
@@ -431,14 +458,8 @@ def get_all_clients() -> dict[str, list[type[DownloadClient]]]:
         Dict of protocol -> list of client classes.
 
     """
+    _ensure_builtin_clients_registered()
     return dict(_CLIENTS)
 
 
-# Import client implementations to trigger registration
-# These imports are at the bottom to avoid circular imports
-from shelfmark.download.clients import deluge as deluge
-from shelfmark.download.clients import nzbget as nzbget
-from shelfmark.download.clients import qbittorrent as qbittorrent
-from shelfmark.download.clients import rtorrent as rtorrent
-from shelfmark.download.clients import sabnzbd as sabnzbd
-from shelfmark.download.clients import transmission as transmission
+_ensure_builtin_clients_registered()

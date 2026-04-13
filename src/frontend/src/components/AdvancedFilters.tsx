@@ -1,5 +1,7 @@
-import { ReactNode } from 'react';
-import {
+import type { ReactNode } from 'react';
+
+import { CONTENT_OPTIONS } from '../data/filterOptions';
+import type {
   AdvancedFilterState,
   ContentType,
   Language,
@@ -7,11 +9,21 @@ import {
   SearchMode,
 } from '../types';
 import { normalizeLanguageSelection } from '../utils/languageFilters';
-import { LanguageMultiSelect } from './LanguageMultiSelect';
 import { DropdownList } from './DropdownList';
-import { CONTENT_OPTIONS } from '../data/filterOptions';
+import { LanguageMultiSelect } from './LanguageMultiSelect';
 
-const FORMAT_TYPES = ['pdf', 'epub', 'mobi', 'azw3', 'fb2', 'djvu', 'cbz', 'cbr', 'zip', 'rar'] as const;
+const FORMAT_TYPES = [
+  'pdf',
+  'epub',
+  'mobi',
+  'azw3',
+  'fb2',
+  'djvu',
+  'cbz',
+  'cbr',
+  'zip',
+  'rar',
+] as const;
 
 interface AdvancedFiltersProps {
   visible: boolean;
@@ -33,8 +45,17 @@ interface AdvancedFiltersProps {
 }
 
 const SEARCH_MODE_OPTIONS = [
-  { value: 'direct', label: 'Direct', description: 'Search web sources for books and download directly. Works out of the box.' },
-  { value: 'universal', label: 'Universal', description: 'Metadata-based search with downloads from all sources. Book and Audiobook support.' },
+  {
+    value: 'direct',
+    label: 'Direct',
+    description: 'Search web sources for books and download directly. Works out of the box.',
+  },
+  {
+    value: 'universal',
+    label: 'Universal',
+    description:
+      'Metadata-based search with downloads from all sources. Book and Audiobook support.',
+  },
 ];
 
 export const AdvancedFilters = ({
@@ -63,16 +84,21 @@ export const AdvancedFilters = ({
   };
 
   const handleContentChange = (next: string[] | string) => {
-    const value = Array.isArray(next) ? next[0] ?? '' : next;
+    const value = Array.isArray(next) ? (next[0] ?? '') : next;
     onFiltersChange({ content: value });
   };
 
   const handleFormatsChange = (next: string[] | string) => {
-    const nextFormats = Array.isArray(next) ? next : next ? [next] : [];
+    let nextFormats: string[] = [];
+    if (Array.isArray(next)) {
+      nextFormats = next;
+    } else if (next) {
+      nextFormats = [next];
+    }
     onFiltersChange({ formats: nextFormats });
   };
 
-  const formatOptions = FORMAT_TYPES.map(format => ({
+  const formatOptions = FORMAT_TYPES.map((format) => ({
     value: format,
     label: format.toUpperCase(),
   }));
@@ -91,25 +117,30 @@ export const AdvancedFilters = ({
     };
   });
 
+  let metadataProviderLabel = 'Book Metadata Provider';
+  if (combinedMode) {
+    metadataProviderLabel = 'Combined Metadata Provider';
+  } else if (contentType === 'audiobook') {
+    metadataProviderLabel = 'Audiobook Metadata Provider';
+  }
+
   if (!visible) return null;
 
-  const wrapperClassName = formClassName
-    ? 'px-2'
-    : 'px-2 lg:ml-16 lg:w-[calc(50vw+4rem)]';
+  const wrapperClassName = formClassName ? 'px-2' : 'px-2 lg:ml-16 lg:w-[calc(50vw+4rem)]';
 
   const settingsForm = (
     <div className={wrapperClassName}>
       {onClose && (
-        <div className="flex justify-end mb-1">
+        <div className="mb-1 flex justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="p-1 rounded-full hover-action transition-colors"
+            className="hover-action rounded-full p-1 transition-colors"
             aria-label="Close filters"
             title="Close filters"
           >
             <svg
-              className="w-4 h-4"
+              className="h-4 w-4"
               fill="none"
               viewBox="0 0 24 24"
               strokeWidth="2"
@@ -123,13 +154,13 @@ export const AdvancedFilters = ({
         </div>
       )}
       {isAdmin && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
+        <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
           <DropdownList
             label="Search Mode"
             options={SEARCH_MODE_OPTIONS}
             value={searchMode}
             onChange={(value) => {
-              const next = Array.isArray(value) ? value[0] ?? 'direct' : value;
+              const next = Array.isArray(value) ? (value[0] ?? 'direct') : value;
               onSearchModeChange(next === 'universal' ? 'universal' : 'direct');
             }}
             placeholder="Choose a mode"
@@ -138,11 +169,11 @@ export const AdvancedFilters = ({
 
           {searchMode === 'universal' && (
             <DropdownList
-              label={combinedMode ? 'Combined Metadata Provider' : contentType === 'audiobook' ? 'Audiobook Metadata Provider' : 'Book Metadata Provider'}
+              label={metadataProviderLabel}
               options={providerOptions}
               value={activeMetadataProvider ?? ''}
               onChange={(value) => {
-                const next = Array.isArray(value) ? value[0] ?? '' : value;
+                const next = Array.isArray(value) ? (value[0] ?? '') : value;
                 onMetadataProviderChange?.(next);
               }}
               placeholder="Choose a provider"
@@ -156,10 +187,7 @@ export const AdvancedFilters = ({
         <div className="space-y-4">
           <form
             id="search-filters"
-            className={
-              formClassName ??
-              'grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'
-            }
+            className={formClassName ?? 'grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'}
           >
             <LanguageMultiSelect
               options={bookLanguages}
@@ -194,7 +222,7 @@ export const AdvancedFilters = ({
   return renderWrapper ? (
     renderWrapper(settingsForm)
   ) : (
-    <div className="w-full border-b pt-6 pb-4 mb-4" style={{ borderColor: 'var(--border-muted)' }}>
+    <div className="mb-4 w-full border-b pt-6 pb-4" style={{ borderColor: 'var(--border-muted)' }}>
       <div className="w-full px-4 sm:px-6 lg:px-8">{settingsForm}</div>
     </div>
   );

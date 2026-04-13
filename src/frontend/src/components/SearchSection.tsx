@@ -1,4 +1,4 @@
-import {
+import type {
   AdvancedFilterState,
   Language,
   MetadataSearchField,
@@ -75,20 +75,22 @@ export const SearchSection = ({
     <section
       id="search-section"
       className={`${
-        isInitialState
-          ? 'search-initial-state mb-6'
-          : 'mb-3 sm:mb-4'
+        isInitialState ? 'search-initial-state mb-6' : 'mb-3 sm:mb-4'
       } ${showAdvanced ? 'search-advanced-visible' : ''}`}
     >
-      <div className={`flex items-center justify-center gap-3 transition-all duration-300 ${
-        isInitialState ? 'opacity-100 mb-6 sm:mb-8' : 'opacity-0 h-0 mb-0 overflow-hidden'
-      }`}>
+      <div
+        className={`flex items-center justify-center gap-3 transition-all duration-300 ${
+          isInitialState ? 'mb-6 opacity-100 sm:mb-8' : 'mb-0 h-0 overflow-hidden opacity-0'
+        }`}
+      >
         <img src={logoUrl} alt="Logo" className="h-8 w-8" />
         <h1 className="text-2xl font-semibold">Book Search & Download</h1>
       </div>
-      <div className={`flex flex-col gap-3 search-wrapper transition-all duration-500 ${
-        isInitialState ? '' : 'hidden'
-      }`}>
+      <div
+        className={`search-wrapper flex flex-col gap-3 transition-all duration-500 ${
+          isInitialState ? '' : 'hidden'
+        }`}
+      >
         <SearchBar
           value={queryValue}
           valueLabel={queryValueLabel}
@@ -108,8 +110,9 @@ export const SearchSection = ({
           activeQueryField={activeQueryField}
         />
         {activeQueryTarget === 'manual' && (
-          <p className="text-xs opacity-50 px-2">
-            Manual search queries release sources directly. Some sources may return limited metadata, which can affect file naming templates.
+          <p className="px-2 text-xs opacity-50">
+            Manual search queries release sources directly. Some sources may return limited
+            metadata, which can affect file naming templates.
           </p>
         )}
         <AdvancedFilters
@@ -119,7 +122,7 @@ export const SearchSection = ({
           filters={advancedFilters}
           onFiltersChange={onAdvancedFiltersChange}
           formClassName="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
-          renderWrapper={form => form}
+          renderWrapper={(form) => form}
           searchMode={searchMode}
           onSearchModeChange={onSearchModeChange}
           metadataProviders={metadataProviders}

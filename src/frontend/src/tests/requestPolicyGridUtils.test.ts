@@ -1,0 +1,144 @@
+import { describe, it, expect } from 'vitest';
+
+import type { RequestPolicyRuleRow } from '../components/settings/users/requestPolicyGridUtils';
+import {
+  getAllowedMatrixModes,
+  getEffectiveCellMode,
+  mergeRequestPolicyRuleLayers,
+  normalizeExplicitRulesForPersistence,
+  normalizeRequestPolicyDefaults,
+  normalizeRequestPolicyRules,
+  parseSourceCapabilitiesFromRulesField,
+} from '../components/settings/users/requestPolicyGridUtils';
+import type { TableFieldConfig } from '../types/settings';
+
+const tableFieldFixture: TableFieldConfig = {
+  type: 'TableField',
+  key: 'REQUEST_POLICY_RULES',
+  label: 'Request policy rules',
+  value: [],
+  columns: [
+    {
+      key: 'source',
+      label: 'Source',
+      type: 'select',
+      options: [
+        { value: 'direct_download', label: 'Direct Download' },
+        { value: 'prowlarr', label: 'Prowlarr' },
+        { value: 'irc', label: 'IRC' },
+      ],
+    },
+    {
+      key: 'content_type',
+      label: 'Content type',
+      type: 'select',
+      options: [
+        { value: 'ebook', label: 'Ebook', childOf: 'direct_download' },
+        { value: 'ebook', label: 'Ebook', childOf: 'prowlarr' },
+        { value: 'audiobook', label: 'Audiobook', childOf: 'prowlarr' },
+        { value: 'ebook', label: 'Ebook', childOf: 'irc' },
+        { value: 'audiobook', label: 'Audiobook', childOf: 'irc' },
+      ],
+    },
+    {
+      key: 'mode',
+      label: 'Mode',
+      type: 'select',
+      options: [
+        { value: 'download', label: 'Download' },
+        { value: 'request_release', label: 'Request Release' },
+        { value: 'blocked', label: 'Blocked' },
+      ],
+    },
+  ],
+};
+
+describe('requestPolicyGridUtils', () => {
+  it('parses dynamic source capabilities from rules field metadata', () => {
+    const capabilities = parseSourceCapabilitiesFromRulesField(tableFieldFixture);
+
+    expect(capabilities).toEqual([
+      {
+        source: 'direct_download',
+        displayName: 'Direct Download',
+        supportedContentTypes: ['ebook'],
+      },
+      {
+        source: 'prowlarr',
+        displayName: 'Prowlarr',
+        supportedContentTypes: ['ebook', 'audiobook'],
+      },
+      {
+        source: 'irc',
+        displayName: 'IRC',
+        supportedContentTypes: ['ebook', 'audiobook'],
+      },
+    ]);
+  });
+
+  it('filters allowed matrix modes by default ceiling', () => {
+    expect(getAllowedMatrixModes('download')).toEqual(['download', 'request_release', 'blocked']);
+    expect(getAllowedMatrixModes('request_release')).toEqual(['request_release', 'blocked']);
+    expect(getAllowedMatrixModes('request_book')).toEqual(['blocked']);
+    expect(getAllowedMatrixModes('blocked')).toEqual([]);
+  });
+
+  it('preserves explicit rules that match inherited values but removes unsupported pairs', () => {
+    const sourceCapabilities = parseSourceCapabilitiesFromRulesField(tableFieldFixture);
+    const defaultModes = normalizeRequestPolicyDefaults({
+      ebook: 'request_release',
+      audiobook: 'download',
+    });
+
+    const baseRules = normalizeRequestPolicyRules([
+      { source: 'prowlarr', content_type: 'ebook', mode: 'blocked' },
+    ]);
+
+    const explicitRules = normalizeRequestPolicyRules([
+      { source: 'direct_download', content_type: 'ebook', mode: 'request_release' }, // same as inherited default -> kept (explicit intent)
+      { source: 'prowlarr', content_type: 'ebook', mode: 'blocked' }, // same as inherited global rule -> kept (explicit intent)
+      { source: 'prowlarr', content_type: 'audiobook', mode: 'request_release' }, // meaningful override -> kept
+      { source: 'direct_download', content_type: 'audiobook', mode: 'blocked' }, // unsupported pair -> removed
+    ]);
+
+    const persisted = normalizeExplicitRulesForPersistence({
+      explicitRules,
+      baseRules,
+      defaultModes,
+      sourceCapabilities,
+    });
+
+    expect(persisted).toEqual([
+      { source: 'direct_download', content_type: 'ebook', mode: 'request_release' },
+      { source: 'prowlarr', content_type: 'audiobook', mode: 'request_release' },
+      { source: 'prowlarr', content_type: 'ebook', mode: 'blocked' },
+    ]);
+  });
+
+  it('overlays user rules on top of global rules for effective cell mode', () => {
+    const globalRules: RequestPolicyRuleRow[] = [
+      { source: 'prowlarr', content_type: 'ebook', mode: 'blocked' },
+      { source: 'direct_download', content_type: 'ebook', mode: 'request_release' },
+    ];
+    const userRules: RequestPolicyRuleRow[] = [
+      { source: 'direct_download', content_type: 'ebook', mode: 'blocked' },
+    ];
+    const mergedRules = mergeRequestPolicyRuleLayers(globalRules, userRules);
+    const defaults = normalizeRequestPolicyDefaults({
+      ebook: 'download',
+      audiobook: 'download',
+    });
+
+    expect(getEffectiveCellMode('direct_download', 'ebook', defaults, globalRules, userRules)).toBe(
+      'blocked',
+    );
+    expect(getEffectiveCellMode('prowlarr', 'ebook', defaults, globalRules, userRules)).toBe(
+      'blocked',
+    );
+
+    expect(mergedRules).toEqual([
+      { source: 'direct_download', content_type: 'ebook', mode: 'blocked' },
+      { source: 'prowlarr', content_type: 'ebook', mode: 'blocked' },
+    ]);
+  });
+});

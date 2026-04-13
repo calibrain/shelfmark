@@ -1,3 +1,5 @@
+"""Folder output handler for copying or linking files into a target directory."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

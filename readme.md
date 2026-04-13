@@ -68,12 +68,20 @@ That's it! Configure settings through the web interface as needed.
 volumes:
   - /your/config/path:/config # Config, database, and artwork cache directory
   - /your/download/path:/books # Downloaded books
-  - /client/path:/client/path # Optional: For Torrent/Usenet downloads, match your client directory exactly. 
+  - /client/path:/client/path # Optional: For Torrent/Usenet downloads, match your client directory exactly.
 ```
 
 > **Tip**: Point the download volume to your CWA or Grimmory ingest folder for automatic import.
 
 > **Note**: CIFS shares require `nobrl` mount option to avoid database lock errors.
+
+### Non-root container mode
+
+- Start the container as `1000:1000` with Docker `user: "1000:1000"` or `docker run --user 1000:1000`.
+- For Kubernetes, set `runAsUser: 1000`, `runAsGroup: 1000`, and `runAsNonRoot: true` together.
+- `PUID`/`PGID` keep the default root startup flow.
+- Mounted paths must already be writable by `1000:1000`.
+- `USING_TOR=true` requires root startup.
 
 ## ⚙️ Configuration
 
@@ -99,9 +107,9 @@ Environment variables work for initial setup and Docker deployments. They serve 
 | `FLASK_PORT` | Web interface port | `8084` |
 | `INGEST_DIR` | Book download directory | `/books` |
 | `TZ` | Container timezone | `UTC` |
-| `PUID` / `PGID` | Runtime user/group ID (also supports legacy `UID`/`GID`) | `1000` / `1000` |
+| `PUID` / `PGID` | Runtime user/group for the default root-startup flow (also supports legacy `UID`/`GID`) | `1000` / `1000` |
 | `SEARCH_MODE` | `direct` or `universal` | `direct` |
-| `USING_TOR` | Enable Tor routing (requires `NET_ADMIN` capability) | `false` |
+| `USING_TOR` | Enable Tor routing (requires root startup) | `false` |
 
 See the full [Environment Variables Reference](docs/environment-variables.md) for all available options.
 
@@ -133,6 +141,7 @@ docker compose -f docker-compose.tor.yml up -d
 ```
 
 **Notes:**
+- Requires root startup
 - Requires `NET_ADMIN` and `NET_RAW` capabilities
 - Timezone is auto-detected from Tor exit node
 - Custom DNS/proxy settings are ignored when Tor is active
@@ -224,6 +233,7 @@ Log level is configurable via Settings or `LOG_LEVEL` environment variable.
 # Python tooling
 make install-python-dev  # Sync Python runtime + dev tools with uv
 make python-checks       # Run Ruff, BasedPyright, and Vulture
+make python-test-checks  # Run lightweight lint/type checks for tests
 
 # Frontend development
 make install     # Install dependencies

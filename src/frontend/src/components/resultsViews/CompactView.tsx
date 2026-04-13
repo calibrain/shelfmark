@@ -1,13 +1,14 @@
 import { useState } from 'react';
-import { Book, ButtonStateInfo } from '../../types';
+
 import { useSearchMode } from '../../contexts/SearchModeContext';
+import type { Book, ButtonStateInfo } from '../../types';
+import { bookSupportsTargets } from '../../utils/bookTargetLoader';
 import { BookActionButton } from '../BookActionButton';
 import { BookTargetDropdown } from '../BookTargetDropdown';
-import { bookSupportsTargets } from '../../utils/bookTargetLoader';
 import { DisplayFieldBadges, DisplayFieldIcon } from '../shared';
 
 const SkeletonLoader = () => (
-  <div className="w-full h-full bg-linear-to-r from-gray-300 via-gray-200 to-gray-300 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700 animate-pulse" />
+  <div className="h-full w-full animate-pulse bg-linear-to-r from-gray-300 via-gray-200 to-gray-300 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700" />
 );
 
 interface CompactViewProps {
@@ -22,7 +23,17 @@ interface CompactViewProps {
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
-export const CompactView = ({ book, onDetails, onDownload, onGetReleases, buttonState, showDetailsButton = false, animationDelay = 0, showSeriesPosition = false, onShowToast }: CompactViewProps) => {
+export const CompactView = ({
+  book,
+  onDetails,
+  onDownload,
+  onGetReleases,
+  buttonState,
+  showDetailsButton = false,
+  animationDelay = 0,
+  showSeriesPosition = false,
+  onShowToast,
+}: CompactViewProps) => {
   const { searchMode } = useSearchMode();
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
   const [isLoadingReleases, setIsLoadingReleases] = useState(false);
@@ -30,6 +41,15 @@ export const CompactView = ({ book, onDetails, onDownload, onGetReleases, button
   const [imageError, setImageError] = useState(false);
   const [isHovered, setIsHovered] = useState(false);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const targetProvider = book.provider;
+  const targetBookId = book.provider_id;
+  const microphoneField = book.display_fields?.find((field) => field.icon === 'microphone');
+  let zIndex: number | undefined;
+  if (dropdownOpen) {
+    zIndex = 20;
+  } else if (isHovered) {
+    zIndex = 10;
+  }
 
   const handleDetails = async (id: string) => {
     setIsLoadingDetails(true);
@@ -40,10 +60,10 @@ export const CompactView = ({ book, onDetails, onDownload, onGetReleases, button
     }
   };
 
-  const handleGetReleases = async (book: Book) => {
+  const handleGetReleases = async (selectedBook: Book) => {
     setIsLoadingReleases(true);
     try {
-      await onGetReleases(book);
+      await onGetReleases(selectedBook);
     } finally {
       setIsLoadingReleases(false);
     }
@@ -51,24 +71,24 @@ export const CompactView = ({ book, onDetails, onDownload, onGetReleases, button
 
   return (
     <article
-      className="book-card flex! flex-row! w-full h-[180px]! transition-shadow duration-300 animate-pop-up will-change-transform relative"
+      className="book-card animate-pop-up relative flex! h-[180px]! w-full flex-row! transition-shadow duration-300 will-change-transform"
       style={{
         background: 'var(--bg-soft)',
         borderRadius: '.75rem',
         boxShadow: isHovered || dropdownOpen ? '0 10px 30px rgba(0, 0, 0, 0.15)' : 'none',
-        zIndex: dropdownOpen ? 20 : isHovered ? 10 : undefined,
+        zIndex,
         animationDelay: `${animationDelay}ms`,
         animationFillMode: 'both',
       }}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
-      <div className="relative w-[120px] h-full shrink-0">
+      <div className="relative h-full w-[120px] shrink-0">
         <div className="absolute inset-0 overflow-hidden rounded-l-[.75rem]">
           {/* Series position badge */}
           {showSeriesPosition && book.series_position != null && (
             <div
-              className="absolute top-2 left-2 z-10 px-2 py-1 text-xs font-bold text-white bg-emerald-600 rounded-md border border-emerald-700"
+              className="absolute top-2 left-2 z-10 rounded-md border border-emerald-700 bg-emerald-600 px-2 py-1 text-xs font-bold text-white"
               style={{
                 boxShadow: '0 2px 8px rgba(0, 0, 0, 0.4), 0 1px 3px rgba(0, 0, 0, 0.3)',
                 textShadow: '0 1px 2px rgba(0, 0, 0, 0.3)',
@@ -87,7 +107,7 @@ export const CompactView = ({ book, onDetails, onDownload, onGetReleases, button
               <img
                 src={book.preview}
                 alt={book.title || 'Book cover'}
-                className="w-full h-full"
+                className="h-full w-full"
                 style={{
                   opacity: imageLoaded ? 1 : 0,
                   transition: 'opacity 0.3s ease-in-out',
@@ -99,46 +119,58 @@ export const CompactView = ({ book, onDetails, onDownload, onGetReleases, button
               />
             </>
           ) : (
-            <div className="w-full h-full flex items-center justify-center text-sm opacity-50" style={{ background: 'var(--border-muted)' }}>
+            <div
+              className="flex h-full w-full items-center justify-center text-sm opacity-50"
+              style={{ background: 'var(--border-muted)' }}
+            >
               No Cover
             </div>
           )}
 
-          <div className="absolute inset-0 bg-white transition-opacity duration-300 pointer-events-none" style={{ opacity: isHovered || dropdownOpen ? 0.02 : 0 }} />
+          <div
+            className="pointer-events-none absolute inset-0 bg-white transition-opacity duration-300"
+            style={{ opacity: isHovered || dropdownOpen ? 0.02 : 0 }}
+          />
         </div>
 
         {!showDetailsButton && (
           <div
-            className="absolute bottom-2 right-2 z-10 flex flex-col gap-1.5 transition-all duration-300"
+            className="absolute right-2 bottom-2 z-10 flex flex-col gap-1.5 transition-all duration-300"
             style={{
               opacity: isHovered || dropdownOpen || isLoadingDetails ? 1 : 0,
               pointerEvents: isHovered || dropdownOpen || isLoadingDetails ? 'auto' : 'none',
             }}
           >
-            {bookSupportsTargets(book) && (
+            {bookSupportsTargets(book) && targetProvider && targetBookId && (
               <BookTargetDropdown
-                provider={book.provider!}
-                bookId={book.provider_id!}
+                provider={targetProvider}
+                bookId={targetBookId}
                 onShowToast={onShowToast}
                 variant="icon"
-                className="w-8 h-8 bg-white/90 dark:bg-neutral-800/90 backdrop-blur-xs shadow-lg hover:scale-110"
+                className="h-8 w-8 bg-white/90 shadow-lg backdrop-blur-xs hover:scale-110 dark:bg-neutral-800/90"
                 onOpenChange={setDropdownOpen}
               />
             )}
             <button
-              className="w-8 h-8 rounded-full bg-white/90 dark:bg-neutral-800/90 backdrop-blur-xs flex items-center justify-center transition-all duration-300 shadow-lg hover:scale-110"
+              type="button"
+              className="flex h-8 w-8 items-center justify-center rounded-full bg-white/90 shadow-lg backdrop-blur-xs transition-all duration-300 hover:scale-110 dark:bg-neutral-800/90"
               onClick={(e) => {
                 e.stopPropagation();
-                handleDetails(book.id);
+                void handleDetails(book.id);
               }}
               disabled={isLoadingDetails}
               aria-label="Book details"
             >
               {isLoadingDetails ? (
-                <div className="w-4 h-4 border-2 border-current border-t-transparent rounded-full animate-spin" />
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
               ) : (
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
               )}
             </button>
@@ -146,12 +178,15 @@ export const CompactView = ({ book, onDetails, onDownload, onGetReleases, button
         )}
       </div>
 
-      <div className="p-3 py-2 flex flex-col flex-1 min-w-0">
-        <div className="space-y-0.5 min-w-0">
-          <h3 className="font-semibold leading-tight line-clamp-3 text-base min-w-0" title={book.title || 'Untitled'}>
+      <div className="flex min-w-0 flex-1 flex-col p-3 py-2">
+        <div className="min-w-0 space-y-0.5">
+          <h3
+            className="line-clamp-3 min-w-0 text-base leading-tight font-semibold"
+            title={book.title || 'Untitled'}
+          >
             {book.title || 'Untitled'}
           </h3>
-          <p className="text-xs opacity-80 truncate min-w-0">{book.author || 'Unknown author'}</p>
+          <p className="min-w-0 truncate text-xs opacity-80">{book.author || 'Unknown author'}</p>
           <div className="text-xs opacity-70">
             <span>{book.year || '-'}</span>
           </div>
@@ -160,16 +195,21 @@ export const CompactView = ({ book, onDetails, onDownload, onGetReleases, button
         <div className="mt-auto flex flex-col gap-2">
           {searchMode === 'universal' && book.display_fields && book.display_fields.length > 0 ? (
             <>
-              <DisplayFieldBadges fields={book.display_fields.filter(f => f.icon !== 'editions' && f.icon !== 'microphone')} className="text-xs opacity-70" />
-              {book.display_fields.find(f => f.icon === 'microphone') && (
+              <DisplayFieldBadges
+                fields={book.display_fields.filter(
+                  (f) => f.icon !== 'editions' && f.icon !== 'microphone',
+                )}
+                className="text-xs opacity-70"
+              />
+              {microphoneField && (
                 <div className="flex items-center gap-0.5 text-xs opacity-70">
                   <DisplayFieldIcon icon="microphone" />
-                  <span>{book.display_fields.find(f => f.icon === 'microphone')!.value}</span>
+                  <span>{microphoneField.value}</span>
                 </div>
               )}
             </>
           ) : (
-            <div className="text-xs opacity-70 flex flex-wrap gap-1">
+            <div className="flex flex-wrap gap-1 text-xs opacity-70">
               <span>{book.language || '-'}</span>
               <span>•</span>
               <span>{book.format || '-'}</span>
@@ -185,19 +225,28 @@ export const CompactView = ({ book, onDetails, onDownload, onGetReleases, button
           {showDetailsButton ? (
             <div className="flex gap-1.5">
               <button
-                className="px-2 py-1.5 rounded-sm border text-xs shrink-0 flex items-center justify-center gap-1"
-                onClick={() => handleDetails(book.id)}
+                type="button"
+                className="flex shrink-0 items-center justify-center gap-1 rounded-sm border px-2 py-1.5 text-xs"
+                onClick={() => {
+                  void handleDetails(book.id);
+                }}
                 style={{ borderColor: 'var(--border-muted)' }}
                 disabled={isLoadingDetails}
               >
-                <span className="details-button-text">{isLoadingDetails ? 'Loading' : 'Details'}</span>
-                {isLoadingDetails && <div className="w-3 h-3 border-2 border-current border-t-transparent rounded-full animate-spin" />}
+                <span className="details-button-text">
+                  {isLoadingDetails ? 'Loading' : 'Details'}
+                </span>
+                {isLoadingDetails && (
+                  <div className="h-3 w-3 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                )}
               </button>
               <BookActionButton
                 book={book}
                 buttonState={buttonState}
                 onDownload={onDownload}
-                onGetReleases={handleGetReleases}
+                onGetReleases={(selectedBook) => {
+                  void handleGetReleases(selectedBook);
+                }}
                 isLoadingReleases={isLoadingReleases}
                 size="sm"
                 className="flex-1"
@@ -208,7 +257,9 @@ export const CompactView = ({ book, onDetails, onDownload, onGetReleases, button
               book={book}
               buttonState={buttonState}
               onDownload={onDownload}
-              onGetReleases={handleGetReleases}
+              onGetReleases={(selectedBook) => {
+                void handleGetReleases(selectedBook);
+              }}
               isLoadingReleases={isLoadingReleases}
               size="sm"
               fullWidth
@@ -219,4 +270,3 @@ export const CompactView = ({ book, onDetails, onDownload, onGetReleases, button
     </article>
   );
 };
-

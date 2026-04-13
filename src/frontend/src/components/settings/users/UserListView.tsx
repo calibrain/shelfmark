@@ -1,10 +1,14 @@
 import { useState } from 'react';
-import { AdminUser, DownloadDefaults } from '../../../services/api';
+
+import type { AdminUser, DownloadDefaults } from '../../../services/api';
+import type { CreateUserFormState } from './types';
+import { canCreateLocalUsersForAuthMode } from './types';
 import {
-  canCreateLocalUsersForAuthMode,
-  CreateUserFormState,
-} from './types';
-import { UserAccountCardContent, UserCreateCard, UserIdentityHeader, UserRoleControl } from './UserCard';
+  UserAccountCardContent,
+  UserCreateCard,
+  UserIdentityHeader,
+  UserRoleControl,
+} from './UserCard';
 
 interface UserListViewProps {
   authMode: string;
@@ -77,7 +81,8 @@ export const UserListView = ({
 }: UserListViewProps) => {
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const canCreateLocalUsers = canCreateLocalUsersForAuthMode(authMode);
-  const isCwaMode = String(authMode || 'none').toLowerCase() === 'cwa';
+  const isCwaMode = (authMode || 'none').toLowerCase() === 'cwa';
+
   const handleDelete = async (userId: number) => {
     const ok = await onDelete(userId);
     if (ok) {
@@ -87,136 +92,153 @@ export const UserListView = ({
 
   return (
     <div className="space-y-4">
-      {(loadingUsers && users.length === 0) ? (
-        <div className="text-center py-8 space-y-2">
-          <p className="text-sm opacity-50">Loading users...</p>
-        </div>
-      ) : (loadError && users.length === 0) ? (
-        <div className="text-center py-8 space-y-3">
-          <p className="text-sm opacity-60">{loadError}</p>
-          <button
-            onClick={onRetryLoadUsers}
-            className="px-4 py-2 rounded-lg text-sm font-medium border border-(--border-muted)                       bg-(--bg-soft) hover:bg-(--hover-surface) transition-colors"
-          >
-            Retry
-          </button>
-        </div>
-      ) : users.length === 0 ? (
-        <div className="text-center py-8 space-y-2">
-          <p className="text-sm opacity-50">No users yet.</p>
-          <p className="text-xs opacity-40">
-            Create a local admin account before enabling OIDC to avoid getting locked out.
-          </p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {users.map((user) => {
-            const active = user.is_active !== false;
-            const isEditingRow = showEditForm && activeEditUserId === user.id;
-            const hasLoadedEditUser = isEditingRow && editingUser?.id === user.id;
-            return (
-              <div
-                key={user.id}
-                className={`rounded-lg border border-(--border-muted) bg-(--bg-soft) transition-colors ${active ? '' : 'opacity-60'}`}
+      {(() => {
+        if (loadingUsers && users.length === 0) {
+          return (
+            <div className="space-y-2 py-8 text-center">
+              <p className="text-sm opacity-50">Loading users...</p>
+            </div>
+          );
+        }
+
+        if (loadError && users.length === 0) {
+          return (
+            <div className="space-y-3 py-8 text-center">
+              <p className="text-sm opacity-60">{loadError}</p>
+              <button
+                type="button"
+                onClick={onRetryLoadUsers}
+                className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface)"
               >
+                Retry
+              </button>
+            </div>
+          );
+        }
+
+        if (users.length === 0) {
+          return (
+            <div className="space-y-2 py-8 text-center">
+              <p className="text-sm opacity-50">No users yet.</p>
+              <p className="text-xs opacity-40">
+                Create a local admin account before enabling OIDC to avoid getting locked out.
+              </p>
+            </div>
+          );
+        }
+
+        return (
+          <div className="space-y-2">
+            {users.map((user) => {
+              const active = user.is_active;
+              const isEditingRow = showEditForm && activeEditUserId === user.id;
+              const hasLoadedEditUser = isEditingRow && editingUser?.id === user.id;
+              const editorPanelId = `user-editor-${user.id}`;
+              const toggleUserEditor = () => {
+                setConfirmDelete(null);
+                if (isEditingRow) {
+                  onCancelEdit();
+                  return;
+                }
+
+                onEdit(user);
+              };
+              return (
                 <div
-                  role="button"
-                  tabIndex={0}
-                  onClick={(e) => {
-                    // Don't toggle when clicking interactive elements inside the header (e.g. role dropdown)
-                    if ((e.target as HTMLElement).closest('button:not([data-card-toggle]), [role="listbox"], [data-dropdown]')) return;
-                    setConfirmDelete(null);
-                    if (isEditingRow) {
-                      onCancelEdit();
-                    } else {
-                      onEdit(user);
-                    }
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      setConfirmDelete(null);
-                      if (isEditingRow) {
-                        onCancelEdit();
-                      } else {
-                        onEdit(user);
-                      }
-                    }
-                  }}
-                  className={`flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between p-3 cursor-pointer hover-surface rounded-t-lg ${isEditingRow ? 'border-b border-(--border-muted)' : 'rounded-b-lg'}`}
-                  aria-expanded={isEditingRow}
-                  aria-label={isEditingRow ? 'Collapse user editor' : `Expand ${user.username} editor`}
+                  key={user.id}
+                  className={`rounded-lg border border-(--border-muted) bg-(--bg-soft) transition-colors ${active ? '' : 'opacity-60'}`}
                 >
-                  <UserIdentityHeader user={user} />
+                  <div
+                    className={`hover-surface relative flex cursor-pointer flex-col gap-3 p-3 sm:flex-row sm:items-center sm:justify-between ${isEditingRow ? 'rounded-t-lg border-b border-(--border-muted)' : 'rounded-lg'}`}
+                  >
+                    <button
+                      type="button"
+                      onClick={toggleUserEditor}
+                      aria-expanded={isEditingRow}
+                      aria-controls={editorPanelId}
+                      aria-label={
+                        isEditingRow ? 'Collapse user editor' : `Expand ${user.username} editor`
+                      }
+                      className={`absolute inset-0 appearance-none border-0 bg-transparent p-0 focus-visible:ring-2 focus-visible:ring-sky-500/50 focus-visible:outline-hidden ${isEditingRow ? 'rounded-t-lg' : 'rounded-lg'}`}
+                    />
 
-                  <div className="flex items-center flex-wrap gap-2 shrink-0 sm:justify-end">
-                    {hasLoadedEditUser && editingUser ? (
-                      <UserRoleControl
-                        user={editingUser}
-                        onUserChange={onEditingUserChange}
-                        oidcAdminGroup={downloadDefaults?.OIDC_ADMIN_GROUP}
-                        tooltipPosition="bottom"
-                      />
-                    ) : (
-                      <UserRoleControl user={user} />
-                    )}
+                    <div className="pointer-events-none relative z-10 min-w-0 flex-1">
+                      <UserIdentityHeader user={user} />
+                    </div>
 
-                    <div
-                      className="p-2 rounded-full text-gray-500 dark:text-gray-400"
-                      aria-hidden="true"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        strokeWidth={1.5}
-                        stroke="currentColor"
-                        className={`w-[18px] h-[18px] transition-transform duration-200 ${isEditingRow ? 'rotate-180' : ''}`}
+                    <div className="pointer-events-none relative z-10 flex shrink-0 flex-wrap items-center gap-2 sm:justify-end">
+                      <div className="pointer-events-auto">
+                        {hasLoadedEditUser && editingUser ? (
+                          <UserRoleControl
+                            user={editingUser}
+                            onUserChange={onEditingUserChange}
+                            oidcAdminGroup={downloadDefaults?.OIDC_ADMIN_GROUP}
+                            tooltipPosition="bottom"
+                          />
+                        ) : (
+                          <UserRoleControl user={user} />
+                        )}
+                      </div>
+
+                      <div
+                        className="rounded-full p-2 text-gray-500 dark:text-gray-400"
+                        aria-hidden="true"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="m19.5 8.25-7.5 7.5-7.5-7.5"
-                        />
-                      </svg>
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          strokeWidth={1.5}
+                          stroke="currentColor"
+                          className={`h-[18px] w-[18px] transition-transform duration-200 ${isEditingRow ? 'rotate-180' : ''}`}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="m19.5 8.25-7.5 7.5-7.5-7.5"
+                          />
+                        </svg>
+                      </div>
                     </div>
                   </div>
-                </div>
 
-                {isEditingRow && (
-                  <div className="p-4 space-y-5 bg-(--bg) rounded-b-lg">
-                    {hasLoadedEditUser && editingUser ? (
-                      <UserAccountCardContent
-                        user={editingUser}
-                        onUserChange={onEditingUserChange}
-                        onSave={onEditSave}
-                        saving={saving}
-                        onCancel={onCancelEdit}
-                        editPassword={editPassword}
-                        onEditPasswordChange={onEditPasswordChange}
-                        editPasswordConfirm={editPasswordConfirm}
-                        onEditPasswordConfirmChange={onEditPasswordConfirmChange}
-                        onDelete={() => setConfirmDelete(user.id)}
-                        onConfirmDelete={() => handleDelete(user.id)}
-                        onCancelDelete={() => setConfirmDelete(null)}
-                        isDeletePending={confirmDelete === user.id}
-                        deleting={deletingUserId === user.id}
-                        preferencesPanel={{
-                          description: 'Customise delivery and request settings for this user.',
-                          actionLabel: 'Open User Preferences',
-                          onAction: onOpenOverrides,
-                        }}
-                      />
-                    ) : (
-                      <div className="text-sm opacity-60">Loading user details...</div>
-                    )}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
-      )}
+                  {isEditingRow && (
+                    <div id={editorPanelId} className="space-y-5 rounded-b-lg bg-(--bg) p-4">
+                      {hasLoadedEditUser && editingUser ? (
+                        <UserAccountCardContent
+                          user={editingUser}
+                          onUserChange={onEditingUserChange}
+                          onSave={onEditSave}
+                          saving={saving}
+                          onCancel={onCancelEdit}
+                          editPassword={editPassword}
+                          onEditPasswordChange={onEditPasswordChange}
+                          editPasswordConfirm={editPasswordConfirm}
+                          onEditPasswordConfirmChange={onEditPasswordConfirmChange}
+                          onDelete={() => setConfirmDelete(user.id)}
+                          onConfirmDelete={() => {
+                            void handleDelete(user.id);
+                          }}
+                          onCancelDelete={() => setConfirmDelete(null)}
+                          isDeletePending={confirmDelete === user.id}
+                          deleting={deletingUserId === user.id}
+                          preferencesPanel={{
+                            description: 'Customise delivery and request settings for this user.',
+                            actionLabel: 'Open User Preferences',
+                            onAction: onOpenOverrides,
+                          }}
+                        />
+                      ) : (
+                        <div className="text-sm opacity-60">Loading user details...</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {canCreateLocalUsers && (
         <div>
@@ -232,8 +254,9 @@ export const UserListView = ({
             />
           ) : (
             <button
+              type="button"
               onClick={onCreate}
-              className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 transition-colors"
+              className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700"
             >
               Create Local User
             </button>
@@ -244,9 +267,12 @@ export const UserListView = ({
       {!canCreateLocalUsers && isCwaMode && (
         <div>
           <button
-            onClick={onSyncCwa}
+            type="button"
+            onClick={() => {
+              void onSyncCwa();
+            }}
             disabled={syncingCwa}
-            className="px-4 py-2 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+            className="rounded-lg bg-sky-600 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {syncingCwa ? 'Syncing with CWA...' : 'Sync with CWA'}
           </button>

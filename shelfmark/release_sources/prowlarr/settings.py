@@ -2,6 +2,9 @@
 
 from typing import Any
 
+import requests
+
+from shelfmark.core.request_helpers import normalize_optional_text
 from shelfmark.core.settings_registry import (
     ActionButton,
     CheckboxField,
@@ -16,6 +19,30 @@ from shelfmark.core.utils import normalize_http_url
 
 # ==================== Dynamic Options Loaders ====================
 
+_PROWLARR_SETTINGS_ERRORS = (
+    requests.exceptions.RequestException,
+    AttributeError,
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
+
+
+def _resolve_setting_text(current_values: dict[str, Any], key: str, *, default: str = "") -> str:
+    """Prefer current form values, then fall back to persisted config text."""
+    from shelfmark.core.config import config
+
+    current_value = normalize_optional_text(current_values.get(key))
+    if current_value is not None:
+        return current_value
+
+    config_value = normalize_optional_text(config.get(key, default))
+    if config_value is not None:
+        return config_value
+
+    return default
+
 
 def _get_indexer_options() -> list[dict[str, str]]:
     """Fetch available indexers from Prowlarr for the multi-select field.
@@ -27,8 +54,8 @@ def _get_indexer_options() -> list[dict[str, str]]:
 
     logger = setup_logger(__name__)
 
-    raw_url = config.get("PROWLARR_URL", "")
-    api_key = config.get("PROWLARR_API_KEY", "")
+    raw_url = normalize_optional_text(config.get("PROWLARR_URL", "")) or ""
+    api_key = normalize_optional_text(config.get("PROWLARR_API_KEY", "")) or ""
 
     if not raw_url or not api_key:
         return []
@@ -62,7 +89,7 @@ def _get_indexer_options() -> list[dict[str, str]]:
                 }
             )
 
-    except Exception:
+    except _PROWLARR_SETTINGS_ERRORS:
         logger.exception("Failed to fetch Prowlarr indexers")
         return []
 
@@ -75,13 +102,12 @@ def _get_indexer_options() -> list[dict[str, str]]:
 
 def _test_prowlarr_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
     """Test the Prowlarr connection using current form values."""
-    from shelfmark.core.config import config
     from shelfmark.release_sources.prowlarr.api import ProwlarrClient
 
     current_values = current_values or {}
 
-    raw_url = current_values.get("PROWLARR_URL") or config.get("PROWLARR_URL", "")
-    api_key = current_values.get("PROWLARR_API_KEY") or config.get("PROWLARR_API_KEY", "")
+    raw_url = _resolve_setting_text(current_values, "PROWLARR_URL")
+    api_key = _resolve_setting_text(current_values, "PROWLARR_API_KEY")
 
     if not raw_url:
         return {"success": False, "message": "Prowlarr URL is required"}
@@ -95,7 +121,7 @@ def _test_prowlarr_connection(current_values: dict[str, Any] | None = None) -> d
     try:
         client = ProwlarrClient(url, api_key)
         success, message = client.test_connection()
-    except Exception as e:
+    except _PROWLARR_SETTINGS_ERRORS as e:
         return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
         return {"success": success, "message": message}

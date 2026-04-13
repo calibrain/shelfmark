@@ -1,4 +1,5 @@
-import { Book, CreateRequestPayload } from '../types';
+import type { Book, CreateRequestPayload } from '../types';
+import { toStringValue } from './objectHelpers';
 
 export const MAX_REQUEST_NOTE_LENGTH = 1000;
 
@@ -9,8 +10,8 @@ const toText = (value: unknown, fallback: string): string => {
   return fallback;
 };
 
-export const formatSourceLabel = (value: unknown): string => {
-  const source = String(value || '').trim();
+const formatSourceLabel = (value: unknown): string => {
+  const source = (toStringValue(value) ?? '').trim();
   if (!source) {
     return 'Unknown source';
   }
@@ -20,11 +21,7 @@ export const formatSourceLabel = (value: unknown): string => {
     .join(' ');
 };
 
-const buildSeriesLine = (
-  name: string,
-  position: number | null,
-  count: number | null,
-): string => {
+const buildSeriesLine = (name: string, position: number | null, count: number | null): string => {
   if (!name) return '';
   if (position != null) {
     return `#${position}${count ? ` of ${count}` : ''} in ${name}`;
@@ -42,7 +39,7 @@ export interface RequestConfirmationPreview {
 }
 
 export const buildRequestConfirmationPreview = (
-  payload: CreateRequestPayload
+  payload: CreateRequestPayload,
 ): RequestConfirmationPreview => {
   const bookData = payload.book_data || {};
   const releaseData = payload.release_data || {};
@@ -53,18 +50,19 @@ export const buildRequestConfirmationPreview = (
     typeof bookData.series_position === 'number' ? bookData.series_position : null,
     typeof bookData.series_count === 'number' ? bookData.series_count : null,
   );
+  let preview = '';
+  if (typeof bookData.preview === 'string') {
+    preview = bookData.preview;
+  } else if (typeof releaseData.preview === 'string') {
+    preview = releaseData.preview;
+  }
 
   return {
     title: toText(bookData.title ?? releaseData.title, 'Untitled'),
     author: toText(bookData.author ?? releaseData.author, 'Unknown author'),
     year: toText(bookData.year ?? releaseData.year, ''),
     seriesLine,
-    preview:
-      typeof bookData.preview === 'string'
-        ? bookData.preview
-        : typeof releaseData.preview === 'string'
-          ? releaseData.preview
-          : '',
+    preview,
     releaseLine:
       requestLevel === 'release'
         ? [
@@ -82,7 +80,7 @@ export const buildRequestConfirmationPreview = (
 
 export const truncateRequestNote = (
   value: string,
-  maxLength: number = MAX_REQUEST_NOTE_LENGTH
+  maxLength: number = MAX_REQUEST_NOTE_LENGTH,
 ): string => value.slice(0, maxLength);
 
 export const enrichPreviewFromBook = (
@@ -99,14 +97,14 @@ export const enrichPreviewFromBook = (
   return {
     ...base,
     seriesLine: seriesLine || base.seriesLine,
-    year: (book.year && !base.year) ? book.year : base.year,
+    year: book.year && !base.year ? book.year : base.year,
   };
 };
 
 export const applyRequestNoteToPayload = (
   payload: CreateRequestPayload,
   note: string,
-  allowNotes: boolean
+  allowNotes: boolean,
 ): CreateRequestPayload => {
   const trimmedNote = note.trim();
   const nextPayload: CreateRequestPayload = {

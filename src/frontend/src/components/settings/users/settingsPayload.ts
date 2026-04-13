@@ -1,55 +1,50 @@
-import { DeliveryPreferencesResponse } from '../../../services/api';
-import { PerUserSettings } from './types';
+import type { DeliveryPreferencesResponse } from '../../../services/api';
+import { toComparableValue } from './fieldHelpers';
+import type { PerUserSettings } from './types';
 
 const normalizeComparableValue = (value: unknown): string => {
-  if (value === null || value === undefined) {
-    return '';
-  }
-  if (typeof value === 'object') {
-    try {
-      return JSON.stringify(value);
-    } catch {
-      return String(value);
-    }
-  }
-  return String(value);
+  return toComparableValue(value);
 };
 
 export const buildUserSettingsPayload = (
   userSettings: PerUserSettings,
   userOverridableSettings: Set<string>,
   preferenceGroups: Array<DeliveryPreferencesResponse | null>,
-): Record<string, unknown> =>
-  Array.from(new Set([
-    ...preferenceGroups.flatMap((preferences) => preferences?.keys || []),
-    ...userOverridableSettings,
-  ]))
-    .map(String)
-    .sort()
-    .reduce<Record<string, unknown>>((payload, key) => {
-      const typedKey = key as keyof PerUserSettings;
-      const hasUserValue = Object.prototype.hasOwnProperty.call(userSettings, typedKey)
-        && userSettings[typedKey] !== null
-        && userSettings[typedKey] !== undefined;
+): Record<string, unknown> => {
+  const settingKeys = Array.from(
+    new Set([
+      ...preferenceGroups.flatMap((preferences) => preferences?.keys || []),
+      ...userOverridableSettings,
+    ]),
+    String,
+  ).toSorted();
 
-      if (!hasUserValue) {
-        payload[key] = null;
-        return payload;
-      }
+  return settingKeys.reduce<Record<string, unknown>>((payload, key) => {
+    const typedKey = key as keyof PerUserSettings;
+    const hasUserValue =
+      Object.prototype.hasOwnProperty.call(userSettings, typedKey) &&
+      userSettings[typedKey] !== null &&
+      userSettings[typedKey] !== undefined;
 
-      const userValue = userSettings[typedKey];
-      const matchingPreferences = preferenceGroups.find((preferences) =>
-        preferences?.keys?.includes(key)
-      );
-      const hasGlobalValue = Boolean(
-        matchingPreferences
-        && Object.prototype.hasOwnProperty.call(matchingPreferences.globalValues, key)
-      );
-      const globalValue = matchingPreferences?.globalValues?.[key];
-      const isDifferentFromGlobal = hasGlobalValue
-        ? normalizeComparableValue(userValue) !== normalizeComparableValue(globalValue)
-        : true;
-
-      payload[key] = isDifferentFromGlobal ? userValue : null;
+    if (!hasUserValue) {
+      payload[key] = null;
       return payload;
-    }, {});
+    }
+
+    const userValue = userSettings[typedKey];
+    const matchingPreferences = preferenceGroups.find((preferences) =>
+      preferences?.keys?.includes(key),
+    );
+    const hasGlobalValue = Boolean(
+      matchingPreferences &&
+      Object.prototype.hasOwnProperty.call(matchingPreferences.globalValues, key),
+    );
+    const globalValue = matchingPreferences?.globalValues?.[key];
+    const isDifferentFromGlobal = hasGlobalValue
+      ? normalizeComparableValue(userValue) !== normalizeComparableValue(globalValue)
+      : true;
+
+    payload[key] = isDifferentFromGlobal ? userValue : null;
+    return payload;
+  }, {});
+};

@@ -1,4 +1,4 @@
-import { ContentType, RequestPolicyMode, RequestPolicyResponse } from '../types';
+import type { ContentType, RequestPolicyMode, RequestPolicyResponse } from '../types';
 
 export const DEFAULT_POLICY_TTL_MS = 60_000;
 
@@ -11,29 +11,32 @@ const MODE_RANK: Record<RequestPolicyMode, number> = {
 
 const MATRIX_MODES = new Set<RequestPolicyMode>(['download', 'request_release', 'blocked']);
 
-const capModeToCeiling = (mode: RequestPolicyMode, ceiling: RequestPolicyMode): RequestPolicyMode => {
+const capModeToCeiling = (
+  mode: RequestPolicyMode,
+  ceiling: RequestPolicyMode,
+): RequestPolicyMode => {
   return MODE_RANK[mode] < MODE_RANK[ceiling] ? ceiling : mode;
 };
 
-export interface RefreshPolicyOptions {
+interface RefreshPolicyOptions {
   enabled: boolean;
   isAdmin: boolean;
   force?: boolean;
 }
 
-export const normalizeContentType = (value: ContentType | string): ContentType => {
-  return String(value).trim().toLowerCase() === 'audiobook' ? 'audiobook' : 'ebook';
+const normalizeContentType = (value: string): ContentType => {
+  return value.trim().toLowerCase() === 'audiobook' ? 'audiobook' : 'ebook';
 };
 
-export const normalizeSource = (value: string): string => {
-  const source = String(value || '').trim().toLowerCase();
+const normalizeSource = (value: string): string => {
+  const source = value.trim().toLowerCase();
   return source || '*';
 };
 
 const normalizeReleaseResultMode = (
   policy: RequestPolicyResponse | null,
   source: string,
-  mode: RequestPolicyMode
+  mode: RequestPolicyMode,
 ): RequestPolicyMode => {
   if (mode !== 'request_book') {
     return mode;
@@ -41,7 +44,7 @@ const normalizeReleaseResultMode = (
 
   const normalizedSource = normalizeSource(source);
   const sourceMode = policy?.source_modes?.find(
-    (entry) => normalizeSource(entry.source) === normalizedSource
+    (entry) => normalizeSource(entry.source) === normalizedSource,
   );
 
   return sourceMode?.browse_results_are_releases ? 'request_release' : mode;
@@ -72,12 +75,16 @@ const normalizeRuleContentType = (value: unknown): ContentType | '*' | null => {
   return normalizeContentType(normalized);
 };
 
+const isMatrixMode = (value: string): value is RequestPolicyMode => {
+  return value === 'download' || value === 'request_release' || value === 'blocked';
+};
+
 const parseMatrixMode = (value: unknown): RequestPolicyMode | null => {
   if (typeof value !== 'string') {
     return null;
   }
-  const normalized = value.trim().toLowerCase() as RequestPolicyMode;
-  if (!MATRIX_MODES.has(normalized)) {
+  const normalized = value.trim().toLowerCase();
+  if (!isMatrixMode(normalized) || !MATRIX_MODES.has(normalized)) {
     return null;
   }
   return normalized;
@@ -86,7 +93,7 @@ const parseMatrixMode = (value: unknown): RequestPolicyMode | null => {
 export const resolveDefaultModeFromPolicy = (
   policy: RequestPolicyResponse | null,
   isAdmin: boolean,
-  contentType: ContentType | string
+  contentType: string,
 ): RequestPolicyMode => {
   if (isAdmin || policy?.is_admin) {
     return 'download';
@@ -102,7 +109,7 @@ export const resolveSourceModeFromPolicy = (
   policy: RequestPolicyResponse | null,
   isAdmin: boolean,
   source: string,
-  contentType: ContentType | string
+  contentType: string,
 ): RequestPolicyMode => {
   const normalizedSource = normalizeSource(source);
   const defaultMode = resolveDefaultModeFromPolicy(policy, isAdmin, contentType);
@@ -112,14 +119,14 @@ export const resolveSourceModeFromPolicy = (
 
   const normalizedContentType = normalizeContentType(contentType);
   const sourceModes = policy?.source_modes?.find(
-    (sourceMode) => normalizeSource(sourceMode.source) === normalizedSource
+    (sourceMode) => normalizeSource(sourceMode.source) === normalizedSource,
   );
   const fromSource = sourceModes?.modes?.[normalizedContentType];
   if (fromSource) {
     return normalizeReleaseResultMode(
       policy,
       normalizedSource,
-      capModeToCeiling(fromSource, defaultMode)
+      capModeToCeiling(fromSource, defaultMode),
     );
   }
 
@@ -136,8 +143,8 @@ export const resolveSourceModeFromPolicy = (
       if (!rule || typeof rule !== 'object') {
         return false;
       }
-      const ruleSource = normalizeRuleSource((rule as Record<string, unknown>).source);
-      const ruleContentType = normalizeRuleContentType((rule as Record<string, unknown>).content_type);
+      const ruleSource = normalizeRuleSource(rule.source);
+      const ruleContentType = normalizeRuleContentType(rule.content_type);
       return ruleSource === sourceMatch && ruleContentType === contentTypeMatch;
     });
 
@@ -145,7 +152,7 @@ export const resolveSourceModeFromPolicy = (
       continue;
     }
 
-    const parsedMode = parseMatrixMode((matchedRule as Record<string, unknown>).mode);
+    const parsedMode = parseMatrixMode(matchedRule.mode);
     if (!parsedMode) {
       continue;
     }
@@ -153,7 +160,7 @@ export const resolveSourceModeFromPolicy = (
     return normalizeReleaseResultMode(
       policy,
       normalizedSource,
-      capModeToCeiling(parsedMode, defaultMode)
+      capModeToCeiling(parsedMode, defaultMode),
     );
   }
 
@@ -169,7 +176,7 @@ export class RequestPolicyCache {
 
   constructor(
     private readonly fetchPolicy: () => Promise<RequestPolicyResponse>,
-    ttlMs: number = DEFAULT_POLICY_TTL_MS
+    ttlMs: number = DEFAULT_POLICY_TTL_MS,
   ) {
     this.ttlMs = ttlMs;
   }

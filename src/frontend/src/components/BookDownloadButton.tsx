@@ -1,5 +1,7 @@
-import { useEffect, useState, CSSProperties } from 'react';
-import { ButtonStateInfo } from '../types';
+import type { CSSProperties } from 'react';
+import { useState } from 'react';
+
+import type { ButtonStateInfo } from '../types';
 import { CircularProgress } from './shared';
 
 type ButtonSize = 'sm' | 'md';
@@ -54,48 +56,48 @@ export const BookDownloadButton = ({
   ariaLabel,
 }: BookDownloadButtonProps) => {
   const [isQueuing, setIsQueuing] = useState(false);
-
-  useEffect(() => {
-    if (isQueuing && buttonState.state !== 'download') {
-      setIsQueuing(false);
-    }
-  }, [buttonState.state, isQueuing]);
+  const isQueuingVisible = isQueuing && buttonState.state === 'download';
 
   const isCompleted = buttonState.state === 'complete';
   const hasError = buttonState.state === 'error';
   const isBlocked = buttonState.state === 'blocked';
-  const isInProgress = ['queued', 'resolving', 'locating', 'downloading'].includes(buttonState.state);
-  const isDisabled = buttonState.state !== 'download' || isQueuing || isCompleted || isBlocked;
-  const displayText = isQueuing ? 'Queuing...' : buttonState.text;
-  const showCircularProgress = buttonState.state === 'downloading' && buttonState.progress !== undefined;
-  const showSpinner = (isInProgress && !showCircularProgress) || isQueuing;
+  const isInProgress = ['queued', 'resolving', 'locating', 'downloading'].includes(
+    buttonState.state,
+  );
+  const isDisabled =
+    buttonState.state !== 'download' || isQueuingVisible || isCompleted || isBlocked;
+  const displayText = isQueuingVisible ? 'Queuing...' : buttonState.text;
+  const showCircularProgress =
+    buttonState.state === 'downloading' && buttonState.progress !== undefined;
+  const showSpinner = (isInProgress && !showCircularProgress) || isQueuingVisible;
   const isRequestAction = buttonState.state === 'download' && buttonState.text === 'Request';
   const iconVariantActionIconPath = isRequestAction
     ? 'M12 4.5v15m7.5-7.5h-15'
     : 'M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3';
-  const primaryActionIconPath = isRequestAction ? 'M12 4.5v15m7.5-7.5h-15' : 'M12 4v12m0 0l-4-4m4 4 4-4M6 20h12';
+  const primaryActionIconPath = isRequestAction
+    ? 'M12 4.5v15m7.5-7.5h-15'
+    : 'M12 4v12m0 0l-4-4m4 4 4-4M6 20h12';
+  let primaryStateClasses = 'bg-sky-700 hover:bg-sky-800';
+  if (isCompleted) {
+    primaryStateClasses = 'bg-green-600 cursor-not-allowed';
+  } else if (hasError) {
+    primaryStateClasses = 'bg-red-600 cursor-not-allowed opacity-75';
+  } else if (isBlocked) {
+    primaryStateClasses = 'bg-gray-500 cursor-not-allowed opacity-70';
+  } else if (isInProgress) {
+    primaryStateClasses = 'bg-gray-500 cursor-not-allowed opacity-75';
+  }
 
-  const primaryStateClasses =
-    isCompleted
-      ? 'bg-green-600 cursor-not-allowed'
-      : hasError
-      ? 'bg-red-600 cursor-not-allowed opacity-75'
-      : isBlocked
-      ? 'bg-gray-500 cursor-not-allowed opacity-70'
-      : isInProgress
-      ? 'bg-gray-500 cursor-not-allowed opacity-75'
-      : 'bg-sky-700 hover:bg-sky-800';
-
-  const iconStateClasses =
-    isCompleted
-      ? 'bg-green-600 text-white cursor-not-allowed'
-      : hasError
-      ? 'bg-red-600 text-white cursor-not-allowed opacity-75'
-      : isBlocked
-      ? 'text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-70'
-      : isInProgress
-      ? 'bg-gray-500 text-white cursor-not-allowed opacity-75'
-      : 'text-gray-600 dark:text-gray-200 hover-action';
+  let iconStateClasses = 'text-gray-600 dark:text-gray-200 hover-action';
+  if (isCompleted) {
+    iconStateClasses = 'bg-green-600 text-white cursor-not-allowed';
+  } else if (hasError) {
+    iconStateClasses = 'bg-red-600 text-white cursor-not-allowed opacity-75';
+  } else if (isBlocked) {
+    iconStateClasses = 'text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-70';
+  } else if (isInProgress) {
+    iconStateClasses = 'bg-gray-500 text-white cursor-not-allowed opacity-75';
+  }
 
   const stateClasses = variant === 'icon' ? iconStateClasses : primaryStateClasses;
   const widthClasses = variant === 'primary' && fullWidth ? 'w-full' : '';
@@ -113,7 +115,7 @@ export const BookDownloadButton = ({
     setIsQueuing(true);
     try {
       await onDownload();
-    } catch (error) {
+    } catch {
       setIsQueuing(false);
       return;
     }
@@ -125,17 +127,42 @@ export const BookDownloadButton = ({
       if (variant === 'icon' && iconSizes) {
         return (
           <>
-            <svg className={`${iconSizes.mobile} sm:hidden`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 13l4 4L19 7" />
+            <svg
+              className={`${iconSizes.mobile} sm:hidden`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M5 13l4 4L19 7"
+              />
             </svg>
-            <svg className={`${iconSizes.desktop} hidden sm:block`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 13l4 4L19 7" />
+            <svg
+              className={`${iconSizes.desktop} hidden sm:block`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M5 13l4 4L19 7"
+              />
             </svg>
           </>
         );
       }
       return (
-        <svg className={primaryIconSizes[size]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg
+          className={primaryIconSizes[size]}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
         </svg>
       );
@@ -145,18 +172,48 @@ export const BookDownloadButton = ({
       if (variant === 'icon' && iconSizes) {
         return (
           <>
-            <svg className={`${iconSizes.mobile} sm:hidden`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
+            <svg
+              className={`${iconSizes.mobile} sm:hidden`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
-            <svg className={`${iconSizes.desktop} hidden sm:block`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M6 18L18 6M6 6l12 12" />
+            <svg
+              className={`${iconSizes.desktop} hidden sm:block`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M6 18L18 6M6 6l12 12"
+              />
             </svg>
           </>
         );
       }
       return (
-        <svg className={primaryIconSizes[size]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+        <svg
+          className={primaryIconSizes[size]}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M6 18L18 6M6 6l12 12"
+          />
         </svg>
       );
     }
@@ -165,18 +222,48 @@ export const BookDownloadButton = ({
       if (variant === 'icon' && iconSizes) {
         return (
           <>
-            <svg className={`${iconSizes.mobile} sm:hidden`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.5 10.5V7.875a4.125 4.125 0 1 0-8.25 0V10.5m-.75 0h9a2.25 2.25 0 0 1 2.25 2.25v6A2.25 2.25 0 0 1 16.5 21h-9a2.25 2.25 0 0 1-2.25-2.25v-6a2.25 2.25 0 0 1 2.25-2.25Z" />
+            <svg
+              className={`${iconSizes.mobile} sm:hidden`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M16.5 10.5V7.875a4.125 4.125 0 1 0-8.25 0V10.5m-.75 0h9a2.25 2.25 0 0 1 2.25 2.25v6A2.25 2.25 0 0 1 16.5 21h-9a2.25 2.25 0 0 1-2.25-2.25v-6a2.25 2.25 0 0 1 2.25-2.25Z"
+              />
             </svg>
-            <svg className={`${iconSizes.desktop} hidden sm:block`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M16.5 10.5V7.875a4.125 4.125 0 1 0-8.25 0V10.5m-.75 0h9a2.25 2.25 0 0 1 2.25 2.25v6A2.25 2.25 0 0 1 16.5 21h-9a2.25 2.25 0 0 1-2.25-2.25v-6a2.25 2.25 0 0 1 2.25-2.25Z" />
+            <svg
+              className={`${iconSizes.desktop} hidden sm:block`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={1.5}
+                d="M16.5 10.5V7.875a4.125 4.125 0 1 0-8.25 0V10.5m-.75 0h9a2.25 2.25 0 0 1 2.25 2.25v6A2.25 2.25 0 0 1 16.5 21h-9a2.25 2.25 0 0 1-2.25-2.25v-6a2.25 2.25 0 0 1 2.25-2.25Z"
+              />
             </svg>
           </>
         );
       }
       return (
-        <svg className={primaryIconSizes[size]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16.5 10.5V7.875a4.125 4.125 0 1 0-8.25 0V10.5m-.75 0h9a2.25 2.25 0 0 1 2.25 2.25v6A2.25 2.25 0 0 1 16.5 21h-9a2.25 2.25 0 0 1-2.25-2.25v-6a2.25 2.25 0 0 1 2.25-2.25Z" />
+        <svg
+          className={primaryIconSizes[size]}
+          fill="none"
+          stroke="currentColor"
+          viewBox="0 0 24 24"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            strokeWidth={2}
+            d="M16.5 10.5V7.875a4.125 4.125 0 1 0-8.25 0V10.5m-.75 0h9a2.25 2.25 0 0 1 2.25 2.25v6A2.25 2.25 0 0 1 16.5 21h-9a2.25 2.25 0 0 1-2.25-2.25v-6a2.25 2.25 0 0 1 2.25-2.25Z"
+          />
         </svg>
       );
     }
@@ -192,21 +279,47 @@ export const BookDownloadButton = ({
     if (showSpinner) {
       if (variant === 'icon' && iconSizes) {
         return (
-          <div className={`${iconSizes.mobile} border-2 border-current border-t-transparent rounded-full animate-spin`} />
+          <div
+            className={`${iconSizes.mobile} animate-spin rounded-full border-2 border-current border-t-transparent`}
+          />
         );
       }
       const spinnerClass = size === 'sm' ? 'w-3 h-3' : 'w-4 h-4';
-      return <div className={`${spinnerClass} border-2 border-current border-t-transparent rounded-full animate-spin`} />;
+      return (
+        <div
+          className={`${spinnerClass} animate-spin rounded-full border-2 border-current border-t-transparent`}
+        />
+      );
     }
 
     if (variant === 'icon' && iconSizes) {
       return (
         <>
-          <svg className={`${iconSizes.mobile} sm:hidden`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={iconVariantActionIconPath} />
+          <svg
+            className={`${iconSizes.mobile} sm:hidden`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d={iconVariantActionIconPath}
+            />
           </svg>
-          <svg className={`${iconSizes.desktop} hidden sm:block`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d={iconVariantActionIconPath} />
+          <svg
+            className={`${iconSizes.desktop} hidden sm:block`}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={1.5}
+              d={iconVariantActionIconPath}
+            />
           </svg>
         </>
       );
@@ -217,18 +330,34 @@ export const BookDownloadButton = ({
 
   return (
     <button
+      type="button"
       className={`${baseClasses} ${sizeClass} ${stateClasses} ${widthClasses} ${className}`.trim()}
-      onClick={handleDownload}
+      onClick={() => void handleDownload()}
       disabled={isDisabled || isInProgress}
       data-action="download"
       style={style}
       aria-label={ariaLabel ?? displayText}
     >
-      {variant === 'primary' && showIcon && !isCompleted && !hasError && !showCircularProgress && !showSpinner && (
-        <svg className={primaryIconSizes[size]} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d={primaryActionIconPath} />
-        </svg>
-      )}
+      {variant === 'primary' &&
+        showIcon &&
+        !isCompleted &&
+        !hasError &&
+        !showCircularProgress &&
+        !showSpinner && (
+          <svg
+            className={primaryIconSizes[size]}
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d={primaryActionIconPath}
+            />
+          </svg>
+        )}
 
       {variant === 'primary' && <span className="download-button-text">{displayText}</span>}
       {variant === 'icon' && <span className="sr-only">{ariaLabel ?? displayText}</span>}

@@ -2,6 +2,7 @@
 
 import logging
 import sys
+from collections.abc import Mapping
 from logging.handlers import RotatingFileHandler
 from typing import TYPE_CHECKING
 
@@ -17,26 +18,49 @@ class CustomLogger(logging.Logger):
     def error_trace(self, msg: object, *args: object, **kwargs: object) -> None:
         """Log an error message with full stack trace."""
         self.log_resource_usage()
-        kwargs.pop("exc_info", None)
-        self.error(msg, *args, exc_info=True, **kwargs)
+        stack_info, stacklevel, extra = _extract_log_kwargs(kwargs)
+        self.error(
+            msg,
+            *args,
+            exc_info=True,
+            stack_info=stack_info,
+            stacklevel=stacklevel,
+            extra=extra,
+        )
 
     def debug_trace(self, msg: object, *args: object, **kwargs: object) -> None:
         """Log a debug message (stack trace only if exception active)."""
-        kwargs.pop("exc_info", None)
+        stack_info, stacklevel, extra = _extract_log_kwargs(kwargs)
         # Only include exc_info if there's actually an exception
         has_exception = sys.exc_info()[0] is not None
-        self.debug(msg, *args, exc_info=has_exception, **kwargs)
+        self.debug(
+            msg,
+            *args,
+            exc_info=has_exception,
+            stack_info=stack_info,
+            stacklevel=stacklevel,
+            extra=extra,
+        )
 
     def log_resource_usage(self) -> None:
-        # Best-effort only; this should never raise during exception logging.
+        """Log best-effort CPU and memory usage for the current container."""
         try:
             import psutil
+        except ImportError:
+            return
+
+        # Best-effort only; this should never raise during exception logging.
+        try:
 
             def _get_process_rss_mb(proc: object) -> float | None:
                 try:
-                    mem = proc.info.get("memory_info")
-                    if mem:
-                        return mem.rss / (1024 * 1024)
+                    proc_info = getattr(proc, "info", None)
+                    if not isinstance(proc_info, Mapping):
+                        return None
+                    mem = proc_info.get("memory_info")
+                    rss = getattr(mem, "rss", None)
+                    if isinstance(rss, int | float):
+                        return rss / (1024 * 1024)
                 except (
                     psutil.NoSuchProcess,
                     psutil.AccessDenied,
@@ -57,7 +81,7 @@ class CustomLogger(logging.Logger):
             except PermissionError, psutil.AccessDenied, OSError:
                 try:
                     app_memory_mb = psutil.Process().memory_info().rss / (1024 * 1024)
-                except Exception:
+                except AttributeError, OSError, psutil.Error:
                     app_memory_mb = 0.0
 
             memory = psutil.virtual_memory()
@@ -68,9 +92,34 @@ class CustomLogger(logging.Logger):
                 f"Container Memory: App={app_memory_mb:.2f} MB, System={system_used_mb:.2f} MB, "
                 f"Available={available_mb:.2f} MB, CPU: {cpu_percent:.2f}%"
             )
-        except Exception:
+        except AttributeError, OSError, psutil.Error:
             # Avoid breaking the original log call if psutil is missing or restricted.
             return
+
+
+def _extract_log_kwargs(
+    kwargs: Mapping[str, object],
+) -> tuple[bool, int, Mapping[str, object] | None]:
+    stack_info = kwargs.get("stack_info")
+    normalized_stack_info = stack_info if isinstance(stack_info, bool) else False
+
+    stacklevel = kwargs.get("stacklevel")
+    normalized_stacklevel = stacklevel if isinstance(stacklevel, int) else 1
+
+    extra = kwargs.get("extra")
+    normalized_extra = _normalize_log_extra(extra)
+
+    return normalized_stack_info, normalized_stacklevel, normalized_extra
+
+
+def _normalize_log_extra(value: object) -> Mapping[str, object] | None:
+    if not isinstance(value, Mapping):
+        return None
+
+    if all(isinstance(key, str) for key in value):
+        return value
+
+    return None
 
 
 def setup_logger(name: str, log_file: Path = LOG_FILE) -> CustomLogger:
@@ -124,7 +173,7 @@ def setup_logger(name: str, log_file: Path = LOG_FILE) -> CustomLogger:
             )
             file_handler.setFormatter(formatter)
             logger.addHandler(file_handler)
-    except Exception as e:
+    except (OSError, TypeError, ValueError) as e:
         logger.error_trace(f"Failed to create log file: {e}", exc_info=True)
 
     return logger

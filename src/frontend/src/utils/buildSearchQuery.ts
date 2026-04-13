@@ -1,4 +1,4 @@
-import { AdvancedFilterState, Language } from '../types';
+import type { AdvancedFilterState, Language } from '../types';
 import { getLanguageFilterValues } from './languageFilters';
 
 interface BuildSearchQueryOptions {
@@ -42,10 +42,10 @@ export const buildSearchQuery = ({
   if (title) queryParts.push(`title=${encodeURIComponent(title)}`);
 
   const selectedLanguages = getLanguageFilterValues(lang, bookLanguages, defaultLanguage);
-  selectedLanguages?.forEach(code => queryParts.push(`lang=${encodeURIComponent(code)}`));
+  selectedLanguages?.forEach((code) => queryParts.push(`lang=${encodeURIComponent(code)}`));
 
   if (content) queryParts.push(`content=${encodeURIComponent(content)}`);
-  formats.forEach(format => queryParts.push(`format=${encodeURIComponent(format)}`));
+  formats.forEach((format) => queryParts.push(`format=${encodeURIComponent(format)}`));
 
   if (advancedFilters.sort) {
     queryParts.push(`sort=${encodeURIComponent(advancedFilters.sort)}`);

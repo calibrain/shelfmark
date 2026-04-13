@@ -1,21 +1,28 @@
-import { ComponentType, ReactNode } from 'react';
+import type { ComponentType, ReactNode } from 'react';
+
 import { OidcAdminHint } from './OidcAdminHint';
 import { OidcEnvInfo } from './OidcEnvInfo';
 import { RequestPolicyGridField } from './RequestPolicyGridField';
 import { SettingsLabel } from './SettingsLabel';
-import { UsersManagementField } from './UsersManagementField';
-import {
+import type {
   CustomSettingsFieldLayout,
   CustomSettingsFieldLayoutContext,
   CustomSettingsFieldRendererProps,
 } from './types';
+import { UsersManagementField } from './UsersManagementField';
 
 type CustomFieldRenderer = ComponentType<CustomSettingsFieldRendererProps>;
-type CustomFieldLayoutResolver = (context: CustomSettingsFieldLayoutContext) => CustomSettingsFieldLayout;
+type CustomFieldLayoutResolver = (
+  context: CustomSettingsFieldLayoutContext,
+) => CustomSettingsFieldLayout;
 
 interface CustomFieldDefinition {
   renderer: CustomFieldRenderer;
   getLayout?: CustomFieldLayoutResolver;
+}
+
+function isSaveHandler(value: unknown): value is () => void | Promise<void> {
+  return typeof value === 'function';
 }
 
 const CUSTOM_FIELD_DEFINITIONS: Record<string, CustomFieldDefinition> = {
@@ -24,9 +31,7 @@ const CUSTOM_FIELD_DEFINITIONS: Record<string, CustomFieldDefinition> = {
     getLayout: ({ uiState }) => {
       const routeKind = typeof uiState.routeKind === 'string' ? uiState.routeKind : 'list';
       const isSubpage = routeKind === 'edit-overrides';
-      const onSave = typeof uiState.onSave === 'function'
-        ? (uiState.onSave as () => void | Promise<void>)
-        : undefined;
+      const onSave = isSaveHandler(uiState.onSave) ? uiState.onSave : undefined;
       return {
         takeOverTab: isSubpage,
         saveBar: isSubpage
@@ -53,9 +58,7 @@ const CUSTOM_FIELD_DEFINITIONS: Record<string, CustomFieldDefinition> = {
   },
 };
 
-export const renderCustomSettingsField = (
-  props: CustomSettingsFieldRendererProps
-): ReactNode => {
+export const renderCustomSettingsField = (props: CustomSettingsFieldRendererProps): ReactNode => {
   const definition = CUSTOM_FIELD_DEFINITIONS[props.field.component];
   const Renderer = definition?.renderer;
   if (!Renderer) {
@@ -69,7 +72,7 @@ export const renderCustomSettingsField = (
 };
 
 export const getCustomSettingsFieldLayout = (
-  context: CustomSettingsFieldLayoutContext
+  context: CustomSettingsFieldLayoutContext,
 ): CustomSettingsFieldLayout => {
   const definition = CUSTOM_FIELD_DEFINITIONS[context.field.component];
   if (!definition?.getLayout) {
@@ -78,8 +81,4 @@ export const getCustomSettingsFieldLayout = (
   return definition.getLayout(context);
 };
 
-export type {
-  CustomSettingsFieldLayout,
-  CustomSettingsFieldLayoutContext,
-  CustomSettingsFieldRendererProps,
-} from './types';
+export type { CustomSettingsFieldLayout } from './types';

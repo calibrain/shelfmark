@@ -1,31 +1,99 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { CreateRequestPayload } from '../types';
+import { useCallback, useMemo, useRef, useState } from 'react';
+
+import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
+import { useEscapeKey } from '../hooks/useEscapeKey';
+import { useMountEffect } from '../hooks/useMountEffect';
 import { getMetadataBookInfo } from '../services/api';
-import { isSourceBackedRequestPayload } from '../utils/requestPayload';
+import type { CreateRequestPayload } from '../types';
+import type { RequestConfirmationPreview } from '../utils/requestConfirmation';
 import {
   applyRequestNoteToPayload,
   buildRequestConfirmationPreview,
   enrichPreviewFromBook,
   MAX_REQUEST_NOTE_LENGTH,
-  RequestConfirmationPreview,
   truncateRequestNote,
 } from '../utils/requestConfirmation';
+import { isSourceBackedRequestPayload } from '../utils/requestPayload';
 
 interface RequestConfirmationModalProps {
   payload: CreateRequestPayload | null;
   extraPayloads?: CreateRequestPayload[];
   allowNotes: boolean;
-  onConfirm: (payload: CreateRequestPayload, extraPayloads?: CreateRequestPayload[]) => Promise<boolean>;
+  onConfirm: (
+    payload: CreateRequestPayload,
+    extraPayloads?: CreateRequestPayload[],
+  ) => Promise<boolean>;
   onClose: () => void;
 }
 
-export const RequestConfirmationModal = ({
+interface RequestConfirmationModalSessionProps {
+  payload: CreateRequestPayload;
+  extraPayloads?: CreateRequestPayload[];
+  allowNotes: boolean;
+  onConfirm: (
+    payload: CreateRequestPayload,
+    extraPayloads?: CreateRequestPayload[],
+  ) => Promise<boolean>;
+  onClose: () => void;
+}
+
+const getRequestConfirmationPreviewSignature = (
+  preview: RequestConfirmationPreview,
+  payload: CreateRequestPayload,
+): string => {
+  return [
+    payload.context.request_level,
+    payload.context.content_type,
+    payload.context.source,
+    preview.title,
+    preview.author,
+    preview.year,
+    preview.seriesLine,
+    preview.releaseLine,
+  ].join('|');
+};
+
+const getRequestConfirmationSessionKey = (payload: CreateRequestPayload): string => {
+  return [
+    payload.context.source,
+    payload.context.content_type,
+    payload.context.request_level,
+    JSON.stringify(payload.book_data),
+    JSON.stringify(payload.release_data ?? null),
+    String(payload.on_behalf_of_user_id ?? ''),
+  ].join('|');
+};
+
+export function RequestConfirmationModal({
   payload,
   extraPayloads = [],
   allowNotes,
   onConfirm,
   onClose,
-}: RequestConfirmationModalProps) => {
+}: RequestConfirmationModalProps) {
+  if (!payload) {
+    return null;
+  }
+
+  return (
+    <RequestConfirmationModalSession
+      key={getRequestConfirmationSessionKey(payload)}
+      payload={payload}
+      extraPayloads={extraPayloads}
+      allowNotes={allowNotes}
+      onConfirm={onConfirm}
+      onClose={onClose}
+    />
+  );
+}
+
+function RequestConfirmationModalSession({
+  payload,
+  extraPayloads = [],
+  allowNotes,
+  onConfirm,
+  onClose,
+}: RequestConfirmationModalSessionProps) {
   const [note, setNote] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
@@ -35,63 +103,53 @@ export const RequestConfirmationModal = ({
       return;
     }
     setIsClosing(true);
-    setTimeout(() => {
+    window.setTimeout(() => {
       onClose();
-      setIsClosing(false);
     }, 150);
   }, [isSubmitting, onClose]);
 
-  useEffect(() => {
-    if (payload) {
-      setNote('');
-      setIsSubmitting(false);
-      setIsClosing(false);
-    }
-  }, [payload]);
-
-  useEffect(() => {
-    if (!payload) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => {
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [payload]);
-
-  useEffect(() => {
-    if (!payload) return;
-    const onEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        handleClose();
-      }
-    };
-    document.addEventListener('keydown', onEscape);
-    return () => document.removeEventListener('keydown', onEscape);
-  }, [payload, handleClose]);
+  useBodyScrollLock(Boolean(payload));
+  useEscapeKey(Boolean(payload), handleClose);
 
   const basePreview = useMemo(() => {
     return payload ? buildRequestConfirmationPreview(payload) : null;
   }, [payload]);
 
-  const extraPreviews = useMemo(() => {
-    return extraPayloads.map(buildRequestConfirmationPreview);
+  const extraPreviewEntries = useMemo(() => {
+    const signatureCounts = new Map<string, number>();
+
+    return extraPayloads.map((extraPayload) => {
+      const preview = buildRequestConfirmationPreview(extraPayload);
+      const signature = getRequestConfirmationPreviewSignature(preview, extraPayload);
+      const nextCount = (signatureCounts.get(signature) ?? 0) + 1;
+      signatureCounts.set(signature, nextCount);
+
+      return {
+        key: nextCount === 1 ? signature : `${signature}|${nextCount}`,
+        payload: extraPayload,
+        preview,
+      };
+    });
   }, [extraPayloads]);
 
   const [enriched, setEnriched] = useState<RequestConfirmationPreview | null>(null);
   const enrichRef = useRef(0);
 
-  useEffect(() => {
-    setEnriched(null);
-    if (!payload) return;
-
+  useMountEffect(() => {
     const bookData = payload.book_data || {};
+    const currentBasePreview = basePreview;
+    if (!currentBasePreview) {
+      return;
+    }
     const provider = bookData.provider;
     const providerId = bookData.provider_id;
 
     // Only fetch for metadata providers, and skip if series info is already present
     if (
-      typeof provider !== 'string' || !provider ||
-      typeof providerId !== 'string' || !providerId ||
+      typeof provider !== 'string' ||
+      !provider ||
+      typeof providerId !== 'string' ||
+      !providerId ||
       isSourceBackedRequestPayload(payload) ||
       bookData.series_name
     ) {
@@ -103,18 +161,16 @@ export const RequestConfirmationModal = ({
       .then((book) => {
         if (id !== enrichRef.current) return;
         if (book.series_name) {
-          setEnriched((prev) => enrichPreviewFromBook(prev ?? basePreview!, book));
+          setEnriched((prev) => enrichPreviewFromBook(prev ?? currentBasePreview, book));
         }
       })
       .catch(() => {
         // Enrichment is best-effort; ignore failures
       });
-  }, [payload, basePreview]);
+  });
 
   const preview = enriched ?? basePreview;
 
-  if (!payload && !isClosing) return null;
-  if (!payload) return null;
   if (!preview) return null;
 
   const titleId = 'request-confirmation-modal-title';
@@ -128,7 +184,10 @@ export const RequestConfirmationModal = ({
     setIsSubmitting(true);
     try {
       const nextPayload = applyRequestNoteToPayload(payload, note, allowNotes);
-      const success = await onConfirm(nextPayload, extraPayloads.length > 0 ? extraPayloads : undefined);
+      const success = await onConfirm(
+        nextPayload,
+        extraPayloads.length > 0 ? extraPayloads : undefined,
+      );
       if (!success) {
         setIsSubmitting(false);
       }
@@ -139,9 +198,12 @@ export const RequestConfirmationModal = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <div
+      <button
+        type="button"
         className={`absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity duration-150 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
         onClick={handleClose}
+        tabIndex={-1}
+        aria-label="Close request confirmation"
       />
 
       <div
@@ -158,11 +220,17 @@ export const RequestConfirmationModal = ({
           <button
             type="button"
             onClick={handleClose}
-            className="p-1.5 rounded-lg hover:bg-(--hover-surface) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg p-1.5 transition-colors hover:bg-(--hover-surface) disabled:cursor-not-allowed disabled:opacity-50"
             aria-label="Close request confirmation"
             disabled={isSubmitting}
           >
-            <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24" strokeWidth={1.5}>
+            <svg
+              className="h-5 w-5"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+              strokeWidth={1.5}
+            >
               <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
             </svg>
           </button>
@@ -171,27 +239,25 @@ export const RequestConfirmationModal = ({
         <div className="space-y-4 px-6 py-5">
           <div className="rounded-xl border border-(--border-muted) bg-(--bg-soft) px-4 py-4">
             <div className="flex gap-4">
-              <div className="w-16 h-24 shrink-0 rounded-lg overflow-hidden border border-(--border-muted) bg-(--bg)">
+              <div className="h-24 w-16 shrink-0 overflow-hidden rounded-lg border border-(--border-muted) bg-(--bg)">
                 {preview.preview ? (
                   <img
                     src={preview.preview}
                     alt={`${preview.title} cover`}
-                    className="w-full h-full object-cover object-top"
+                    className="h-full w-full object-cover object-top"
                   />
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-[10px] opacity-60">
+                  <div className="flex h-full w-full items-center justify-center text-[10px] opacity-60">
                     No cover
                   </div>
                 )}
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-sm font-semibold leading-snug">{preview.title}</p>
-                <p className="text-sm opacity-80 mt-1">{preview.author}</p>
+                <p className="text-sm leading-snug font-semibold">{preview.title}</p>
+                <p className="mt-1 text-sm opacity-80">{preview.author}</p>
                 {(preview.year || preview.seriesLine) && (
-                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 mt-1.5">
-                    {preview.year && (
-                      <span className="text-xs opacity-60">{preview.year}</span>
-                    )}
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                    {preview.year && <span className="text-xs opacity-60">{preview.year}</span>}
                     {preview.year && preview.seriesLine && (
                       <span className="text-xs opacity-40">·</span>
                     )}
@@ -201,22 +267,31 @@ export const RequestConfirmationModal = ({
                   </div>
                 )}
                 {/* Release lines — show all (primary + extras) with content type labels when combined */}
-                {(preview.releaseLine || extraPreviews.length > 0) && (
+                {(preview.releaseLine || extraPreviewEntries.length > 0) && (
                   <div className="mt-1.5 space-y-0.5">
                     {preview.releaseLine && (
                       <p className="text-xs opacity-60">
-                        {extraPreviews.length > 0 && (
-                          <span className="font-medium opacity-80">{payload.context.content_type === 'ebook' ? 'Book: ' : 'Audiobook: '}</span>
+                        {extraPreviewEntries.length > 0 && (
+                          <span className="font-medium opacity-80">
+                            {payload.context.content_type === 'ebook' ? 'Book: ' : 'Audiobook: '}
+                          </span>
                         )}
                         {preview.releaseLine}
                       </p>
                     )}
-                    {extraPreviews.map((ep, i) => ep.releaseLine && (
-                      <p key={i} className="text-xs opacity-60">
-                        <span className="font-medium opacity-80">{extraPayloads[i]?.context.content_type === 'ebook' ? 'Book: ' : 'Audiobook: '}</span>
-                        {ep.releaseLine}
-                      </p>
-                    ))}
+                    {extraPreviewEntries.map(
+                      ({ key, payload: extraPayload, preview: extraPreview }) =>
+                        extraPreview.releaseLine && (
+                          <p key={key} className="text-xs opacity-60">
+                            <span className="font-medium opacity-80">
+                              {extraPayload.context.content_type === 'ebook'
+                                ? 'Book: '
+                                : 'Audiobook: '}
+                            </span>
+                            {extraPreview.releaseLine}
+                          </p>
+                        ),
+                    )}
                   </div>
                 )}
               </div>
@@ -234,11 +309,11 @@ export const RequestConfirmationModal = ({
                 onChange={(event) => setNote(truncateRequestNote(event.target.value))}
                 maxLength={MAX_REQUEST_NOTE_LENGTH}
                 rows={4}
-                className="w-full px-3 py-2 rounded-lg border border-(--border-muted) bg-(--bg) text-sm resize-y min-h-[96px] focus:outline-hidden focus:ring-2 focus:ring-sky-500/50 focus:border-sky-500"
+                className="min-h-[96px] w-full resize-y rounded-lg border border-(--border-muted) bg-(--bg) px-3 py-2 text-sm focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50 focus:outline-hidden"
                 placeholder="Add context for admins reviewing this request..."
                 disabled={isSubmitting}
               />
-              <p className="text-xs opacity-60 text-right">
+              <p className="text-right text-xs opacity-60">
                 {note.length}/{MAX_REQUEST_NOTE_LENGTH}
               </p>
             </div>
@@ -250,21 +325,35 @@ export const RequestConfirmationModal = ({
             type="button"
             onClick={handleClose}
             disabled={isSubmitting}
-            className="px-4 py-2 rounded-lg text-sm font-medium bg-(--bg-soft) border border-(--border-muted) hover:bg-(--hover-surface) transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface) disabled:cursor-not-allowed disabled:opacity-50"
           >
             Cancel
           </button>
           <button
             type="button"
-            onClick={submit}
+            onClick={() => {
+              void submit();
+            }}
             disabled={confirmDisabled}
-            className="px-5 py-2 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-700 transition-colors disabled:opacity-60 disabled:cursor-not-allowed inline-flex items-center gap-2"
+            className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-5 py-2 text-sm font-medium text-white transition-colors hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {isSubmitting ? (
               <>
-                <svg className="animate-spin h-4 w-4" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                <svg className="h-4 w-4 animate-spin" viewBox="0 0 24 24">
+                  <circle
+                    className="opacity-25"
+                    cx="12"
+                    cy="12"
+                    r="10"
+                    stroke="currentColor"
+                    strokeWidth="4"
+                    fill="none"
+                  />
+                  <path
+                    className="opacity-75"
+                    fill="currentColor"
+                    d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"
+                  />
                 </svg>
                 Requesting...
               </>
@@ -276,4 +365,4 @@ export const RequestConfirmationModal = ({
       </div>
     </div>
   );
-};
+}

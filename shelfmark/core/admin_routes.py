@@ -4,10 +4,12 @@ Registers /api/admin/users CRUD endpoints for managing users.
 All endpoints require admin session.
 """
 
+from __future__ import annotations
+
 import os
 import sqlite3
 from functools import wraps
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, ParamSpec
 
 from flask import Flask, Response, g, jsonify, request, session
 from werkzeug.security import generate_password_hash
@@ -37,9 +39,15 @@ from shelfmark.core.logger import setup_logger
 if TYPE_CHECKING:
     from collections.abc import Callable
 
+    from flask.typing import ResponseReturnValue
+
     from shelfmark.core.user_db import UserDB
 
+P = ParamSpec("P")
+
 logger = setup_logger(__name__)
+MIN_PASSWORD_LENGTH = 4
+_CONFIG_REFRESH_ERRORS = (ImportError, OSError, RuntimeError, TypeError, ValueError)
 
 __all__ = [
     "get_booklore_library_options",
@@ -122,7 +130,8 @@ def _serialize_user(
 def _sync_all_cwa_users(user_db: UserDB) -> dict[str, int]:
     """Sync all users from the Calibre-Web database into users.db."""
     if not CWA_DB_PATH or not CWA_DB_PATH.exists():
-        raise FileNotFoundError("Calibre-Web database is not available")
+        msg = "Calibre-Web database is not available"
+        raise FileNotFoundError(msg)
 
     db_path = os.fspath(CWA_DB_PATH)
     db_uri = f"file:{db_path}?mode=ro&immutable=1"
@@ -141,9 +150,9 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
     """Register admin user management routes on the Flask app."""
 
     def _require_admin(
-        f: Callable[..., Response | tuple[Response, int]],
-    ) -> Callable[..., Response | tuple[Response, int]]:
-        """Decorator to require admin session for admin routes.
+        f: Callable[P, ResponseReturnValue],
+    ) -> Callable[P, ResponseReturnValue]:
+        """Require an admin session for admin routes.
 
         In no-auth mode, everyone has access (is_admin defaults True).
         In auth-required modes, requires an authenticated session with admin role.
@@ -151,7 +160,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         """
 
         @wraps(f)
-        def decorated(*args, **kwargs) -> Response | tuple[Response, int]:
+        def decorated(*args: P.args, **kwargs: P.kwargs) -> ResponseReturnValue:
             auth_mode = load_active_auth_mode(CWA_DB_PATH, user_db=user_db)
             g.auth_mode = auth_mode
             if auth_mode != "none":
@@ -197,8 +206,10 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
         if not username:
             return jsonify({"error": "Username is required"}), 400
-        if not password or len(password) < 4:
-            return jsonify({"error": "Password must be at least 4 characters"}), 400
+        if not password or len(password) < MIN_PASSWORD_LENGTH:
+            return jsonify(
+                {"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters"}
+            ), 400
         if role not in ("admin", "user"):
             return jsonify({"error": "Role must be 'admin' or 'user'"}), 400
 
@@ -277,8 +288,10 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
                         "message": "Password authentication is only available for local users.",
                     }
                 ), 400
-            if len(password) < 4:
-                return jsonify({"error": "Password must be at least 4 characters"}), 400
+            if len(password) < MIN_PASSWORD_LENGTH:
+                return jsonify(
+                    {"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters"}
+                ), 400
             user_db.update_user(user_id, password_hash=generate_password_hash(password))
 
         # Update user fields
@@ -365,13 +378,17 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             user_db.set_user_settings(user_id, validated_settings)
             # Ensure runtime reads see updated per-user overrides immediately.
             try:
-                from shelfmark.core.config import config as app_config
-
                 app_config.refresh(force=True)
-            except Exception:
-                pass
+            except _CONFIG_REFRESH_ERRORS as exc:
+                logger.warning(
+                    "Updated settings for user %s but failed to refresh runtime config: %s",
+                    user_id,
+                    exc,
+                )
 
         updated = user_db.get_user(user_id=user_id)
+        if not isinstance(updated, dict):
+            return jsonify({"error": "User not found"}), 404
         result = _serialize_user(
             updated,
             g.auth_mode,

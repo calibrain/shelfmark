@@ -35,7 +35,7 @@ wait_for_startup() {
             return 1
         fi
 
-        if docker exec "$name" sh -lc "id appuser >/dev/null 2>&1 && ps -eo comm,args | awk '\$1 == \"gunicorn\" && index(\$0, \"shelfmark.main:app\") { found=1 } END { exit(found ? 0 : 1) }'" >/dev/null 2>&1; then
+        if docker exec "$name" sh -lc "getent passwd 1000 >/dev/null 2>&1 && ps -eo comm,args | awk '\$1 == \"gunicorn\" && index(\$0, \"shelfmark.main:app\") { found=1 } END { exit(found ? 0 : 1) }'" >/dev/null 2>&1; then
             return 0
         fi
 
@@ -81,7 +81,7 @@ exec /app/entrypoint.sh" >/dev/null
 run_probe() {
     local name="$1"
     local mode="${2:-default}"
-    docker exec -u appuser -e PROBE_MODE="$mode" "$name" sh -lc 'python3 - <<'"'"'PY'"'"'
+    docker exec -u 1000:1000 -e PROBE_MODE="$mode" "$name" sh -lc 'python3 - <<'"'"'PY'"'"'
 import asyncio
 import os
 import shelfmark.bypass.internal_bypasser as ib
@@ -183,7 +183,7 @@ scenario_latest_proxy_auth_downloads_readonly() {
     start_container "$name" "$LATEST_IMAGE" '
         mkdir -p /app/downloaded_files &&
         touch /app/downloaded_files/pipfinding.lock /app/downloaded_files/proxy_dir.lock &&
-        chown appuser:appuser /app/downloaded_files/pipfinding.lock /app/downloaded_files/proxy_dir.lock &&
+        chown 1000:1000 /app/downloaded_files/pipfinding.lock /app/downloaded_files/proxy_dir.lock &&
         chmod 0666 /app/downloaded_files/pipfinding.lock /app/downloaded_files/proxy_dir.lock &&
         chown root:root /app/downloaded_files &&
         chmod 0555 /app/downloaded_files &&
