@@ -1,6 +1,6 @@
 import type { RequestRecord } from '../types';
 
-export interface RequestListParams {
+interface RequestListParams {
   status?: RequestRecord['status'];
   limit?: number;
   offset?: number;

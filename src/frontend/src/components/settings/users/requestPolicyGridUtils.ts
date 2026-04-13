@@ -337,12 +337,3 @@ export const normalizeExplicitRulesForPersistence = ({
 
   return sortRules(filtered);
 };
-
-export const areRuleSetsEqual = (
-  left: RequestPolicyRuleRow[],
-  right: RequestPolicyRuleRow[],
-): boolean => {
-  const leftSorted = sortRules(left);
-  const rightSorted = sortRules(right);
-  return JSON.stringify(leftSorted) === JSON.stringify(rightSorted);
-};

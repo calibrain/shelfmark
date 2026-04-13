@@ -21,7 +21,7 @@ import {
 } from '../../utils/releaseCache';
 import { useMountEffect } from '../useMountEffect';
 
-export interface ReleaseModalTabInfo {
+interface ReleaseModalTabInfo {
   name: string;
   displayName: string;
   enabled: boolean;

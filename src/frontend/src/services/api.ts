@@ -28,16 +28,11 @@ import {
   transformSourceRecordToBook,
 } from '../utils/bookTransformers';
 import { isRecord, toStringValue } from '../utils/objectHelpers';
-import type {
-  FulfilAdminRequestBody,
-  RejectAdminRequestBody,
-  RequestListParams,
-} from './requestApiHelpers';
+import type { FulfilAdminRequestBody, RejectAdminRequestBody } from './requestApiHelpers';
 import {
   buildAdminRequestActionUrl,
   buildFulfilAdminRequestBody,
   buildRejectAdminRequestBody,
-  buildRequestListUrl,
 } from './requestApiHelpers';
 
 const API_BASE = getApiBase();
@@ -572,8 +567,6 @@ export const getConfig = async (): Promise<AppConfig> => {
   return fetchJSON<AppConfig>(API.config);
 };
 
-type ListRequestsParams = RequestListParams;
-
 interface ActivityDismissedItem {
   item_type: 'download' | 'request';
   item_key: string;
@@ -617,22 +610,10 @@ export const createRequests = async (
   });
 };
 
-export const listRequests = async (params: ListRequestsParams = {}): Promise<RequestRecord[]> => {
-  const url = buildRequestListUrl(API.requests, params);
-  return fetchJSON<RequestRecord[]>(url);
-};
-
 export const cancelRequest = async (id: number): Promise<RequestRecord> => {
   return fetchJSON<RequestRecord>(`${API.requests}/${encodeURIComponent(String(id))}`, {
     method: 'DELETE',
   });
-};
-
-export const listAdminRequests = async (
-  params: ListRequestsParams = {},
-): Promise<RequestRecord[]> => {
-  const url = buildRequestListUrl(API.adminRequests, params);
-  return fetchJSON<RequestRecord[]>(url);
 };
 
 export const fulfilAdminRequest = async (

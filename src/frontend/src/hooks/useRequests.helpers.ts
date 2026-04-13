@@ -1,5 +1,4 @@
 import type { RequestRecord } from '../types';
-import { isRecord } from '../utils/objectHelpers';
 
 type RequestUpdateStatus = RequestRecord['status'];
 
@@ -7,37 +6,6 @@ interface RequestUpdateEventPayload {
   request_id: number;
   status: RequestUpdateStatus;
 }
-
-const isValidRequestStatus = (value: unknown): value is RequestUpdateStatus => {
-  return (
-    value === 'pending' || value === 'fulfilled' || value === 'rejected' || value === 'cancelled'
-  );
-};
-
-export const normalizeRequestUpdatePayload = (
-  payload: unknown,
-): RequestUpdateEventPayload | null => {
-  if (!isRecord(payload)) {
-    return null;
-  }
-
-  const row = payload;
-  const requestId = row.request_id;
-  const status = row.status;
-
-  if (
-    typeof requestId !== 'number' ||
-    !Number.isFinite(requestId) ||
-    !isValidRequestStatus(status)
-  ) {
-    return null;
-  }
-
-  return {
-    request_id: requestId,
-    status,
-  };
-};
 
 export const upsertRequestRecord = (
   records: RequestRecord[],

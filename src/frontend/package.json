@@ -10,7 +10,6 @@
     "typecheck": "tsc --noEmit",
     "lint": "oxlint src/",
     "lint:warn": "oxlint --deny warnings src/",
-    "check:useeffect": "bash ../../scripts/check-no-direct-useeffect.sh",
     "knip": "knip",
     "knip:prod": "knip --production",
     "format": "oxfmt src/",

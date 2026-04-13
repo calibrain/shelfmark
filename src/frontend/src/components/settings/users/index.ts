@@ -11,10 +11,5 @@ export { useUserMutations } from './useUserMutations';
 export { useUsersFetch } from './useUsersFetch';
 export { useUsersPanelState } from './useUsersPanelState';
 export { canCreateLocalUsersForAuthMode } from './types';
-export {
-  normalizeRequestPolicyDefaults,
-  normalizeRequestPolicyRules,
-  parseSourceCapabilitiesFromRulesField,
-} from './requestPolicyGridUtils';
 export type { RequestPolicyContentType } from './requestPolicyGridUtils';
 export type { RequestPolicyMode } from '../../../types';
