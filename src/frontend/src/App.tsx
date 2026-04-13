@@ -38,6 +38,7 @@ import { useRealtimeStatus } from './hooks/useRealtimeStatus';
 import { useRequestPolicy } from './hooks/useRequestPolicy';
 import { useRequests } from './hooks/useRequests';
 import { useSearch } from './hooks/useSearch';
+import { primeSettingsCache } from './hooks/useSettings';
 import { useToast } from './hooks/useToast';
 import { useUrlSearch } from './hooks/useUrlSearch';
 import { primeUsersCache } from './hooks/useUsersFetch';
@@ -243,6 +244,15 @@ const AuthenticatedAppBootstrap = ({
     void refreshRequestPolicy({ force: true });
     void refreshActivitySnapshot();
     void loadConfig('initial');
+  });
+
+  return null;
+};
+
+const AdminSettingsWarmupMount = () => {
+  useMountEffect(() => {
+    void primeUsersCache();
+    void primeSettingsCache();
   });
 
   return null;
@@ -647,6 +657,7 @@ function App() {
     if (config?.settings_enabled) {
       if (authIsAdmin) {
         void primeUsersCache();
+        void primeSettingsCache();
         setSettingsOpen(true);
       } else {
         setSelfSettingsOpen(true);
@@ -2697,6 +2708,7 @@ function App() {
           setConfigBannerOpen(false);
           if (authIsAdmin) {
             void primeUsersCache();
+            void primeSettingsCache();
             setSettingsOpen(true);
           } else {
             setSelfSettingsOpen(true);
@@ -2738,6 +2750,13 @@ function App() {
       loadConfig={loadConfig}
     />
   ) : null;
+  const adminSettingsWarmupKey =
+    authChecked && isAuthenticated && authIsAdmin && config?.settings_enabled
+      ? `${username ?? 'authenticated'}:settings-warmup`
+      : null;
+  const adminSettingsWarmup = adminSettingsWarmupKey ? (
+    <AdminSettingsWarmupMount key={adminSettingsWarmupKey} />
+  ) : null;
   const urlSearchBootstrapMount =
     wasProcessed && parsedParams && config && !hasExecutedUrlSearchBootstrap ? (
       <UrlSearchBootstrapMount
@@ -2776,6 +2795,7 @@ function App() {
     return (
       <>
         {authenticatedBootstrap}
+        {adminSettingsWarmup}
         {metadataConfigSession}
         {urlSearchBootstrapMount}
         <div aria-live="polite" style={visuallyHiddenStyle}>
@@ -2790,6 +2810,7 @@ function App() {
     return (
       <>
         {authenticatedBootstrap}
+        {adminSettingsWarmup}
         {metadataConfigSession}
         {urlSearchBootstrapMount}
         <div aria-live="polite" style={visuallyHiddenStyle}>
@@ -2808,6 +2829,7 @@ function App() {
   return (
     <>
       {authenticatedBootstrap}
+      {adminSettingsWarmup}
       {metadataConfigSession}
       {urlSearchBootstrapMount}
       <Routes>

@@ -28,6 +28,7 @@ import { useMountEffect } from './useMountEffect';
 interface FetchSettingsOptions {
   silent?: boolean;
   preserveDirtyValues?: boolean;
+  force?: boolean;
 }
 
 interface UseSettingsReturn {
@@ -46,14 +47,95 @@ interface UseSettingsReturn {
   refetch: () => Promise<void>;
 }
 
+interface LoadSettingsOptions {
+  force?: boolean;
+}
+
+interface HydratedSettingsState {
+  tabs: SettingsTab[];
+  groups: SettingsGroup[];
+  values: SettingsValues;
+  originalValues: SettingsValues;
+  selectedTab: string | null;
+}
+
+let cachedSettingsResponse: SettingsResponse | null = null;
+let cachedSettingsLoadError: string | null = null;
+let settingsCacheLoadPromise: Promise<SettingsResponse> | null = null;
+
+const hydrateSettingsResponse = (response: SettingsResponse): HydratedSettingsState => {
+  const tabs = response.tabs.map((tab) => {
+    if (tab.name === 'general') {
+      return {
+        ...tab,
+        fields: [THEME_FIELD, ...tab.fields],
+      };
+    }
+    return tab;
+  });
+
+  const values = extractSettingsValues(tabs);
+  if (values.general && Object.prototype.hasOwnProperty.call(values.general, '_THEME')) {
+    values.general._THEME = getStoredThemePreference();
+  }
+
+  return {
+    tabs,
+    groups: response.groups || [],
+    values,
+    originalValues: cloneSettingsValues(values),
+    selectedTab: tabs[0]?.name ?? null,
+  };
+};
+
+const loadSettingsIntoCache = async ({
+  force = false,
+}: LoadSettingsOptions = {}): Promise<SettingsResponse> => {
+  if (!force && cachedSettingsResponse !== null) {
+    return cachedSettingsResponse;
+  }
+  if (settingsCacheLoadPromise) {
+    return settingsCacheLoadPromise;
+  }
+
+  settingsCacheLoadPromise = getSettings()
+    .then((response) => {
+      cachedSettingsResponse = response;
+      cachedSettingsLoadError = null;
+      return response;
+    })
+    .finally(() => {
+      settingsCacheLoadPromise = null;
+    });
+
+  return settingsCacheLoadPromise;
+};
+
+export const primeSettingsCache = async (): Promise<void> => {
+  try {
+    await loadSettingsIntoCache();
+  } catch {
+    // Silent best-effort warmup.
+  }
+};
+
 export function useSettings(): UseSettingsReturn {
-  const [tabs, setTabs] = useState<SettingsTab[]>([]);
-  const [groups, setGroups] = useState<SettingsGroup[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [selectedTab, setSelectedTab] = useState<string | null>(null);
-  const [values, setValues] = useState<SettingsValues>({});
-  const [originalValues, setOriginalValues] = useState<SettingsValues>({});
+  const initialState =
+    cachedSettingsResponse !== null ? hydrateSettingsResponse(cachedSettingsResponse) : null;
+
+  const [tabs, setTabs] = useState<SettingsTab[]>(() => initialState?.tabs ?? []);
+  const [groups, setGroups] = useState<SettingsGroup[]>(() => initialState?.groups ?? []);
+  const [isLoading, setIsLoading] = useState(() => cachedSettingsResponse === null);
+  const [error, setError] = useState<string | null>(() =>
+    cachedSettingsResponse === null ? cachedSettingsLoadError : null,
+  );
+  const [selectedTab, setSelectedTab] = useState<string | null>(
+    () => initialState?.selectedTab ?? null,
+  );
+  const [values, setValues] = useState<SettingsValues>(() => initialState?.values ?? {});
+  const [originalValues, setOriginalValues] = useState<SettingsValues>(
+    () => initialState?.originalValues ?? {},
+  );
   const [isSaving, setIsSaving] = useState(false);
   const valuesRef = useRef<SettingsValues>({});
   const originalValuesRef = useRef<SettingsValues>({});
@@ -64,41 +146,28 @@ export function useSettings(): UseSettingsReturn {
   const applySettingsResponse = useCallback(
     (response: SettingsResponse, options: { preserveDirtyValues?: boolean } = {}) => {
       const { preserveDirtyValues = false } = options;
+      cachedSettingsResponse = response;
+      cachedSettingsLoadError = null;
 
-      const tabsWithTheme = response.tabs.map((tab) => {
-        if (tab.name === 'general') {
-          return {
-            ...tab,
-            fields: [THEME_FIELD, ...tab.fields],
-          };
-        }
-        return tab;
-      });
+      const hydratedState = hydrateSettingsResponse(response);
 
-      setTabs(tabsWithTheme);
-      setGroups(response.groups || []);
-
-      const initialValues = extractSettingsValues(tabsWithTheme);
-      if (
-        initialValues.general &&
-        Object.prototype.hasOwnProperty.call(initialValues.general, '_THEME')
-      ) {
-        initialValues.general._THEME = getStoredThemePreference();
-      }
+      setTabs(hydratedState.tabs);
+      setGroups(hydratedState.groups);
+      setError(null);
 
       const nextValues = preserveDirtyValues
         ? mergeFetchedSettingsWithDirtyValues(
-            initialValues,
+            hydratedState.values,
             valuesRef.current,
             originalValuesRef.current,
           )
-        : initialValues;
+        : hydratedState.values;
 
       setValues(nextValues);
-      setOriginalValues(cloneSettingsValues(initialValues));
+      setOriginalValues(hydratedState.originalValues);
 
-      if (tabsWithTheme.length > 0) {
-        setSelectedTab((current) => current ?? tabsWithTheme[0].name);
+      if (hydratedState.tabs.length > 0) {
+        setSelectedTab((current) => current ?? hydratedState.selectedTab);
       }
     },
     [],
@@ -106,18 +175,20 @@ export function useSettings(): UseSettingsReturn {
 
   const fetchSettings = useCallback(
     async (options: FetchSettingsOptions = {}) => {
-      const { silent = false, preserveDirtyValues = false } = options;
+      const { silent = false, preserveDirtyValues = false, force = false } = options;
       if (!silent) {
         setIsLoading(true);
         setError(null);
       }
       try {
-        const response = await getSettings();
+        const response = await loadSettingsIntoCache({ force });
         applySettingsResponse(response, { preserveDirtyValues });
       } catch (err) {
+        const message = err instanceof Error ? err.message : 'Failed to load settings';
         console.error('Failed to fetch settings:', err);
+        cachedSettingsLoadError = cachedSettingsResponse === null ? message : null;
         if (!silent) {
-          setError(err instanceof Error ? err.message : 'Failed to load settings');
+          setError(message);
         }
       } finally {
         if (!silent) {
@@ -129,7 +200,10 @@ export function useSettings(): UseSettingsReturn {
   );
 
   useMountEffect(() => {
-    void fetchSettings();
+    void fetchSettings({
+      silent: cachedSettingsResponse !== null,
+      force: cachedSettingsResponse !== null,
+    });
   });
 
   const updateValue = useCallback(
@@ -227,14 +301,14 @@ export function useSettings(): UseSettingsReturn {
         if (result.success) {
           // Refetch all settings silently to pick up any backend-triggered changes
           // (e.g., enabling a metadata provider auto-updates METADATA_PROVIDER)
-          await fetchSettings({ silent: true });
+          await fetchSettings({ silent: true, force: true });
         }
 
         return result;
       } catch (err) {
         if (Object.keys(valuesToSave).length > 0) {
           try {
-            const response = await getSettings();
+            const response = await loadSettingsIntoCache({ force: true });
             if (settingsTabMatchesSavedValues(tabName, response.tabs, valuesToSave)) {
               setError(null);
               applySettingsResponse(response);
@@ -275,7 +349,7 @@ export function useSettings(): UseSettingsReturn {
         // Re-fetch settings after successful action to pick up updated options
         // (e.g., Grimmory "Test Connection" refreshes library/path lists)
         if (result.success) {
-          await fetchSettings({ silent: true, preserveDirtyValues: true });
+          await fetchSettings({ silent: true, preserveDirtyValues: true, force: true });
         }
 
         return result;
@@ -303,6 +377,6 @@ export function useSettings(): UseSettingsReturn {
     saveTab,
     executeAction,
     isSaving,
-    refetch: () => fetchSettings(),
+    refetch: () => fetchSettings({ force: true }),
   };
 }
