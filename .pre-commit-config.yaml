@@ -20,3 +20,4 @@ repos:
         language: system
         types_or: [javascript, jsx, ts, tsx, css, json]
         files: ^src/frontend/
+        exclude: package-lock\.json

@@ -232,6 +232,7 @@ pyrightconfig.json
 *.local.*
 AGENTS.md
 .claude/
+.nvmrc
 .playwright-mcp/
 frontend-dist/
 node_modules/
