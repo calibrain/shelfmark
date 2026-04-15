@@ -65,9 +65,9 @@ Some parameters support multiple values by repeating the parameter:
 
 ## Search Mode Behavior
 
-### Direct Download Mode (default)
+### Direct Mode
 
-All parameters are used to filter results from the direct download source.
+When Search Mode is set to Direct, all parameters are used to filter results from the configured direct source.
 `content_type` is ignored in Direct mode.
 
 ### Universal Mode

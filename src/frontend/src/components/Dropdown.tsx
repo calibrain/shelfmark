@@ -1,21 +1,8 @@
 import type { ReactNode } from 'react';
 import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 
 import { useDismiss } from '../hooks/useDismiss';
-
-// Find the closest scrollable ancestor element
-function getScrollableAncestor(element: HTMLElement | null): HTMLElement | null {
-  let current = element?.parentElement;
-  while (current) {
-    const style = getComputedStyle(current);
-    const overflowY = style.overflowY;
-    if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'hidden') {
-      return current;
-    }
-    current = current.parentElement;
-  }
-  return null;
-}
 
 // Simple throttle function to limit how often a function can be called
 function throttle<Args extends unknown[]>(
@@ -75,23 +62,16 @@ export const Dropdown = ({
 }: DropdownProps) => {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [panelDirection, setPanelDirection] = useState<'down' | 'up'>('down');
-  const [resolvedAlign, setResolvedAlign] = useState<'left' | 'right'>(
-    align === 'right' ? 'right' : 'left',
-  );
+  const [panelPos, setPanelPos] = useState({ top: 0, left: 0, width: 0 });
+
   let triggerBorderRadius = '0.5rem';
   if (triggerChrome === 'minimal') {
     triggerBorderRadius = '0';
   } else if (isOpen) {
     triggerBorderRadius = panelDirection === 'down' ? '0.5rem 0.5rem 0 0' : '0 0 0.5rem 0.5rem';
-  }
-
-  let panelOffsetClassName = '';
-  if (panelDirection === 'down') {
-    panelOffsetClassName = renderTrigger ? 'mt-2' : '';
-  } else {
-    panelOffsetClassName = renderTrigger ? 'bottom-full mb-2' : 'bottom-full';
   }
 
   let panelBorderRadius = '0.5rem';
@@ -113,47 +93,47 @@ export const Dropdown = ({
     onOpenChange?.(false);
   }, [onOpenChange]);
 
-  useDismiss(isOpen, [containerRef], close);
+  useDismiss(isOpen, [containerRef, panelRef], close);
 
-  // Memoize the panel direction calculation
-  const updatePanelDirection = useCallback(() => {
-    if (!containerRef.current || !panelRef.current) {
-      return;
-    }
+  // Compute panel direction and fixed position relative to the trigger
+  const updatePanelPosition = useCallback(() => {
+    if (!triggerRef.current || !panelRef.current) return;
 
-    const rect = containerRef.current.getBoundingClientRect();
+    const rect = triggerRef.current.getBoundingClientRect();
     const panelHeight = panelRef.current.offsetHeight || panelRef.current.scrollHeight;
+    const panelWidth = panelRef.current.offsetWidth || panelRef.current.scrollWidth;
 
-    // Check if we're inside a scrollable container and use its bounds
-    const scrollableAncestor = getScrollableAncestor(containerRef.current);
-    const containerBottom = scrollableAncestor
-      ? scrollableAncestor.getBoundingClientRect().bottom
-      : window.innerHeight;
-    const containerTop = scrollableAncestor ? scrollableAncestor.getBoundingClientRect().top : 0;
-
-    const spaceBelow = containerBottom - rect.bottom - 8;
-    const spaceAbove = rect.top - containerTop - 8;
+    // Direction: flip up if not enough space below but enough above
+    const spaceBelow = window.innerHeight - rect.bottom - 8;
+    const spaceAbove = rect.top - 8;
     const shouldOpenUp = spaceBelow < panelHeight && spaceAbove >= panelHeight;
-
     setPanelDirection(shouldOpenUp ? 'up' : 'down');
 
-    // Auto horizontal alignment: check if panel overflows viewport right/left
+    // Vertical: seamless trigger uses -1px border overlap, custom trigger uses 8px gap
+    let top: number;
+    if (shouldOpenUp) {
+      top = renderTrigger ? rect.top - panelHeight - 8 : rect.top - panelHeight + 1;
+    } else {
+      top = renderTrigger ? rect.bottom + 8 : rect.bottom - 1;
+    }
+
+    // Horizontal alignment
+    let left: number;
     if (align === 'auto') {
-      const panelWidth = panelRef.current.offsetWidth || panelRef.current.scrollWidth;
       const overflowsRight = rect.left + panelWidth > window.innerWidth - 8;
       const overflowsLeft = rect.right - panelWidth < 8;
-
-      if (overflowsRight && !overflowsLeft) {
-        setResolvedAlign('right');
-      } else if (overflowsLeft && !overflowsRight) {
-        setResolvedAlign('left');
-      } else {
-        setResolvedAlign('left');
-      }
+      left =
+        overflowsRight && !overflowsLeft
+          ? rect.right - Math.max(panelWidth, rect.width)
+          : rect.left;
+    } else if (align === 'right') {
+      left = rect.right - Math.max(panelWidth, rect.width);
     } else {
-      setResolvedAlign(align === 'right' ? 'right' : 'left');
+      left = rect.left;
     }
-  }, [align]);
+
+    setPanelPos({ top, left, width: rect.width });
+  }, [align, renderTrigger]);
 
   useLayoutEffect(() => {
     if (!isOpen) {
@@ -161,9 +141,9 @@ export const Dropdown = ({
     }
 
     // Throttle scroll/resize handlers to reduce layout thrashing
-    const throttledUpdate = throttle(updatePanelDirection, 100);
+    const throttledUpdate = throttle(updatePanelPosition, 100);
 
-    updatePanelDirection();
+    updatePanelPosition();
     window.addEventListener('resize', throttledUpdate);
     window.addEventListener('scroll', throttledUpdate, true);
 
@@ -171,7 +151,7 @@ export const Dropdown = ({
       window.removeEventListener('resize', throttledUpdate);
       window.removeEventListener('scroll', throttledUpdate, true);
     };
-  }, [isOpen, updatePanelDirection]);
+  }, [isOpen, updatePanelPosition]);
 
   return (
     <div className={widthClassName} ref={containerRef}>
@@ -183,7 +163,7 @@ export const Dropdown = ({
           {label}
         </label>
       )}
-      <div className="relative">
+      <div ref={triggerRef}>
         {renderTrigger ? (
           renderTrigger({ isOpen, toggle: toggleOpen })
         ) : (
@@ -214,25 +194,28 @@ export const Dropdown = ({
           </button>
         )}
 
-        {isOpen && (
-          <div
-            ref={panelRef}
-            className={`absolute ${resolvedAlign === 'right' ? 'right-0' : 'left-0'} ${
-              panelOffsetClassName
-            } z-20 border ${panelDirection === 'down' ? 'shadow-lg' : ''} ${panelClassName || widthClassName}`}
-            style={{
-              background: 'var(--bg)',
-              borderColor: 'var(--border-muted)',
-              borderRadius: panelBorderRadius,
-              marginTop: !renderTrigger && panelDirection === 'down' ? '-1px' : undefined,
-              marginBottom: !renderTrigger && panelDirection === 'up' ? '-1px' : undefined,
-            }}
-          >
-            <div className={noScrollLimit ? '' : 'max-h-64 overflow-auto'}>
-              {children({ close })}
-            </div>
-          </div>
-        )}
+        {isOpen &&
+          createPortal(
+            <div
+              ref={panelRef}
+              className={`border ${panelDirection === 'down' ? 'shadow-lg' : ''} ${panelClassName ?? ''}`}
+              style={{
+                position: 'fixed',
+                top: panelPos.top,
+                left: panelPos.left,
+                width: panelClassName ? undefined : panelPos.width,
+                zIndex: 100,
+                background: 'var(--bg)',
+                borderColor: 'var(--border-muted)',
+                borderRadius: panelBorderRadius,
+              }}
+            >
+              <div className={noScrollLimit ? '' : 'max-h-64 overflow-auto'}>
+                {children({ close })}
+              </div>
+            </div>,
+            document.body,
+          )}
       </div>
     </div>
   );

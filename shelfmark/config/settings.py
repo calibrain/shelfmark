@@ -236,14 +236,18 @@ def _get_release_source_options_for_content_type(content_type: str) -> list[dict
     return [
         {"value": source["name"], "label": source["display_name"]}
         for source in list_available_sources()
-        if source.get("can_be_default", True)
+        if source.get("enabled", True)
+        and source.get("can_be_default", True)
         and content_type in source.get("supported_content_types", ["ebook", "audiobook"])
     ]
 
 
 def _get_book_release_source_options() -> list[dict[str, str]]:
     """Build default release source options for book searches."""
-    return _get_release_source_options_for_content_type("ebook")
+    return [
+        {"value": "", "label": "Use first available source"},
+        *_get_release_source_options_for_content_type("ebook"),
+    ]
 
 
 def _get_audiobook_release_source_options() -> list[dict[str, str]]:
@@ -265,18 +269,15 @@ def _string_setting(value: object) -> str:
 
 
 def _get_aa_base_url_options() -> list[dict[str, str]]:
-    """Build AA URL options dynamically, including additional mirrors from config."""
+    """Build AA URL options dynamically from user-supplied mirrors."""
     from shelfmark.core.config import config
-    from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS, get_aa_mirrors
+    from shelfmark.core.mirrors import get_aa_mirrors
     from shelfmark.core.utils import normalize_http_url
 
     options = [{"value": "auto", "label": "Auto (Recommended)"}]
 
-    # Get all mirrors (defaults + custom)
     all_mirrors = get_aa_mirrors()
 
-    # If AA_BASE_URL is configured to a custom mirror that isn't present in the
-    # defaults/additional list, include it so the UI can display the active value.
     configured_url = normalize_http_url(
         _string_setting(config.get("AA_BASE_URL", "auto")),
         default_scheme="https",
@@ -287,59 +288,10 @@ def _get_aa_base_url_options() -> list[dict[str, str]]:
 
     for url in all_mirrors:
         domain = url.replace("https://", "").replace("http://", "")
-        is_custom = url not in DEFAULT_AA_MIRRORS
-        label = f"{domain} (custom)" if is_custom else domain
-        if configured_url and url == configured_url and is_custom:
+        label = domain
+        if configured_url and url == configured_url:
             label = f"{domain} (configured)"
         options.append({"value": url, "label": label})
-
-    return options
-
-
-def _get_zlib_mirror_options() -> list[dict[str, str]]:
-    """Build Z-Library mirror options for SelectField."""
-    from shelfmark.core.config import config
-    from shelfmark.core.mirrors import DEFAULT_ZLIB_MIRRORS
-
-    options = []
-
-    # Add default mirrors
-    for url in DEFAULT_ZLIB_MIRRORS:
-        domain = url.replace("https://", "").replace("http://", "")
-        options.append({"value": url, "label": domain})
-
-    # Add custom mirrors
-    additional = _string_setting(config.get("ZLIB_ADDITIONAL_URLS", ""))
-    if additional:
-        for raw_url in additional.split(","):
-            url = raw_url.strip()
-            if url and url not in DEFAULT_ZLIB_MIRRORS:
-                domain = url.replace("https://", "").replace("http://", "").split("/")[0]
-                options.append({"value": url, "label": f"{domain} (custom)"})
-
-    return options
-
-
-def _get_welib_mirror_options() -> list[dict[str, str]]:
-    """Build Welib mirror options for SelectField."""
-    from shelfmark.core.config import config
-    from shelfmark.core.mirrors import DEFAULT_WELIB_MIRRORS
-
-    options = []
-
-    # Add default mirrors
-    for url in DEFAULT_WELIB_MIRRORS:
-        domain = url.replace("https://", "").replace("http://", "")
-        options.append({"value": url, "label": domain})
-
-    # Add custom mirrors
-    additional = _string_setting(config.get("WELIB_ADDITIONAL_URLS", ""))
-    if additional:
-        for raw_url in additional.split(","):
-            url = raw_url.strip()
-            if url and url not in DEFAULT_WELIB_MIRRORS:
-                domain = url.replace("https://", "").replace("http://", "").split("/")[0]
-                options.append({"value": url, "label": f"{domain} (custom)"})
 
     return options
 
@@ -394,6 +346,13 @@ def general_settings() -> list[SettingsField]:
     """Core application settings."""
     return [
         TextField(
+            key="SEARCH_PAGE_TITLE",
+            label="Search Page Title",
+            description="Title shown above the main search box on the homepage.",
+            default="Shelfmark",
+            placeholder="Shelfmark",
+        ),
+        TextField(
             key="CALIBRE_WEB_URL",
             label="Library URL",
             description="Adds a navigation button to your book library (Calibre-Web Automated, Grimmory, etc).",
@@ -441,7 +400,10 @@ def search_mode_settings() -> list[SettingsField]:
         HeadingField(
             key="search_mode_heading",
             title="Search Mode",
-            description="Direct mode searches web sources and downloads immediately. Universal mode supports Prowlarr, IRC and audiobooks with metadata-based searching.",
+            description=(
+                "Direct mode uses the optional Direct Download source. Universal mode uses "
+                "metadata search with whichever release sources you have enabled."
+            ),
         ),
         SelectField(
             key="SEARCH_MODE",
@@ -451,7 +413,10 @@ def search_mode_settings() -> list[SettingsField]:
                 {
                     "value": "direct",
                     "label": "Direct",
-                    "description": "Search web sources for books and download directly. Works out of the box.",
+                    "description": (
+                        "Search with the Direct Download source. Requires enabling the source "
+                        "and adding your own mirror URLs."
+                    ),
                 },
                 {
                     "value": "universal",
@@ -459,7 +424,7 @@ def search_mode_settings() -> list[SettingsField]:
                     "description": "Metadata-based search with downloads from all sources. Book and Audiobook support.",
                 },
             ],
-            default="direct",
+            default="universal",
             user_overridable=True,
         ),
         SelectField(
@@ -523,9 +488,12 @@ def search_mode_settings() -> list[SettingsField]:
         SelectField(
             key="DEFAULT_RELEASE_SOURCE",
             label="Default Book Release Source",
-            description="The release source tab to open by default in the release modal for books.",
+            description=(
+                "The release source tab to open by default in the release modal for books. "
+                "Leave unset to use the first available source."
+            ),
             options=_get_book_release_source_options,  # Callable - evaluated lazily to avoid circular imports
-            default="direct_download",
+            default="",
             show_when={"field": "SEARCH_MODE", "value": "universal"},
             user_overridable=True,
         ),
@@ -1306,8 +1274,13 @@ register_on_save("downloads", _on_save_downloads)
 def _get_fast_source_options() -> list[dict[str, str | bool | int | None]]:
     """Fast download sources - configurable list shown in settings."""
     from shelfmark.core.config import config
+    from shelfmark.core.mirrors import get_download_source_missing_mirror_reason
 
     has_donator_key = bool(config.get("AA_DONATOR_KEY", ""))
+    aa_fast_reason = get_download_source_missing_mirror_reason("aa-fast")
+    if not aa_fast_reason and not has_donator_key:
+        aa_fast_reason = "Requires Donator Key"
+    libgen_reason = get_download_source_missing_mirror_reason("libgen")
 
     return [
         {
@@ -1315,14 +1288,16 @@ def _get_fast_source_options() -> list[dict[str, str | bool | int | None]]:
             "label": "AA Fast Downloads",
             "description": "Fast downloads for donators",
             "isPinned": True,
-            "isLocked": not has_donator_key,
-            "disabledReason": "Requires Donator Key" if not has_donator_key else None,
+            "isLocked": aa_fast_reason is not None,
+            "disabledReason": aa_fast_reason,
         },
         {
             "id": "libgen",
             "label": "Library Genesis",
             "description": "Instant downloads, no bypass needed",
             "isPinned": True,
+            "isLocked": libgen_reason is not None,
+            "disabledReason": libgen_reason,
         },
     ]
 
@@ -1338,39 +1313,46 @@ def _get_fast_source_defaults() -> list[dict[str, str | bool]]:
 def _get_slow_source_options() -> list[dict[str, str | bool | None]]:
     """Slow download sources - configurable order. All require bypasser."""
     from shelfmark.core.config import config
+    from shelfmark.core.mirrors import get_download_source_missing_mirror_reason
 
     bypass_enabled = config.get("USE_CF_BYPASS", True)
-    locked = not bypass_enabled
-    disabled_reason = "Requires Cloudflare bypass" if locked else None
+
+    def _get_reason(source_id: str) -> str | None:
+        mirror_reason = get_download_source_missing_mirror_reason(source_id)
+        if mirror_reason:
+            return mirror_reason
+        if not bypass_enabled:
+            return "Requires Cloudflare bypass"
+        return None
 
     return [
         {
             "id": "aa-slow-nowait",
             "label": "AA Slow Downloads (No Waitlist)",
             "description": "Partner servers",
-            "isLocked": locked,
-            "disabledReason": disabled_reason,
+            "isLocked": _get_reason("aa-slow-nowait") is not None,
+            "disabledReason": _get_reason("aa-slow-nowait"),
         },
         {
             "id": "aa-slow-wait",
             "label": "AA Slow Downloads (Waitlist)",
             "description": "Partner servers with countdown timer",
-            "isLocked": locked,
-            "disabledReason": disabled_reason,
+            "isLocked": _get_reason("aa-slow-wait") is not None,
+            "disabledReason": _get_reason("aa-slow-wait"),
         },
         {
             "id": "welib",
             "label": "Welib",
             "description": "Alternative mirror",
-            "isLocked": locked,
-            "disabledReason": disabled_reason,
+            "isLocked": _get_reason("welib") is not None,
+            "disabledReason": _get_reason("welib"),
         },
         {
             "id": "zlib",
             "label": "Zlib",
             "description": "Alternative mirror",
-            "isLocked": locked,
-            "disabledReason": disabled_reason,
+            "isLocked": _get_reason("zlib") is not None,
+            "disabledReason": _get_reason("zlib"),
         },
     ]
 
@@ -1393,6 +1375,15 @@ def _get_slow_source_defaults() -> list[dict[str, str | bool]]:
 def download_source_settings() -> list[SettingsField]:
     """Return settings for download source behavior."""
     return [
+        CheckboxField(
+            key="DIRECT_DOWNLOAD_ENABLED",
+            label="Enable Direct Download Source",
+            description=(
+                "Show Direct Download in release-source lists and allow Direct mode "
+                "searches. Add your own mirror URLs in the Mirrors tab before using it."
+            ),
+            default=False,
+        ),
         PasswordField(
             key="AA_DONATOR_KEY",
             label="Account Donator Key",
@@ -1401,7 +1392,7 @@ def download_source_settings() -> list[SettingsField]:
         HeadingField(
             key="source_priority_heading",
             title="Source Priority",
-            description="Sources are tried in order until a download succeeds.",
+            description="Sources are tried in order until a download succeeds. Mirror-backed entries unlock automatically when you configure their mirrors.",
         ),
         OrderableListField(
             key="FAST_SOURCES_DISPLAY",
@@ -1548,37 +1539,37 @@ def cloudflare_bypass_settings() -> list[SettingsField]:
 
 def _on_save_mirrors(values: dict[str, Any]) -> dict[str, Any]:
     """Normalize mirror list settings before persisting."""
-    from shelfmark.core.logger import setup_logger
-    from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS
     from shelfmark.core.utils import normalize_http_url
 
-    logger = setup_logger(__name__)
+    mirror_list_keys = {
+        "AA_MIRROR_URLS",
+        "LIBGEN_MIRROR_URLS",
+        "ZLIB_MIRROR_URLS",
+        "WELIB_MIRROR_URLS",
+    }
 
-    raw_urls = values.get("AA_MIRROR_URLS")
-    if raw_urls is None:
-        return {"error": False, "values": values}
-
-    if isinstance(raw_urls, str):
-        parts = [p.strip() for p in raw_urls.split(",") if p.strip()]
-    elif isinstance(raw_urls, list):
-        parts = [str(p).strip() for p in raw_urls if str(p).strip()]
-    else:
-        parts = []
-
-    normalized: list[str] = []
-    for url in parts:
-        if url.lower() == "auto":
+    for key in mirror_list_keys:
+        raw_urls = values.get(key)
+        if raw_urls is None:
             continue
-        norm = normalize_http_url(url, default_scheme="https")
-        if norm and norm not in normalized:
-            normalized.append(norm)
 
-    if not normalized:
-        logger.warning("AA_MIRROR_URLS saved empty/invalid; falling back to defaults")
-        normalized = [normalize_http_url(url, default_scheme="https") for url in DEFAULT_AA_MIRRORS]
-        normalized = [url for url in normalized if url]
+        if isinstance(raw_urls, str):
+            parts = [p.strip() for p in raw_urls.split(",") if p.strip()]
+        elif isinstance(raw_urls, list):
+            parts = [str(p).strip() for p in raw_urls if str(p).strip()]
+        else:
+            parts = []
 
-    values["AA_MIRROR_URLS"] = normalized
+        normalized: list[str] = []
+        for url in parts:
+            if url.lower() == "auto":
+                continue
+            norm = normalize_http_url(url, default_scheme="https")
+            if norm and norm not in normalized:
+                normalized.append(norm)
+
+        values[key] = normalized
+
     return {"error": False, "values": values}
 
 
@@ -1589,85 +1580,56 @@ register_on_save("mirrors", _on_save_mirrors)
 @register_settings("mirrors", "Mirrors", icon="globe", order=23, group="direct_download")
 def mirror_settings() -> list[SettingsField]:
     """Configure download source mirrors."""
-    from shelfmark.core.mirrors import (
-        DEFAULT_AA_MIRRORS,
-        DEFAULT_WELIB_MIRRORS,
-        DEFAULT_ZLIB_MIRRORS,
-    )
-
     return [
         # === PRIMARY SOURCE ===
         HeadingField(
             key="aa_mirrors_heading",
             title="Anna's Archive",
-            description="Choose a primary mirror, or use Auto to try mirrors from your list below. The mirror list controls which options appear in the dropdown and the order used in Auto mode.",
+            description=(
+                "Add your own Anna's Archive mirror URLs here. Auto mode will try them in the "
+                "order listed below."
+            ),
         ),
         SelectField(
             key="AA_BASE_URL",
             label="Primary Mirror",
-            description="Select 'Auto' to try mirrors from your list on startup and fall back on failures. Choosing a specific mirror locks Shelfmark to that mirror (no fallback).",
+            description=(
+                "Select Auto to try mirrors from your list on startup and fail over on errors. "
+                "Choosing a specific mirror pins Shelfmark to that URL."
+            ),
             options=_get_aa_base_url_options,
             default="auto",
         ),
         TagListField(
             key="AA_MIRROR_URLS",
             label="Mirrors",
-            description="Editable list of AA mirrors. Used to populate the Primary Mirror dropdown and the order used when Auto is selected. Type a URL and press Enter to add. Order matters for auto-rotation",
-            placeholder="https://annas-archive.gl",
-            default=DEFAULT_AA_MIRRORS,
-        ),
-        TextField(
-            key="AA_ADDITIONAL_URLS",
-            label="Additional Mirrors (Legacy)",
-            description="Deprecated. Use Mirrors instead. This is kept for backwards compatibility with existing installs and environment variables.",
-            show_when={"field": "AA_ADDITIONAL_URLS", "notEmpty": True},
+            description=(
+                "List the Anna's Archive mirror URLs you want Shelfmark to use. Type a URL and "
+                "press Enter to add it. Order matters when Auto is selected."
+            ),
+            placeholder="https://your-aa-mirror.example",
+            default=[],
         ),
         # === LIBGEN ===
-        HeadingField(
-            key="libgen_mirrors_heading",
-            title="LibGen",
-            description="All mirrors are tried during download until one succeeds. Defaults: libgen.gl, libgen.li, libgen.bz, libgen.la, libgen.vg",
-        ),
-        TextField(
-            key="LIBGEN_ADDITIONAL_URLS",
-            label="Additional Mirrors",
-            description="Comma-separated list of custom LibGen mirrors to add to the defaults.",
+        TagListField(
+            key="LIBGEN_MIRROR_URLS",
+            label="LibGen",
+            description="Mirrors are tried in the order you add them until one works.",
+            placeholder="https://your-libgen-mirror.example",
         ),
         # === Z-LIBRARY ===
-        HeadingField(
-            key="zlib_mirrors_heading",
-            title="Z-Library",
-            description="Z-Library requires Cloudflare bypass. Only the primary mirror is used.",
-        ),
-        SelectField(
-            key="ZLIB_PRIMARY_URL",
-            label="Primary Mirror",
-            description="Z-Library mirror to use for downloads.",
-            options=_get_zlib_mirror_options,
-            default=DEFAULT_ZLIB_MIRRORS[0],
-        ),
-        TextField(
-            key="ZLIB_ADDITIONAL_URLS",
-            label="Additional Mirrors",
-            description="Comma-separated list of custom Z-Library mirror URLs.",
+        TagListField(
+            key="ZLIB_MIRROR_URLS",
+            label="Z-Library",
+            description="Only the first mirror in the list is used.",
+            placeholder="https://your-zlibrary-mirror.example",
         ),
         # === WELIB ===
-        HeadingField(
-            key="welib_mirrors_heading",
-            title="Welib",
-            description="Welib requires Cloudflare bypass. Only the primary mirror is used.",
-        ),
-        SelectField(
-            key="WELIB_PRIMARY_URL",
-            label="Primary Mirror",
-            description="Welib mirror to use for downloads.",
-            options=_get_welib_mirror_options,
-            default=DEFAULT_WELIB_MIRRORS[0],
-        ),
-        TextField(
-            key="WELIB_ADDITIONAL_URLS",
-            label="Additional Mirrors",
-            description="Comma-separated list of custom Welib mirror URLs.",
+        TagListField(
+            key="WELIB_MIRROR_URLS",
+            label="Welib",
+            description="Only the first mirror in the list is used.",
+            placeholder="https://your-welib-mirror.example",
         ),
     ]
 

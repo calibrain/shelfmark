@@ -42,7 +42,7 @@ make build
 make preview
 
 # Run type checking
-make typecheck
+make frontend-typecheck
 ```
 
 Alternatively, from `src/frontend`:
@@ -95,7 +95,7 @@ Output is generated in `src/frontend/dist/`
 Run TypeScript checks without building:
 
 ```bash
-make typecheck
+make frontend-typecheck
 ```
 
 ## Debugging

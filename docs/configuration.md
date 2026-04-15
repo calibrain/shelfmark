@@ -18,9 +18,9 @@ Prowlarr -> Download client saves to <client path>
 
 Key point: For torrent and usenet downloads, Shelfmark must see the same file path that your download client reports. The container path must match in both containers.
 
-## Direct Download Setup
+## Direct Download Volume Setup
 
-Direct downloads do not use an external download client. A simple two-folder setup is enough.
+If you plan to use Direct Download, it does not use an external download client. A simple two-folder setup is enough.
 
 Required volumes:
 

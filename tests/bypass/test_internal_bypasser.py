@@ -79,6 +79,52 @@ def test_extract_cookies_from_cdp_filters_and_stores_ua():
     assert internal_bypasser.get_cf_user_agent_for_domain("example.com") == "TestUA/1.0"
 
 
+def test_extract_cookies_from_cdp_keeps_full_session_cookies_for_configured_zlib_domains(
+    monkeypatch,
+):
+    import time
+
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    class FakeCookie:
+        def __init__(self, name, value, domain, path, expires, secure=True):
+            self.name = name
+            self.value = value
+            self.domain = domain
+            self.path = path
+            self.expires = expires
+            self.secure = secure
+
+    class FakeCookies:
+        async def get_all(self, requests_cookie_format=False):
+            assert requests_cookie_format is True
+            return [
+                FakeCookie("cf_clearance", "abc", "z-lib.fm", "/", int(time.time()) + 3600),
+                FakeCookie("sessionid", "zzz", "z-lib.fm", "/", int(time.time()) + 3600),
+            ]
+
+    class FakeDriver:
+        cookies = FakeCookies()
+
+    class FakePage:
+        async def evaluate(self, _expr):
+            return "TestUA/1.0"
+
+    monkeypatch.setattr(internal_bypasser, "_get_full_cookie_domains", lambda: {"z-lib.fm"})
+
+    internal_bypasser.clear_cf_cookies()
+    asyncio.run(
+        internal_bypasser._extract_cookies_from_cdp(
+            FakeDriver(),
+            FakePage(),
+            "https://z-lib.fm/books/example",
+        )
+    )
+
+    cookies = internal_bypasser.get_cf_cookies_for_domain("z-lib.fm")
+    assert cookies == {"cf_clearance": "abc", "sessionid": "zzz"}
+
+
 def test_extract_cookies_from_cdp_normalizes_session_expiry():
     import time
 

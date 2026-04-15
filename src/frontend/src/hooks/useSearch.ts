@@ -165,7 +165,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
       providerOverride?: string;
     }) => {
       const effectiveContentType = contentTypeOverride ?? contentType;
-      const searchMode = (searchModeOverride ?? config?.search_mode) || 'direct';
+      const searchMode = (searchModeOverride ?? config?.search_mode) || 'universal';
 
       // In universal mode, check if we have either a query or field values
       if (searchMode === 'universal') {
@@ -314,7 +314,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
   // Load more results (universal mode pagination)
   const loadMore = useCallback(
     async (config: AppConfig | null, searchModeOverride?: SearchMode) => {
-      const searchMode = (searchModeOverride ?? config?.search_mode) || 'direct';
+      const searchMode = (searchModeOverride ?? config?.search_mode) || 'universal';
       if (searchMode !== 'universal') return;
       if (!lastSearchParamsRef.current) return;
       if (isLoadingMore || !hasMore) return;

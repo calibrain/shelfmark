@@ -265,6 +265,7 @@ export type BooksOutputMode = 'folder' | 'booklore' | 'email';
 export interface AppConfig {
   calibre_web_url: string;
   audiobook_library_url: string;
+  search_page_title: string;
   debug: boolean;
   build_version: string;
   release_version: string;

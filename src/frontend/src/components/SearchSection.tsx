@@ -14,6 +14,7 @@ interface SearchSectionProps {
   onSearch: () => void;
   isLoading: boolean;
   isInitialState: boolean;
+  searchPageTitle: string;
   bookLanguages: Language[];
   defaultLanguage: string[];
   logoUrl: string;
@@ -45,6 +46,7 @@ export const SearchSection = ({
   onSearch,
   isLoading,
   isInitialState,
+  searchPageTitle,
   bookLanguages,
   defaultLanguage,
   logoUrl,
@@ -84,7 +86,7 @@ export const SearchSection = ({
         }`}
       >
         <img src={logoUrl} alt="Logo" className="h-8 w-8" />
-        <h1 className="text-2xl font-semibold">Book Search & Download</h1>
+        <h1 className="text-2xl font-semibold">{searchPageTitle}</h1>
       </div>
       <div
         className={`search-wrapper flex flex-col gap-3 transition-all duration-500 ${

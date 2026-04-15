@@ -697,6 +697,7 @@ export const executeSettingsAction = async (
 export interface OnboardingStepCondition {
   field: string;
   value: unknown;
+  notEmpty?: boolean;
 }
 
 export interface OnboardingStep {

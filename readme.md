@@ -1,12 +1,10 @@
-# 📚 Shelfmark: Book Downloader
-
-Formerly *Calibre Web Automated Book Downloader (CWABD)*
+# 📚 Shelfmark: Book Search & Request Tool
 
 <img src="src/frontend/public/logo.png" alt="Shelfmark" width="200">
 
-Shelfmark is a self-hosted web interface for searching and downloading books and audiobooks from multiple sources. Works out of the box with popular web sources, no configuration required. Add metadata providers, additional release sources, and download clients to build a single hub for your digital library. Supports multiple users with a built-in request system, so you can share your instance with others and let them browse and request books on their own.
+Shelfmark is a self-hosted web interface for searching and requesting books and audiobooks across multiple sources. Bring your own sources, metadata providers, and download clients to build a single hub for your digital library. Supports multiple users with a built-in request system, so you can share your instance with others and let them browse and request books on their own.
 
-**Fully standalone** - no external dependencies required. Works great alongside the following library tools, with support for automatic imports:
+Works great alongside the following library tools, with support for automatic imports:
 - [Calibre](https://calibre-ebook.com/)
 - [Calibre-Web](https://github.com/janeczku/calibre-web)
 - [Calibre-Web-Automated](https://github.com/crocodilestick/Calibre-Web-Automated)
@@ -15,16 +13,14 @@ Shelfmark is a self-hosted web interface for searching and downloading books and
 
 ## ✨ Features
 
-- **One-Stop Interface** - A clean, modern UI to search, browse, and download from multiple sources in one place
-- **Multiple Sources** - Popular archive websites, Torrent, Usenet, and IRC download support
+- **One-Stop Interface** - A clean, modern UI to search, browse, and download from multiple configured sources in one place
+- **Multiple Sources** - Configurable web, torrent, usenet, and IRC source support
 - **Audiobook Support** - Full audiobook search and download with dedicated processing
-- **Two Search Modes**:
-  - **Direct** - Search popular web sources
-  - **Universal** - Search metadata providers (Hardcover, Open Library) for richer book and audiobook discovery, with multi-source downloads
+- **Flexible Search** - Search metadata providers (Hardcover, Open Library, Google Books) for rich book and audiobook discovery, or query configured sources directly
 - **Multi-User & Requests** - Share your instance with others, let users browse and request books, and manage approvals with configurable notifications
 - **Authentication** - Built-in login, OIDC single sign-on, proxy auth, and Calibre-Web database support
 - **Real-Time Progress** - Unified download queue with live status updates across all sources
-- **Cloudflare Bypass** - Built-in bypasser for reliable access to protected sources
+- **Network Flexibility** - Configurable proxy support, DNS settings, and optional Cloudflare handling for protected sources
 
 ## 🖼️ Screenshots
 
@@ -60,7 +56,7 @@ Shelfmark is a self-hosted web interface for searching and downloading books and
 
 3. Open `http://localhost:8084`
 
-That's it! Configure settings through the web interface as needed.
+Open the web interface, then configure the sources and settings you want to use.
 
 ### Volume Setup
 
@@ -87,16 +83,13 @@ volumes:
 
 ### Search Modes
 
-**Direct** (default)
-- Works out of the box, no setup required
-- Searches a huge library of books directly
-- Returns downloadable releases immediately
+**Direct**
+- Queries configured sources directly
 
-**Universal**
-- Cleaner search results via metadata providers (Hardcover is recommended)
+**Universal** (recommended)
+- Search via metadata providers (Hardcover, Open Library, Google Books) for richer results
 - Aggregates releases from multiple configured sources
-- Full Audiobook support
-- Requires manual setup (API keys, additional sources)
+- Full audiobook support
 
 ### Environment Variables
 
@@ -108,19 +101,18 @@ Environment variables work for initial setup and Docker deployments. They serve 
 | `INGEST_DIR` | Book download directory | `/books` |
 | `TZ` | Container timezone | `UTC` |
 | `PUID` / `PGID` | Runtime user/group for the default root-startup flow (also supports legacy `UID`/`GID`) | `1000` / `1000` |
-| `SEARCH_MODE` | `direct` or `universal` | `direct` |
+| `SEARCH_MODE` | `direct` or `universal` | `universal` |
 | `USING_TOR` | Enable Tor routing (requires root startup) | `false` |
 
 See the full [Environment Variables Reference](docs/environment-variables.md) for all available options.
 
 Some of the additional options available in Settings:
-- **Fast Download Key** - Use your paid account to skip Cloudflare challenges entirely and use faster, direct downloads
 - **Prowlarr** - Configure indexers and download clients to download books and audiobooks
-- **AudiobookBay** - Web scraping source for audiobook torrents (audiobooks only)
+- **Additional audiobook sources** - Configure additional sources for audiobook discovery
 - **IRC** - Add details for IRC book sources and download directly from the UI
 - **Library Link** - Add a link to your Calibre-Web or Grimmory instance in the UI header
 - **File processing** - Customiseable download paths, file renaming and directory creation with template-based renaming
-- **Network Resilience** - Auto DNS rotation and mirror fallback when sources are unreachable. Custom proxy support (SOCK5 + HTTP/S), Tor routing.
+- **Network Settings** - Custom proxy support (SOCKS5 + HTTP/S) and configurable DNS
 - **Format & Language** - Filter downloads by preferred formats, languages and sorting order
 - **Metadata Providers** - Configure API keys for Hardcover, Open Library, etc.
 
@@ -131,10 +123,10 @@ Some of the additional options available in Settings:
 docker compose up -d
 ```
 
-The full-featured image with built-in Cloudflare bypass.
+The full-featured image with all network capabilities included.
 
-#### Enable Tor Routing
-Routes all traffic through Tor for enhanced privacy:
+#### Tor Routing
+Optional Tor support for network privacy:
 ```bash
 curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/docker-compose.tor.yml
 docker compose -f docker-compose.tor.yml up -d
@@ -147,19 +139,18 @@ docker compose -f docker-compose.tor.yml up -d
 - Custom DNS/proxy settings are ignored when Tor is active
 
 ### Lite
-A smaller image without the built-in Cloudflare bypasser. Ideal for:
+A lighter image without the built-in browser automation. Ideal for:
 
-- **External bypassers** - Already running FlareSolverr or ByParr for other services
-- **Fast downloads** - Using fast download sources
-- **Alternative sources only** - Exclusively using Prowlarr, AudiobookBay, IRC, or other sources
-- **Audiobooks** - Using Shelfmark exclusively for audiobooks
+- **External services** - Already running FlareSolverr or similar for other applications
+- **Alternative sources** - Using Prowlarr, IRC, or other configured sources
+- **Audiobooks** - Using Shelfmark primarily for audiobooks
 
 ```bash
 curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/docker-compose.lite.yml
 docker compose -f docker-compose.lite.yml up -d
 ```
 
-If you need Cloudflare bypass with the Lite image, configure an external resolver (FlareSolverr/ByParr) in Settings under the Cloudflare tab.
+If you need browser-based access with the Lite image, configure an external resolver in Settings.
 
 ## 🔐 Authentication
 
@@ -230,16 +221,16 @@ Log level is configurable via Settings or `LOG_LEVEL` environment variable.
 ## Development
 
 ```bash
-# Python tooling
-make install-python-dev  # Sync Python runtime + dev tools with uv
+# Quality checks
+make checks              # Run ALL static analysis (frontend + Python)
 make python-checks       # Run Ruff, BasedPyright, and Vulture
-make python-test-checks  # Run lightweight lint/type checks for tests
+make install-python-dev  # Sync Python runtime + dev tools with uv
 
 # Frontend development
 make install     # Install dependencies
 make dev         # Start Vite dev server (localhost:5173)
 make build       # Production build
-make typecheck   # TypeScript checks
+make frontend-typecheck  # TypeScript checks
 
 # Backend (Docker)
 make up          # Start backend via docker-compose.dev.yml

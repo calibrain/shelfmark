@@ -153,11 +153,11 @@ export const UserSearchPreferencesSection = ({
     });
   };
 
-  const searchModeValue = readValue('SEARCH_MODE', 'direct');
+  const searchModeValue = readValue('SEARCH_MODE', 'universal');
   const effectiveSearchMode = normalizeSearchMode(searchModeValue);
   const metadataProviderValue = readValue('METADATA_PROVIDER');
   const metadataProviderAudiobookValue = readValue('METADATA_PROVIDER_AUDIOBOOK');
-  const defaultReleaseSourceValue = readValue('DEFAULT_RELEASE_SOURCE', 'direct_download');
+  const defaultReleaseSourceValue = readValue('DEFAULT_RELEASE_SOURCE');
   const defaultAudiobookReleaseSourceValue = readValue('DEFAULT_RELEASE_SOURCE_AUDIOBOOK');
 
   const canOverrideSearchMode =

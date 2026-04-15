@@ -34,6 +34,7 @@ def get_field_type_name(field: Any) -> str:
         OrderableListField,
         PasswordField,
         SelectField,
+        TagListField,
         TextField,
     )
 
@@ -44,6 +45,8 @@ def get_field_type_name(field: Any) -> str:
     if isinstance(field, SelectField):
         return "string (choice)"
     if isinstance(field, MultiSelectField):
+        return "string (comma-separated)"
+    if isinstance(field, TagListField):
         return "string (comma-separated)"
     if isinstance(field, OrderableListField):
         return "JSON array"

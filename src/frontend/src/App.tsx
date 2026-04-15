@@ -2470,6 +2470,7 @@ function App() {
             onSearch={handleSearchDispatch}
             isLoading={isSearching}
             isInitialState={isInitialState}
+            searchPageTitle={config?.search_page_title || 'Shelfmark'}
             bookLanguages={bookLanguages}
             defaultLanguage={defaultLanguageCodes}
             logoUrl={logoUrl}

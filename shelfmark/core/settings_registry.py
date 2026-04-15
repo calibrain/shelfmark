@@ -521,6 +521,15 @@ def initialize_default_configs() -> bool:
 
 def sync_env_to_config() -> None:
     """Sync supported environment-backed settings into config files."""
+    config_dir = _get_config_dir()
+    plugins_dir = config_dir / "plugins"
+    had_existing_search_page_title = "SEARCH_PAGE_TITLE" in load_config_file("general")
+    had_existing_install_state = (
+        (config_dir / "settings.json").exists()
+        or (config_dir / "users.db").exists()
+        or (plugins_dir.exists() and any(plugins_dir.glob("*.json")))
+    )
+
     # Initialize default configs first (for fresh installs)
     initialize_default_configs()
 
@@ -532,13 +541,8 @@ def sync_env_to_config() -> None:
             if not getattr(settings_field, "env_supported", True):
                 continue
 
-            # Check if ENV var is set
-            env_var_name = settings_field.get_env_var_name()
-            env_value = os.environ.get(env_var_name)
-
-            if env_value is not None:
-                # Parse the ENV value to the appropriate type
-                parsed_value = _parse_env_value(env_value, settings_field)
+            has_env_value, parsed_value = _get_env_value_for_field(settings_field)
+            if has_env_value:
                 values_to_sync[settings_field.key] = parsed_value
 
         # Save synced values to config file (merge with existing)
@@ -554,21 +558,39 @@ def sync_env_to_config() -> None:
     migrate_legacy_settings()
     migrate_download_to_browser_settings()
     migrate_mirror_settings()
+    migrate_direct_download_upgrade(existing_install=had_existing_install_state)
+    migrate_search_page_title(
+        existing_install=had_existing_install_state,
+        had_existing_value=had_existing_search_page_title,
+    )
+
+
+def migrate_direct_download_upgrade(*, existing_install: bool) -> None:
+    """Preserve the direct-download enabled flag for existing installs only."""
+    if not existing_install:
+        return
+
+    download_sources_config = load_config_file("download_sources")
+
+    download_updates: dict[str, Any] = {}
+
+    if "DIRECT_DOWNLOAD_ENABLED" not in download_sources_config:
+        download_updates["DIRECT_DOWNLOAD_ENABLED"] = True
+
+    if download_updates:
+        save_config_file("download_sources", download_updates)
+
+
+def migrate_search_page_title(*, existing_install: bool, had_existing_value: bool) -> None:
+    """Keep the legacy homepage search title for existing installs only."""
+    if not existing_install or had_existing_value or os.getenv("SEARCH_PAGE_TITLE") is not None:
+        return
+
+    save_config_file("general", {"SEARCH_PAGE_TITLE": "Book Search & Download"})
 
 
 def migrate_mirror_settings() -> None:
-    """Sync AA mirror list when code defaults change between versions.
-
-    On startup, compares a hash of DEFAULT_AA_MIRRORS against the hash stored
-    in the config file. If they differ (i.e., an update shipped new defaults),
-    the config is overwritten with the new defaults. If they match, the user's
-    customizations are left untouched.
-
-    Also handles legacy migration from AA_ADDITIONAL_URLS.
-    """
-    import hashlib
-
-    from shelfmark.core.mirrors import DEFAULT_AA_MIRRORS
+    """Normalize canonical mirror-list settings and migrate legacy config forward safely."""
     from shelfmark.core.utils import normalize_http_url
 
     def _normalize_list(values: list[str]) -> list[str]:
@@ -581,88 +603,75 @@ def migrate_mirror_settings() -> None:
                 out.append(norm)
         return out
 
-    def _hash_mirrors(mirrors: list[str]) -> str:
-        return hashlib.sha256(",".join(mirrors).encode()).hexdigest()
-
-    normalized_defaults = _normalize_list(DEFAULT_AA_MIRRORS)
-    current_defaults_hash = _hash_mirrors(normalized_defaults)
-
     mirrors_config = load_config_file("mirrors")
-    stored_hash = mirrors_config.get("_AA_MIRRORS_DEFAULTS_HASH")
-    raw_list = mirrors_config.get("AA_MIRROR_URLS")
-    raw_additional = mirrors_config.get("AA_ADDITIONAL_URLS", "")
+    mirror_updates: dict[str, Any] = {}
 
-    def _save_mirrors(values: dict[str, Any]) -> None:
-        merged = dict(mirrors_config)
-        merged.update(values)
-        save_config_file("mirrors", merged)
-        mirrors_config.update(values)
+    def _queue_update(key: str, normalized: list[str]) -> None:
+        current = mirrors_config.get(key)
+        if current != normalized:
+            mirror_updates[key] = normalized
 
-    # Defaults changed since last startup — push new mirrors to config
-    if stored_hash != current_defaults_hash:
-        _save_mirrors(
-            {
-                "AA_MIRROR_URLS": normalized_defaults,
-                "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
-            }
-        )
-        return
+    def _resolve_canonical_list(
+        canonical_key: str,
+        *,
+        legacy_list_key: str | None = None,
+        legacy_primary_key: str | None = None,
+        legacy_additional_key: str | None = None,
+    ) -> None:
+        raw_list = mirrors_config.get(canonical_key)
 
-    # --- Legacy migration (only runs if hash already matches / first time) ---
+        if isinstance(raw_list, list):
+            _queue_update(canonical_key, _normalize_list([str(v) for v in raw_list]))
+            return
 
-    # If already a proper list, just ensure it's non-empty.
-    if isinstance(raw_list, list):
-        normalized = _normalize_list([str(v) for v in raw_list])
+        if isinstance(raw_list, str) and raw_list.strip():
+            parts = [p.strip() for p in raw_list.split(",") if p.strip()]
+            _queue_update(canonical_key, _normalize_list(parts))
+            return
+
+        combined: list[str] = []
+        if legacy_primary_key:
+            raw_primary = mirrors_config.get(legacy_primary_key, "")
+            if isinstance(raw_primary, str) and raw_primary.strip():
+                combined.append(raw_primary.strip())
+        if legacy_list_key:
+            raw_legacy_list = mirrors_config.get(legacy_list_key, "")
+            if isinstance(raw_legacy_list, str) and raw_legacy_list.strip():
+                combined.extend([p.strip() for p in raw_legacy_list.split(",") if p.strip()])
+            elif isinstance(raw_legacy_list, list):
+                combined.extend([str(p).strip() for p in raw_legacy_list if str(p).strip()])
+        if legacy_additional_key:
+            raw_additional = mirrors_config.get(legacy_additional_key, "")
+            if isinstance(raw_additional, str) and raw_additional.strip():
+                combined.extend([p.strip() for p in raw_additional.split(",") if p.strip()])
+            elif isinstance(raw_additional, list):
+                combined.extend([str(p).strip() for p in raw_additional if str(p).strip()])
+
+        normalized = _normalize_list(combined)
         if normalized:
-            return
-        _save_mirrors(
-            {
-                "AA_MIRROR_URLS": normalized_defaults,
-                "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
-            }
-        )
-        return
+            _queue_update(canonical_key, normalized)
 
-    # If saved as a string, convert to list.
-    if isinstance(raw_list, str) and raw_list.strip():
-        parts = [p.strip() for p in raw_list.split(",") if p.strip()]
-        normalized = _normalize_list(parts)
-        if normalized:
-            _save_mirrors(
-                {
-                    "AA_MIRROR_URLS": normalized,
-                    "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
-                }
-            )
-            return
-        _save_mirrors(
-            {
-                "AA_MIRROR_URLS": normalized_defaults,
-                "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
-            }
-        )
-        return
-
-    # If there's legacy additional mirrors, seed the full list.
-    if isinstance(raw_additional, str) and raw_additional.strip():
-        additional_parts = [p.strip() for p in raw_additional.split(",") if p.strip()]
-        combined = _normalize_list(DEFAULT_AA_MIRRORS + additional_parts)
-        if combined:
-            _save_mirrors(
-                {
-                    "AA_MIRROR_URLS": combined,
-                    "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
-                }
-            )
-            return
-
-    # No config at all yet — write defaults
-    _save_mirrors(
-        {
-            "AA_MIRROR_URLS": normalized_defaults,
-            "_AA_MIRRORS_DEFAULTS_HASH": current_defaults_hash,
-        }
+    _resolve_canonical_list(
+        "AA_MIRROR_URLS",
+        legacy_list_key="AA_ADDITIONAL_URLS",
     )
+    _resolve_canonical_list(
+        "LIBGEN_MIRROR_URLS",
+        legacy_list_key="LIBGEN_ADDITIONAL_URLS",
+    )
+    _resolve_canonical_list(
+        "ZLIB_MIRROR_URLS",
+        legacy_primary_key="ZLIB_PRIMARY_URL",
+        legacy_additional_key="ZLIB_ADDITIONAL_URLS",
+    )
+    _resolve_canonical_list(
+        "WELIB_MIRROR_URLS",
+        legacy_primary_key="WELIB_PRIMARY_URL",
+        legacy_additional_key="WELIB_ADDITIONAL_URLS",
+    )
+
+    if mirror_updates:
+        save_config_file("mirrors", mirror_updates)
 
 
 def migrate_legacy_settings() -> None:
@@ -813,11 +822,9 @@ def migrate_download_to_browser_settings() -> None:
 def get_setting_value(field: FieldBase, tab_name: str) -> object:
     """Resolve the effective value for a settings field."""
     # 1. Check environment variable (if supported for this field)
-    if field.env_supported:
-        env_var_name = field.get_env_var_name()
-        env_value = os.environ.get(env_var_name)
-        if env_value is not None:
-            return _parse_env_value(env_value, field)
+    has_env_value, parsed_env_value = _get_env_value_for_field(field)
+    if has_env_value:
+        return parsed_env_value
 
     # 2. Check config file
     config = load_config_file(tab_name)
@@ -860,12 +867,78 @@ def _parse_env_value(value: str, field: FieldBase) -> object:
         return value
 
 
+def _normalize_mirror_env_urls(values: list[str]) -> list[str]:
+    """Normalize mirror URL env values to stable https URLs without duplicates."""
+    from shelfmark.core.utils import normalize_http_url
+
+    normalized: list[str] = []
+    for raw_value in values:
+        stripped = raw_value.strip()
+        if not stripped:
+            continue
+        normalized_url = normalize_http_url(stripped, default_scheme="https")
+        if normalized_url and normalized_url not in normalized:
+            normalized.append(normalized_url)
+    return normalized
+
+
+def _get_env_value_for_field(field: FieldBase) -> tuple[bool, object | None]:
+    """Return parsed env-backed value for a field, including legacy mirror aliases."""
+    if not field.env_supported:
+        return False, None
+
+    env_var_name = field.get_env_var_name()
+    env_value = os.environ.get(env_var_name)
+    if env_value is not None:
+        parsed = _parse_env_value(env_value, field)
+        if field.key in {
+            "AA_MIRROR_URLS",
+            "LIBGEN_MIRROR_URLS",
+            "ZLIB_MIRROR_URLS",
+            "WELIB_MIRROR_URLS",
+        } and isinstance(parsed, list):
+            parsed = _normalize_mirror_env_urls(parsed)
+        return True, parsed
+
+    if field.key == "AA_MIRROR_URLS":
+        legacy_additional = os.environ.get("AA_ADDITIONAL_URLS")
+        if legacy_additional is not None:
+            return True, _normalize_mirror_env_urls(legacy_additional.split(","))
+
+    if field.key == "LIBGEN_MIRROR_URLS":
+        legacy_additional = os.environ.get("LIBGEN_ADDITIONAL_URLS")
+        if legacy_additional is not None:
+            return True, _normalize_mirror_env_urls(legacy_additional.split(","))
+
+    if field.key == "ZLIB_MIRROR_URLS":
+        legacy_primary = os.environ.get("ZLIB_PRIMARY_URL")
+        legacy_additional = os.environ.get("ZLIB_ADDITIONAL_URLS")
+        if legacy_primary is not None or legacy_additional is not None:
+            combined = []
+            if legacy_primary is not None:
+                combined.append(legacy_primary)
+            if legacy_additional is not None:
+                combined.extend(legacy_additional.split(","))
+            return True, _normalize_mirror_env_urls(combined)
+
+    if field.key == "WELIB_MIRROR_URLS":
+        legacy_primary = os.environ.get("WELIB_PRIMARY_URL")
+        legacy_additional = os.environ.get("WELIB_ADDITIONAL_URLS")
+        if legacy_primary is not None or legacy_additional is not None:
+            combined = []
+            if legacy_primary is not None:
+                combined.append(legacy_primary)
+            if legacy_additional is not None:
+                combined.extend(legacy_additional.split(","))
+            return True, _normalize_mirror_env_urls(combined)
+
+    return False, None
+
+
 def is_value_from_env(field: FieldBase) -> bool:
     """Check if a field's value comes from an environment variable."""
-    # UI-only settings never come from ENV (env_supported=False)
-    if not getattr(field, "env_supported", True):
-        return False
-    return field.get_env_var_name() in os.environ
+    has_env_value, _parsed = _get_env_value_for_field(field)
+    return has_env_value
 
 
 def serialize_field(
@@ -1155,7 +1228,7 @@ def _apply_dns_settings(config: Config) -> None:
 def _apply_aa_mirror_settings(config: Config) -> None:
     """Apply AA mirror settings changes to the network module.
 
-    This ensures AA_BASE_URL / AA_ADDITIONAL_URLS changes take effect immediately
+    This ensures AA_BASE_URL / AA_MIRROR_URLS changes take effect immediately
     without requiring a container restart.
     """
     try:
