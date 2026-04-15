@@ -1,4 +1,4 @@
-"""Centralized mirror configuration for all download sources."""
+"""Centralized mirror configuration for direct-download sources."""
 
 from __future__ import annotations
 
@@ -22,33 +22,21 @@ def _get_config() -> Config:
     return _config_module
 
 
-# Default mirror lists (hardcoded fallbacks)
-DEFAULT_AA_MIRRORS = [
-    "https://annas-archive.gl",
-    "https://annas-archive.pk",
-    "https://annas-archive.vg",
-    "https://annas-archive.gd",
-]
+# Mirror URLs are intentionally user-supplied only.
+DEFAULT_AA_MIRRORS: list[str] = []
+DEFAULT_LIBGEN_MIRRORS: list[str] = []
+DEFAULT_ZLIB_MIRRORS: list[str] = []
+DEFAULT_WELIB_MIRRORS: list[str] = []
 
-DEFAULT_LIBGEN_MIRRORS = [
-    "https://libgen.gl",
-    "https://libgen.li",
-    "https://libgen.bz",
-    "https://libgen.la",
-    "https://libgen.vg",
-]
-
-DEFAULT_ZLIB_MIRRORS = [
-    "https://z-lib.fm",
-    "https://z-lib.gs",
-    "https://z-lib.id",
-    "https://z-library.sk",
-    "https://zlibrary-global.se",
-]
-
-DEFAULT_WELIB_MIRRORS = [
-    "https://welib.org",
-]
+_DOWNLOAD_SOURCE_MIRROR_LABELS = {
+    "aa-fast": "Anna's Archive",
+    "aa-slow": "Anna's Archive",
+    "aa-slow-nowait": "Anna's Archive",
+    "aa-slow-wait": "Anna's Archive",
+    "libgen": "LibGen",
+    "zlib": "Z-Library",
+    "welib": "Welib",
+}
 
 
 def _normalize_mirror_url(url: str) -> str:
@@ -60,14 +48,51 @@ def _string_config_value(value: object) -> str:
     return value if isinstance(value, str) else str(value or "")
 
 
+def _normalize_configured_urls(value: object) -> list[str]:
+    """Normalize list or comma-separated mirror config into unique URLs."""
+    if isinstance(value, list):
+        parts = value
+    elif isinstance(value, str) and value.strip():
+        parts = value.split(",")
+    else:
+        return []
+
+    normalized_urls: list[str] = []
+    for raw_url in parts:
+        normalized = _normalize_mirror_url(str(raw_url))
+        if normalized and normalized not in normalized_urls:
+            normalized_urls.append(normalized)
+    return normalized_urls
+
+
+def _get_primary_mirror_url(key: str) -> str | None:
+    """Return a configured primary mirror URL, if present."""
+    config = _get_config()
+    primary = _normalize_mirror_url(_string_config_value(config.get(key, "")))
+    return primary or None
+
+
+def _build_primary_and_additional_mirrors(primary_key: str, additional_key: str) -> list[str]:
+    """Build an ordered mirror list from primary + additional config values."""
+    config = _get_config()
+    mirrors: list[str] = []
+
+    primary = _get_primary_mirror_url(primary_key)
+    if primary:
+        mirrors.append(primary)
+
+    for url in _normalize_configured_urls(config.get(additional_key, "")):
+        if url not in mirrors:
+            mirrors.append(url)
+
+    return mirrors
+
+
 def get_aa_mirrors() -> list[str]:
     """Get Anna's Archive mirrors.
 
     Returns:
-        Ordered list of AA mirror URLs.
-
-        If AA_MIRROR_URLS is configured, it is treated as the full list.
-        Otherwise, defaults are used and AA_ADDITIONAL_URLS (legacy) is appended.
+        Ordered list of user-configured AA mirror URLs.
 
     Notes:
         - The list is used to populate the AA mirror dropdown in Settings.
@@ -75,172 +100,149 @@ def get_aa_mirrors() -> list[str]:
 
     """
     config = _get_config()
+    configured_list = _normalize_configured_urls(config.get("AA_MIRROR_URLS", None))
+    if configured_list:
+        return configured_list
+    return _normalize_configured_urls(config.get("AA_ADDITIONAL_URLS", ""))
 
-    mirrors: list[str] = []
 
-    configured_list = config.get("AA_MIRROR_URLS", None)
-    if isinstance(configured_list, list):
-        for url in configured_list:
-            normalized = _normalize_mirror_url(str(url))
-            if normalized and normalized not in mirrors:
-                mirrors.append(normalized)
-    elif isinstance(configured_list, str) and configured_list.strip():
-        # Allow comma-separated env/manual configs.
-        for url in configured_list.split(","):
-            normalized = _normalize_mirror_url(url)
-            if normalized and normalized not in mirrors:
-                mirrors.append(normalized)
+def has_aa_mirror_configuration() -> bool:
+    """Return True when direct-download search has at least one AA base URL to use."""
+    if get_aa_mirrors():
+        return True
 
-    if not mirrors:
-        mirrors = [_normalize_mirror_url(url) for url in DEFAULT_AA_MIRRORS]
-        mirrors = [url for url in mirrors if url]
-
-        # Backwards-compatible append-only behavior for legacy configs/env.
-        additional = _string_config_value(config.get("AA_ADDITIONAL_URLS", ""))
-        if additional:
-            for url in additional.split(","):
-                normalized = _normalize_mirror_url(url)
-                if normalized and normalized not in mirrors:
-                    mirrors.append(normalized)
-
-    return mirrors
+    configured_base_url = normalize_http_url(
+        _string_config_value(_get_config().get("AA_BASE_URL", "auto")),
+        default_scheme="https",
+        allow_special=("auto",),
+    )
+    return bool(configured_base_url and configured_base_url != "auto")
 
 
 def get_libgen_mirrors() -> list[str]:
-    """Get LibGen mirrors: defaults + any additional from config.
+    """Get user-configured LibGen mirrors.
 
     Returns:
-        List of LibGen mirror URLs (defaults first, then custom additions).
+        List of LibGen mirror URLs.
 
     """
-    mirrors = [_normalize_mirror_url(url) for url in DEFAULT_LIBGEN_MIRRORS]
-    mirrors = [url for url in mirrors if url]
     config = _get_config()
+    configured_list = _normalize_configured_urls(config.get("LIBGEN_MIRROR_URLS", None))
+    if configured_list:
+        return configured_list
+    return _normalize_configured_urls(config.get("LIBGEN_ADDITIONAL_URLS", ""))
 
-    additional = _string_config_value(config.get("LIBGEN_ADDITIONAL_URLS", ""))
-    if additional:
-        for url in additional.split(","):
-            normalized = _normalize_mirror_url(url)
-            if normalized and normalized not in mirrors:
-                mirrors.append(normalized)
 
-    return mirrors
+def has_libgen_mirror_configuration() -> bool:
+    """Return True when at least one LibGen mirror URL is configured."""
+    return bool(get_libgen_mirrors())
 
 
 def get_zlib_mirrors() -> list[str]:
-    """Get Z-Library mirrors, with primary first.
+    """Get user-configured Z-Library mirrors, with primary first.
 
     Returns:
         List of Z-Library mirror URLs, primary first.
 
     """
     config = _get_config()
-
-    primary = _normalize_mirror_url(
-        _string_config_value(config.get("ZLIB_PRIMARY_URL", DEFAULT_ZLIB_MIRRORS[0]))
-    )
-    if not primary:
-        primary = _normalize_mirror_url(DEFAULT_ZLIB_MIRRORS[0])
-    mirrors = [primary]
-
-    # Add other defaults (excluding primary)
-    for url in DEFAULT_ZLIB_MIRRORS:
-        normalized = _normalize_mirror_url(url)
-        if normalized and normalized != primary:
-            mirrors.append(normalized)
-
-    # Add custom mirrors
-    additional = _string_config_value(config.get("ZLIB_ADDITIONAL_URLS", ""))
-    if additional:
-        for url in additional.split(","):
-            normalized = _normalize_mirror_url(url)
-            if normalized and normalized not in mirrors:
-                mirrors.append(normalized)
-
-    return mirrors
+    configured_list = _normalize_configured_urls(config.get("ZLIB_MIRROR_URLS", None))
+    if configured_list:
+        return configured_list
+    return _build_primary_and_additional_mirrors("ZLIB_PRIMARY_URL", "ZLIB_ADDITIONAL_URLS")
 
 
-def get_zlib_primary_url() -> str:
+def has_zlib_mirror_configuration() -> bool:
+    """Return True when at least one Z-Library mirror URL is configured."""
+    return bool(get_zlib_mirrors())
+
+
+def get_zlib_primary_url() -> str | None:
     """Get the primary Z-Library mirror URL.
 
     Returns:
-        Primary Z-Library mirror URL.
+        Primary Z-Library mirror URL, if configured.
 
     """
-    config = _get_config()
-    primary = _normalize_mirror_url(
-        _string_config_value(config.get("ZLIB_PRIMARY_URL", DEFAULT_ZLIB_MIRRORS[0]))
-    )
-    return primary or _normalize_mirror_url(DEFAULT_ZLIB_MIRRORS[0])
+    mirrors = get_zlib_mirrors()
+    return mirrors[0] if mirrors else None
 
 
-def get_zlib_url_template() -> str:
+def get_zlib_url_template() -> str | None:
     """Get Z-Library URL template using configured primary mirror.
 
     Returns:
-        URL template with {md5} placeholder.
+        URL template with {md5} placeholder, if configured.
 
     """
     primary = get_zlib_primary_url()
-    return f"{primary}/md5/{{md5}}"
+    return f"{primary}/md5/{{md5}}" if primary else None
 
 
 def get_welib_mirrors() -> list[str]:
-    """Get Welib mirrors, with primary first.
+    """Get user-configured Welib mirrors, with primary first.
 
     Returns:
         List of Welib mirror URLs, primary first.
 
     """
     config = _get_config()
-
-    primary = _normalize_mirror_url(
-        _string_config_value(config.get("WELIB_PRIMARY_URL", DEFAULT_WELIB_MIRRORS[0]))
-    )
-    if not primary:
-        primary = _normalize_mirror_url(DEFAULT_WELIB_MIRRORS[0])
-    mirrors = [primary]
-
-    # Add other defaults (excluding primary)
-    for url in DEFAULT_WELIB_MIRRORS:
-        normalized = _normalize_mirror_url(url)
-        if normalized and normalized != primary:
-            mirrors.append(normalized)
-
-    # Add custom mirrors
-    additional = _string_config_value(config.get("WELIB_ADDITIONAL_URLS", ""))
-    if additional:
-        for url in additional.split(","):
-            normalized = _normalize_mirror_url(url)
-            if normalized and normalized not in mirrors:
-                mirrors.append(normalized)
-
-    return mirrors
+    configured_list = _normalize_configured_urls(config.get("WELIB_MIRROR_URLS", None))
+    if configured_list:
+        return configured_list
+    return _build_primary_and_additional_mirrors("WELIB_PRIMARY_URL", "WELIB_ADDITIONAL_URLS")
 
 
-def get_welib_primary_url() -> str:
+def has_welib_mirror_configuration() -> bool:
+    """Return True when at least one Welib mirror URL is configured."""
+    return bool(get_welib_mirrors())
+
+
+def has_download_source_mirror_configuration(source_id: str) -> bool:
+    """Return True when the requested direct-download source has mirror config."""
+    if source_id in {"aa-fast", "aa-slow", "aa-slow-nowait", "aa-slow-wait"}:
+        return has_aa_mirror_configuration()
+    if source_id == "libgen":
+        return has_libgen_mirror_configuration()
+    if source_id == "zlib":
+        return has_zlib_mirror_configuration()
+    if source_id == "welib":
+        return has_welib_mirror_configuration()
+    return False
+
+
+def get_download_source_missing_mirror_reason(source_id: str) -> str | None:
+    """Return a user-facing reason when a direct-download source has no mirror config."""
+    if has_download_source_mirror_configuration(source_id):
+        return None
+
+    label = _DOWNLOAD_SOURCE_MIRROR_LABELS.get(source_id)
+    if not label:
+        return None
+
+    return f"Add at least one {label} mirror in Mirrors"
+
+
+def get_welib_primary_url() -> str | None:
     """Get the primary Welib mirror URL.
 
     Returns:
-        Primary Welib mirror URL.
+        Primary Welib mirror URL, if configured.
 
     """
-    config = _get_config()
-    primary = _normalize_mirror_url(
-        _string_config_value(config.get("WELIB_PRIMARY_URL", DEFAULT_WELIB_MIRRORS[0]))
-    )
-    return primary or _normalize_mirror_url(DEFAULT_WELIB_MIRRORS[0])
+    mirrors = get_welib_mirrors()
+    return mirrors[0] if mirrors else None
 
 
-def get_welib_url_template() -> str:
+def get_welib_url_template() -> str | None:
     """Get Welib URL template using configured primary mirror.
 
     Returns:
-        URL template with {md5} placeholder.
+        URL template with {md5} placeholder, if configured.
 
     """
     primary = get_welib_primary_url()
-    return f"{primary}/md5/{{md5}}"
+    return f"{primary}/md5/{{md5}}" if primary else None
 
 
 def get_zlib_cookie_domains() -> set:
@@ -254,21 +256,8 @@ def get_zlib_cookie_domains() -> set:
     """
     domains = set()
 
-    # Add all default domains
-    for url in DEFAULT_ZLIB_MIRRORS:
-        normalized = _normalize_mirror_url(url)
-        if normalized:
-            domain = normalized.replace("https://", "").replace("http://", "").split("/")[0]
-            domains.add(domain)
-
-    # Add custom domains
-    config = _get_config()
-    additional = _string_config_value(config.get("ZLIB_ADDITIONAL_URLS", ""))
-    if additional:
-        for url in additional.split(","):
-            normalized = _normalize_mirror_url(url)
-            if normalized:
-                domain = normalized.replace("https://", "").replace("http://", "").split("/")[0]
-                domains.add(domain)
+    for url in get_zlib_mirrors():
+        domain = url.replace("https://", "").replace("http://", "").split("/")[0]
+        domains.add(domain)
 
     return domains

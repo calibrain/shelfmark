@@ -204,7 +204,8 @@ def _try_rotation(
     original_url: str, current_url: str, selector: network.AAMirrorSelector
 ) -> str | None:
     """Try mirror/DNS rotation. Returns new URL or None."""
-    if current_url.startswith(network.get_aa_base_url()):
+    aa_base_url = network.get_aa_base_url()
+    if aa_base_url and current_url.startswith(aa_base_url):
         new_base, action = selector.next_mirror_or_rotate_dns()
         if action in ("mirror", "dns") and new_base:
             new_url = selector.rewrite(original_url)
@@ -538,7 +539,7 @@ def download_url(
                 and not zlib_cookie_refresh_attempted
             ):
                 parsed = urlparse(current_url)
-                if parsed.hostname and "z-lib" in parsed.hostname and referer:
+                if _is_configured_zlib_host(parsed.hostname) and referer:
                     zlib_cookie_refresh_attempted = True
                     logger.info("Z-Library 403 - refreshing cookies via referer: %s", referer)
                     try:
@@ -600,6 +601,24 @@ def download_url(
 
     logger.error("Download failed after %s attempts: %s", MAX_DOWNLOAD_RETRIES, link)
     return None
+
+
+def _is_configured_zlib_host(hostname: str | None) -> bool:
+    """Return True when a hostname matches a configured Z-Library mirror."""
+    if not hostname:
+        return False
+
+    from shelfmark.core.mirrors import get_zlib_cookie_domains
+
+    hostname = hostname.lower()
+    base_domain = ".".join(hostname.split(".")[-2:]) if "." in hostname else hostname
+
+    for domain in get_zlib_cookie_domains():
+        candidate = str(domain).lower()
+        if hostname == candidate or hostname.endswith(f".{candidate}") or base_domain == candidate:
+            return True
+
+    return False
 
 
 def _try_resume(

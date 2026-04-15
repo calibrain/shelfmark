@@ -8,8 +8,8 @@ permissions:
   contents: read
 
 jobs:
-  backend-quality:
-    name: Backend Quality
+  python-quality:
+    name: Python Quality
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -25,23 +25,17 @@ jobs:
       - name: Sync dependencies
         run: make install-python-dev
 
-      - name: Lint backend
+      - name: Lint
         run: make python-lint
 
-      - name: Check backend formatting
-        run: make python-format-check
+      - name: Check formatting
+        run: make python-format
 
-      - name: Check backend dead code
+      - name: Check dead code
         run: make python-dead-code
 
-      - name: Lint tests
-        run: make python-test-lint
-
-      - name: Check test formatting
-        run: make python-test-format-check
-
-  backend-typechecks:
-    name: Backend Typechecks
+  python-typechecks:
+    name: Python Typechecks
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -57,14 +51,11 @@ jobs:
       - name: Sync dependencies
         run: make install-python-dev
 
-      - name: Typecheck backend
+      - name: Typecheck
         run: make python-typecheck
 
-      - name: Typecheck tests
-        run: make python-test-typecheck
-
-  backend-tests:
-    name: Backend Tests
+  python-tests:
+    name: Python Tests
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -81,7 +72,7 @@ jobs:
         run: make install-python-dev
 
       - name: Run tests
-        run: uv run pytest tests/ -x --tb=short -m "not integration and not e2e"
+        run: make python-test
 
   docker-build-check:
     runs-on: ubuntu-latest
@@ -103,7 +94,8 @@ jobs:
             BUILD_VERSION=pr-${{ github.sha }}
             RELEASE_VERSION=pr-${{ github.event.pull_request.number }}
 
-  frontend-checks:
+  frontend-quality:
+    name: Frontend Quality
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -117,21 +109,50 @@ jobs:
           cache-dependency-path: src/frontend/package-lock.json
 
       - name: Install dependencies
-        working-directory: src/frontend
-        run: npm ci
+        run: make install-ci
 
       - name: Lint
-        working-directory: src/frontend
-        run: npm run lint
+        run: make frontend-lint
 
       - name: Check formatting
-        working-directory: src/frontend
-        run: npm run format:check
+        run: make frontend-format
+
+  frontend-typechecks:
+    name: Frontend Typechecks
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Node
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: "npm"
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: make install-ci
 
       - name: Typecheck
-        working-directory: src/frontend
-        run: npm run typecheck
+        run: make frontend-typecheck
+
+  frontend-tests:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+
+      - name: Set up Node
+        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+        with:
+          node-version: 24
+          cache: "npm"
+          cache-dependency-path: src/frontend/package-lock.json
+
+      - name: Install dependencies
+        run: make install-ci
 
       - name: Unit tests
-        working-directory: src/frontend
-        run: npm run test:unit
+        run: make frontend-test

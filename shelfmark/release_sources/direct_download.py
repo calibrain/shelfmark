@@ -7,7 +7,7 @@ import time
 from dataclasses import replace
 from http import HTTPStatus
 from typing import TYPE_CHECKING, ClassVar, NoReturn, TypedDict
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import requests
 from bs4 import BeautifulSoup, Tag
@@ -204,6 +204,24 @@ _CF_BYPASS_REQUIRED = frozenset({"aa-slow-nowait", "aa-slow-wait", "zlib", "weli
 _AA_PAGE_SOURCES = frozenset({"aa-slow-nowait", "aa-slow-wait"})
 
 
+def _is_configured_zlib_link(url: str) -> bool:
+    """Return True when a URL belongs to a configured Z-Library mirror."""
+    from shelfmark.core.mirrors import get_zlib_cookie_domains
+
+    hostname = (urlparse(url).hostname or "").lower()
+    if not hostname:
+        return False
+
+    base_domain = ".".join(hostname.split(".")[-2:]) if "." in hostname else hostname
+
+    for domain in get_zlib_cookie_domains():
+        candidate = str(domain).lower()
+        if hostname == candidate or hostname.endswith(f".{candidate}") or base_domain == candidate:
+            return True
+
+    return False
+
+
 def _get_md5_url_template(source_id: str) -> str | None:
     """Get URL template for MD5-based sources from centralized config."""
     from shelfmark.core import mirrors
@@ -246,6 +264,8 @@ def _get_source_priority() -> list[SourcePriorityEntry]:
     Fast sources come from user config (FAST_SOURCES_DISPLAY).
     Slow sources come from user config.
     """
+    from shelfmark.core import mirrors
+
     fast_sources = _parse_source_priority_entries(
         config.get("FAST_SOURCES_DISPLAY"),
         allowed_ids={"aa-fast", "libgen"},
@@ -253,13 +273,18 @@ def _get_source_priority() -> list[SourcePriorityEntry]:
     has_donator_key = bool(config.get("AA_DONATOR_KEY"))
 
     for source in fast_sources:
-        if source["id"] == "aa-fast" and not has_donator_key:
+        if (not mirrors.has_download_source_mirror_configuration(source["id"])) or (
+            source["id"] == "aa-fast" and not has_donator_key
+        ):
             source["enabled"] = False
 
     slow_sources = _parse_source_priority_entries(
         config.get("SOURCE_PRIORITY"),
         excluded_ids={"aa-fast", "libgen"},
     )
+    for source in slow_sources:
+        if not mirrors.has_download_source_mirror_configuration(source["id"]):
+            source["enabled"] = False
 
     return fast_sources + slow_sources
 
@@ -273,6 +298,31 @@ def _is_source_enabled(source_id: str) -> bool:
         if item["id"] == source_id:
             return item.get("enabled", True)
     return False
+
+
+def _get_direct_download_unavailable_reason() -> str | None:
+    """Return a user-facing reason when Direct Download cannot be used."""
+    from shelfmark.core import mirrors
+
+    if not config.get("DIRECT_DOWNLOAD_ENABLED", False):
+        return (
+            "Direct Download is disabled. Enable the source in Settings and add your mirror URLs."
+        )
+
+    if not mirrors.has_aa_mirror_configuration():
+        return (
+            "Direct Download is not configured. Add at least one Anna's Archive mirror URL in "
+            "Settings."
+        )
+
+    return None
+
+
+def _ensure_direct_download_available() -> None:
+    """Raise a source-unavailable error when Direct Download is disabled or unconfigured."""
+    reason = _get_direct_download_unavailable_reason()
+    if reason:
+        raise SearchUnavailableError(reason)
 
 
 _SIZE_UNIT_PATTERN = re.compile(r"(kb|mb|gb|tb)", re.IGNORECASE)
@@ -907,7 +957,10 @@ def _get_download_urls_from_welib(
 
     if not _is_source_enabled("welib"):
         return []
-    url = mirrors.get_welib_url_template().format(md5=book_id)
+    template = mirrors.get_welib_url_template()
+    if not template:
+        return []
+    url = template.format(md5=book_id)
     logger.info("Fetching welib download URLs for %s", book_id)
     try:
         html = downloader.html_get_page(
@@ -1144,7 +1197,7 @@ def _get_download_url(
     url = ""
 
     # Z-Library
-    if link.startswith("https://z-lib."):
+    if _is_configured_zlib_link(link):
         dl = soup.find("a", href=True, class_="addDownloadedBook")
         if not dl:
             # Retry after delay if page not fully loaded
@@ -1454,6 +1507,7 @@ class DirectDownloadSource(ReleaseSource):
         fetch_download_count: bool = True,
     ) -> BrowseRecord | None:
         """Resolve a direct-download record for direct-mode info/download flows."""
+        _ensure_direct_download_available()
         return get_book_info(record_id, fetch_download_count=fetch_download_count)
 
     def search_results_are_releases(self) -> bool:
@@ -1506,6 +1560,7 @@ class DirectDownloadSource(ReleaseSource):
             content_type: Ignored - Direct download uses format filtering instead
 
         """
+        _ensure_direct_download_available()
         lang_filter = plan.languages
 
         # Reset search type tracking
@@ -1595,8 +1650,8 @@ class DirectDownloadSource(ReleaseSource):
         return [_browse_record_to_release(record) for record in all_results]
 
     def is_available(self) -> bool:
-        """Direct download is always available."""
-        return True
+        """Check if Direct Download has been explicitly enabled and configured."""
+        return _get_direct_download_unavailable_reason() is None
 
 
 @register_handler("direct_download")

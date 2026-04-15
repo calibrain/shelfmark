@@ -1113,10 +1113,10 @@ def api_config() -> Response | tuple[Response, int]:
 
         db_user_id = get_session_db_user_id(session)
 
-        search_mode = app_config.get("SEARCH_MODE", "direct", user_id=db_user_id)
+        search_mode = app_config.get("SEARCH_MODE", "universal", user_id=db_user_id)
         default_release_source = app_config.get(
             "DEFAULT_RELEASE_SOURCE",
-            "direct_download",
+            "",
             user_id=db_user_id,
         )
         default_release_source_audiobook = app_config.get(
@@ -1145,6 +1145,7 @@ def api_config() -> Response | tuple[Response, int]:
         config = {
             "calibre_web_url": app_config.get("CALIBRE_WEB_URL", ""),
             "audiobook_library_url": app_config.get("AUDIOBOOK_LIBRARY_URL", ""),
+            "search_page_title": app_config.get("SEARCH_PAGE_TITLE", "Shelfmark"),
             "debug": app_config.get("DEBUG", False),
             "build_version": BUILD_VERSION,
             "release_version": RELEASE_VERSION,

@@ -924,9 +924,13 @@ def rotate_dns_and_reset_aa() -> bool:
     if configured_url == "auto":
         # Auto mode always resets to the first mirror to restart the cascade
         _current_aa_url_index = 0
-        _aa_base_url = _aa_urls[0] if _aa_urls else "https://annas-archive.gl"
-        logger.info("After DNS switch, resetting AA URL to: %s", _aa_base_url)
-        _save_state(aa_url=_aa_base_url)
+        if _aa_urls:
+            _aa_base_url = _aa_urls[0]
+            logger.info("After DNS switch, resetting AA URL to: %s", _aa_base_url)
+            _save_state(aa_url=_aa_base_url)
+        else:
+            _aa_base_url = ""
+            logger.info("After DNS switch, AA URL remains unconfigured")
     else:
         # Keep the user's configured primary mirror (if it exists in the list),
         # otherwise keep the configured URL as-is (custom/env).
@@ -1104,6 +1108,12 @@ def _initialize_aa_state() -> None:
     # want to treat it as the active base (and rewrite known mirror links to it).
     if configured_url != "auto" and configured_url not in _aa_urls:
         _aa_urls = [configured_url, *_aa_urls]
+
+    if not _aa_urls:
+        _aa_base_url = ""
+        _current_aa_url_index = 0
+        logger.info("AA_BASE_URL: unconfigured")
+        return
 
     if configured_url == "auto":
         if state.get("aa_base_url") and state["aa_base_url"] in _aa_urls:

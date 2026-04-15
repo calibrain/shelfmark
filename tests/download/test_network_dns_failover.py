@@ -81,6 +81,23 @@ def test_rotate_dns_provider_cycles_back_to_first_provider(monkeypatch):
     ]
 
 
+def test_rotate_dns_and_reset_aa_keeps_aa_unconfigured_without_user_mirrors(monkeypatch):
+    network = _set_auto_dns_mode(monkeypatch)
+    events: list[tuple] = []
+
+    monkeypatch.setattr(network, "rotate_dns_provider", lambda: True)
+    monkeypatch.setattr(network, "_get_configured_aa_url", lambda: "auto")
+    monkeypatch.setattr(network, "_aa_urls", [])
+    monkeypatch.setattr(network, "_aa_base_url", "https://legacy-aa.example")
+    monkeypatch.setattr(network, "_current_aa_url_index", 3)
+    monkeypatch.setattr(network, "_save_state", lambda **kwargs: events.append(("save", kwargs)))
+
+    assert network.rotate_dns_and_reset_aa() is True
+    assert network._current_aa_url_index == 0
+    assert network._aa_base_url == ""
+    assert events == []
+
+
 def test_system_failover_getaddrinfo_retries_after_dns_switch(monkeypatch):
     network = _set_auto_dns_mode(monkeypatch)
     calls: list[tuple] = []

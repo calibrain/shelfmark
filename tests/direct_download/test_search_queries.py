@@ -9,6 +9,22 @@ def _browse_record(record_id: str, title: str) -> BrowseRecord:
     return BrowseRecord(id=record_id, title=title, source="direct_download")
 
 
+def _enable_direct_download(monkeypatch):
+    import shelfmark.release_sources.direct_download as dd
+
+    original_get = dd.config.get
+
+    def _fake_get(key: str, default=None, user_id=None):
+        del user_id
+        if key == "DIRECT_DOWNLOAD_ENABLED":
+            return True
+        return original_get(key, default)
+
+    monkeypatch.setattr(dd.config, "get", _fake_get)
+    monkeypatch.setattr("shelfmark.core.mirrors.has_aa_mirror_configuration", lambda: True)
+    return dd
+
+
 class TestDirectDownloadSearchQueries:
     def test_uses_search_title_for_english_queries(self, monkeypatch):
         captured: list[str] = []
@@ -17,7 +33,7 @@ class TestDirectDownloadSearchQueries:
             captured.append(query)
             return []
 
-        import shelfmark.release_sources.direct_download as dd
+        dd = _enable_direct_download(monkeypatch)
 
         monkeypatch.setattr(dd, "search_books", fake_search_books)
 
@@ -59,7 +75,7 @@ class TestDirectDownloadSearchQueries:
             captured.append((query, filters.lang))
             return records_by_query[query]
 
-        import shelfmark.release_sources.direct_download as dd
+        dd = _enable_direct_download(monkeypatch)
 
         monkeypatch.setattr(dd, "search_books", fake_search_books)
 
@@ -103,7 +119,7 @@ class TestDirectDownloadSearchQueries:
                 return []
             return fallback_results[query]
 
-        import shelfmark.release_sources.direct_download as dd
+        dd = _enable_direct_download(monkeypatch)
 
         monkeypatch.setattr(dd, "search_books", fake_search_books)
 
@@ -141,7 +157,7 @@ class TestDirectDownloadSearchQueries:
                 return []
             return [_browse_record("manual-1", "Manual result")]
 
-        import shelfmark.release_sources.direct_download as dd
+        dd = _enable_direct_download(monkeypatch)
 
         monkeypatch.setattr(dd, "search_books", fake_search_books)
 

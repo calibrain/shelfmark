@@ -277,3 +277,79 @@ def test_execute_action_passes_unsaved_values_to_destination_test(tmp_path):
 
     assert result["success"] is True
     assert captured["path"] == destination
+
+
+def test_search_mode_defaults_to_universal_and_direct_mentions_configuration():
+    from shelfmark.config.settings import search_mode_settings
+
+    fields = search_mode_settings()
+    search_mode_field = next(
+        field for field in fields if getattr(field, "key", None) == "SEARCH_MODE"
+    )
+    direct_option = next(
+        option for option in search_mode_field.options if option["value"] == "direct"
+    )
+
+    assert search_mode_field.default == "universal"
+    assert "mirror URLs" in direct_option["description"]
+
+
+def test_download_source_settings_include_direct_download_toggle():
+    from shelfmark.config.settings import download_source_settings
+
+    fields = download_source_settings()
+    toggle_field = next(
+        field for field in fields if getattr(field, "key", None) == "DIRECT_DOWNLOAD_ENABLED"
+    )
+
+    assert toggle_field.default is False
+    assert "Add your own mirror URLs" in toggle_field.description
+
+
+def test_fast_source_options_lock_entries_without_mirror_or_donator_requirements(monkeypatch):
+    from shelfmark.config.settings import _get_fast_source_options
+
+    def _fake_get(key: str, default=None, user_id=None):
+        del user_id
+        values = {
+            "AA_DONATOR_KEY": "",
+        }
+        return values.get(key, default)
+
+    monkeypatch.setattr("shelfmark.core.config.config.get", _fake_get)
+    monkeypatch.setattr("shelfmark.core.mirrors.has_aa_mirror_configuration", lambda: False)
+    monkeypatch.setattr("shelfmark.core.mirrors.has_libgen_mirror_configuration", lambda: True)
+
+    options = {option["id"]: option for option in _get_fast_source_options()}
+
+    assert options["aa-fast"]["isLocked"] is True
+    assert (
+        options["aa-fast"]["disabledReason"] == "Add at least one Anna's Archive mirror in Mirrors"
+    )
+    assert options["libgen"]["isLocked"] is False
+    assert options["libgen"]["disabledReason"] is None
+
+
+def test_slow_source_options_lock_entries_until_mirror_dependencies_exist(monkeypatch):
+    from shelfmark.config.settings import _get_slow_source_options
+
+    def _fake_get(key: str, default=None, user_id=None):
+        del user_id
+        values = {
+            "USE_CF_BYPASS": True,
+        }
+        return values.get(key, default)
+
+    monkeypatch.setattr("shelfmark.core.config.config.get", _fake_get)
+    monkeypatch.setattr("shelfmark.core.mirrors.has_aa_mirror_configuration", lambda: True)
+    monkeypatch.setattr("shelfmark.core.mirrors.has_welib_mirror_configuration", lambda: False)
+    monkeypatch.setattr("shelfmark.core.mirrors.has_zlib_mirror_configuration", lambda: False)
+
+    options = {option["id"]: option for option in _get_slow_source_options()}
+
+    assert options["aa-slow-nowait"]["isLocked"] is False
+    assert options["aa-slow-wait"]["isLocked"] is False
+    assert options["welib"]["isLocked"] is True
+    assert options["welib"]["disabledReason"] == "Add at least one Welib mirror in Mirrors"
+    assert options["zlib"]["isLocked"] is True
+    assert options["zlib"]["disabledReason"] == "Add at least one Z-Library mirror in Mirrors"

@@ -3,7 +3,7 @@ import { useState, useCallback, useMemo } from 'react';
 import { useBodyScrollLock } from '../hooks/useBodyScrollLock';
 import { useEscapeKey } from '../hooks/useEscapeKey';
 import { useMountEffect } from '../hooks/useMountEffect';
-import type { OnboardingStep } from '../services/api';
+import type { OnboardingStep, OnboardingStepCondition } from '../services/api';
 import {
   getOnboarding,
   saveOnboarding,
@@ -32,8 +32,10 @@ interface OnboardingModalProps {
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
+type VisibilityCondition = ShowWhenCondition | OnboardingStepCondition;
+
 function evaluateShowWhenCondition(
-  showWhen: ShowWhenCondition,
+  showWhen: VisibilityCondition,
   values: Record<string, unknown>,
 ): boolean {
   const currentValue = values[showWhen.field];
@@ -45,9 +47,19 @@ function evaluateShowWhenCondition(
     return currentValue !== undefined && currentValue !== null && currentValue !== '';
   }
 
-  return Array.isArray(showWhen.value)
-    ? typeof currentValue === 'string' && showWhen.value.includes(currentValue)
-    : currentValue === showWhen.value;
+  if (Array.isArray(currentValue)) {
+    if (Array.isArray(showWhen.value)) {
+      return showWhen.value.every((value) => currentValue.includes(value));
+    }
+    return showWhen.value !== undefined && currentValue.includes(showWhen.value);
+  }
+
+  if (Array.isArray(showWhen.value)) {
+    const currentStringValue = toStringValue(currentValue);
+    return currentStringValue !== undefined && showWhen.value.includes(currentStringValue);
+  }
+
+  return currentValue === showWhen.value;
 }
 
 // Check if a field should be visible based on showWhen condition
@@ -70,11 +82,7 @@ function isFieldVisible(field: SettingsField, values: Record<string, unknown>): 
 function isStepVisible(step: OnboardingStep, values: Record<string, unknown>): boolean {
   if (!step.showWhen || step.showWhen.length === 0) return true;
 
-  // All conditions must be true (AND logic)
-  return step.showWhen.every((condition) => {
-    const currentValue = values[condition.field];
-    return currentValue === condition.value;
-  });
+  return step.showWhen.every((condition) => evaluateShowWhenCondition(condition, values));
 }
 
 // Render the appropriate field component based on type
@@ -240,8 +248,12 @@ const OnboardingModalSession = ({
     return steps.filter((step) => isStepVisible(step, values));
   }, [steps, values]);
 
+  // Clamp step index to valid range (handles steps becoming hidden)
+  const clampedStepIndex =
+    visibleSteps.length === 0 ? 0 : Math.min(currentStepIndex, visibleSteps.length - 1);
+
   // Get current step
-  const currentStep = visibleSteps[currentStepIndex];
+  const currentStep = visibleSteps[clampedStepIndex];
 
   // Get visible fields for current step
   const visibleFields = useMemo(() => {
@@ -256,17 +268,17 @@ const OnboardingModalSession = ({
 
   // Handle next step
   const handleNext = useCallback(() => {
-    if (currentStepIndex < visibleSteps.length - 1) {
-      setCurrentStepIndex(currentStepIndex + 1);
+    if (clampedStepIndex < visibleSteps.length - 1) {
+      setCurrentStepIndex(clampedStepIndex + 1);
     }
-  }, [currentStepIndex, visibleSteps.length]);
+  }, [clampedStepIndex, visibleSteps.length]);
 
   // Handle previous step
   const handleBack = useCallback(() => {
-    if (currentStepIndex > 0) {
-      setCurrentStepIndex(currentStepIndex - 1);
+    if (clampedStepIndex > 0) {
+      setCurrentStepIndex(clampedStepIndex - 1);
     }
-  }, [currentStepIndex]);
+  }, [clampedStepIndex]);
 
   // Handle skip
   const handleSkip = useCallback(async () => {
@@ -399,9 +411,9 @@ const OnboardingModalSession = ({
     );
   }
 
-  const isFirstStep = currentStepIndex === 0;
-  const isLastStep = currentStepIndex === visibleSteps.length - 1;
-  const progress = ((currentStepIndex + 1) / visibleSteps.length) * 100;
+  const isFirstStep = clampedStepIndex === 0;
+  const isLastStep = clampedStepIndex === visibleSteps.length - 1;
+  const progress = ((clampedStepIndex + 1) / visibleSteps.length) * 100;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
@@ -412,72 +424,76 @@ const OnboardingModalSession = ({
 
       {/* Modal */}
       <div
-        className={`relative w-full max-w-xl rounded-xl border border-(--border-muted) shadow-2xl ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
+        className={`relative flex max-h-[min(85vh,750px)] w-full max-w-xl flex-col overflow-hidden rounded-xl border border-(--border-muted) shadow-2xl ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
         style={{ background: 'var(--bg)' }}
         role="dialog"
         aria-modal="true"
         aria-label="Setup Wizard"
       >
-        {/* Header */}
-        <div className="flex items-center justify-between border-b border-(--border-muted) px-6 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-500/20 text-sm font-medium text-sky-500">
-              {currentStepIndex + 1}
+        <div className="flex-shrink-0">
+          {/* Header */}
+          <div className="flex items-center justify-between border-b border-(--border-muted) px-6 py-4">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-sky-500/20 text-sm font-medium text-sky-500">
+                {clampedStepIndex + 1}
+              </div>
+              <div>
+                <h2 className="text-lg font-semibold">{currentStep?.title || 'Setup'}</h2>
+                <p className="text-xs opacity-60">
+                  Step {clampedStepIndex + 1} of {visibleSteps.length}
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-lg font-semibold">{currentStep?.title || 'Setup'}</h2>
-              <p className="text-xs opacity-60">
-                Step {currentStepIndex + 1} of {visibleSteps.length}
-              </p>
-            </div>
-          </div>
-          <button
-            type="button"
-            onClick={handleClose}
-            className="rounded-lg p-1.5 transition-colors hover:bg-(--hover-surface)"
-            aria-label="Close"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-              className="h-5 w-5"
+            <button
+              type="button"
+              onClick={handleClose}
+              className="rounded-lg p-1.5 transition-colors hover:bg-(--hover-surface)"
+              aria-label="Close"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-            </svg>
-          </button>
-        </div>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                className="h-5 w-5"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+              </svg>
+            </button>
+          </div>
 
-        {/* Progress bar */}
-        <div className="h-1 bg-(--bg-soft)">
-          <div
-            className="h-full bg-sky-500 transition-all duration-300"
-            style={{ width: `${progress}%` }}
-          />
+          {/* Progress bar */}
+          <div className="h-1 bg-(--bg-soft)">
+            <div
+              className="h-full bg-sky-500 transition-all duration-300"
+              style={{ width: `${progress}%` }}
+            />
+          </div>
         </div>
 
         {/* Content */}
-        <div className="min-h-[280px] space-y-5 px-6 py-5">
-          {visibleFields.map((field) => {
-            const isDisabled = 'fromEnv' in field ? (field.fromEnv ?? false) : false;
-            return (
-              <FieldWrapper key={field.key} field={field}>
-                {renderField(
-                  field,
-                  values[field.key],
-                  (v) => handleChange(field.key, v),
-                  () => handleAction(field.key),
-                  isDisabled,
-                )}
-              </FieldWrapper>
-            );
-          })}
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="min-h-[280px] space-y-5 px-6 py-5">
+            {visibleFields.map((field) => {
+              const isDisabled = 'fromEnv' in field ? (field.fromEnv ?? false) : false;
+              return (
+                <FieldWrapper key={field.key} field={field}>
+                  {renderField(
+                    field,
+                    values[field.key],
+                    (v) => handleChange(field.key, v),
+                    () => handleAction(field.key),
+                    isDisabled,
+                  )}
+                </FieldWrapper>
+              );
+            })}
+          </div>
         </div>
 
         {/* Footer */}
-        <div className="flex h-[68px] items-center justify-between border-t border-(--border-muted) px-6 py-4">
+        <div className="flex h-[68px] flex-shrink-0 items-center justify-between border-t border-(--border-muted) px-6 py-4">
           <div>
             <button
               type="button"

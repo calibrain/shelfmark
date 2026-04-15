@@ -46,7 +46,7 @@ export const UrlSearchBootstrapMount = ({
   useMountEffect(() => {
     onComplete();
 
-    const parsedSearchMode = config.search_mode || 'direct';
+    const parsedSearchMode = config.search_mode || 'universal';
     const urlContentTypeOverride =
       parsedSearchMode === 'universal' ? parsedParams.contentType : undefined;
 

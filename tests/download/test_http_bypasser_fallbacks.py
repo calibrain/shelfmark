@@ -69,6 +69,7 @@ def test_download_url_ignores_zlib_cookie_refresh_failure(monkeypatch):
     import shelfmark.download.http as http
 
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
+    monkeypatch.setattr(http, "_is_configured_zlib_host", lambda hostname: hostname == "z-lib.fm")
     monkeypatch.setattr(http, "get_proxies", lambda _url: {})
     monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
 

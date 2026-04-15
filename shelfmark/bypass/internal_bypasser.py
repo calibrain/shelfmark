@@ -218,13 +218,17 @@ DDG_COOKIE_NAMES = {
     "ddg_last_challenge",
 }
 
-# Domains requiring full session cookies (not just protection cookies)
-FULL_COOKIE_DOMAINS = {"z-lib.fm", "z-lib.gs", "z-lib.id", "z-library.sk", "zlibrary-global.se"}
-
 
 def _get_base_domain(domain: str) -> str:
     """Extract base domain from hostname (e.g., 'www.example.com' -> 'example.com')."""
     return ".".join(domain.split(".")[-2:]) if "." in domain else domain
+
+
+def _get_full_cookie_domains() -> set[str]:
+    """Return mirror domains that need full-session cookie extraction."""
+    from shelfmark.core.mirrors import get_zlib_cookie_domains
+
+    return {_get_base_domain(domain) for domain in get_zlib_cookie_domains()}
 
 
 def _should_extract_cookie(name: str, *, extract_all: bool) -> bool:
@@ -249,7 +253,7 @@ def _store_extracted_cookies(
         return
 
     base_domain = _get_base_domain(domain)
-    extract_all = base_domain in FULL_COOKIE_DOMAINS
+    extract_all = base_domain in _get_full_cookie_domains()
 
     cookies_found: dict[str, dict[str, Any]] = {}
     for cookie in cookies:

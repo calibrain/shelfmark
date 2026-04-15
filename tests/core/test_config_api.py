@@ -42,6 +42,7 @@ def test_config_endpoint_uses_user_scope_and_runtime_flags(main_module, client):
             "SHOW_RELEASE_SOURCE_LINKS": False,
             "SHOW_COMBINED_SELECTOR": False,
             "SEARCH_MODE": "universal",
+            "SEARCH_PAGE_TITLE": "Custom Shelfmark",
             "METADATA_PROVIDER": "openlibrary",
             "METADATA_PROVIDER_AUDIOBOOK": "",
             "DEFAULT_RELEASE_SOURCE": "prowlarr",
@@ -68,6 +69,7 @@ def test_config_endpoint_uses_user_scope_and_runtime_flags(main_module, client):
     assert data["show_release_source_links"] is False
     assert data["show_combined_selector"] is False
     assert data["search_mode"] == "universal"
+    assert data["search_page_title"] == "Custom Shelfmark"
     assert data["metadata_sort_options"] == ["sort-a"]
     assert data["metadata_search_fields"] == ["field-a"]
     assert data["default_release_source"] == "prowlarr"
