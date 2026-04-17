@@ -36,7 +36,7 @@ There are three categories of per-user settings:
 
 Override where a user's downloads are sent. Options depend on the global output mode configuration:
 
-- **Output mode** — Folder, Email (SMTP), or BookLore (API)
+- **Output mode** — Folder, Email (SMTP), BookLore (API), or Litara (API)
 - **Destination** — A custom folder path for this user's ebook downloads
 - **Audiobook destination** — A custom folder path for audiobook downloads
 - **BookLore library/path** — Per-user BookLore target (when using BookLore output mode)

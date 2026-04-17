@@ -21,6 +21,7 @@ const modeOptions = [
   { value: 'folder', label: 'Folder' },
   { value: 'email', label: 'Email (SMTP)' },
   { value: 'booklore', label: 'Grimmory (API)' },
+  { value: 'litara', label: 'Litara (API)' },
 ];
 
 const fallbackOutputModeField: SelectFieldConfig = {
@@ -93,9 +94,9 @@ const fallbackBrowserDownloadField: MultiSelectFieldConfig = {
 
 type DeliverySettingKey = keyof PerUserSettings;
 
-function normalizeMode(value: unknown): 'folder' | 'booklore' | 'email' {
+function normalizeMode(value: unknown): 'folder' | 'booklore' | 'email' | 'litara' {
   const mode = toNormalizedLowercaseTextValue(value);
-  if (mode === 'booklore' || mode === 'email') {
+  if (mode === 'booklore' || mode === 'email' || mode === 'litara') {
     return mode;
   }
   return 'folder';

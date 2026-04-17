@@ -15,6 +15,7 @@ from shelfmark.config.download_settings_handlers import (
     check_books_destination,
 )
 from shelfmark.config.email_settings import check_email_connection
+from shelfmark.config.litara_settings import check_litara_connection
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import (
     ActionButton,
@@ -875,6 +876,11 @@ def download_settings() -> list[SettingsField]:
                     "label": "Grimmory (API)",
                     "description": "Upload files directly to Grimmory",
                 },
+                {
+                    "value": "litara",
+                    "label": "Litara (API)",
+                    "description": "Upload files directly to Litara",
+                },
             ],
             default="folder",
             user_overridable=True,
@@ -1044,6 +1050,42 @@ def download_settings() -> list[SettingsField]:
             style="primary",
             callback=check_booklore_connection,
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "booklore"},
+        ),
+        HeadingField(
+            key="litara_heading",
+            title="Litara",
+            description="Upload books directly to Litara Book Drop via API. Audiobooks are not supported and will use folder mode.",
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "litara"},
+        ),
+        TextField(
+            key="LITARA_HOST",
+            label="Litara URL",
+            description="Base URL of your Litara instance",
+            placeholder="http://litara:3000",
+            required=True,
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "litara"},
+        ),
+        TextField(
+            key="LITARA_EMAIL",
+            label="Email",
+            description="Litara account email address",
+            required=True,
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "litara"},
+        ),
+        PasswordField(
+            key="LITARA_PASSWORD",
+            label="Password",
+            description="Litara account password",
+            required=True,
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "litara"},
+        ),
+        ActionButton(
+            key="test_litara",
+            label="Test Connection",
+            description="Verify your Litara configuration",
+            style="primary",
+            callback=check_litara_connection,
+            show_when={"field": "BOOKS_OUTPUT_MODE", "value": "litara"},
         ),
         HeadingField(
             key="email_heading",

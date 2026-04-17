@@ -74,6 +74,7 @@ def load_output_handlers() -> None:
     from . import booklore as booklore
     from . import email as email
     from . import folder as folder
+    from . import litara as litara
 
     _OUTPUTS_LOADED = True
 

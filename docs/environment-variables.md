@@ -303,6 +303,9 @@ The release source tab to open by default in the release modal for audiobooks. U
 | `BOOKLORE_DESTINATION` | Choose whether uploads go directly to a specific library path or to Bookdrop for review. | string (choice) | `library` |
 | `BOOKLORE_LIBRARY_ID` | Grimmory library to upload into. | string (choice) | _none_ |
 | `BOOKLORE_PATH_ID` | Grimmory library path for uploads. | string (choice) | _none_ |
+| `LITARA_HOST` | Base URL of your Litara instance | string | _none_ |
+| `LITARA_EMAIL` | Litara account email address | string | _none_ |
+| `LITARA_PASSWORD` | Litara account password | string (secret) | _none_ |
 | `EMAIL_RECIPIENT` | Optional fallback email address when no per-user email recipient override is configured. | string | _none_ |
 | `EMAIL_ATTACHMENT_SIZE_LIMIT_MB` | Maximum total attachment size per email. Email encoding adds overhead; keep this below your provider's limit. | number | `25` |
 | `EMAIL_SMTP_HOST` | SMTP server hostname or IP (e.g., smtp.gmail.com). | string | _none_ |
@@ -335,7 +338,7 @@ Choose where completed book files are sent.
 
 - **Type:** string (choice)
 - **Default:** `folder`
-- **Options:** `folder` (Folder), `email` (Email (SMTP)), `booklore` (Grimmory (API))
+- **Options:** `folder` (Folder), `email` (Email (SMTP)), `booklore` (Grimmory (API)), `litara` (Litara (API))
 
 #### `INGEST_DIR`
 
@@ -441,6 +444,36 @@ Grimmory library to upload into.
 Grimmory library path for uploads.
 
 - **Type:** string (choice)
+- **Default:** _none_
+- **Required:** Yes
+
+#### `LITARA_HOST`
+
+**Litara URL**
+
+Base URL of your Litara instance
+
+- **Type:** string
+- **Default:** _none_
+- **Required:** Yes
+
+#### `LITARA_EMAIL`
+
+**Email**
+
+Litara account email address
+
+- **Type:** string
+- **Default:** _none_
+- **Required:** Yes
+
+#### `LITARA_PASSWORD`
+
+**Password**
+
+Litara account password
+
+- **Type:** string (secret)
 - **Default:** _none_
 - **Required:** Yes
 
