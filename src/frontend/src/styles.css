@@ -589,6 +589,11 @@
     will-change: transform, opacity;
   }
 
+  .release-modal-no-step-animation,
+  .release-modal-no-step-animation * {
+    animation: none !important;
+  }
+
   .settings-modal-exit {
     animation: settings-modal-exit 0.15s ease-in;
     -webkit-backface-visibility: hidden;

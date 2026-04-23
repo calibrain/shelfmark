@@ -19,7 +19,7 @@ import {
   invalidateCachedReleases,
   setCachedReleases,
 } from '../../utils/releaseCache';
-import { useMountEffect } from '../useMountEffect';
+import { useDependencyEffect, useMountEffect } from '../useMountEffect';
 
 interface ReleaseModalTabInfo {
   name: string;
@@ -325,10 +325,6 @@ export function useReleaseSearchSession(
     ],
   );
   useMountEffect(() => {
-    if (!book) {
-      return undefined;
-    }
-
     let cancelled = false;
 
     const fetchSources = async () => {
@@ -339,25 +335,7 @@ export function useReleaseSearchSession(
         if (cancelled) {
           return;
         }
-
         setAvailableSources(sources);
-
-        const tabs = buildReleaseTabs(
-          sources,
-          book.provider,
-          contentType,
-          preferredDefaultReleaseSource,
-        );
-        const initialActiveTab = initialActiveTabRef.current;
-        const nextActiveTab = tabs.some((tab) => tab.name === initialActiveTab)
-          ? initialActiveTab
-          : (tabs[0]?.name ?? '');
-
-        setActiveTabState(nextActiveTab);
-
-        if (nextActiveTab) {
-          void fetchReleaseResults(nextActiveTab, { force: false });
-        }
       } catch (err) {
         console.error('Failed to fetch release sources:', err);
         if (!cancelled) {
@@ -376,6 +354,60 @@ export function useReleaseSearchSession(
       cancelled = true;
     };
   });
+
+  useDependencyEffect(() => {
+    if (sourcesLoading) {
+      return undefined;
+    }
+
+    indexerFilterInitializedRef.current = new Set<string>();
+    const nextInitialActiveTab = preferredDefaultReleaseSource || '';
+    initialActiveTabRef.current = nextInitialActiveTab;
+    activeTabRef.current = nextInitialActiveTab;
+    pendingStatusRef.current = null;
+    lastStatusTimeRef.current = 0;
+    if (statusTimeoutRef.current) {
+      clearTimeout(statusTimeoutRef.current);
+      statusTimeoutRef.current = null;
+    }
+
+    const tabs = buildReleaseTabs(
+      availableSources,
+      book.provider,
+      contentType,
+      preferredDefaultReleaseSource,
+    );
+    const nextActiveTab = tabs.some((tab) => tab.name === nextInitialActiveTab)
+      ? nextInitialActiveTab
+      : (tabs[0]?.name ?? '');
+
+    setActiveTabState(nextActiveTab);
+    setReleasesBySource({});
+    setLoadingBySource({});
+    setErrorBySource({});
+    setExpandedBySource({});
+    setSearchStatus(null);
+    setFormatFilter('');
+    setLanguageFilter([LANGUAGE_OPTION_DEFAULT]);
+    setIndexerFilter([]);
+    setManualQuery(defaultShowManualQuery ? defaultManualQuery : '');
+    setShowManualQuery(defaultShowManualQuery);
+
+    if (nextActiveTab) {
+      void fetchReleaseResults(nextActiveTab, { force: true });
+    }
+
+    return undefined;
+  }, [
+    availableSources,
+    book.id,
+    book.provider,
+    contentType,
+    defaultManualQuery,
+    defaultShowManualQuery,
+    preferredDefaultReleaseSource,
+    sourcesLoading,
+  ]);
 
   useMountEffect(() => {
     if (!book || !socket) {
