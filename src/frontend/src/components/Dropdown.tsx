@@ -4,30 +4,22 @@ import { createPortal } from 'react-dom';
 
 import { useDismiss } from '../hooks/useDismiss';
 
-// Simple throttle function to limit how often a function can be called
-function throttle<Args extends unknown[]>(
-  fn: (...args: Args) => void,
-  delay: number,
-): (...args: Args) => void {
-  let lastCall = 0;
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+const FIXED_DROPDOWN_Z_INDEX = 1050;
+const DROPDOWN_GAP_PX = 8;
 
-  return (...args: Args) => {
-    const now = Date.now();
-    const timeSinceLastCall = now - lastCall;
+function getPositioningAncestor(element: HTMLElement | null): HTMLElement | null {
+  let current = element?.parentElement;
 
-    if (timeSinceLastCall >= delay) {
-      lastCall = now;
-      fn(...args);
-    } else if (!timeoutId) {
-      // Schedule a trailing call
-      timeoutId = setTimeout(() => {
-        lastCall = Date.now();
-        timeoutId = null;
-        fn(...args);
-      }, delay - timeSinceLastCall);
+  while (current) {
+    const style = getComputedStyle(current);
+    const overflowY = style.overflowY;
+    if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'hidden') {
+      return current;
     }
-  };
+    current = current.parentElement;
+  }
+
+  return null;
 }
 
 interface DropdownProps {
@@ -43,6 +35,7 @@ interface DropdownProps {
   /** Disable max-height and overflow scrolling (for panels with nested dropdowns) */
   noScrollLimit?: boolean;
   triggerChrome?: 'default' | 'minimal';
+  positionStrategy?: 'absolute' | 'fixed';
   onOpenChange?: (isOpen: boolean) => void;
 }
 
@@ -58,6 +51,7 @@ export const Dropdown = ({
   renderTrigger,
   noScrollLimit = false,
   triggerChrome = 'default',
+  positionStrategy = 'absolute',
   onOpenChange,
 }: DropdownProps) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -65,7 +59,9 @@ export const Dropdown = ({
   const triggerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
   const [panelDirection, setPanelDirection] = useState<'down' | 'up'>('down');
-  const [panelPos, setPanelPos] = useState({ top: 0, left: 0, width: 0 });
+  const [resolvedAlign, setResolvedAlign] = useState<'left' | 'right'>(
+    align === 'right' ? 'right' : 'left',
+  );
 
   let triggerBorderRadius = '0.5rem';
   if (triggerChrome === 'minimal') {
@@ -77,6 +73,13 @@ export const Dropdown = ({
   let panelBorderRadius = '0.5rem';
   if (!renderTrigger) {
     panelBorderRadius = panelDirection === 'down' ? '0 0 0.5rem 0.5rem' : '0.5rem 0.5rem 0 0';
+  }
+
+  let panelOffsetClassName = 'top-full -mt-px';
+  if (panelDirection === 'down') {
+    panelOffsetClassName = renderTrigger ? 'top-full mt-2' : 'top-full -mt-px';
+  } else {
+    panelOffsetClassName = renderTrigger ? 'bottom-full mb-2' : 'bottom-full -mb-px';
   }
 
   const toggleOpen = () => {
@@ -95,63 +98,143 @@ export const Dropdown = ({
 
   useDismiss(isOpen, [containerRef, panelRef], close);
 
-  // Compute panel direction and fixed position relative to the trigger
-  const updatePanelPosition = useCallback(() => {
+  const updatePanelLayout = useCallback(() => {
     if (!triggerRef.current || !panelRef.current) return;
 
     const rect = triggerRef.current.getBoundingClientRect();
-    const panelHeight = panelRef.current.offsetHeight || panelRef.current.scrollHeight;
-    const panelWidth = panelRef.current.offsetWidth || panelRef.current.scrollWidth;
+    const panelElement = panelRef.current;
+    const boundaryRect =
+      positionStrategy === 'absolute'
+        ? getPositioningAncestor(containerRef.current)?.getBoundingClientRect()
+        : undefined;
 
-    // Direction: flip up if not enough space below but enough above
-    const spaceBelow = window.innerHeight - rect.bottom - 8;
-    const spaceAbove = rect.top - 8;
-    const shouldOpenUp = spaceBelow < panelHeight && spaceAbove >= panelHeight;
-    setPanelDirection(shouldOpenUp ? 'up' : 'down');
-
-    // Vertical: seamless trigger uses -1px border overlap, custom trigger uses 8px gap
-    let top: number;
-    if (shouldOpenUp) {
-      top = renderTrigger ? rect.top - panelHeight - 8 : rect.top - panelHeight + 1;
+    if (positionStrategy === 'fixed' && !panelClassName) {
+      panelElement.style.width = `${rect.width}px`;
     } else {
-      top = renderTrigger ? rect.bottom + 8 : rect.bottom - 1;
+      panelElement.style.removeProperty('width');
     }
 
-    // Horizontal alignment
-    let left: number;
+    const panelHeight = panelElement.offsetHeight || panelElement.scrollHeight;
+    const panelWidth = panelElement.offsetWidth || panelElement.scrollWidth;
+    const boundaryTop = boundaryRect?.top ?? 0;
+    const boundaryRight = boundaryRect?.right ?? window.innerWidth;
+    const boundaryBottom = boundaryRect?.bottom ?? window.innerHeight;
+    const boundaryLeft = boundaryRect?.left ?? 0;
+
+    // Direction: flip up if not enough space below but enough above
+    const spaceBelow = boundaryBottom - rect.bottom - DROPDOWN_GAP_PX;
+    const spaceAbove = rect.top - boundaryTop - DROPDOWN_GAP_PX;
+    const shouldOpenUp = spaceBelow < panelHeight && spaceAbove >= panelHeight;
+    const nextDirection = shouldOpenUp ? 'up' : 'down';
+    setPanelDirection((current) => (current === nextDirection ? current : nextDirection));
+
+    let nextAlign: 'left' | 'right';
     if (align === 'auto') {
-      const overflowsRight = rect.left + panelWidth > window.innerWidth - 8;
-      const overflowsLeft = rect.right - panelWidth < 8;
-      left =
-        overflowsRight && !overflowsLeft
-          ? rect.right - Math.max(panelWidth, rect.width)
-          : rect.left;
-    } else if (align === 'right') {
+      const overflowsRight = rect.left + panelWidth > boundaryRight - DROPDOWN_GAP_PX;
+      const overflowsLeft = rect.right - panelWidth < boundaryLeft + DROPDOWN_GAP_PX;
+      nextAlign = overflowsRight && !overflowsLeft ? 'right' : 'left';
+    } else {
+      nextAlign = align === 'right' ? 'right' : 'left';
+    }
+    setResolvedAlign((current) => (current === nextAlign ? current : nextAlign));
+
+    if (positionStrategy !== 'fixed') {
+      panelElement.style.removeProperty('top');
+      panelElement.style.removeProperty('left');
+      return;
+    }
+
+    // Fixed-position panels need explicit viewport coordinates.
+    let top: number;
+    if (shouldOpenUp) {
+      top = renderTrigger ? rect.top - panelHeight - DROPDOWN_GAP_PX : rect.top - panelHeight + 1;
+    } else {
+      top = renderTrigger ? rect.bottom + DROPDOWN_GAP_PX : rect.bottom - 1;
+    }
+
+    let left: number;
+    if (nextAlign === 'right') {
       left = rect.right - Math.max(panelWidth, rect.width);
     } else {
       left = rect.left;
     }
 
-    setPanelPos({ top, left, width: rect.width });
-  }, [align, renderTrigger]);
+    panelElement.style.top = `${top}px`;
+    panelElement.style.left = `${left}px`;
+  }, [align, panelClassName, positionStrategy, renderTrigger]);
 
   useLayoutEffect(() => {
     if (!isOpen) {
       return undefined;
     }
 
-    // Throttle scroll/resize handlers to reduce layout thrashing
-    const throttledUpdate = throttle(updatePanelPosition, 100);
+    updatePanelLayout();
+    window.addEventListener('resize', updatePanelLayout);
+    window.addEventListener('scroll', updatePanelLayout, true);
 
-    updatePanelPosition();
-    window.addEventListener('resize', throttledUpdate);
-    window.addEventListener('scroll', throttledUpdate, true);
+    const resizeObserver =
+      typeof ResizeObserver === 'undefined'
+        ? null
+        : new ResizeObserver(() => {
+            updatePanelLayout();
+          });
+    if (resizeObserver) {
+      if (triggerRef.current) {
+        resizeObserver.observe(triggerRef.current);
+      }
+      if (panelRef.current) {
+        resizeObserver.observe(panelRef.current);
+      }
+    }
 
     return () => {
-      window.removeEventListener('resize', throttledUpdate);
-      window.removeEventListener('scroll', throttledUpdate, true);
+      resizeObserver?.disconnect();
+      window.removeEventListener('resize', updatePanelLayout);
+      window.removeEventListener('scroll', updatePanelLayout, true);
     };
-  }, [isOpen, updatePanelPosition]);
+  }, [isOpen, updatePanelLayout]);
+
+  const panelChromeClassName = `border ${panelDirection === 'down' ? 'shadow-lg' : ''}`;
+  const panelContent = (
+    <div className={noScrollLimit ? '' : 'max-h-64 overflow-auto'}>{children({ close })}</div>
+  );
+
+  const absolutePanel =
+    isOpen && positionStrategy === 'absolute' ? (
+      <div
+        ref={panelRef}
+        className={`absolute ${resolvedAlign === 'right' ? 'right-0' : 'left-0'} ${panelOffsetClassName} z-50 ${panelChromeClassName} ${panelClassName || widthClassName}`}
+        style={{
+          background: 'var(--bg)',
+          borderColor: 'var(--border-muted)',
+          borderRadius: panelBorderRadius,
+        }}
+      >
+        {panelContent}
+      </div>
+    ) : null;
+
+  const fixedPanel =
+    isOpen && positionStrategy === 'fixed' && typeof document !== 'undefined'
+      ? createPortal(
+          <div
+            ref={panelRef}
+            className={`${panelChromeClassName} ${panelClassName ?? ''}`}
+            style={{
+              position: 'fixed',
+              top: 0,
+              left: 0,
+              zIndex: FIXED_DROPDOWN_Z_INDEX,
+              background: 'var(--bg)',
+              borderColor: 'var(--border-muted)',
+              borderRadius: panelBorderRadius,
+            }}
+          >
+            {panelContent}
+          </div>,
+          document.body,
+        )
+      : null;
 
   return (
     <div className={widthClassName} ref={containerRef}>
@@ -163,7 +246,7 @@ export const Dropdown = ({
           {label}
         </label>
       )}
-      <div ref={triggerRef}>
+      <div ref={triggerRef} className="relative">
         {renderTrigger ? (
           renderTrigger({ isOpen, toggle: toggleOpen })
         ) : (
@@ -193,29 +276,8 @@ export const Dropdown = ({
             </svg>
           </button>
         )}
-
-        {isOpen &&
-          createPortal(
-            <div
-              ref={panelRef}
-              className={`border ${panelDirection === 'down' ? 'shadow-lg' : ''} ${panelClassName ?? ''}`}
-              style={{
-                position: 'fixed',
-                top: panelPos.top,
-                left: panelPos.left,
-                width: panelClassName ? undefined : panelPos.width,
-                zIndex: 100,
-                background: 'var(--bg)',
-                borderColor: 'var(--border-muted)',
-                borderRadius: panelBorderRadius,
-              }}
-            >
-              <div className={noScrollLimit ? '' : 'max-h-64 overflow-auto'}>
-                {children({ close })}
-              </div>
-            </div>,
-            document.body,
-          )}
+        {absolutePanel}
+        {fixedPanel}
       </div>
     </div>
   );

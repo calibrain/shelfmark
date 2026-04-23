@@ -1597,6 +1597,9 @@ def api_cover(cover_id: str) -> Response | tuple[Response, int]:
 
     Query Parameters:
         url (str): Base64-encoded original image URL (required on first request)
+        w (int): Optional max width for a derived image variant
+        h (int): Optional max height for a derived image variant
+        format (str): Optional output format for a derived image variant (webp/png/jpeg)
 
     Returns:
         flask.Response: Binary image data with appropriate Content-Type, or 404.
@@ -1606,43 +1609,84 @@ def api_cover(cover_id: str) -> Response | tuple[Response, int]:
         import base64
 
         from shelfmark.config.env import is_covers_cache_enabled
-        from shelfmark.core.image_cache import get_image_cache
+        from shelfmark.core.image_cache import (
+            build_variant_cache_id,
+            create_image_variant,
+            get_image_cache,
+            normalize_variant_dimension,
+            normalize_variant_format,
+        )
 
         # Check if caching is enabled
         if not is_covers_cache_enabled():
             return jsonify({"error": "Cover caching is disabled"}), 404
 
         cache = get_image_cache()
+        width = normalize_variant_dimension(request.args.get("w"))
+        height = normalize_variant_dimension(request.args.get("h"))
+        image_format = normalize_variant_format(request.args.get("format"))
+        variant_cache_id = (
+            build_variant_cache_id(
+                cover_id,
+                width=width,
+                height=height,
+                image_format=image_format,
+            )
+            if width is not None or height is not None or image_format is not None
+            else None
+        )
 
-        # Try to get from cache first
-        cached = cache.get(cover_id)
-        if cached:
-            image_data, content_type = cached
+        def make_cover_response(
+            image_data: bytes,
+            content_type: str,
+            *,
+            cache_status: str,
+        ) -> Response:
             response = app.response_class(response=image_data, status=200, mimetype=content_type)
             response.headers["Cache-Control"] = "public, max-age=86400"
-            response.headers["X-Cache"] = "HIT"
+            response.headers["X-Cache"] = cache_status
             return response
+
+        # Try to get from cache first
+        cache_lookup_id = variant_cache_id or cover_id
+        cached = cache.get(cache_lookup_id)
+        if cached:
+            image_data, content_type = cached
+            return make_cover_response(image_data, content_type, cache_status="HIT")
 
         # Cache miss - get URL from query parameter
         encoded_url = request.args.get("url")
-        if not encoded_url:
-            return jsonify({"error": "Cover URL not provided"}), 404
+        original: tuple[bytes, str] | None = cache.get(cover_id) if variant_cache_id else None
 
-        try:
-            original_url = base64.urlsafe_b64decode(encoded_url).decode()
-        except (binascii.Error, UnicodeDecodeError) as e:
-            logger.warning("Failed to decode cover URL: %s", e)
-            return jsonify({"error": "Invalid cover URL encoding"}), 400
+        if original is None:
+            if not encoded_url:
+                return jsonify({"error": "Cover URL not provided"}), 404
 
-        # Fetch and cache the image
-        result = cache.fetch_and_cache(cover_id, original_url)
-        if not result:
-            return jsonify({"error": "Failed to fetch cover image"}), 404
+            try:
+                original_url = base64.urlsafe_b64decode(encoded_url).decode()
+            except (binascii.Error, UnicodeDecodeError) as e:
+                logger.warning("Failed to decode cover URL: %s", e)
+                return jsonify({"error": "Invalid cover URL encoding"}), 400
 
-        image_data, content_type = result
-        response = app.response_class(response=image_data, status=200, mimetype=content_type)
-        response.headers["Cache-Control"] = "public, max-age=86400"
-        response.headers["X-Cache"] = "MISS"
+            # Fetch and cache the original image
+            original = cache.fetch_and_cache(cover_id, original_url)
+            if not original:
+                return jsonify({"error": "Failed to fetch cover image"}), 404
+
+        image_data, content_type = original
+
+        if variant_cache_id:
+            variant = create_image_variant(
+                image_data,
+                width=width,
+                height=height,
+                image_format=image_format,
+            )
+            if variant:
+                image_data, content_type = variant
+                cache.put(variant_cache_id, image_data, content_type)
+
+        response = make_cover_response(image_data, content_type, cache_status="MISS")
     except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Cover fetch error: {e}")
         return jsonify({"error": str(e)}), 500

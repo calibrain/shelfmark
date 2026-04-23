@@ -26,6 +26,7 @@ interface DropdownListProps {
   summaryFormatter?: (selected: DropdownListOption[], placeholder: string) => ReactNode;
   keepOpenOnSelect?: boolean;
   triggerChrome?: 'default' | 'minimal';
+  positionStrategy?: 'absolute' | 'fixed';
   renderTrigger?: (props: { isOpen: boolean; toggle: () => void }) => ReactNode;
   onOpenChange?: (isOpen: boolean) => void;
 }
@@ -45,6 +46,7 @@ export const DropdownList = ({
   summaryFormatter,
   keepOpenOnSelect,
   triggerChrome = 'default',
+  positionStrategy,
   renderTrigger,
   onOpenChange,
 }: DropdownListProps) => {
@@ -114,6 +116,7 @@ export const DropdownList = ({
       buttonClassName={buttonClassName}
       panelClassName={panelClassName}
       triggerChrome={triggerChrome}
+      positionStrategy={positionStrategy}
       renderTrigger={renderTrigger}
       onOpenChange={onOpenChange}
     >

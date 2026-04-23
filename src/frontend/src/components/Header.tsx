@@ -646,7 +646,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
 
     return (
       <header
-        className="sticky top-0 z-40 w-full backdrop-blur-xs"
+        className="sticky top-0 z-40 w-full"
         style={{ background: 'var(--bg)', paddingTop: 'env(safe-area-inset-top)' }}
       >
         <div className="mx-auto max-w-full px-4 py-4 sm:px-6 lg:px-8">

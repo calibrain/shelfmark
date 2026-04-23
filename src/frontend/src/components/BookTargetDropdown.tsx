@@ -296,6 +296,7 @@ const BookTargetDropdownSession = ({
       multiple
       showCheckboxes
       keepOpenOnSelect
+      positionStrategy={variant === 'icon' ? 'fixed' : 'absolute'}
       summaryFormatter={(selectedOptions) => renderSummary(selectedOptions)}
       renderTrigger={customTrigger}
       onOpenChange={onOpenChange}

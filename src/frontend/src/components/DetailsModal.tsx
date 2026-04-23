@@ -7,6 +7,7 @@ import { useMountEffect } from '../hooks/useMountEffect';
 import type { Book, ButtonStateInfo } from '../types';
 import { isMetadataBook } from '../types';
 import { bookSupportsTargets } from '../utils/bookTargetLoader';
+import { getSizedCoverUrl } from '../utils/covers';
 import { isUserCancelledError } from '../utils/errors';
 import { BookTargetDropdown } from './BookTargetDropdown';
 
@@ -136,6 +137,10 @@ export const DetailsModal = ({
   const artworkMaxWidth = isSquareCover
     ? 'min(45vw, 400px, calc(90vh - 220px))'
     : 'min(45vw, 520px, calc((90vh - 220px) / 1.6))';
+  const optimizedPreview = getSizedCoverUrl(book.preview, {
+    width: isSquareCover ? 640 : 480,
+    height: isSquareCover ? 640 : 720,
+  });
   const additionalInfo =
     book.info && Object.keys(book.info).length > 0
       ? Object.entries(book.info).filter(([key]) => {
@@ -201,14 +206,17 @@ export const DetailsModal = ({
           <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
             <div className="flex flex-col gap-6 lg:min-h-0 lg:flex-row lg:items-stretch lg:gap-8">
               <div className="flex w-full justify-center lg:w-auto lg:flex-none lg:justify-start lg:self-stretch lg:pr-4">
-                {book.preview ? (
+                {optimizedPreview ? (
                   <div
                     className="flex w-full items-center justify-center lg:h-full lg:max-w-none"
                     style={{ maxHeight: artworkMaxHeight, maxWidth: artworkMaxWidth }}
                   >
                     <img
-                      src={book.preview}
+                      src={optimizedPreview}
                       alt="Book cover"
+                      width={isSquareCover ? 640 : 480}
+                      height={isSquareCover ? 640 : 720}
+                      decoding="async"
                       className="h-auto max-h-full w-auto max-w-full rounded-xl object-contain shadow-lg"
                       style={{ maxHeight: '100%', maxWidth: '100%' }}
                     />

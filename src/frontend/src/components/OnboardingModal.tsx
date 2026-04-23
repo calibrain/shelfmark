@@ -339,7 +339,7 @@ const OnboardingModalSession = ({
   if (isLoading) {
     return (
       <div className="fixed inset-0 z-50 flex items-center justify-center">
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-xs" />
+        <div className="absolute inset-0 bg-black/60" />
         <div className="relative rounded-xl p-8 shadow-2xl" style={{ background: 'var(--bg)' }}>
           <div className="flex items-center gap-3">
             <svg className="h-5 w-5 animate-spin" viewBox="0 0 24 24">
@@ -371,7 +371,7 @@ const OnboardingModalSession = ({
       <div className="fixed inset-0 z-50 flex items-center justify-center">
         <button
           type="button"
-          className="absolute inset-0 bg-black/50 backdrop-blur-xs"
+          className="absolute inset-0 bg-black/60"
           onClick={handleClose}
           tabIndex={-1}
           aria-label="Close setup wizard"
@@ -419,7 +419,7 @@ const OnboardingModalSession = ({
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       {/* Backdrop */}
       <div
-        className={`absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity duration-150 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
+        className={`absolute inset-0 bg-black/60 transition-opacity duration-150 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
       />
 
       {/* Modal */}
