@@ -1726,6 +1726,7 @@ class TestOIDCLockoutPrevention:
         """Point CONFIG_DIR to a temp dir so _on_save_security can find users.db."""
         config_dir = str(tmp_path)
         monkeypatch.setenv("CONFIG_DIR", config_dir)
+        monkeypatch.setattr("shelfmark.config.env.CONFIG_DIR", tmp_path)
         # Create user_db at the path _on_save_security will look for
         self._user_db = UserDB(os.path.join(config_dir, "users.db"))
         self._user_db.initialize()
@@ -1768,7 +1769,14 @@ class TestOIDCLockoutPrevention:
             password_hash="hashed_pw",
             role="admin",
         )
-        result = self._call_on_save({"AUTH_METHOD": "oidc"})
+        result = self._call_on_save(
+            {
+                "AUTH_METHOD": "oidc",
+                "OIDC_DISCOVERY_URL": "https://auth.example.com/.well-known/openid-configuration",
+                "OIDC_CLIENT_ID": "shelfmark",
+                "OIDC_CLIENT_SECRET": "secret123",
+            }
+        )
         assert result["error"] is False
 
     def test_non_oidc_methods_not_blocked(self):

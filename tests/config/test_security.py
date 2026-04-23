@@ -15,6 +15,12 @@ import pytest
 from shelfmark.core.user_db import UserDB
 
 
+def _set_config_dir(monkeypatch, config_dir: Path) -> None:
+    """Point config helpers at a test-local config directory."""
+    monkeypatch.setenv("CONFIG_DIR", str(config_dir))
+    monkeypatch.setattr("shelfmark.config.env.CONFIG_DIR", config_dir)
+
+
 @pytest.fixture
 def temp_config_dir():
     """Create a temporary config directory for tests."""
@@ -404,7 +410,7 @@ class TestSecurityOnSave:
     def test_on_save_passthrough_for_non_oidc(self, tmp_path, monkeypatch):
         from shelfmark.config.security import _on_save_security
 
-        monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+        _set_config_dir(monkeypatch, tmp_path)
         values = {"AUTH_METHOD": "builtin", "PROXY_AUTH_USER_HEADER": "X-Auth-User"}
 
         result = _on_save_security(values.copy())
@@ -415,7 +421,7 @@ class TestSecurityOnSave:
     def test_on_save_blocks_oidc_without_local_admin(self, tmp_path, monkeypatch):
         from shelfmark.config.security import _on_save_security
 
-        monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+        _set_config_dir(monkeypatch, tmp_path)
         UserDB(str(tmp_path / "users.db")).initialize()
 
         result = _on_save_security({"AUTH_METHOD": "oidc"})
@@ -423,24 +429,92 @@ class TestSecurityOnSave:
         assert result["error"] is True
         assert "local admin" in result["message"].lower()
 
-    def test_on_save_allows_oidc_with_local_password_admin(self, tmp_path, monkeypatch):
+    def test_on_save_blocks_oidc_when_client_id_is_missing(self, tmp_path, monkeypatch):
         from shelfmark.config.security import _on_save_security
 
-        monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+        _set_config_dir(monkeypatch, tmp_path)
         user_db = UserDB(str(tmp_path / "users.db"))
         user_db.initialize()
         user_db.create_user(username="admin", password_hash="hash", role="admin")
 
-        result = _on_save_security({"AUTH_METHOD": "oidc"})
+        result = _on_save_security(
+            {
+                "AUTH_METHOD": "oidc",
+                "OIDC_DISCOVERY_URL": "https://auth.example.com/.well-known/openid-configuration",
+                "OIDC_CLIENT_SECRET": "secret123",
+            }
+        )
+
+        assert result["error"] is True
+        assert "client id" in result["message"].lower()
+
+    def test_on_save_blocks_oidc_when_discovery_url_is_missing(self, tmp_path, monkeypatch):
+        from shelfmark.config.security import _on_save_security
+
+        _set_config_dir(monkeypatch, tmp_path)
+        user_db = UserDB(str(tmp_path / "users.db"))
+        user_db.initialize()
+        user_db.create_user(username="admin", password_hash="hash", role="admin")
+
+        result = _on_save_security(
+            {
+                "AUTH_METHOD": "oidc",
+                "OIDC_CLIENT_ID": "shelfmark",
+                "OIDC_CLIENT_SECRET": "secret123",
+            }
+        )
+
+        assert result["error"] is True
+        assert "discovery url" in result["message"].lower()
+
+    def test_on_save_blocks_oidc_when_secret_is_missing(self, tmp_path, monkeypatch):
+        from shelfmark.config.security import _on_save_security
+
+        _set_config_dir(monkeypatch, tmp_path)
+        user_db = UserDB(str(tmp_path / "users.db"))
+        user_db.initialize()
+        user_db.create_user(username="admin", password_hash="hash", role="admin")
+
+        result = _on_save_security(
+            {
+                "AUTH_METHOD": "oidc",
+                "OIDC_DISCOVERY_URL": "https://auth.example.com/.well-known/openid-configuration",
+                "OIDC_CLIENT_ID": "shelfmark",
+            }
+        )
+
+        assert result["error"] is True
+        assert "client secret" in result["message"].lower()
+
+    def test_on_save_allows_oidc_with_existing_saved_secret(self, tmp_path, monkeypatch):
+        from shelfmark.config.security import _on_save_security
+        from shelfmark.core.settings_registry import save_config_file
+
+        _set_config_dir(monkeypatch, tmp_path)
+        user_db = UserDB(str(tmp_path / "users.db"))
+        user_db.initialize()
+        user_db.create_user(username="admin", password_hash="hash", role="admin")
+        save_config_file(
+            "security",
+            {
+                "AUTH_METHOD": "oidc",
+                "OIDC_DISCOVERY_URL": "https://auth.example.com/.well-known/openid-configuration",
+                "OIDC_CLIENT_ID": "existing-client",
+                "OIDC_CLIENT_SECRET": "saved-secret",
+            },
+        )
+
+        result = _on_save_security({"AUTH_METHOD": "oidc", "OIDC_CLIENT_ID": "updated-client"})
 
         assert result["error"] is False
+        assert result["values"]["OIDC_CLIENT_ID"] == "updated-client"
 
     def test_on_save_normalizes_oidc_discovery_url_without_stripping_trailing_slash(
         self, tmp_path, monkeypatch
     ):
         from shelfmark.config.security import _on_save_security
 
-        monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+        _set_config_dir(monkeypatch, tmp_path)
         values = {"OIDC_DISCOVERY_URL": " 'auth.example.com/.well-known/openid-configuration/' "}
 
         result = _on_save_security(values)
@@ -454,7 +528,7 @@ class TestSecurityOnSave:
     def test_on_save_normalizes_proxy_logout_url(self, tmp_path, monkeypatch):
         from shelfmark.config.security import _on_save_security
 
-        monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+        _set_config_dir(monkeypatch, tmp_path)
         values = {"PROXY_AUTH_LOGOUT_URL": "auth.example.com/logout"}
 
         result = _on_save_security(values)
