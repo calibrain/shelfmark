@@ -11,6 +11,7 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.naming import (
     assign_part_numbers,
     build_library_path,
+    derive_primary_title,
     parse_naming_template,
     same_filesystem,
     sanitize_filename,
@@ -57,9 +58,11 @@ def should_hardlink(task: DownloadTask) -> bool:
 
 def build_metadata_dict(task: DownloadTask) -> dict:
     """Build template metadata from a download task."""
+    primary_title = derive_primary_title(task.title, task.subtitle)
     return {
         "Author": task.author,
         "Title": task.title,
+        "PrimaryTitle": primary_title,
         "Subtitle": task.subtitle,
         "Year": task.year,
         "Series": task.series_name,

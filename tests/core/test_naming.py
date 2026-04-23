@@ -11,6 +11,7 @@ import pytest
 from shelfmark.core.naming import (
     assign_part_numbers,
     build_library_path,
+    derive_primary_title,
     format_series_position,
     natural_sort_key,
     parse_naming_template,
@@ -116,6 +117,18 @@ class TestParseNamingTemplate:
         # Conditional subtitle
         result = parse_naming_template("{Author}/{Title}{ - Subtitle}", metadata)
         assert result == "Brandon Sanderson/The Way of Kings - Book One of the Stormlight Archive"
+
+    def test_primary_title_token(self):
+        """Test subtitle-less title tokens."""
+        metadata = {
+            "Author": "Samin Nosrat",
+            "Title": "Salt, Fat, Acid, Heat: Mastering the Elements of Good Cooking",
+            "PrimaryTitle": "Salt, Fat, Acid, Heat",
+        }
+
+        assert parse_naming_template("{Author}/{PrimaryTitle}", metadata) == (
+            "Samin Nosrat/Salt, Fat, Acid, Heat"
+        )
 
     def test_part_number_token(self):
         """Test PartNumber in templates."""
@@ -336,6 +349,26 @@ class TestArbitraryPrefixSuffix:
             template, {"Author": "Brandon Sanderson", "Title": "Standalone Novel"}
         )
         assert result == "Brandon Sanderson/Standalone Novel"
+
+
+class TestDerivePrimaryTitle:
+    def test_removes_matching_colon_subtitle(self):
+        assert (
+            derive_primary_title(
+                "Salt, Fat, Acid, Heat: Mastering the Elements of Good Cooking",
+                "Mastering the Elements of Good Cooking",
+            )
+            == "Salt, Fat, Acid, Heat"
+        )
+
+    def test_removes_matching_dash_subtitle(self):
+        assert derive_primary_title("Book Title - A Novel", "A Novel") == "Book Title"
+
+    def test_falls_back_to_title_without_subtitle(self):
+        assert derive_primary_title("Dune", None) == "Dune"
+
+    def test_falls_back_when_subtitle_does_not_match_suffix(self):
+        assert derive_primary_title("The Final Empire", "Mistborn") == "The Final Empire"
 
 
 class TestBuildLibraryPath:

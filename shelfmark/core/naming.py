@@ -16,6 +16,7 @@ logger = setup_logger(__name__)
 # e.g., "SeriesPosition" must match before "Series"
 KNOWN_TOKENS = [
     "seriesposition",
+    "primarytitle",
     "originalname",
     "partnumber",
     "subtitle",
@@ -63,6 +64,25 @@ def format_series_position(position: str | float | None) -> str:
         return str(int(position))
 
     return str(position)
+
+
+def derive_primary_title(title: str | None, subtitle: str | None) -> str:
+    """Return the title without an explicit subtitle suffix when possible."""
+    title_value = " ".join(str(title or "").split()).strip()
+    if not title_value:
+        return ""
+
+    subtitle_value = " ".join(str(subtitle or "").split()).strip()
+    if not subtitle_value:
+        return title_value
+
+    pattern = rf"^(?P<primary>.+?)(?:\s*:\s*|\s+-\s+){re.escape(subtitle_value)}$"
+    match = re.match(pattern, title_value, flags=re.IGNORECASE)
+    if not match:
+        return title_value
+
+    primary = match.group("primary").strip()
+    return primary or title_value
 
 
 # Pads numbers to 9 digits for natural sorting (e.g., "Part 2" -> "Part 000000002")

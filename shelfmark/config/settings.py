@@ -1156,7 +1156,7 @@ def download_settings() -> list[SettingsField]:
         TextField(
             key="EMAIL_SUBJECT_TEMPLATE",
             label="Subject Template",
-            description="Email subject. Variables: {Author}, {Title}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {Format}.",
+            description="Email subject. Variables: {Author}, {Title}, {PrimaryTitle}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {Format}.",
             default="{Title}",
             placeholder="{Title}",
             show_when={"field": "BOOKS_OUTPUT_MODE", "value": "email"},

@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.naming import derive_primary_title
 from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.download.outputs import register_output
 from shelfmark.download.staging import (
@@ -150,9 +151,11 @@ def _parse_attachment_limit_mb(value: object) -> int:
 
 
 def _render_subject(template: str, task: DownloadTask) -> str:
+    primary_title = derive_primary_title(task.title, task.subtitle)
     mapping = {
         "Author": task.author or "",
         "Title": task.title or "",
+        "PrimaryTitle": primary_title,
         "Year": task.year or "",
         "Series": task.series_name or "",
         "SeriesPosition": task.series_position or "",
