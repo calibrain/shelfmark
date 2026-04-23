@@ -4,6 +4,7 @@ import { useSearchMode } from '../../contexts/SearchModeContext';
 import type { Book, ButtonStateInfo, DisplayField } from '../../types';
 import { bookSupportsTargets } from '../../utils/bookTargetLoader';
 import { getFormatColor, getLanguageColor } from '../../utils/colorMaps';
+import { getSizedCoverUrl } from '../../utils/covers';
 import { BookActionButton } from '../BookActionButton';
 import { BookTargetDropdown } from '../BookTargetDropdown';
 import { DisplayFieldIcon, DisplayFieldBadge } from '../shared';
@@ -47,8 +48,12 @@ const ListViewThumbnail = ({
   const [imageError, setImageError] = useState(false);
   const isSquare = coverAspect === 'square';
   const sizeClass = isSquare ? 'w-10 h-10 sm:w-14 sm:h-14' : 'w-7 h-10 sm:w-10 sm:h-14';
+  const optimizedPreview = getSizedCoverUrl(preview, {
+    width: isSquare ? 56 : 40,
+    height: isSquare ? 56 : 56,
+  });
 
-  if (!preview || imageError) {
+  if (!optimizedPreview || imageError) {
     return (
       <div
         className={`${sizeClass} flex items-center justify-center rounded-sm bg-gray-200 text-[8px] font-medium text-gray-500 sm:text-[9px] dark:bg-gray-700 dark:text-gray-300`}
@@ -67,10 +72,13 @@ const ListViewThumbnail = ({
         <div className="absolute inset-0 animate-pulse bg-linear-to-r from-gray-200 via-gray-100 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700" />
       )}
       <img
-        src={preview}
+        src={optimizedPreview}
         alt={title || 'Book cover'}
         className={`h-full w-full object-cover ${isSquare ? 'object-center' : 'object-top'}`}
         loading="lazy"
+        decoding="async"
+        width={isSquare ? 56 : 40}
+        height={isSquare ? 56 : 56}
         onLoad={() => setImageLoaded(true)}
         onError={() => setImageError(true)}
         style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.2s ease-in-out' }}
@@ -153,7 +161,7 @@ export const ListView = ({
           return (
             <div
               key={book.id}
-              className="hover-row animate-pop-up relative w-full px-1.5 py-1.5 transition-colors duration-200 will-change-transform sm:px-2 sm:py-2"
+              className="hover-row animate-pop-up relative w-full px-1.5 py-1.5 transition-colors duration-200 sm:px-2 sm:py-2"
               style={{
                 zIndex: openDropdownBookId === book.id ? 30 : undefined,
                 animationDelay: `${index * 50}ms`,

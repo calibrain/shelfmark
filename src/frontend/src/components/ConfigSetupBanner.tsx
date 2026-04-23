@@ -72,7 +72,7 @@ export const ConfigSetupBanner = ({
       {/* Backdrop */}
       <button
         type="button"
-        className={`absolute inset-0 bg-black/50 backdrop-blur-xs transition-opacity duration-150 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
+        className={`absolute inset-0 bg-black/60 transition-opacity duration-150 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
         onClick={handleClose}
         aria-label="Close settings setup dialog"
       />
