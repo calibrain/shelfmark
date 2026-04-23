@@ -350,6 +350,27 @@ class TestAtomicMove:
             assert not source.exists()
             assert result.read_text() == "content"
 
+    def test_cross_filesystem_fallback_handles_long_destination_name(self, tmp_path, monkeypatch):
+        """Cross-filesystem fallback handles long destination names safely."""
+        import errno
+
+        from shelfmark.download.fs import atomic_move as _atomic_move
+
+        source = tmp_path / "source.epub"
+        source.write_text("content")
+        dest = tmp_path / f"{'A' * 240}.epub"
+
+        def _raise_exdev(*_args, **_kwargs):
+            raise OSError(errno.EXDEV, "Cross-device link")
+
+        monkeypatch.setattr(os, "rename", _raise_exdev)
+
+        result = _atomic_move(source, dest)
+
+        assert result == dest
+        assert not source.exists()
+        assert result.read_text() == "content"
+
     def test_cross_filesystem_permission_fallback(self, tmp_path, monkeypatch):
         """Falls back to copy when cross-filesystem move hits permission error."""
         import errno

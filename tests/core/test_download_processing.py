@@ -147,6 +147,20 @@ class TestAtomicCopy:
 
         assert result == tmp_path / "dest_3.txt"
 
+    def test_long_destination_name(self, tmp_path):
+        """Copies long-but-valid destination names without overflowing temp filenames."""
+        from shelfmark.download.fs import atomic_copy as _atomic_copy
+
+        source = tmp_path / "source.epub"
+        source.write_bytes(b"epub content")
+        dest = tmp_path / f"{'A' * 240}.epub"
+
+        result = _atomic_copy(source, dest)
+
+        assert result == dest
+        assert result.exists()
+        assert result.read_bytes() == b"epub content"
+
     def test_preserves_extension(self, tmp_path):
         """Keeps extension when adding counter suffix."""
         from shelfmark.download.fs import atomic_copy as _atomic_copy

@@ -101,6 +101,8 @@ def run_blocking_io[T](func: Callable[..., T], *args: Any, **kwargs: Any) -> T:
 
 _VERIFY_IO_WAIT_SECONDS = 3.0
 _PUBLISH_VERIFY_RETRY_SECONDS = 0.25
+_TEMPFILE_PREFIX = ".shelfmark."
+_TEMPFILE_SUFFIX = ".tmp"
 
 
 def _verify_transfer_size(
@@ -339,10 +341,16 @@ def _hardlink_not_supported(error: OSError) -> bool:
 
 
 def _create_temp_path(dest_path: Path) -> Path:
+    """Create a destination-adjacent temp file without inheriting the full basename.
+
+    Reusing the entire destination filename in the temp prefix can push otherwise
+    valid long names over the filesystem component limit once `tempfile` adds its
+    random suffix.
+    """
     fd, temp_path = run_blocking_io(
         tempfile.mkstemp,
-        prefix=f".{dest_path.name}.",
-        suffix=".tmp",
+        prefix=_TEMPFILE_PREFIX,
+        suffix=_TEMPFILE_SUFFIX,
         dir=str(dest_path.parent),
     )
     run_blocking_io(os.close, fd)
