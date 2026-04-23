@@ -840,7 +840,7 @@ export const ActivitySidebar = ({
                   <div className="pt-3 text-center">
                     <button
                       type="button"
-                      onClick={() => void onHistoryLoadMore?.()}
+                      onClick={() => onHistoryLoadMore?.()}
                       disabled={historyLoading}
                       className="text-sm text-sky-600 hover:underline disabled:opacity-60 dark:text-sky-400"
                     >
