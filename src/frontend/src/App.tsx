@@ -1367,21 +1367,18 @@ function App() {
 
       const requestPayloads: CreateRequestPayload[] = [];
 
-      if (ebookMode === 'download') {
-        if (!ebookRelease) {
-          throw new Error('Missing ebook release for combined download');
-        }
+      if (ebookMode === 'download' && ebookRelease) {
         await executeReleaseDownload(book, ebookRelease, 'ebook', onBehalfOfUserId);
-      } else {
+      } else if (ebookMode !== 'download' && (ebookRelease || ebookMode === 'request_book')) {
         requestPayloads.push(buildRequestPayload(ebookRelease, 'ebook', ebookMode));
       }
 
-      if (audiobookMode === 'download') {
-        if (!audiobookRelease) {
-          throw new Error('Missing audiobook release for combined download');
-        }
+      if (audiobookMode === 'download' && audiobookRelease) {
         await executeReleaseDownload(book, audiobookRelease, 'audiobook', onBehalfOfUserId);
-      } else {
+      } else if (
+        audiobookMode !== 'download' &&
+        (audiobookRelease || audiobookMode === 'request_book')
+      ) {
         requestPayloads.push(buildRequestPayload(audiobookRelease, 'audiobook', audiobookMode));
       }
 
@@ -1695,7 +1692,7 @@ function App() {
 
   // Combined mode callbacks
   const handleCombinedNext = useCallback(
-    (release: Release) => {
+    (release: Release | null) => {
       if (!releaseBook || !combinedState) return;
       const phases = getCombinedSelectionPhases(combinedState);
       const nextPhase = phases[phases.indexOf(combinedState.phase) + 1];
@@ -1703,7 +1700,7 @@ function App() {
       setCombinedState({
         ...combinedState,
         phase: nextPhase,
-        stagedEbook: { book: releaseBook, release },
+        stagedEbook: release ? { book: releaseBook, release } : undefined,
       });
     },
     [combinedState, getCombinedSelectionPhases, releaseBook],
@@ -1715,19 +1712,31 @@ function App() {
     );
   }, []);
 
+  const handleCombinedClearSelection = useCallback((selectionContentType: ContentType) => {
+    setCombinedState((prev) => {
+      if (!prev) {
+        return null;
+      }
+      if (selectionContentType === 'ebook') {
+        return { ...prev, stagedEbook: undefined };
+      }
+      return { ...prev, stagedAudiobook: undefined };
+    });
+  }, []);
+
   const handleCombinedDownload = useCallback(
-    async (release: Release) => {
+    async (release: Release | null) => {
       if (!combinedState || !releaseBook) return;
 
       const nextCombinedState: CombinedSelectionState =
         combinedState.phase === 'ebook'
           ? {
               ...combinedState,
-              stagedEbook: { book: releaseBook, release },
+              stagedEbook: release ? { book: releaseBook, release } : undefined,
             }
           : {
               ...combinedState,
-              stagedAudiobook: release,
+              stagedAudiobook: release ?? undefined,
             };
 
       if (effectiveActingAsUser) {
@@ -2603,6 +2612,7 @@ function App() {
                       stagedAudiobookRelease: effectiveCombinedState.stagedAudiobook ?? null,
                       onNext: !combinedIsFinalStep ? handleCombinedNext : undefined,
                       onBack: combinedHasPreviousStep ? handleCombinedBack : undefined,
+                      onClearSelection: handleCombinedClearSelection,
                       onDownload: combinedIsFinalStep
                         ? (release) => {
                             void handleCombinedDownload(release);

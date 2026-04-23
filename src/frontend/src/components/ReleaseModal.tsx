@@ -60,22 +60,41 @@ interface CombinedModeConfig {
   audiobookMode: RequestPolicyMode;
   stagedEbookRelease: Release | null;
   stagedAudiobookRelease: Release | null;
-  onNext?: (release: Release) => void;
+  onNext?: (release: Release | null) => void;
   onBack?: (audiobookRelease: Release | null) => void;
-  onDownload?: (release: Release) => void;
+  onDownload?: (release: Release | null) => void;
+  onClearSelection?: (contentType: ContentType) => void;
 }
 
 // Determine the combined download button label based on action modes
 function getCombinedDownloadLabel(
   ebookMode: RequestPolicyMode | null | undefined,
   audiobookMode: RequestPolicyMode | null | undefined,
+  hasEbookAction = true,
+  hasAudiobookAction = true,
 ): string {
+  if (hasEbookAction && !hasAudiobookAction) {
+    return getSingleCombinedActionLabel('ebook', ebookMode);
+  }
+  if (!hasEbookAction && hasAudiobookAction) {
+    return getSingleCombinedActionLabel('audiobook', audiobookMode);
+  }
+
   const ebookIsRequest = ebookMode === 'request_release' || ebookMode === 'request_book';
   const audiobookIsRequest =
     audiobookMode === 'request_release' || audiobookMode === 'request_book';
   if (ebookIsRequest && audiobookIsRequest) return 'Request Both';
   if (ebookIsRequest || audiobookIsRequest) return 'Download & Request';
   return 'Download Both';
+}
+
+function getSingleCombinedActionLabel(
+  contentType: ContentType,
+  mode: RequestPolicyMode | null | undefined,
+): string {
+  const noun = contentType === 'ebook' ? 'Book' : 'Audiobook';
+  const isRequest = mode === 'request_release' || mode === 'request_book';
+  return `${isRequest ? 'Request' : 'Download'} ${noun}`;
 }
 
 // Default column configuration (fallback when backend doesn't provide one)
@@ -147,6 +166,7 @@ const STAR_POSITIONS = [0, 1, 2, 3, 4] as const;
 interface ReleaseModalSessionProps extends Omit<ReleaseModalProps, 'book' | 'onClose'> {
   book: Book;
   isClosing: boolean;
+  animateEnter: boolean;
   onClose: () => void;
 }
 
@@ -286,10 +306,12 @@ const PhaseChip = ({
   release,
   isActive,
   label,
+  onClear,
 }: {
   release: Release | null;
   isActive: boolean;
   label: string;
+  onClear?: () => void;
 }) => {
   let phaseChipClassName = 'bg-zinc-100 text-zinc-400 dark:bg-zinc-800 dark:text-zinc-500';
   if (release) {
@@ -299,28 +321,68 @@ const PhaseChip = ({
     phaseChipClassName = 'bg-zinc-100 text-(--text) dark:bg-zinc-800';
   }
 
+  const selectedIcon = onClear ? (
+    <span className="relative h-3 w-3 shrink-0">
+      <svg
+        className="absolute inset-0 h-3 w-3 opacity-100 transition-opacity group-hover:opacity-0 group-focus-visible:opacity-0"
+        fill="none"
+        viewBox="0 0 24 24"
+        strokeWidth="2.5"
+        stroke="currentColor"
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+      </svg>
+      <svg
+        className="absolute inset-0 h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100"
+        fill="none"
+        viewBox="0 0 24 24"
+        strokeWidth="2.5"
+        stroke="currentColor"
+      >
+        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+      </svg>
+    </span>
+  ) : (
+    <svg
+      className="h-3 w-3"
+      fill="none"
+      viewBox="0 0 24 24"
+      strokeWidth="2.5"
+      stroke="currentColor"
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
+    </svg>
+  );
+
+  const chipContent = release ? (
+    <>
+      {selectedIcon}
+      {release.format?.toUpperCase() || label} · {release.size || '?'}
+    </>
+  ) : (
+    <>
+      {isActive ? '\u25CF' : '\u25CB'} {label}
+    </>
+  );
+
+  if (release && onClear) {
+    return (
+      <button
+        type="button"
+        onClick={onClear}
+        className={`group inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium transition-colors hover:bg-red-50 hover:text-red-700 dark:hover:bg-red-900/20 dark:hover:text-red-300 ${phaseChipClassName}`}
+        aria-label={`Remove selected ${label.toLowerCase()}`}
+      >
+        {chipContent}
+      </button>
+    );
+  }
+
   return (
     <span
       className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${phaseChipClassName}`}
     >
-      {release ? (
-        <>
-          <svg
-            className="h-3 w-3"
-            fill="none"
-            viewBox="0 0 24 24"
-            strokeWidth="2.5"
-            stroke="currentColor"
-          >
-            <path strokeLinecap="round" strokeLinejoin="round" d="m4.5 12.75 6 6 9-13.5" />
-          </svg>
-          {release.format?.toUpperCase() || label} · {release.size || '?'}
-        </>
-      ) : (
-        <>
-          {isActive ? '\u25CF' : '\u25CB'} {label}
-        </>
-      )}
+      {chipContent}
     </span>
   );
 };
@@ -689,6 +751,7 @@ const ReleaseModalSession = ({
   onShowToast,
   combinedMode = null,
   isClosing,
+  animateEnter,
 }: ReleaseModalSessionProps) => {
   // Use audiobook formats when in audiobook mode
   const effectiveFormats =
@@ -713,6 +776,7 @@ const ReleaseModalSession = ({
   const onCombinedNext = combinedMode?.onNext;
   const onCombinedBack = combinedMode?.onBack;
   const onCombinedDownload = combinedMode?.onDownload;
+  const onCombinedClearSelection = combinedMode?.onClearSelection;
 
   const handleClose = onClose;
 
@@ -1192,6 +1256,55 @@ const ReleaseModalSession = ({
     combinedFooterAudiobookMode = getReleaseActionMode(stagedAudiobookRelease);
   }
 
+  const hasCombinedEbookAction =
+    combinedPhase === 'ebook'
+      ? selectedRelease !== null
+      : stagedEbookRelease !== null || combinedFooterEbookMode === 'request_book';
+  const hasCombinedAudiobookAction =
+    combinedPhase === 'audiobook'
+      ? selectedRelease !== null
+      : stagedAudiobookRelease !== null || combinedFooterAudiobookMode === 'request_book';
+  const hasCombinedActionOutsideCurrentPhase =
+    combinedPhase === 'ebook' ? hasCombinedAudiobookAction : hasCombinedEbookAction;
+  const canCompleteCombinedAction =
+    selectedRelease !== null || hasCombinedActionOutsideCurrentPhase;
+  const currentCombinedPhaseLabel = combinedPhase === 'ebook' ? 'Book' : 'Audiobook';
+  const nextCombinedPhaseLabel = combinedPhase === 'ebook' ? 'Audiobook' : 'Book';
+  let emptyStateMessage = 'No releases found for this book.';
+  if (formatFilter) {
+    emptyStateMessage = `No ${formatFilter.toUpperCase()} releases found. Try a different format.`;
+  } else if (isCombinedMode) {
+    emptyStateMessage = `No ${currentCombinedPhaseLabel.toLowerCase()} releases found.`;
+  }
+  let modalAnimationClassName = '';
+  if (isClosing) {
+    modalAnimationClassName = 'settings-modal-exit';
+  } else if (animateEnter) {
+    modalAnimationClassName = 'settings-modal-enter';
+  } else {
+    modalAnimationClassName = 'release-modal-no-step-animation';
+  }
+  const canClearEbookSelection =
+    combinedPhase === 'ebook' ? selectedRelease !== null : stagedEbookRelease !== null;
+  const canClearAudiobookSelection =
+    combinedPhase === 'audiobook' ? selectedRelease !== null : stagedAudiobookRelease !== null;
+  const clearEbookSelection = canClearEbookSelection
+    ? () => {
+        if (combinedPhase === 'ebook') {
+          setSelectedRelease(null);
+        }
+        onCombinedClearSelection?.('ebook');
+      }
+    : undefined;
+  const clearAudiobookSelection = canClearAudiobookSelection
+    ? () => {
+        if (combinedPhase === 'audiobook') {
+          setSelectedRelease(null);
+        }
+        onCombinedClearSelection?.('audiobook');
+      }
+    : undefined;
+
   const modal = (
     <div className="modal-overlay active sm:px-6 sm:py-6">
       <button
@@ -1201,7 +1314,7 @@ const ReleaseModalSession = ({
         aria-label="Close release modal"
       />
       <div
-        className={`details-container relative z-10 h-full w-full sm:h-auto ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
+        className={`details-container relative z-10 h-full w-full sm:h-auto ${modalAnimationClassName}`}
         role="dialog"
         aria-modal="true"
         aria-labelledby={titleId}
@@ -2022,13 +2135,7 @@ const ReleaseModalSession = ({
                 if (filteredReleases.length === 0 && !currentTabLoading) {
                   return (
                     <>
-                      <EmptyState
-                        message={
-                          formatFilter
-                            ? `No ${formatFilter.toUpperCase()} releases found. Try a different format.`
-                            : 'No releases found for this book.'
-                        }
-                      />
+                      <EmptyState message={emptyStateMessage} />
                       {/* Action button - plugin-defined or default expand search */}
                       {(columnConfig.action_button ||
                         (!expandedBySource[activeTab] &&
@@ -2137,6 +2244,7 @@ const ReleaseModalSession = ({
                     release={combinedPhase === 'ebook' ? selectedRelease : stagedEbookRelease}
                     isActive={combinedPhase === 'ebook'}
                     label="Book"
+                    onClear={clearEbookSelection}
                   />
                   <PhaseChip
                     release={
@@ -2144,6 +2252,7 @@ const ReleaseModalSession = ({
                     }
                     isActive={combinedPhase === 'audiobook'}
                     label="Audiobook"
+                    onClear={clearAudiobookSelection}
                   />
                 </div>
 
@@ -2171,25 +2280,37 @@ const ReleaseModalSession = ({
                           const picked = selectedRelease;
                           setSelectedRelease(stagedAudiobookRelease);
                           onCombinedNext(picked);
+                        } else {
+                          setSelectedRelease(stagedAudiobookRelease);
+                          onCombinedNext(null);
                         }
                       }}
-                      disabled={!selectedRelease}
                       className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
-                      Select Audiobook &rarr;
+                      {selectedRelease
+                        ? `Select ${nextCombinedPhaseLabel} →`
+                        : `Skip ${currentCombinedPhaseLabel} →`}
                     </button>
                   )}
 
                   {onCombinedDownload && (
                     <button
                       type="button"
-                      onClick={() => selectedRelease && onCombinedDownload(selectedRelease)}
-                      disabled={!selectedRelease}
+                      onClick={() => {
+                        if (selectedRelease) {
+                          onCombinedDownload(selectedRelease);
+                        } else if (canCompleteCombinedAction) {
+                          onCombinedDownload(null);
+                        }
+                      }}
+                      disabled={!canCompleteCombinedAction}
                       className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white transition-colors hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
                     >
                       {getCombinedDownloadLabel(
                         combinedFooterEbookMode,
                         combinedFooterAudiobookMode,
+                        hasCombinedEbookAction,
+                        hasCombinedAudiobookAction,
                       )}
                     </button>
                   )}
@@ -2211,6 +2332,7 @@ const ReleaseModalSession = ({
 
 export const ReleaseModal = ({ book, onClose, ...rest }: ReleaseModalProps) => {
   const [isClosing, setIsClosing] = useState(false);
+  const previousSessionKeyRef = useRef<string | null>(null);
 
   const handleClose = useCallback(() => {
     setIsClosing(true);
@@ -2223,18 +2345,26 @@ export const ReleaseModal = ({ book, onClose, ...rest }: ReleaseModalProps) => {
   useBodyScrollLock(Boolean(book));
   useEscapeKey(Boolean(book), handleClose);
 
-  if (!book && !isClosing) return null;
-  if (!book) return null;
+  const sessionKey = book
+    ? [
+        book.id,
+        rest.defaultShowManualQuery ? 'manual' : 'auto',
+        book.search_title || '',
+        book.title || '',
+        book.search_author || '',
+        book.author || '',
+      ].join('|')
+    : null;
 
-  const sessionKey = [
-    book.id,
-    rest.contentType,
-    rest.defaultShowManualQuery ? 'manual' : 'auto',
-    book.search_title || '',
-    book.title || '',
-    book.search_author || '',
-    book.author || '',
-  ].join('|');
+  const animateEnter =
+    !rest.combinedMode ||
+    previousSessionKeyRef.current === null ||
+    previousSessionKeyRef.current === sessionKey;
+
+  previousSessionKeyRef.current = sessionKey;
+
+  if (!book && !isClosing) return null;
+  if (!book || !sessionKey) return null;
 
   return (
     <ReleaseModalSession
@@ -2242,6 +2372,7 @@ export const ReleaseModal = ({ book, onClose, ...rest }: ReleaseModalProps) => {
       book={book}
       onClose={handleClose}
       isClosing={isClosing}
+      animateEnter={animateEnter}
       {...rest}
     />
   );
