@@ -676,7 +676,7 @@ const ReleaseModalSession = ({
   getPolicyModeForSource,
   supportedFormats,
   supportedAudiobookFormats = [],
-  contentType = 'ebook',
+  contentType,
   defaultLanguages,
   bookLanguages,
   currentStatus,
