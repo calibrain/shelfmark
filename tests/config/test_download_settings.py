@@ -129,6 +129,53 @@ def test_download_settings_destination_test_buttons_exist():
     assert audiobook_button.universal_only is True
 
 
+def test_download_settings_naming_templates_use_wrapped_custom_component():
+    from shelfmark.config.settings import download_settings
+
+    fields = download_settings()
+    fields_by_key = {getattr(field, "key", None): field for field in fields}
+
+    expected = {
+        "template_rename_editor": "TEMPLATE_RENAME",
+        "template_organize_editor": "TEMPLATE_ORGANIZE",
+        "template_audiobook_rename_editor": "TEMPLATE_AUDIOBOOK_RENAME",
+        "template_audiobook_organize_editor": "TEMPLATE_AUDIOBOOK_ORGANIZE",
+    }
+
+    for editor_key, value_key in expected.items():
+        editor = fields_by_key[editor_key]
+
+        assert editor.get_field_type() == "CustomComponentField"
+        assert editor.component == "naming_template"
+        assert editor.wrap_in_field_wrapper is True
+        assert editor.get_bind_keys() == [value_key]
+        assert [field.key for field in editor.value_fields] == [value_key]
+        assert editor.label == editor.value_fields[0].label
+
+    for value_key in expected.values():
+        assert value_key not in fields_by_key
+
+
+def test_download_settings_naming_template_serialization_keeps_value_fields_hidden():
+    from shelfmark.config.settings import download_settings
+    from shelfmark.core import settings_registry
+    from shelfmark.core.settings_registry import SettingsTab
+
+    tab = SettingsTab(name="downloads", display_name="Downloads", fields=download_settings())
+    serialized_tab = settings_registry.serialize_tab(tab)
+    serialized_fields = {field["key"]: field for field in serialized_tab["fields"]}
+
+    editor = serialized_fields["template_organize_editor"]
+    bound_fields = editor.get("boundFields", [])
+
+    assert editor["component"] == "naming_template"
+    assert editor["wrapInFieldWrapper"] is True
+    assert editor["bindKeys"] == ["TEMPLATE_ORGANIZE"]
+    assert [field["key"] for field in bound_fields] == ["TEMPLATE_ORGANIZE"]
+    assert bound_fields[0]["hiddenInUi"] is True
+    assert bound_fields[0]["placeholder"] == "{Author}/{Series/}{Title} ({Year})"
+
+
 def test_test_books_destination_uses_current_values(tmp_path):
     from shelfmark.config.download_settings_handlers import check_books_destination
 

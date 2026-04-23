@@ -1,5 +1,6 @@
 import type { ComponentType, ReactNode } from 'react';
 
+import { NamingTemplateField } from './NamingTemplateField';
 import { OidcAdminHint } from './OidcAdminHint';
 import { OidcEnvInfo } from './OidcEnvInfo';
 import { RequestPolicyGridField } from './RequestPolicyGridField';
@@ -46,6 +47,9 @@ const CUSTOM_FIELD_DEFINITIONS: Record<string, CustomFieldDefinition> = {
   },
   request_policy_grid: {
     renderer: RequestPolicyGridField,
+  },
+  naming_template: {
+    renderer: NamingTemplateField,
   },
   settings_label: {
     renderer: SettingsLabel,

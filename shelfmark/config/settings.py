@@ -19,6 +19,7 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import (
     ActionButton,
     CheckboxField,
+    CustomComponentField,
     HeadingField,
     MultiSelectField,
     NumberField,
@@ -844,6 +845,37 @@ def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
     return {"error": False, "values": values}
 
 
+def _naming_template_field(
+    *,
+    key: str,
+    label: str,
+    description: str,
+    default: str,
+    placeholder: str,
+    show_when: dict[str, Any] | list[dict[str, Any]],
+    universal_only: bool = False,
+) -> CustomComponentField:
+    return CustomComponentField(
+        key=f"{key.lower()}_editor",
+        label=label,
+        component="naming_template",
+        show_when=show_when,
+        universal_only=universal_only,
+        wrap_in_field_wrapper=True,
+        value_fields=[
+            TextField(
+                key=key,
+                label=label,
+                description=description,
+                default=default,
+                placeholder=placeholder,
+                show_when=show_when,
+                universal_only=universal_only,
+            )
+        ],
+    )
+
+
 @register_settings("downloads", "Downloads", icon="folder", order=5)
 def download_settings() -> list[SettingsField]:
     """Configure download behavior and file locations."""
@@ -931,10 +963,10 @@ def download_settings() -> list[SettingsField]:
             },
         ),
         # Rename mode template - filename only
-        TextField(
+        _naming_template_field(
             key="TEMPLATE_RENAME",
             label="Naming Template",
-            description="Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension). Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\\'); use Organize for folders. Applies to single-file downloads.",
+            description="Filename template for single-file book downloads.",
             default="{Author} - {Title} ({Year})",
             placeholder="{Author} - {Title} ({Year})",
             show_when=[
@@ -943,10 +975,10 @@ def download_settings() -> list[SettingsField]:
             ],
         ),
         # Organize mode template - folders allowed
-        TextField(
+        _naming_template_field(
             key="TEMPLATE_ORGANIZE",
             label="Path Template",
-            description="Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension). Universal adds: {Series}, {SeriesPosition}, {Subtitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty.",
+            description="Folder and filename template for book downloads.",
             default="{Author}/{Title} ({Year})",
             placeholder="{Author}/{Series/}{Title} ({Year})",
             show_when=[
@@ -1201,20 +1233,20 @@ def download_settings() -> list[SettingsField]:
             universal_only=True,
         ),
         # Rename mode template - filename only
-        TextField(
+        _naming_template_field(
             key="TEMPLATE_AUDIOBOOK_RENAME",
             label="Naming Template",
-            description="Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\\'); use Organize for folders. Applies to single-file downloads.",
+            description="Filename template for single-file audiobook downloads.",
             default="{Author} - {Title}",
             placeholder="{Author} - {Title}{ - Part }{PartNumber}",
             show_when={"field": "FILE_ORGANIZATION_AUDIOBOOK", "value": "rename"},
             universal_only=True,
         ),
         # Organize mode template - folders allowed
-        TextField(
+        _naming_template_field(
             key="TEMPLATE_AUDIOBOOK_ORGANIZE",
             label="Path Template",
-            description="Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty.",
+            description="Folder and filename template for audiobook downloads.",
             default="{Author}/{Title}",
             placeholder="{Author}/{Series/}{Title}{ - Part }{PartNumber}",
             show_when={"field": "FILE_ORGANIZATION_AUDIOBOOK", "value": "organize"},
