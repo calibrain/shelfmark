@@ -2091,7 +2091,7 @@ def api_login() -> Response | tuple[Response, int]:
 
             try:
                 db_path = os.fspath(CWA_DB_PATH)
-                db_uri = f"file:{db_path}?mode=ro&immutable=1"
+                db_uri = f"file:{db_path}?mode=ro"
                 conn = sqlite3.connect(db_uri, uri=True)
                 cur = conn.cursor()
                 cur.execute("SELECT password, role, email FROM user WHERE name = ?", (username,))

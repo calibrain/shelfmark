@@ -134,7 +134,7 @@ def _sync_all_cwa_users(user_db: UserDB) -> dict[str, int]:
         raise FileNotFoundError(msg)
 
     db_path = os.fspath(CWA_DB_PATH)
-    db_uri = f"file:{db_path}?mode=ro&immutable=1"
+    db_uri = f"file:{db_path}?mode=ro"
     conn = sqlite3.connect(db_uri, uri=True)
     try:
         cur = conn.cursor()
