@@ -169,7 +169,7 @@ else
     # Create user if it doesn't exist for this UID yet.
     if ! getent passwd "$RUN_UID" >/dev/null; then
         echo "Adding user $RUN_UID with name appuser"
-        useradd -u "$RUN_UID" -g "$RUN_GID" -d /app -s /sbin/nologin appuser
+        useradd -u "$RUN_UID" -g "$RUN_GID" -d "${TMP_DIR:-/tmp/shelfmark}/home" -s /sbin/nologin appuser
     fi
 
     # Get username for the UID (whether we just created it or it existed)
@@ -306,6 +306,19 @@ require_writable_dir() {
         echo "Prepare ownership outside the container (for example with a pre-owned volume or Kubernetes fsGroup)."
         exit 1
     fi
+}
+
+resolve_target_home() {
+    local target_home
+
+    target_home=$(getent passwd "$RUN_UID" 2>/dev/null | cut -d: -f6 || true)
+    case "$target_home" in
+        ""|/|/app|/nonexistent)
+            target_home="${TMP_DIR:-/tmp/shelfmark}/home"
+            ;;
+    esac
+
+    printf '%s\n' "$target_home"
 }
 
 ensure_tree_writable() {
@@ -496,14 +509,8 @@ else
     exit 1
 fi
 
-TARGET_HOME="/app"
-if [ "$RUN_AS_NON_ROOT" = "true" ]; then
-    TARGET_HOME=$(getent passwd "$RUN_UID" 2>/dev/null | cut -d: -f6 || true)
-    if [ -z "$TARGET_HOME" ]; then
-        TARGET_HOME="/tmp/shelfmark/home"
-    fi
-    require_writable_dir "$TARGET_HOME" "Home"
-fi
+TARGET_HOME=$(resolve_target_home)
+require_writable_dir "$TARGET_HOME" "Home"
 
 if [ "$RUN_AS_NON_ROOT" = "true" ]; then
     echo "Startup mode: non-root"

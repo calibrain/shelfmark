@@ -65,10 +65,15 @@ def _run_entrypoint(
     tmp_path: Path,
     *,
     extra_env: dict[str, str] | None = None,
+    stub_home: Path | str | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], Path, Path, Path]:
     runtime_home = tmp_path / "runtime-home"
     config_dir = tmp_path / "config"
     config_dir.mkdir(exist_ok=True)
+    tmp_dir = tmp_path / "tmp"
+
+    if stub_home is None:
+        stub_home = runtime_home
 
     bin_dir, runtime_home_file, runtime_args_file = _build_stub_bin(tmp_path)
 
@@ -82,13 +87,14 @@ def _run_entrypoint(
             "ENTRYPOINT_GUNICORN_ARGS_FILE": str(runtime_args_file),
             "ENTRYPOINT_GUNICORN_HOME_FILE": str(runtime_home_file),
             "ENTRYPOINT_STUB_GID": str(os.getgid()),
-            "ENTRYPOINT_STUB_HOME": str(runtime_home),
+            "ENTRYPOINT_STUB_HOME": str(stub_home),
             "ENTRYPOINT_STUB_UID": str(os.getuid()),
             "FLASK_PORT": "8084",
             "LOG_LEVEL": "info",
             "LOG_ROOT": str(tmp_path / "logs"),
             "PATH": f"{bin_dir}:{env.get('PATH', '')}",
             "RELEASE_VERSION": "test-release",
+            "TMP_DIR": str(tmp_dir),
             "TZ": "",
             "USING_EXTERNAL_BYPASSER": "true",
         }
@@ -128,6 +134,19 @@ def test_entrypoint_non_root_mode_runs_with_stub_gunicorn(tmp_path):
     assert f"Runtime identity: shelfmark ({os.getuid()}:{os.getgid()})" in result.stdout
     assert runtime_home.exists()
     assert runtime_home_file.read_text() == str(runtime_home)
+    assert "shelfmark.main:app" in runtime_args_file.read_text()
+
+
+def test_entrypoint_avoids_app_as_home(tmp_path):
+    result, runtime_home_file, runtime_args_file, _ = _run_entrypoint(
+        tmp_path,
+        stub_home="/app",
+    )
+
+    fallback_home = tmp_path / "tmp" / "home"
+    assert result.returncode == 0
+    assert fallback_home.exists()
+    assert runtime_home_file.read_text() == str(fallback_home)
     assert "shelfmark.main:app" in runtime_args_file.read_text()
 
 
