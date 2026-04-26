@@ -41,6 +41,9 @@ logger = setup_logger(__name__)
 
 SELENIUMBASE_RUNTIME_ROOT = Path(tempfile.gettempdir()) / "shelfmark" / "seleniumbase"
 SELENIUMBASE_DOWNLOADS_DIR = SELENIUMBASE_RUNTIME_ROOT / "downloaded_files"
+BROWSER_RUNTIME_ROOT = Path(tempfile.gettempdir()) / "shelfmark" / "browser"
+BROWSER_HOME_DIR = BROWSER_RUNTIME_ROOT / "home"
+BROWSER_XDG_RUNTIME_DIR = BROWSER_RUNTIME_ROOT / "runtime"
 _BYPASSED_BODY_LENGTH_MIN = 100_000
 _BYPASS_EMOJI_MATCH_MIN = 3
 _LOADING_BODY_LENGTH_MAX = 50
@@ -909,6 +912,26 @@ def _store_child_bypass_state(payload: dict[str, Any]) -> None:
             )
 
 
+def _prepare_child_browser_env(env_vars: dict[str, str]) -> dict[str, str]:
+    """Force writable browser runtime paths for the helper subprocess."""
+    home_dir = BROWSER_HOME_DIR
+    config_dir = home_dir / ".config"
+    cache_dir = home_dir / ".cache"
+    runtime_dir = BROWSER_XDG_RUNTIME_DIR
+
+    for path in (home_dir, config_dir, cache_dir, runtime_dir):
+        path.mkdir(parents=True, exist_ok=True)
+
+    with suppress(OSError):
+        runtime_dir.chmod(stat.S_IRWXU)
+
+    env_vars["HOME"] = str(home_dir)
+    env_vars["XDG_CONFIG_HOME"] = str(config_dir)
+    env_vars["XDG_CACHE_HOME"] = str(cache_dir)
+    env_vars["XDG_RUNTIME_DIR"] = str(runtime_dir)
+    return env_vars
+
+
 def _get_via_subprocess(url: str, retry: int, cancel_flag: Event | None = None) -> str:
     """Run the browser bypass in a helper process isolated from gunicorn/gevent."""
     _check_cancellation(cancel_flag, "Bypass cancelled before helper process")
@@ -918,6 +941,7 @@ def _get_via_subprocess(url: str, retry: int, cancel_flag: Event | None = None) 
     payload = {"url": url, "retry": retry, "result_path": str(result_path)}
     env_vars = os.environ.copy()
     env_vars[_BYPASS_CHILD_ENV] = "1"
+    env_vars = _prepare_child_browser_env(env_vars)
 
     proc = subprocess.Popen(
         [sys.executable, "-m", "shelfmark.bypass.internal_bypasser"],

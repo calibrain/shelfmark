@@ -274,6 +274,28 @@ def test_run_child_process_writes_failure_for_unexpected_exception(monkeypatch, 
     assert "plain SeleniumBase startup failure" in result["traceback"]
 
 
+def test_prepare_child_browser_env_uses_writable_runtime_paths(monkeypatch, tmp_path):
+    import stat
+
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    home_dir = tmp_path / "browser" / "home"
+    runtime_dir = tmp_path / "browser" / "runtime"
+    monkeypatch.setattr(internal_bypasser, "BROWSER_HOME_DIR", home_dir)
+    monkeypatch.setattr(internal_bypasser, "BROWSER_XDG_RUNTIME_DIR", runtime_dir)
+
+    env = internal_bypasser._prepare_child_browser_env({"HOME": "/app"})
+
+    assert env["HOME"] == str(home_dir)
+    assert env["XDG_CONFIG_HOME"] == str(home_dir / ".config")
+    assert env["XDG_CACHE_HOME"] == str(home_dir / ".cache")
+    assert env["XDG_RUNTIME_DIR"] == str(runtime_dir)
+    assert home_dir.is_dir()
+    assert (home_dir / ".config").is_dir()
+    assert (home_dir / ".cache").is_dir()
+    assert stat.S_IMODE(runtime_dir.stat().st_mode) == stat.S_IRWXU
+
+
 def test_try_with_cached_cookies_returns_none_on_request_exception(monkeypatch):
     import time
 
