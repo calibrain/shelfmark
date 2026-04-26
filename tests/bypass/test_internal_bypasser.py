@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 
 def test_bypass_tries_all_methods_before_abort(monkeypatch):
     """Regression test for issue #524: don't abort before cycling through bypass methods."""
@@ -191,6 +193,32 @@ def test_get_page_info_returns_safe_defaults_on_cdp_errors():
     assert title == ""
     assert body == ""
     assert current_url == ""
+
+
+def test_create_cdp_browser_times_out_and_cleans_up(monkeypatch):
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    async def _never_start(*_args, **_kwargs):
+        await asyncio.Event().wait()
+
+    cleanup_calls = []
+
+    monkeypatch.setattr(internal_bypasser, "_BROWSER_START_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(internal_bypasser.cdp_driver, "start_async", _never_start)
+    monkeypatch.setattr(internal_bypasser, "_get_browser_args", lambda: [])
+    monkeypatch.setattr(internal_bypasser, "get_screen_size", lambda: (1280, 800))
+    monkeypatch.setattr(internal_bypasser, "_get_proxy_string", lambda _url: None)
+    monkeypatch.setattr(internal_bypasser.env, "DOCKERMODE", True)
+    monkeypatch.setattr(
+        internal_bypasser,
+        "_cleanup_orphan_processes",
+        lambda: cleanup_calls.append("cleanup") or 1,
+    )
+
+    with pytest.raises(TimeoutError):
+        asyncio.run(internal_bypasser._create_cdp_browser("https://example.com"))
+
+    assert cleanup_calls == ["cleanup"]
 
 
 def test_try_with_cached_cookies_returns_none_on_request_exception(monkeypatch):
