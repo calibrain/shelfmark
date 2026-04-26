@@ -116,6 +116,7 @@ _SUBPROCESS_OPERATION_ERRORS = (
     ValueError,
     subprocess.SubprocessError,
 )
+_NATIVE_ATTR_ERRORS = (ImportError, AttributeError, RuntimeError)
 
 
 def _get_native_attr(module: str, name: str, fallback: Any) -> Any:
@@ -124,7 +125,7 @@ def _get_native_attr(module: str, name: str, fallback: Any) -> Any:
         from gevent import monkey
 
         original = monkey.get_original(module, name)
-    except ImportError, AttributeError, RuntimeError:
+    except _NATIVE_ATTR_ERRORS:
         return fallback
     else:
         return original or fallback
