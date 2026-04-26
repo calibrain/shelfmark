@@ -1,6 +1,8 @@
 """Internal Cloudflare bypass implementation using SeleniumBase and CDP helpers."""
 
+import _thread
 import asyncio
+import json
 import os
 import random
 import shutil
@@ -8,6 +10,7 @@ import signal
 import socket
 import stat
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -38,10 +41,16 @@ logger = setup_logger(__name__)
 
 SELENIUMBASE_RUNTIME_ROOT = Path(tempfile.gettempdir()) / "shelfmark" / "seleniumbase"
 SELENIUMBASE_DOWNLOADS_DIR = SELENIUMBASE_RUNTIME_ROOT / "downloaded_files"
+BROWSER_RUNTIME_ROOT = Path(tempfile.gettempdir()) / "shelfmark" / "browser"
+BROWSER_HOME_DIR = BROWSER_RUNTIME_ROOT / "home"
+BROWSER_XDG_RUNTIME_DIR = BROWSER_RUNTIME_ROOT / "runtime"
 _BYPASSED_BODY_LENGTH_MIN = 100_000
 _BYPASS_EMOJI_MATCH_MIN = 3
 _LOADING_BODY_LENGTH_MAX = 50
 _PAGE_BODY_PREVIEW_CHARS = 500
+_BROWSER_START_TIMEOUT_SECONDS = 45.0
+_BYPASS_SUBPROCESS_TIMEOUT_SECONDS = 420.0
+_BYPASS_CHILD_ENV = "SHELFMARK_INTERNAL_BYPASSER_CHILD"
 
 # Challenge detection indicators
 CLOUDFLARE_INDICATORS = [
@@ -107,6 +116,24 @@ _SUBPROCESS_OPERATION_ERRORS = (
     ValueError,
     subprocess.SubprocessError,
 )
+_NATIVE_ATTR_ERRORS = (ImportError, AttributeError, RuntimeError)
+
+
+def _get_native_attr(module: str, name: str, fallback: Any) -> Any:
+    """Return an unpatched stdlib attribute when running under gevent."""
+    try:
+        from gevent import monkey
+
+        original = monkey.get_original(module, name)
+    except _NATIVE_ATTR_ERRORS:
+        return fallback
+    else:
+        return original or fallback
+
+
+_NATIVE_START_NEW_THREAD = _get_native_attr("_thread", "start_new_thread", _thread.start_new_thread)
+_NATIVE_EVENT = _get_native_attr("threading", "Event", threading.Event)
+_NATIVE_LOCK = _get_native_attr("threading", "Lock", threading.Lock)
 
 
 def _coerce_positive_int(value: object, default: int) -> int:
@@ -151,36 +178,35 @@ def _describe_runtime_path(path: str | Path) -> str:
 
 class _CdpWorker:
     def __init__(self) -> None:
-        self._thread: threading.Thread | None = None
+        self._thread_id: int | None = None
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._ready = threading.Event()
-        self._lock = threading.Lock()
+        self._ready = _NATIVE_EVENT()
+        self._lock = _NATIVE_LOCK()
 
     def _run(self) -> None:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-        self._loop = loop
-        self._ready.set()
-        loop.run_forever()
-        with suppress(Exception):
-            pending = asyncio.all_tasks(loop)
-            for task in pending:
-                task.cancel()
-            if pending:
-                loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
-        loop.close()
+        try:
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            self._loop = loop
+            self._ready.set()
+            loop.run_forever()
+            with suppress(Exception):
+                pending = asyncio.all_tasks(loop)
+                for task in pending:
+                    task.cancel()
+                if pending:
+                    loop.run_until_complete(asyncio.gather(*pending, return_exceptions=True))
+            loop.close()
+        finally:
+            self._thread_id = None
 
     def start(self) -> None:
         with self._lock:
-            if self._thread and self._thread.is_alive():
+            if self._loop and self._loop.is_running() and not self._loop.is_closed():
                 return
+            self._loop = None
             self._ready.clear()
-            self._thread = threading.Thread(
-                target=self._run,
-                name="cdp-worker",
-                daemon=True,
-            )
-            self._thread.start()
+            self._thread_id = _NATIVE_START_NEW_THREAD(self._run, ())
         if not self._ready.wait(timeout=10):
             msg = "CDP worker loop failed to start"
             raise RuntimeError(msg)
@@ -832,6 +858,133 @@ async def _get(url: str, driver: Any, cancel_flag: Event | None = None) -> str:
     return ""
 
 
+def _run_bypass_in_current_process(url: str, retry: int, cancel_flag: Event | None = None) -> str:
+    """Run the CDP bypass in the current process."""
+
+    async def _run_bypass() -> str:
+        driver = None
+        try:
+            driver = await _create_cdp_browser(url)
+
+            for attempt in range(retry):
+                _check_cancellation(cancel_flag, "Bypass cancelled before attempt")
+
+                try:
+                    result = await _get(url, driver, cancel_flag)
+                    if result:
+                        return result
+                except BypassCancelledError:
+                    raise
+                except _CDP_OPERATION_ERRORS as e:
+                    error_details = f"{type(e).__name__}: {e}"
+                    logger.warning(
+                        "Bypass failed (attempt %s/%s): %s", attempt + 1, retry, error_details
+                    )
+                    logger.debug("Stack trace: %s", traceback.format_exc())
+
+                    # On CDP errors, quit and create a fresh browser
+                    if type(e).__name__ in DRIVER_RESET_ERRORS:
+                        logger.info("Restarting Chrome due to browser error...")
+                        await _close_cdp_driver(driver)
+                        driver = await _create_cdp_browser(url)
+
+            logger.error("Bypass failed after %s attempts", retry)
+            return ""
+        finally:
+            if driver:
+                await _close_cdp_driver(driver)
+
+    if os.environ.get(_BYPASS_CHILD_ENV) == "1":
+        return asyncio.run(_run_bypass())
+    return _CDP_WORKER.run(_run_bypass())
+
+
+def _store_child_bypass_state(payload: dict[str, Any]) -> None:
+    cookies = payload.get("cookies")
+    if isinstance(cookies, dict):
+        with _cf_cookies_lock:
+            _cf_cookies.update(cookies)
+
+    user_agents = payload.get("user_agents")
+    if isinstance(user_agents, dict):
+        with _cf_cookies_lock:
+            _cf_user_agents.update(
+                {str(domain): str(agent) for domain, agent in user_agents.items()}
+            )
+
+
+def _prepare_child_browser_env(env_vars: dict[str, str]) -> dict[str, str]:
+    """Force writable browser runtime paths for the helper subprocess."""
+    home_dir = BROWSER_HOME_DIR
+    config_dir = home_dir / ".config"
+    cache_dir = home_dir / ".cache"
+    runtime_dir = BROWSER_XDG_RUNTIME_DIR
+
+    for path in (home_dir, config_dir, cache_dir, runtime_dir):
+        path.mkdir(parents=True, exist_ok=True)
+
+    with suppress(OSError):
+        runtime_dir.chmod(stat.S_IRWXU)
+
+    env_vars["HOME"] = str(home_dir)
+    env_vars["XDG_CONFIG_HOME"] = str(config_dir)
+    env_vars["XDG_CACHE_HOME"] = str(cache_dir)
+    env_vars["XDG_RUNTIME_DIR"] = str(runtime_dir)
+    return env_vars
+
+
+def _get_via_subprocess(url: str, retry: int, cancel_flag: Event | None = None) -> str:
+    """Run the browser bypass in a helper process isolated from gunicorn/gevent."""
+    _check_cancellation(cancel_flag, "Bypass cancelled before helper process")
+    result_path = (
+        Path(tempfile.gettempdir()) / f"shelfmark-bypass-{os.getpid()}-{time.time_ns()}.json"
+    )
+    payload = {"url": url, "retry": retry, "result_path": str(result_path)}
+    env_vars = os.environ.copy()
+    env_vars[_BYPASS_CHILD_ENV] = "1"
+    env_vars = _prepare_child_browser_env(env_vars)
+
+    proc = subprocess.Popen(
+        [sys.executable, "-m", "shelfmark.bypass.internal_bypasser"],
+        stdin=subprocess.PIPE,
+        text=True,
+        env=env_vars,
+    )
+    try:
+        proc.communicate(json.dumps(payload), timeout=_BYPASS_SUBPROCESS_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        proc.kill()
+        proc.wait()
+        msg = "Internal bypasser helper process timed out"
+        raise TimeoutError(msg) from None
+
+    try:
+        result = json.loads(result_path.read_text())
+    except FileNotFoundError as exc:
+        msg = f"Internal bypasser helper exited without a result (code {proc.returncode})"
+        raise RuntimeError(msg) from exc
+    finally:
+        with suppress(OSError):
+            result_path.unlink()
+
+    if not isinstance(result, dict):
+        msg = "Internal bypasser helper returned an invalid result"
+        raise TypeError(msg)
+
+    if not result.get("ok"):
+        error_type = result.get("error_type", "RuntimeError")
+        error = result.get("error", "Internal bypasser helper failed")
+        trace = result.get("traceback")
+        if trace:
+            logger.debug("Internal bypasser helper traceback: %s", trace)
+        msg = f"{error_type}: {error}"
+        raise RuntimeError(msg)
+
+    _store_child_bypass_state(result)
+    html = result.get("html", "")
+    return html if isinstance(html, str) else ""
+
+
 def get(url: str, retry: int | None = None, cancel_flag: Event | None = None) -> str:
     """Fetch a URL with protection bypass. Creates fresh Chrome instance for each bypass."""
     retry = retry if retry is not None else _coerce_positive_int(app_config.MAX_RETRY, 10)
@@ -842,40 +995,9 @@ def get(url: str, retry: int | None = None, cancel_flag: Event | None = None) ->
         if cached_result:
             return cached_result
 
-        async def _run_bypass() -> str:
-            driver = None
-            try:
-                driver = await _create_cdp_browser(url)
-
-                for attempt in range(retry):
-                    _check_cancellation(cancel_flag, "Bypass cancelled before attempt")
-
-                    try:
-                        result = await _get(url, driver, cancel_flag)
-                        if result:
-                            return result
-                    except BypassCancelledError:
-                        raise
-                    except _CDP_OPERATION_ERRORS as e:
-                        error_details = f"{type(e).__name__}: {e}"
-                        logger.warning(
-                            "Bypass failed (attempt %s/%s): %s", attempt + 1, retry, error_details
-                        )
-                        logger.debug("Stack trace: %s", traceback.format_exc())
-
-                        # On CDP errors, quit and create a fresh browser
-                        if type(e).__name__ in DRIVER_RESET_ERRORS:
-                            logger.info("Restarting Chrome due to browser error...")
-                            await _close_cdp_driver(driver)
-                            driver = await _create_cdp_browser(url)
-
-                logger.error("Bypass failed after %s attempts", retry)
-                return ""
-            finally:
-                if driver:
-                    await _close_cdp_driver(driver)
-
-        return _CDP_WORKER.run(_run_bypass())
+        if env.DOCKERMODE and os.environ.get(_BYPASS_CHILD_ENV) != "1":
+            return _get_via_subprocess(url, retry, cancel_flag)
+        return _run_bypass_in_current_process(url, retry, cancel_flag)
 
 
 def _get_proxy_string(url: str) -> str | None:
@@ -899,19 +1021,30 @@ async def _create_cdp_browser(url: str) -> Any:
     logger.debug("Browser screen size: %sx%s", screen_width, screen_height)
 
     try:
-        driver = await cdp_driver.start_async(
-            headless=False,
-            headed=False,
-            xvfb=True,
-            xvfb_metrics=f"{display_width},{display_height}",
-            sandbox=False,
-            lang="en",
-            incognito=True,
-            ad_block=True,
-            proxy=proxy,
-            browser_args=browser_args,
+        driver = await asyncio.wait_for(
+            cdp_driver.start_async(
+                headless=False,
+                headed=False,
+                xvfb=True,
+                xvfb_metrics=f"{display_width},{display_height}",
+                sandbox=False,
+                lang="en",
+                incognito=True,
+                ad_block=True,
+                proxy=proxy,
+                browser_args=browser_args,
+            ),
+            timeout=_BROWSER_START_TIMEOUT_SECONDS,
         )
-    except _CDP_OPERATION_ERRORS as e:
+    except TimeoutError:
+        logger.warning(
+            "Pure CDP browser startup timed out after %.0fs",
+            _BROWSER_START_TIMEOUT_SECONDS,
+        )
+        if env.DOCKERMODE:
+            _cleanup_orphan_processes()
+        raise
+    except Exception as e:
         logger.warning("Pure CDP browser startup failed: %s: %s", type(e).__name__, e)
         logger.warning(
             "SeleniumBase runtime paths: cwd=%s; %s; %s; %s; %s",
@@ -921,7 +1054,10 @@ async def _create_cdp_browser(url: str) -> Any:
             _describe_runtime_path("downloaded_files"),
             _describe_runtime_path(tempfile.gettempdir()),
         )
-        raise
+        if env.DOCKERMODE:
+            _cleanup_orphan_processes()
+        msg = f"Pure CDP browser startup failed: {e}"
+        raise RuntimeError(msg) from e
 
     if _has_window_rect_page(driver):
         try:
@@ -1140,3 +1276,37 @@ def get_bypassed_page(
         raise requests.exceptions.RequestException(msg)
 
     return response_html
+
+
+def _run_child_process() -> int:
+    """CLI entrypoint used by the Docker helper subprocess."""
+    request = json.loads(sys.stdin.read() or "{}")
+    result_path = Path(str(request["result_path"]))
+    url = str(request["url"])
+    retry = _coerce_positive_int(
+        request.get("retry"), _coerce_positive_int(app_config.MAX_RETRY, 10)
+    )
+
+    try:
+        html = get(url, retry=retry)
+        payload = {
+            "ok": True,
+            "html": html,
+            "cookies": _cf_cookies,
+            "user_agents": _cf_user_agents,
+        }
+        result_path.write_text(json.dumps(payload), encoding="utf-8")
+    except Exception as exc:  # noqa: BLE001 - helper boundary must serialize failures.
+        payload = {
+            "ok": False,
+            "error_type": type(exc).__name__,
+            "error": str(exc),
+            "traceback": traceback.format_exc(),
+        }
+        result_path.write_text(json.dumps(payload), encoding="utf-8")
+        return 1
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(_run_child_process())

@@ -1,5 +1,7 @@
 import asyncio
 
+import pytest
+
 
 def test_bypass_tries_all_methods_before_abort(monkeypatch):
     """Regression test for issue #524: don't abort before cycling through bypass methods."""
@@ -191,6 +193,107 @@ def test_get_page_info_returns_safe_defaults_on_cdp_errors():
     assert title == ""
     assert body == ""
     assert current_url == ""
+
+
+def test_create_cdp_browser_times_out_and_cleans_up(monkeypatch):
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    async def _never_start(*_args, **_kwargs):
+        await asyncio.Event().wait()
+
+    cleanup_calls = []
+
+    monkeypatch.setattr(internal_bypasser, "_BROWSER_START_TIMEOUT_SECONDS", 0.01)
+    monkeypatch.setattr(internal_bypasser.cdp_driver, "start_async", _never_start)
+    monkeypatch.setattr(internal_bypasser, "_get_browser_args", lambda: [])
+    monkeypatch.setattr(internal_bypasser, "get_screen_size", lambda: (1280, 800))
+    monkeypatch.setattr(internal_bypasser, "_get_proxy_string", lambda _url: None)
+    monkeypatch.setattr(internal_bypasser.env, "DOCKERMODE", True)
+    monkeypatch.setattr(
+        internal_bypasser,
+        "_cleanup_orphan_processes",
+        lambda: cleanup_calls.append("cleanup") or 1,
+    )
+
+    with pytest.raises(TimeoutError):
+        asyncio.run(internal_bypasser._create_cdp_browser("https://example.com"))
+
+    assert cleanup_calls == ["cleanup"]
+
+
+def test_create_cdp_browser_wraps_plain_startup_exception_and_cleans_up(monkeypatch):
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    async def _fail_to_start(*_args, **_kwargs):
+        raise Exception("Failed to connect to the browser")
+
+    cleanup_calls = []
+
+    monkeypatch.setattr(internal_bypasser.cdp_driver, "start_async", _fail_to_start)
+    monkeypatch.setattr(internal_bypasser, "_get_browser_args", lambda: [])
+    monkeypatch.setattr(internal_bypasser, "get_screen_size", lambda: (1280, 800))
+    monkeypatch.setattr(internal_bypasser, "_get_proxy_string", lambda _url: None)
+    monkeypatch.setattr(internal_bypasser.env, "DOCKERMODE", True)
+    monkeypatch.setattr(
+        internal_bypasser,
+        "_cleanup_orphan_processes",
+        lambda: cleanup_calls.append("cleanup") or 1,
+    )
+
+    with pytest.raises(RuntimeError, match="Pure CDP browser startup failed"):
+        asyncio.run(internal_bypasser._create_cdp_browser("https://example.com"))
+
+    assert cleanup_calls == ["cleanup"]
+
+
+def test_run_child_process_writes_failure_for_unexpected_exception(monkeypatch, tmp_path):
+    import io
+    import json
+
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    result_path = tmp_path / "result.json"
+    request = {
+        "url": "https://example.com",
+        "retry": 1,
+        "result_path": str(result_path),
+    }
+
+    def _raise_unexpected(*_args, **_kwargs):
+        raise Exception("plain SeleniumBase startup failure")
+
+    monkeypatch.setattr(internal_bypasser, "get", _raise_unexpected)
+    monkeypatch.setattr(internal_bypasser.sys, "stdin", io.StringIO(json.dumps(request)))
+
+    assert internal_bypasser._run_child_process() == 1
+
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert result["ok"] is False
+    assert result["error_type"] == "Exception"
+    assert result["error"] == "plain SeleniumBase startup failure"
+    assert "plain SeleniumBase startup failure" in result["traceback"]
+
+
+def test_prepare_child_browser_env_uses_writable_runtime_paths(monkeypatch, tmp_path):
+    import stat
+
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    home_dir = tmp_path / "browser" / "home"
+    runtime_dir = tmp_path / "browser" / "runtime"
+    monkeypatch.setattr(internal_bypasser, "BROWSER_HOME_DIR", home_dir)
+    monkeypatch.setattr(internal_bypasser, "BROWSER_XDG_RUNTIME_DIR", runtime_dir)
+
+    env = internal_bypasser._prepare_child_browser_env({"HOME": "/app"})
+
+    assert env["HOME"] == str(home_dir)
+    assert env["XDG_CONFIG_HOME"] == str(home_dir / ".config")
+    assert env["XDG_CACHE_HOME"] == str(home_dir / ".cache")
+    assert env["XDG_RUNTIME_DIR"] == str(runtime_dir)
+    assert home_dir.is_dir()
+    assert (home_dir / ".config").is_dir()
+    assert (home_dir / ".cache").is_dir()
+    assert stat.S_IMODE(runtime_dir.stat().st_mode) == stat.S_IRWXU
 
 
 def test_try_with_cached_cookies_returns_none_on_request_exception(monkeypatch):
