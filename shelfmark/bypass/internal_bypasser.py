@@ -1019,7 +1019,7 @@ async def _create_cdp_browser(url: str) -> Any:
         if env.DOCKERMODE:
             _cleanup_orphan_processes()
         raise
-    except _CDP_OPERATION_ERRORS as e:
+    except Exception as e:
         logger.warning("Pure CDP browser startup failed: %s: %s", type(e).__name__, e)
         logger.warning(
             "SeleniumBase runtime paths: cwd=%s; %s; %s; %s; %s",
@@ -1029,7 +1029,10 @@ async def _create_cdp_browser(url: str) -> Any:
             _describe_runtime_path("downloaded_files"),
             _describe_runtime_path(tempfile.gettempdir()),
         )
-        raise
+        if env.DOCKERMODE:
+            _cleanup_orphan_processes()
+        msg = f"Pure CDP browser startup failed: {e}"
+        raise RuntimeError(msg) from e
 
     if _has_window_rect_page(driver):
         try:
@@ -1268,7 +1271,7 @@ def _run_child_process() -> int:
             "user_agents": _cf_user_agents,
         }
         result_path.write_text(json.dumps(payload), encoding="utf-8")
-    except _CDP_OPERATION_ERRORS + _REQUEST_OPERATION_ERRORS + (BypassCancelledError,) as exc:
+    except Exception as exc:  # noqa: BLE001 - helper boundary must serialize failures.
         payload = {
             "ok": False,
             "error_type": type(exc).__name__,

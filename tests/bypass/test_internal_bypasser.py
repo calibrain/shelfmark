@@ -221,6 +221,59 @@ def test_create_cdp_browser_times_out_and_cleans_up(monkeypatch):
     assert cleanup_calls == ["cleanup"]
 
 
+def test_create_cdp_browser_wraps_plain_startup_exception_and_cleans_up(monkeypatch):
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    async def _fail_to_start(*_args, **_kwargs):
+        raise Exception("Failed to connect to the browser")
+
+    cleanup_calls = []
+
+    monkeypatch.setattr(internal_bypasser.cdp_driver, "start_async", _fail_to_start)
+    monkeypatch.setattr(internal_bypasser, "_get_browser_args", lambda: [])
+    monkeypatch.setattr(internal_bypasser, "get_screen_size", lambda: (1280, 800))
+    monkeypatch.setattr(internal_bypasser, "_get_proxy_string", lambda _url: None)
+    monkeypatch.setattr(internal_bypasser.env, "DOCKERMODE", True)
+    monkeypatch.setattr(
+        internal_bypasser,
+        "_cleanup_orphan_processes",
+        lambda: cleanup_calls.append("cleanup") or 1,
+    )
+
+    with pytest.raises(RuntimeError, match="Pure CDP browser startup failed"):
+        asyncio.run(internal_bypasser._create_cdp_browser("https://example.com"))
+
+    assert cleanup_calls == ["cleanup"]
+
+
+def test_run_child_process_writes_failure_for_unexpected_exception(monkeypatch, tmp_path):
+    import io
+    import json
+
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    result_path = tmp_path / "result.json"
+    request = {
+        "url": "https://example.com",
+        "retry": 1,
+        "result_path": str(result_path),
+    }
+
+    def _raise_unexpected(*_args, **_kwargs):
+        raise Exception("plain SeleniumBase startup failure")
+
+    monkeypatch.setattr(internal_bypasser, "get", _raise_unexpected)
+    monkeypatch.setattr(internal_bypasser.sys, "stdin", io.StringIO(json.dumps(request)))
+
+    assert internal_bypasser._run_child_process() == 1
+
+    result = json.loads(result_path.read_text(encoding="utf-8"))
+    assert result["ok"] is False
+    assert result["error_type"] == "Exception"
+    assert result["error"] == "plain SeleniumBase startup failure"
+    assert "plain SeleniumBase startup failure" in result["traceback"]
+
+
 def test_try_with_cached_cookies_returns_none_on_request_exception(monkeypatch):
     import time
 
