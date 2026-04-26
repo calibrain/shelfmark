@@ -17,6 +17,8 @@ FILE_LOGGING_ENABLED="false"
 CURRENT_UID=$(id -u)
 CURRENT_GID=$(id -g)
 RUN_AS_NON_ROOT="false"
+RUNTIME_TMP_DIR="${TMP_DIR:-/tmp/shelfmark}"
+DEFAULT_RUNTIME_HOME="${RUNTIME_TMP_DIR}/home"
 
 if [ "$CURRENT_UID" != "0" ]; then
     RUN_AS_NON_ROOT="true"
@@ -169,7 +171,7 @@ else
     # Create user if it doesn't exist for this UID yet.
     if ! getent passwd "$RUN_UID" >/dev/null; then
         echo "Adding user $RUN_UID with name appuser"
-        useradd -u "$RUN_UID" -g "$RUN_GID" -d "${TMP_DIR:-/tmp/shelfmark}/home" -s /sbin/nologin appuser
+        useradd -u "$RUN_UID" -g "$RUN_GID" -d "$DEFAULT_RUNTIME_HOME" -s /sbin/nologin appuser
     fi
 
     # Get username for the UID (whether we just created it or it existed)
@@ -308,17 +310,17 @@ require_writable_dir() {
     fi
 }
 
-resolve_target_home() {
-    local target_home
+resolve_runtime_home() {
+    local runtime_home
 
-    target_home=$(getent passwd "$RUN_UID" 2>/dev/null | cut -d: -f6 || true)
-    case "$target_home" in
+    runtime_home=$(getent passwd "$RUN_UID" 2>/dev/null | cut -d: -f6 || true)
+    case "$runtime_home" in
         ""|/|/app|/nonexistent)
-            target_home="${TMP_DIR:-/tmp/shelfmark}/home"
+            runtime_home="$DEFAULT_RUNTIME_HOME"
             ;;
     esac
 
-    printf '%s\n' "$target_home"
+    printf '%s\n' "$runtime_home"
 }
 
 ensure_tree_writable() {
@@ -509,8 +511,8 @@ else
     exit 1
 fi
 
-TARGET_HOME=$(resolve_target_home)
-require_writable_dir "$TARGET_HOME" "Home"
+RUNTIME_HOME=$(resolve_runtime_home)
+require_writable_dir "$RUNTIME_HOME" "Home"
 
 if [ "$RUN_AS_NON_ROOT" = "true" ]; then
     echo "Startup mode: non-root"
@@ -529,4 +531,4 @@ echo "Setting umask to $UMASK_VALUE"
 umask $UMASK_VALUE
 
 stop_file_logging
-exec_as_target_user env HOME="$TARGET_HOME" $command
+exec_as_target_user env HOME="$RUNTIME_HOME" $command
