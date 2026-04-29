@@ -92,7 +92,10 @@ def security_settings() -> list[SettingsField]:
         SelectField(
             key="AUTH_METHOD",
             label="Authentication Method",
-            description="Select the authentication method for accessing Shelfmark.",
+            description=(
+                "Select the authentication method for accessing Shelfmark. "
+                "Restart container after changing Calibre-Web passwords."
+            ),
             options=auth_method_options,
             default="none",
         ),
