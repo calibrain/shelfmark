@@ -395,6 +395,76 @@ query GetSeriesBooks($seriesId: Int!) {
 }
 """
 
+AUTHOR_BOOKS_BY_ID_QUERY = """
+query GetAuthorBooks($authorId: Int!, $limit: Int!, $offset: Int!) {
+    authors(where: {id: {_eq: $authorId}}, limit: 1) {
+        name
+        contributions(
+            where: {
+                contributable_type: {_eq: "Book"},
+                book: {
+                    canonical_id: {_is_null: true},
+                    state: {_in: ["normalized", "normalizing"]}
+                }
+            },
+            order_by: [
+                {book: {users_count: desc_nulls_last}},
+                {book: {ratings_count: desc_nulls_last}},
+                {book: {release_date: asc_nulls_last}},
+                {book: {id: asc}}
+            ],
+            limit: $limit,
+            offset: $offset
+        ) {
+            contribution
+            book {
+                id
+                title
+                subtitle
+                slug
+                release_date
+                headline
+                description
+                pages
+                rating
+                ratings_count
+                users_count
+                compilation
+                editions_count
+                cached_image
+                cached_contributors
+                contributions(where: {contribution: {_eq: "Author"}}) {
+                    author {
+                        name
+                    }
+                }
+                featured_book_series {
+                    position
+                    series {
+                        id
+                        name
+                        primary_books_count
+                    }
+                }
+            }
+        }
+        contributions_aggregate(
+            where: {
+                contributable_type: {_eq: "Book"},
+                book: {
+                    canonical_id: {_is_null: true},
+                    state: {_in: ["normalized", "normalizing"]}
+                }
+            }
+        ) {
+            aggregate {
+                count
+            }
+        }
+    }
+}
+"""
+
 HARDCOVER_STATUS_PREFIX = "status:"
 HARDCOVER_STATUSES: list[dict] = [
     {"id": 1, "label": "Want to Read", "slug": "want-to-read", "query_key": "want_to_read_count"},
@@ -869,6 +939,7 @@ class HardcoverProvider(MetadataProvider):
             label="Author",
             placeholder="Search author...",
             description="Search by author name",
+            suggestions_endpoint="/api/metadata/field-options?provider=hardcover&field=author",
         ),
         TextSearchField(
             key="title",
@@ -917,7 +988,7 @@ class HardcoverProvider(MetadataProvider):
         Returns (query, fields, weights) tuple. Fields/weights are None for general search.
         """
         if author and not title and not series:
-            return author, "author_names", "1"
+            return author, None, None
         if title and not author and not series:
             return title, "title,alternative_titles", "5,1"
         if author and title and not series:
@@ -1210,13 +1281,14 @@ class HardcoverProvider(MetadataProvider):
             if item is None:
                 continue
 
+            author_id = coerce_int(item.get("id"), 0)
             label = str(item.get("name") or "").strip()
             normalized_label = label.casefold()
-            if not label or normalized_label in seen_labels:
+            if author_id < 1 or not label or normalized_label in seen_labels:
                 continue
 
             seen_labels.add(normalized_label)
-            options.append({"value": label, "label": label})
+            options.append({"value": f"id:{author_id}", "label": label})
 
         return options
 
@@ -1525,6 +1597,72 @@ class HardcoverProvider(MetadataProvider):
                 )
 
         has_more = offset + len(page_rows) < total_found
+        return SearchResult(books=books, page=page, total_found=total_found, has_more=has_more)
+
+    def _fetch_author_books_by_id(
+        self,
+        author_id: int,
+        page: int,
+        limit: int,
+        *,
+        exclude_compilations: bool,
+        exclude_unreleased: bool,
+    ) -> SearchResult:
+        """Fetch books for a selected Hardcover author."""
+        if not self.api_key:
+            return SearchResult(books=[], page=page, total_found=0, has_more=False)
+
+        offset = (page - 1) * limit
+        result = self._execute_query(
+            AUTHOR_BOOKS_BY_ID_QUERY,
+            {"authorId": author_id, "limit": limit, "offset": offset},
+        )
+        if not result:
+            return SearchResult(books=[], page=page, total_found=0, has_more=False)
+
+        author_items = result.get("authors", [])
+        if not isinstance(author_items, list) or not author_items:
+            return SearchResult(books=[], page=page, total_found=0, has_more=False)
+
+        author_data = author_items[0] if isinstance(author_items[0], dict) else {}
+        contributions = (
+            author_data.get("contributions", []) if isinstance(author_data, dict) else []
+        )
+        aggregate = (
+            author_data.get("contributions_aggregate", {}) if isinstance(author_data, dict) else {}
+        )
+        total_found = coerce_int(
+            aggregate.get("aggregate", {}).get("count") if isinstance(aggregate, dict) else 0,
+            0,
+        )
+        today = datetime.now(UTC).date()
+
+        books: list[BookMetadata] = []
+        for row in contributions:
+            if not isinstance(row, dict):
+                continue
+            contribution = str(row.get("contribution") or "").strip()
+            if contribution and "author" not in contribution.casefold():
+                continue
+            book_data = row.get("book", {})
+            if not isinstance(book_data, dict) or not book_data:
+                continue
+            if exclude_compilations and book_data.get("compilation"):
+                continue
+            release_date = _parse_release_date(book_data.get("release_date"))
+            if exclude_unreleased and (release_date is None or release_date.date() > today):
+                continue
+            try:
+                parsed_book = self._parse_book(book_data)
+                books.append(parsed_book)
+            except (AttributeError, IndexError, KeyError, TypeError, ValueError) as exc:
+                logger.debug(
+                    "Failed to parse Hardcover author book for author_id=%s: %s",
+                    author_id,
+                    exc,
+                )
+
+        has_more = offset + len(contributions) < total_found
         return SearchResult(books=books, page=page, total_found=total_found, has_more=has_more)
 
     @cacheable(ttl=120, key_prefix="hardcover:user_lists")
@@ -2154,6 +2292,29 @@ class HardcoverProvider(MetadataProvider):
             )
             return self._fetch_series_books_by_id(
                 int(resolved_series["id"]),
+                options.page,
+                options.limit,
+                exclude_compilations=exclude_compilations,
+                exclude_unreleased=exclude_unreleased,
+            )
+
+        author_value_from_field = str(options.fields.get("author", "")).strip()
+        if author_value_from_field.startswith(HARDCOVER_LIST_ID_PREFIX):
+            try:
+                author_id = self._parse_prefixed_int(author_value_from_field, "author id")
+            except ValueError:
+                logger.debug("Invalid Hardcover author id field value: %s", author_value_from_field)
+                return SearchResult(books=[], page=options.page, total_found=0, has_more=False)
+            exclude_compilations = coerce_bool(
+                app_config.get("HARDCOVER_EXCLUDE_COMPILATIONS", False),
+                default=False,
+            )
+            exclude_unreleased = coerce_bool(
+                app_config.get("HARDCOVER_EXCLUDE_UNRELEASED", False),
+                default=False,
+            )
+            return self._fetch_author_books_by_id(
+                author_id,
                 options.page,
                 options.limit,
                 exclude_compilations=exclude_compilations,
