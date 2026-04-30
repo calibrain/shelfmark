@@ -23,7 +23,6 @@ dependencies = [
     "transmission-rpc",
     "authlib>=1.7.0,<1.8",
     "apprise>=1.9.0",
-    "Pillow>=11.0.0",
 ]
 
 [project.optional-dependencies]

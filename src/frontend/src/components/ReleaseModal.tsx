@@ -22,7 +22,6 @@ import type {
 import { isMetadataBook } from '../types';
 import { bookSupportsTargets } from '../utils/bookTargetLoader';
 import { getColorStyleFromHint } from '../utils/colorMaps';
-import { getSizedCoverUrl } from '../utils/covers';
 import {
   LANGUAGE_OPTION_DEFAULT,
   getLanguageFilterValues,
@@ -211,9 +210,8 @@ function StarRating({ rating, maxRating = 5 }: { rating: number; maxRating?: num
 const ReleaseThumbnail = ({ preview, title }: { preview?: string; title?: string }) => {
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState(false);
-  const optimizedPreview = getSizedCoverUrl(preview, { width: 32, height: 48 });
 
-  if (!optimizedPreview || imageError) {
+  if (!preview || imageError) {
     return (
       <div
         className="flex h-10 w-7 shrink-0 items-center justify-center rounded-sm bg-zinc-200 text-[7px] font-medium text-zinc-500 sm:h-12 sm:w-8 sm:text-[8px] dark:bg-zinc-700 dark:text-zinc-400"
@@ -230,13 +228,10 @@ const ReleaseThumbnail = ({ preview, title }: { preview?: string; title?: string
         <div className="absolute inset-0 animate-pulse bg-linear-to-r from-gray-200 via-gray-100 to-gray-200 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700" />
       )}
       <img
-        src={optimizedPreview}
+        src={preview}
         alt={title || 'Book cover'}
         className="h-full w-full object-cover object-top"
         loading="lazy"
-        decoding="async"
-        width={32}
-        height={48}
         onLoad={() => setImageLoaded(true)}
         onError={() => setImageError(true)}
         style={{ opacity: imageLoaded ? 1 : 0, transition: 'opacity 0.2s ease-in-out' }}
@@ -1242,10 +1237,6 @@ const ReleaseModalSession = ({
   } else if (book.series_name) {
     coverSizeClassName = 'h-[144px] w-24';
   }
-  const modalPreview = getSizedCoverUrl(book.preview, {
-    width: book.cover_aspect === 'square' ? 144 : 96,
-    height: 144,
-  });
 
   let combinedFooterEbookMode = combinedEbookMode;
   if (combinedPhase === 'ebook') {
@@ -1334,14 +1325,13 @@ const ReleaseModalSession = ({
             {/* Mobile: static thumbnail always visible */}
             {!isRequestMode && (
               <div className="shrink-0 sm:hidden">
-                {modalPreview ? (
+                {book.preview ? (
                   <img
-                    src={modalPreview}
+                    src={book.preview}
                     alt=""
                     width={book.cover_aspect === 'square' ? 68 : 46}
                     height={68}
                     className={`rounded-sm object-cover shadow-md ${book.cover_aspect === 'square' ? 'object-center' : 'object-top'}`}
-                    decoding="async"
                     style={{
                       width: book.cover_aspect === 'square' ? 68 : 46,
                       height: 68,
@@ -1375,14 +1365,13 @@ const ReleaseModalSession = ({
                   className="transition-opacity duration-300 ease-out"
                   style={{ opacity: showHeaderThumb ? 1 : 0 }}
                 >
-                  {modalPreview ? (
+                  {book.preview ? (
                     <img
-                      src={modalPreview}
+                      src={book.preview}
                       alt=""
                       width={book.cover_aspect === 'square' ? 68 : 46}
                       height={68}
                       className={`rounded-sm object-cover shadow-md ${book.cover_aspect === 'square' ? 'object-center' : 'object-top'}`}
-                      decoding="async"
                       style={{
                         width: book.cover_aspect === 'square' ? 68 : 46,
                         height: 68,
@@ -1445,13 +1434,10 @@ const ReleaseModalSession = ({
                 ref={bookSummaryRef}
                 className="flex gap-4 border-b border-(--border-muted) px-5 py-4"
               >
-                {modalPreview ? (
+                {book.preview ? (
                   <img
-                    src={modalPreview}
+                    src={book.preview}
                     alt="Book cover"
-                    width={book.cover_aspect === 'square' ? (book.series_name ? 144 : 120) : 96}
-                    height={book.series_name ? 144 : 120}
-                    decoding="async"
                     className={`hidden shrink-0 rounded-lg object-cover shadow-md sm:block ${coverAspectClassName} ${coverSizeClassName}`}
                   />
                 ) : (
