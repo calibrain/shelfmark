@@ -3,7 +3,6 @@ import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import type { RequestRecord } from '../../types';
 import { withBasePath } from '../../utils/basePath';
-import { getSizedCoverUrl } from '../../utils/covers';
 import { Tooltip } from '../shared/Tooltip';
 import type { ActivityCardAction } from './activityCardModel';
 import { buildActivityCardModel } from './activityCardModel';
@@ -500,7 +499,6 @@ export const ActivityCard = ({
   const titleLineRef = useRef<HTMLParagraphElement | null>(null);
   const [badgeOverflow, setBadgeOverflow] = useState<Record<string, boolean>>({});
   const [titleOverflow, setTitleOverflow] = useState(false);
-  const previewImage = getSizedCoverUrl(item.preview, { width: 48, height: 72 });
 
   useLayoutEffect(() => {
     const measureBadgeOverflow = () => {
@@ -711,15 +709,11 @@ export const ActivityCard = ({
       <div className="flex items-start gap-3">
         {/* Artwork */}
         <div className="h-18 w-12 shrink-0 overflow-hidden rounded-sm bg-gray-200 dark:bg-gray-700">
-          {previewImage ? (
+          {item.preview ? (
             <img
-              src={previewImage}
+              src={item.preview}
               alt={`${item.title} cover`}
               className="h-full w-full object-cover object-top"
-              loading="lazy"
-              decoding="async"
-              width={48}
-              height={72}
             />
           ) : (
             <BookFallback />

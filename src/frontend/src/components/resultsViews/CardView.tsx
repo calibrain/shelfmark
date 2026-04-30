@@ -3,7 +3,6 @@ import { useState } from 'react';
 import { useSearchMode } from '../../contexts/SearchModeContext';
 import type { Book, ButtonStateInfo } from '../../types';
 import { bookSupportsTargets } from '../../utils/bookTargetLoader';
-import { getSizedCoverUrl } from '../../utils/covers';
 import { BookActionButton } from '../BookActionButton';
 import { BookTargetDropdown } from '../BookTargetDropdown';
 import { DisplayFieldBadges } from '../shared';
@@ -42,11 +41,6 @@ export const CardView = ({
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const targetProvider = book.provider;
   const targetBookId = book.provider_id;
-  const isSquareCover = book.cover_aspect === 'square';
-  const optimizedPreview = getSizedCoverUrl(book.preview, {
-    width: 292,
-    height: isSquareCover ? 292 : 438,
-  });
   let zIndex: number | undefined;
   if (dropdownOpen) {
     zIndex = 20;
@@ -103,7 +97,7 @@ export const CardView = ({
               #{book.series_position}
             </div>
           )}
-          {optimizedPreview && !imageError ? (
+          {book.preview && !imageError ? (
             <>
               {!imageLoaded && (
                 <div className="absolute inset-0">
@@ -111,13 +105,10 @@ export const CardView = ({
                 </div>
               )}
               <img
-                src={optimizedPreview}
+                src={book.preview}
                 alt={book.title || 'Book cover'}
                 className="h-full w-full"
                 loading="lazy"
-                decoding="async"
-                width={292}
-                height={isSquareCover ? 292 : 438}
                 style={{
                   opacity: imageLoaded ? 1 : 0,
                   transition: 'opacity 0.3s ease-in-out',

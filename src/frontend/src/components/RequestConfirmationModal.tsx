@@ -5,7 +5,6 @@ import { useEscapeKey } from '../hooks/useEscapeKey';
 import { useMountEffect } from '../hooks/useMountEffect';
 import { getMetadataBookInfo } from '../services/api';
 import type { CreateRequestPayload } from '../types';
-import { getSizedCoverUrl } from '../utils/covers';
 import type { RequestConfirmationPreview } from '../utils/requestConfirmation';
 import {
   applyRequestNoteToPayload,
@@ -176,7 +175,6 @@ function RequestConfirmationModalSession({
 
   const titleId = 'request-confirmation-modal-title';
   const confirmDisabled = isSubmitting || (allowNotes && note.length > MAX_REQUEST_NOTE_LENGTH);
-  const previewImage = getSizedCoverUrl(preview.preview, { width: 64, height: 96 });
 
   const submit = async () => {
     if (confirmDisabled) {
@@ -242,15 +240,11 @@ function RequestConfirmationModalSession({
           <div className="rounded-xl border border-(--border-muted) bg-(--bg-soft) px-4 py-4">
             <div className="flex gap-4">
               <div className="h-24 w-16 shrink-0 overflow-hidden rounded-lg border border-(--border-muted) bg-(--bg)">
-                {previewImage ? (
+                {preview.preview ? (
                   <img
-                    src={previewImage}
+                    src={preview.preview}
                     alt={`${preview.title} cover`}
                     className="h-full w-full object-cover object-top"
-                    loading="lazy"
-                    decoding="async"
-                    width={64}
-                    height={96}
                   />
                 ) : (
                   <div className="flex h-full w-full items-center justify-center text-[10px] opacity-60">
