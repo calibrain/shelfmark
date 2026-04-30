@@ -2,11 +2,18 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildNamingTemplatePreview,
+  NAMING_TEMPLATE_TOKENS,
   renderNamingTemplate,
   SAMPLE_NAMING_METADATA,
 } from '../utils/namingTemplatePreview';
 
 describe('namingTemplatePreview', () => {
+  it('groups primary title with universal variables', () => {
+    expect(NAMING_TEMPLATE_TOKENS.find((token) => token.token === 'PrimaryTitle')?.group).toBe(
+      'Universal',
+    );
+  });
+
   it('renders primary title in path previews', () => {
     const preview = buildNamingTemplatePreview(
       '{Author}/{Series/}{SeriesPosition - }{PrimaryTitle} ({Year})',

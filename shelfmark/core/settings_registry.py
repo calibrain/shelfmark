@@ -333,7 +333,7 @@ def get_all_settings_tabs() -> list[SettingsTab]:
     return sorted(_SETTINGS_REGISTRY.values(), key=lambda t: (t.order, t.name))
 
 
-def _iter_value_fields(tab: SettingsTab) -> Iterator[FieldBase]:
+def iter_value_fields(tab: SettingsTab) -> Iterator[FieldBase]:
     """Yield value-bearing fields for a tab."""
     for settings_field in tab.fields:
         if isinstance(settings_field, CustomComponentField):
@@ -360,7 +360,7 @@ def get_settings_field_map(
 
     field_map: dict[str, tuple[FieldBase, str]] = {}
     for tab in tabs:
-        for settings_field in _iter_value_fields(tab):
+        for settings_field in iter_value_fields(tab):
             field_map[settings_field.key] = (settings_field, tab.name)
     return field_map
 
@@ -494,7 +494,7 @@ def initialize_default_configs() -> bool:
 
             # Collect default values for all fields
             defaults = {}
-            for field in _iter_value_fields(tab):
+            for field in iter_value_fields(tab):
                 # Only include fields that have a non-None default
                 if field.default is not None:
                     defaults[field.key] = field.default
@@ -536,7 +536,7 @@ def sync_env_to_config() -> None:
     for tab in get_all_settings_tabs():
         values_to_sync = {}
 
-        for settings_field in _iter_value_fields(tab):
+        for settings_field in iter_value_fields(tab):
             # Skip fields that don't support ENV vars
             if not getattr(settings_field, "env_supported", True):
                 continue

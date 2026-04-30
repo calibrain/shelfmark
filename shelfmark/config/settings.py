@@ -938,7 +938,7 @@ def download_settings() -> list[SettingsField]:
         SelectField(
             key="FILE_ORGANIZATION",
             label="File Organization",
-            description="Choose how downloaded book files are named and organized. ",
+            description="Choose how downloaded book files are named and organized.",
             options=[
                 {
                     "value": "none",
@@ -966,7 +966,14 @@ def download_settings() -> list[SettingsField]:
         _naming_template_field(
             key="TEMPLATE_RENAME",
             label="Naming Template",
-            description="Filename template for single-file book downloads.",
+            description=(
+                "Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} "
+                "(source filename without extension). Universal adds: {Series}, "
+                "{SeriesPosition}, {Subtitle}, {PrimaryTitle}. Use arbitrary prefix/suffix: "
+                "{Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. "
+                "Rename templates are filename-only (no '/' or '\\'); use Organize for folders. "
+                "Applies to single-file downloads."
+            ),
             default="{Author} - {Title} ({Year})",
             placeholder="{Author} - {Title} ({Year})",
             show_when=[
@@ -978,7 +985,12 @@ def download_settings() -> list[SettingsField]:
         _naming_template_field(
             key="TEMPLATE_ORGANIZE",
             label="Path Template",
-            description="Folder and filename template for book downloads.",
+            description=(
+                "Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, "
+                "{OriginalName} (source filename without extension). Universal adds: {Series}, "
+                "{SeriesPosition}, {Subtitle}, {PrimaryTitle}. Use arbitrary prefix/suffix: "
+                "{Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty."
+            ),
             default="{Author}/{Title} ({Year})",
             placeholder="{Author}/{Series/}{Title} ({Year})",
             show_when=[
@@ -1236,7 +1248,14 @@ def download_settings() -> list[SettingsField]:
         _naming_template_field(
             key="TEMPLATE_AUDIOBOOK_RENAME",
             label="Naming Template",
-            description="Filename template for single-file audiobook downloads.",
+            description=(
+                "Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} "
+                "(source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, "
+                "{PrimaryTitle}, {PartNumber}. Use arbitrary prefix/suffix: "
+                "{Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. "
+                "Rename templates are filename-only (no '/' or '\\'); use Organize for folders. "
+                "Applies to single-file downloads."
+            ),
             default="{Author} - {Title}",
             placeholder="{Author} - {Title}{ - Part }{PartNumber}",
             show_when={"field": "FILE_ORGANIZATION_AUDIOBOOK", "value": "rename"},
@@ -1246,8 +1265,13 @@ def download_settings() -> list[SettingsField]:
         _naming_template_field(
             key="TEMPLATE_AUDIOBOOK_ORGANIZE",
             label="Path Template",
-            description="Folder and filename template for audiobook downloads.",
-            default="{Author}/{Title}",
+            description=(
+                "Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, "
+                "{OriginalName} (source filename without extension), {Series}, {SeriesPosition}, "
+                "{Subtitle}, {PrimaryTitle}, {PartNumber}. Use arbitrary prefix/suffix: "
+                "{Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty."
+            ),
+            default="{Author}/{Title}/{Title}",
             placeholder="{Author}/{Series/}{Title}{ - Part }{PartNumber}",
             show_when={"field": "FILE_ORGANIZATION_AUDIOBOOK", "value": "organize"},
             universal_only=True,

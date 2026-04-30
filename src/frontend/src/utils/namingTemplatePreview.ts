@@ -39,7 +39,7 @@ export const NAMING_TEMPLATE_TOKENS: NamingTemplateToken[] = [
     label: 'Primary title',
     description: 'Title without the subtitle suffix',
     value: 'The Hound of the Baskervilles',
-    group: 'Core',
+    group: 'Universal',
   },
   {
     token: 'Year',

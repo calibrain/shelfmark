@@ -310,7 +310,7 @@ def generate_env_docs() -> str:
 
 def _generate_tab_docs(tab: Any, group_prefix: str | None = None) -> list[str]:
     """Generate documentation for a single settings tab."""
-    from shelfmark.core.settings_registry import ActionButton, CustomComponentField, HeadingField
+    from shelfmark.core.settings_registry import iter_value_fields
 
     lines = []
 
@@ -323,17 +323,9 @@ def _generate_tab_docs(tab: Any, group_prefix: str | None = None) -> list[str]:
     lines.append("")
 
     # Collect env-supported fields
-    env_fields = []
-    for field in tab.fields:
-        # Skip non-value fields
-        if isinstance(field, (ActionButton, CustomComponentField, HeadingField)):
-            continue
-
-        # Skip fields that don't support ENV vars
-        if not getattr(field, "env_supported", True):
-            continue
-
-        env_fields.append(field)
+    env_fields = [
+        field for field in iter_value_fields(tab) if getattr(field, "env_supported", True)
+    ]
 
     if not env_fields:
         lines.append("_No environment variables for this section._")

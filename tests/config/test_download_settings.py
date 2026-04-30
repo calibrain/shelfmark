@@ -156,6 +156,21 @@ def test_download_settings_naming_templates_use_wrapped_custom_component():
         assert value_key not in fields_by_key
 
 
+def test_download_settings_naming_template_value_fields_are_registered():
+    import shelfmark.config.settings  # noqa: F401
+    from shelfmark.core import settings_registry
+
+    field_map = settings_registry.get_settings_field_map(tab_name="downloads")
+
+    for value_key in (
+        "TEMPLATE_RENAME",
+        "TEMPLATE_ORGANIZE",
+        "TEMPLATE_AUDIOBOOK_RENAME",
+        "TEMPLATE_AUDIOBOOK_ORGANIZE",
+    ):
+        assert value_key in field_map
+
+
 def test_download_settings_naming_template_serialization_keeps_value_fields_hidden():
     from shelfmark.config.settings import download_settings
     from shelfmark.core import settings_registry

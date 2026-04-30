@@ -38,3 +38,22 @@ def test_generated_env_docs_describe_mirror_lists_as_comma_separated_strings() -
         "| `LIBGEN_MIRROR_URLS` | Mirrors are tried in the order you add them until one works. | "
         "string (comma-separated) | _empty list_ |"
     ) in docs
+
+
+def test_generated_env_docs_include_custom_component_value_fields() -> None:
+    docs = generate_env_docs()
+
+    for env_var in (
+        "TEMPLATE_RENAME",
+        "TEMPLATE_ORGANIZE",
+        "TEMPLATE_AUDIOBOOK_RENAME",
+        "TEMPLATE_AUDIOBOOK_ORGANIZE",
+    ):
+        assert f"`{env_var}`" in docs
+
+    assert (
+        "| `TEMPLATE_AUDIOBOOK_ORGANIZE` | Use / to create folders. Variables: "
+        "{Author}, {Title}, {Year}, {User}, {OriginalName} "
+        "(source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, "
+        "{PrimaryTitle}, {PartNumber}. Use arbitrary prefix/suffix:"
+    ) in docs
