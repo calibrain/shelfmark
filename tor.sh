@@ -202,7 +202,7 @@ while true; do
         exit 1
     fi
 
-    CURRENT_LOG=$(tail -n 1 /var/log/tor/notices.log 2>/dev/null)
+    CURRENT_LOG=$(tail -n 1 /var/log/tor/notices.log 2>/dev/null || true)
     printf "\r\033[K[%ds] %s" "$ELAPSED" "$CURRENT_LOG"
     sleep 1
 done
