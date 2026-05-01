@@ -106,6 +106,18 @@ if [ ! -x "$PYTHON_BIN" ]; then
     PYTHON_BIN="python3"
 fi
 
+# Defensive: some orchestrators (e.g. Unraid Dockhand templates) inject a default
+# PATH that drops the venv bin directory baked in by the Dockerfile. Prepend it
+# so subprocesses launched without an absolute path still resolve correctly.
+case ":${PATH}:" in
+    *":/app/.venv/bin:"*) ;;
+    *) export PATH="/app/.venv/bin:${PATH}" ;;
+esac
+GUNICORN_BIN="/app/.venv/bin/gunicorn"
+if [ ! -x "$GUNICORN_BIN" ]; then
+    GUNICORN_BIN="gunicorn"
+fi
+
 # Print build version
 echo "Build version: $BUILD_VERSION"
 echo "Release version: $RELEASE_VERSION"
@@ -443,7 +455,7 @@ fi
 # upgrades work reliably on customer machines.
 # Map app LOG_LEVEL (often DEBUG/INFO/...) to gunicorn's --log-level (lowercase).
 gunicorn_loglevel=$([ "$DEBUG" = "true" ] && echo debug || echo "${LOG_LEVEL:-info}" | tr '[:upper:]' '[:lower:]')
-command="gunicorn --log-level ${gunicorn_loglevel} --access-logfile - --error-logfile - --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker --workers 1 -t 300 -b ${FLASK_HOST:-0.0.0.0}:${FLASK_PORT:-8084} shelfmark.main:app"
+command="${GUNICORN_BIN} --log-level ${gunicorn_loglevel} --access-logfile - --error-logfile - --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker --workers 1 -t 300 -b ${FLASK_HOST:-0.0.0.0}:${FLASK_PORT:-8084} shelfmark.main:app"
 
 # If DEBUG and not using an external bypass
 if [ "$DEBUG" = "true" ] && [ "$USING_EXTERNAL_BYPASSER" != "true" ]; then
