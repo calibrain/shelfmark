@@ -512,7 +512,12 @@ else
 fi
 
 RUNTIME_HOME=$(resolve_runtime_home)
-require_writable_dir "$RUNTIME_HOME" "Home"
+if [ "$RUN_AS_NON_ROOT" = "true" ]; then
+    require_writable_dir "$RUNTIME_HOME" "Home"
+else
+    mkdir -p "$RUNTIME_HOME"
+    make_writable "$RUNTIME_HOME" tree
+fi
 
 if [ "$RUN_AS_NON_ROOT" = "true" ]; then
     echo "Startup mode: non-root"
