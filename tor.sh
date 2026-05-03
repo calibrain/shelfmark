@@ -213,19 +213,28 @@ echo "[*] Setting up iptables rules..."
 
 iptables -F
 iptables -t nat -F
+TOR_UID=$(id -u debian-tor)
 
 # Allow loopback
 iptables -t nat -A OUTPUT -o lo -j RETURN
 
-# Redirect all TCP to Tor's TransPort
-iptables -t nat -A OUTPUT -p tcp --syn -j REDIRECT --to-ports 9040
+# Allow Tor itself to reach the network
+iptables -t nat -A OUTPUT -m owner --uid-owner "$TOR_UID" -j RETURN
 
 # For UDP DNS queries
 iptables -t nat -A OUTPUT -p udp --dport 53 ! -d 127.0.0.1 -j DNAT --to-destination 127.0.0.1:53
 
-
 # For TCP DNS queries (some DNS queries may use TCP)
 iptables -t nat -A OUTPUT -p tcp --dport 53 ! -d 127.0.0.1 -j DNAT --to-destination 127.0.0.1:53
+
+# Bypass Tor for local/private networks
+iptables -t nat -A OUTPUT -d 127.0.0.0/8 -j RETURN
+iptables -t nat -A OUTPUT -d 10.0.0.0/8 -j RETURN
+iptables -t nat -A OUTPUT -d 172.16.0.0/12 -j RETURN
+iptables -t nat -A OUTPUT -d 192.168.0.0/16 -j RETURN
+
+# Redirect all TCP to Tor's TransPort
+iptables -t nat -A OUTPUT -p tcp --syn -j REDIRECT --to-ports 9040
 
 echo "[✓] Transparent Tor routing enabled."
 
