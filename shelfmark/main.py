@@ -1586,6 +1586,7 @@ def api_local_download() -> Response | tuple[Response, int]:
 
 
 @app.route("/api/covers/<cover_id>", methods=["GET"])
+@login_required
 def api_cover(cover_id: str) -> Response | tuple[Response, int]:
     """Serve a cached book cover image.
 
