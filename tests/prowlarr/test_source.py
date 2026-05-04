@@ -6,6 +6,7 @@ Tests the utility functions for parsing release metadata.
 
 # Import the functions to test
 from shelfmark.metadata_providers import BookMetadata
+from shelfmark.release_sources.prowlarr.api import ProwlarrClient
 from shelfmark.release_sources.prowlarr.source import (
     ProwlarrSource,
     _detect_content_type_from_categories,
@@ -210,9 +211,11 @@ class TestDetectContentType:
 
 
 class FakeTorznabClient:
-    def __init__(self):
+    def __init__(self, search_results=None, seed_settings=None):
         self.calls: list[tuple[str, object]] = []
         self.queries: list[str] = []
+        self.search_results = search_results or []
+        self.seed_settings = seed_settings or {}
 
     def get_enabled_indexers_detailed(self):
         return [
@@ -241,11 +244,46 @@ class FakeTorznabClient:
         del indexer_id, search_type, limit, offset
         self.calls.append((query, categories))
         self.queries.append(query)
-        return []
+        return self.search_results
 
     def get_enriched_indexer_ids(self, restrict_to=None):
         del restrict_to
         return []
+
+    def get_indexer_seed_settings(self, restrict_to=None):
+        del restrict_to
+        return self.seed_settings
+
+
+class TestProwlarrIndexerSeedSettings:
+    def test_get_indexer_seed_settings_reads_prowlarr_minutes_field(self, monkeypatch):
+        client = ProwlarrClient("http://prowlarr:9696", "apikey")
+        monkeypatch.setattr(
+            client,
+            "get_enabled_indexers_detailed",
+            lambda: [
+                {
+                    "id": 13,
+                    "protocol": "torrent",
+                    "fields": [
+                        {"name": "torrentBaseSettings.seedRatio", "value": "2.5"},
+                        {"name": "torrentBaseSettings.seedTime", "value": "7200"},
+                    ],
+                },
+                {
+                    "id": 14,
+                    "protocol": "usenet",
+                    "fields": [
+                        {"name": "torrentBaseSettings.seedRatio", "value": "3"},
+                        {"name": "torrentBaseSettings.seedTime", "value": "9999"},
+                    ],
+                },
+            ],
+        )
+
+        assert client.get_indexer_seed_settings() == {
+            13: {"ratio_limit": 2.5, "seeding_time_limit_minutes": 7200}
+        }
 
 
 class TestProwlarrLocalizedQueries:
@@ -308,6 +346,53 @@ class TestProwlarrLocalizedQueries:
         source.search(book, plan, expand_search=True, content_type="audiobook")
 
         assert fake_client.calls == [("my custom", None)]
+
+    def test_search_attaches_configured_seed_time_minutes_to_release(self, monkeypatch):
+        import shelfmark.release_sources.prowlarr.source as prowlarr_source
+
+        def fake_get(key: str, default=None):
+            values = {
+                "PROWLARR_INDEXERS": "",
+                "PROWLARR_AUTO_EXPAND": False,
+            }
+            return values.get(key, default)
+
+        monkeypatch.setattr(prowlarr_source.config, "get", fake_get)
+
+        fake_client = FakeTorznabClient(
+            search_results=[
+                {
+                    "guid": "mam-result-1",
+                    "protocol": "torrent",
+                    "title": "Test Release",
+                    "magnetUrl": "magnet:?xt=urn:btih:abc123",
+                    "indexerId": 1,
+                    "indexer": "MyAnonamouse",
+                    "minimumSeedTime": 259200,
+                    "minimumRatio": 1,
+                }
+            ],
+            seed_settings={1: {"ratio_limit": 2.0, "seeding_time_limit_minutes": 7200}},
+        )
+        source = ProwlarrSource()
+        monkeypatch.setattr(source, "_get_client", lambda: fake_client)
+
+        book = BookMetadata(
+            provider="hardcover",
+            provider_id="123",
+            title="Anything",
+            authors=["Someone"],
+        )
+
+        from shelfmark.core.search_plan import build_release_search_plan
+
+        plan = build_release_search_plan(book, languages=["en"])
+        releases = source.search(book, plan, content_type="ebook")
+
+        assert len(releases) == 1
+        assert releases[0].extra["configured_ratio_limit"] == 2.0
+        assert releases[0].extra["configured_seed_time_minutes"] == 7200
+        assert releases[0].extra["minimum_seed_time"] == 259200
 
     def test_search_uses_localized_titles_when_available(self, monkeypatch):
         import shelfmark.release_sources.prowlarr.source as prowlarr_source

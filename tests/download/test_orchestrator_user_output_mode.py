@@ -156,6 +156,43 @@ def test_queue_release_persists_generic_retry_resolution_fields(monkeypatch):
     assert task.can_retry_without_staged_source is True
 
 
+def test_queue_release_prefers_configured_seed_time_minutes_for_retry(monkeypatch):
+    import shelfmark.download.orchestrator as orchestrator
+
+    captured: dict[str, object] = {}
+
+    def fake_add(task):
+        captured["task"] = task
+        return True
+
+    monkeypatch.setattr(orchestrator.book_queue, "add", fake_add)
+    monkeypatch.setattr(orchestrator, "ws_manager", None)
+
+    success, error = orchestrator.queue_release(
+        {
+            "source": "prowlarr",
+            "source_id": "prowlarr-release-configured-seed-time",
+            "title": "Queued Prowlarr Release",
+            "download_url": "magnet:?xt=urn:btih:abc123",
+            "protocol": "torrent",
+            "extra": {
+                "configured_ratio_limit": 2,
+                "configured_seed_time_minutes": 7200,
+                "minimum_ratio": 1,
+                "minimum_seed_time": 259200,
+            },
+        },
+        user_id=42,
+        username="alice",
+    )
+
+    assert success is True
+    assert error is None
+    task = captured["task"]
+    assert task.retry_ratio_limit == 2.0
+    assert task.retry_seeding_time_limit_minutes == 7200
+
+
 def test_queue_release_returns_error_for_operational_queue_failure(monkeypatch):
     import shelfmark.download.orchestrator as orchestrator
 
