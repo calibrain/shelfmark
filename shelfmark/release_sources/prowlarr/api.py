@@ -3,7 +3,7 @@
 from collections.abc import Mapping
 from contextlib import suppress
 from http import HTTPStatus
-from typing import Any
+from typing import Any, TypedDict
 
 import requests
 
@@ -11,7 +11,7 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.network import get_ssl_verify
 from shelfmark.release_sources.prowlarr.torznab import parse_torznab_xml
-from shelfmark.release_sources.prowlarr.utils import coerce_int_like
+from shelfmark.release_sources.prowlarr.utils import coerce_float_like, coerce_int_like
 
 logger = setup_logger(__name__)
 
@@ -25,6 +25,15 @@ _PROWLARR_CLIENT_ERRORS = (
     TypeError,
     ValueError,
 )
+
+
+class IndexerSeedSettings(TypedDict, total=False):
+    ratio_limit: float
+    seeding_time_limit_minutes: int
+
+
+_INDEXER_FIELD_SEED_RATIO = "torrentBaseSettings.seedRatio"
+_INDEXER_FIELD_SEED_TIME_MINUTES = "torrentBaseSettings.seedTime"
 
 
 def _normalize_json_object(payload: object, *, context: str) -> dict[str, Any]:
@@ -50,6 +59,19 @@ def _normalize_json_object_list(payload: object, *, context: str) -> list[dict[s
         raise TypeError(msg)
 
     return [_normalize_json_object(item, context=context) for item in payload]
+
+
+def _get_field_value(fields: object, name: str) -> object | None:
+    if not isinstance(fields, list):
+        return None
+
+    for field in fields:
+        if not isinstance(field, Mapping):
+            continue
+        if field.get("name") == name:
+            return field.get("value")
+
+    return None
 
 
 class ProwlarrClient:
@@ -182,6 +204,42 @@ class ProwlarrClient:
                 enriched_ids.append(idx_id_int)
 
         return enriched_ids
+
+    def get_indexer_seed_settings(
+        self, *, restrict_to: list[int] | None = None
+    ) -> dict[int, IndexerSeedSettings]:
+        """Return configured per-indexer torrent share limits.
+
+        Prowlarr exposes seedTime in minutes, which is also the unit expected by
+        torrent clients.
+        """
+        settings_by_indexer: dict[int, IndexerSeedSettings] = {}
+
+        for idx in self.get_enabled_indexers_detailed():
+            idx_id_int = coerce_int_like(idx.get("id"))
+            if idx_id_int is None:
+                continue
+            if restrict_to is not None and idx_id_int not in restrict_to:
+                continue
+            if str(idx.get("protocol") or "").lower() != "torrent":
+                continue
+
+            fields = idx.get("fields")
+            ratio_limit = coerce_float_like(_get_field_value(fields, _INDEXER_FIELD_SEED_RATIO))
+            seeding_time_limit = coerce_int_like(
+                _get_field_value(fields, _INDEXER_FIELD_SEED_TIME_MINUTES)
+            )
+
+            settings: IndexerSeedSettings = {}
+            if ratio_limit is not None and ratio_limit > 0:
+                settings["ratio_limit"] = ratio_limit
+            if seeding_time_limit is not None and seeding_time_limit > 0:
+                settings["seeding_time_limit_minutes"] = seeding_time_limit
+
+            if settings:
+                settings_by_indexer[idx_id_int] = settings
+
+        return settings_by_indexer
 
     def get_enabled_indexers(self) -> list[dict[str, Any]]:
         """Get enabled indexers with book capability info."""

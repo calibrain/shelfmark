@@ -27,7 +27,7 @@ from shelfmark.release_sources import (
     SortOption,
     register_source,
 )
-from shelfmark.release_sources.prowlarr.api import ProwlarrClient
+from shelfmark.release_sources.prowlarr.api import IndexerSeedSettings, ProwlarrClient
 from shelfmark.release_sources.prowlarr.cache import cache_release
 from shelfmark.release_sources.prowlarr.utils import (
     coerce_float_like,
@@ -435,6 +435,8 @@ def _prowlarr_result_to_release(
             "upload_volume_factor": result.get("uploadVolumeFactor"),
             "minimum_ratio": result.get("minimumRatio"),
             "minimum_seed_time": result.get("minimumSeedTime"),
+            "configured_ratio_limit": result.get("configuredRatioLimit"),
+            "configured_seed_time_minutes": result.get("configuredSeedTimeMinutes"),
             "info_hash": result.get("infoHash"),
             "formats": formats or None,
             "formats_display": formats_display,
@@ -442,6 +444,27 @@ def _prowlarr_result_to_release(
             "torznab_attrs": result.get("torznabAttrs"),
         },
     )
+
+
+def _apply_indexer_seed_settings(
+    result: dict,
+    indexer_seed_settings: dict[int, IndexerSeedSettings],
+) -> dict:
+    indexer_id = _coerce_indexer_id(result.get("indexerId"))
+    if indexer_id is None:
+        return result
+
+    seed_settings = indexer_seed_settings.get(indexer_id)
+    if not seed_settings:
+        return result
+
+    enriched_result = dict(result)
+    if "ratio_limit" in seed_settings:
+        enriched_result["configuredRatioLimit"] = seed_settings["ratio_limit"]
+    if "seeding_time_limit_minutes" in seed_settings:
+        enriched_result["configuredSeedTimeMinutes"] = seed_settings["seeding_time_limit_minutes"]
+
+    return enriched_result
 
 
 @register_source("prowlarr")
@@ -762,6 +785,7 @@ class ProwlarrSource(ReleaseSource):
             # Some indexers benefit from title+author queries and extra format detection.
             enriched_indexer_ids = client.get_enriched_indexer_ids(restrict_to=indexer_ids)
             enriched_indexer_ids_set = set(enriched_indexer_ids)
+            indexer_seed_settings = client.get_indexer_seed_settings(restrict_to=indexer_ids)
 
             def _check_timeout() -> None:
                 if time.monotonic() > deadline:
@@ -839,15 +863,18 @@ class ProwlarrSource(ReleaseSource):
             results: list[Release] = []
             enriched_source_ids: set[str] = set()
 
-            for r in all_results:
-                idx_id = r.get("indexerId")
+            for raw_result in all_results:
+                result_with_seed_settings = _apply_indexer_seed_settings(
+                    raw_result, indexer_seed_settings
+                )
+                idx_id = result_with_seed_settings.get("indexerId")
                 idx_id_int = _coerce_indexer_id(idx_id)
 
                 is_enriched = bool(
                     idx_id_int is not None and idx_id_int in enriched_indexer_ids_set
                 )
                 release = _prowlarr_result_to_release(
-                    r,
+                    result_with_seed_settings,
                     content_type,
                     enable_format_detection=is_enriched,
                 )

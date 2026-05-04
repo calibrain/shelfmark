@@ -260,6 +260,32 @@ class TestProwlarrHandlerSeedCriteria:
             assert request.seeding_time_limit == 4320
             assert request.ratio_limit == 1.0
 
+    def test_resolve_download_prefers_configured_seed_time_minutes(self):
+        with patch(
+            "shelfmark.release_sources.prowlarr.handler.get_release",
+            return_value={
+                "protocol": "torrent",
+                "title": "Test Release",
+                "magnetUrl": "magnet:?xt=urn:btih:abc123",
+                "configuredSeedTimeMinutes": 7200,
+                "configuredRatioLimit": 2,
+                "minimumSeedTime": 259200,
+                "minimumRatio": 1,
+            },
+        ):
+            handler = ProwlarrHandler()
+            task = DownloadTask(
+                task_id="configured-seed-time",
+                source="prowlarr",
+                title="Test Book",
+            )
+
+            request = handler._resolve_download(task, lambda *_: None)
+
+            assert request is not None
+            assert request.seeding_time_limit == 7200
+            assert request.ratio_limit == 2.0
+
     def test_resolve_download_rounds_seed_time_up_to_next_minute(self):
         with patch(
             "shelfmark.release_sources.prowlarr.handler.get_release",

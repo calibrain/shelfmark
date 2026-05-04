@@ -69,6 +69,13 @@ def _coerce_seed_time_minutes(raw_seed_time: object) -> int | None:
     return (seed_time_seconds + 59) // 60
 
 
+def _coerce_positive_minutes(raw_minutes: object) -> int | None:
+    minutes = coerce_int_like(raw_minutes)
+    if minutes is None:
+        return None
+    return minutes if minutes > 0 else None
+
+
 @register_handler("prowlarr")
 class ProwlarrHandler(ExternalClientHandler):
     """Handler for Prowlarr downloads via configured torrent or usenet client."""
@@ -157,12 +164,17 @@ class ProwlarrHandler(ExternalClientHandler):
         release_name = prowlarr_result.get("title") or task.title or "Unknown"
         expected_hash = str(prowlarr_result.get("infoHash") or "").strip() or None
 
-        # Seed criteria from the indexer (Torznab attributes)
+        raw_configured_seed_time = prowlarr_result.get("configuredSeedTimeMinutes")
+        raw_configured_ratio = prowlarr_result.get("configuredRatioLimit")
         raw_seed_time = prowlarr_result.get("minimumSeedTime")
         raw_ratio = prowlarr_result.get("minimumRatio")
 
-        seeding_time_limit = _coerce_seed_time_minutes(raw_seed_time)
-        ratio_limit = float(raw_ratio) if raw_ratio is not None else None
+        seeding_time_limit = _coerce_positive_minutes(raw_configured_seed_time)
+        if seeding_time_limit is None:
+            seeding_time_limit = _coerce_seed_time_minutes(raw_seed_time)
+
+        ratio_source = raw_configured_ratio if raw_configured_ratio is not None else raw_ratio
+        ratio_limit = float(ratio_source) if ratio_source is not None else None
 
         return DownloadRequest(
             url=download_url,

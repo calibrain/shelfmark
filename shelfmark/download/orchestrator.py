@@ -169,11 +169,17 @@ def _build_retry_resolution_fields(
     protocol = normalize_optional_text(release_data.get("protocol"))
     ratio_limit = _optional_number(release_data.get("ratio_limit"))
     if ratio_limit is None:
+        ratio_limit = _optional_number(extra.get("configured_ratio_limit"))
+    if ratio_limit is None:
         ratio_limit = _optional_number(extra.get("minimum_ratio"))
 
     seeding_time_limit_minutes = _optional_positive_int(
         release_data.get("seeding_time_limit_minutes")
     )
+    if seeding_time_limit_minutes is None:
+        seeding_time_limit_minutes = _optional_positive_int(
+            extra.get("configured_seed_time_minutes")
+        )
     if seeding_time_limit_minutes is None:
         seeding_time_limit_minutes = _seed_time_seconds_to_minutes(extra.get("minimum_seed_time"))
 
