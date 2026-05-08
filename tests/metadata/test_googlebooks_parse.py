@@ -1,4 +1,57 @@
+import requests
+
+from shelfmark.core.cache import get_metadata_cache
+from shelfmark.metadata_providers import MetadataSearchOptions
 from shelfmark.metadata_providers.googlebooks import GoogleBooksProvider
+
+
+class _GoogleBooksResponse:
+    def __init__(self, payload):
+        self._payload = payload
+
+    def raise_for_status(self):
+        return None
+
+    def json(self):
+        return self._payload
+
+
+class _FlakyGoogleBooksSession:
+    def __init__(self):
+        self.calls = 0
+
+    def get(self, *args, **kwargs):
+        self.calls += 1
+        if self.calls == 1:
+            raise requests.Timeout
+        return _GoogleBooksResponse(
+            {
+                "items": [
+                    {
+                        "id": "volume-1",
+                        "volumeInfo": {
+                            "title": "Recovered Book",
+                            "authors": ["Alice Author"],
+                        },
+                    }
+                ]
+            }
+        )
+
+
+def test_googlebooks_search_does_not_cache_request_failures():
+    get_metadata_cache().clear()
+    provider = GoogleBooksProvider(api_key="test-key")
+    session = _FlakyGoogleBooksSession()
+    provider.session = session
+    options = MetadataSearchOptions(query="Recovered Book")
+
+    assert provider.search(options) == []
+
+    result = provider.search(options)
+
+    assert session.calls == 2
+    assert [book.title for book in result] == ["Recovered Book"]
 
 
 class TestGoogleBooksParseVolume:

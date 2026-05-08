@@ -47,6 +47,11 @@ _HTTP_STATUS_NOT_FOUND = HTTPStatus.NOT_FOUND
 
 GOOGLE_BOOKS_BASE_URL = "https://www.googleapis.com/books/v1"
 
+
+class _GoogleBooksRequestError(Exception):
+    """Raised when Google Books does not return a usable API response."""
+
+
 # Sort mapping - Google only supports "relevance" and "newest"
 SORT_MAPPING: dict[SortOrder, str | None] = {
     SortOrder.RELEVANCE: None,  # Default, no param needed
@@ -117,7 +122,10 @@ class GoogleBooksProvider(MetadataProvider):
             f"{options.query}:{options.search_type.value}:{options.sort.value}:"
             f"{options.language}:{options.limit}:{options.page}:{fields_key}"
         )
-        return self._search_cached(cache_key, options)
+        try:
+            return self._search_cached(cache_key, options)
+        except _GoogleBooksRequestError:
+            return []
 
     @cacheable(
         ttl_key="METADATA_CACHE_SEARCH_TTL",
@@ -166,18 +174,19 @@ class GoogleBooksProvider(MetadataProvider):
         if options.language:
             params["langRestrict"] = options.language
 
+        result = self._make_request("/volumes", params)
+        if result is None:
+            raise _GoogleBooksRequestError
+
         books: list[BookMetadata] = []
         try:
-            result = self._make_request("/volumes", params)
-            if result:
-                items = result.get("items", [])
+            items = result.get("items", [])
+            for item in items:
+                book = self._parse_volume(item)
+                if book:
+                    books.append(book)
 
-                for item in items:
-                    book = self._parse_volume(item)
-                    if book:
-                        books.append(book)
-
-                logger.info("Google Books search '%s' returned %s results", query, len(books))
+            logger.info("Google Books search '%s' returned %s results", query, len(books))
 
         except Exception:
             logger.exception("Google Books search error")
