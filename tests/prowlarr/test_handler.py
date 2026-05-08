@@ -236,7 +236,7 @@ class TestProwlarrHandlerDownloadErrors:
 class TestProwlarrHandlerSeedCriteria:
     """Tests for seed criteria passed through from Prowlarr."""
 
-    def test_resolve_download_converts_seed_time_seconds_to_minutes(self):
+    def test_resolve_download_ignores_torznab_minimum_seed_criteria(self):
         with patch(
             "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value={
@@ -257,21 +257,24 @@ class TestProwlarrHandlerSeedCriteria:
             request = handler._resolve_download(task, lambda *_: None)
 
             assert request is not None
-            assert request.seeding_time_limit == 4320
-            assert request.ratio_limit == 1.0
+            assert request.seeding_time_limit is None
+            assert request.ratio_limit is None
 
-    def test_resolve_download_prefers_configured_seed_time_minutes(self):
-        with patch(
-            "shelfmark.release_sources.prowlarr.handler.get_release",
-            return_value={
-                "protocol": "torrent",
-                "title": "Test Release",
-                "magnetUrl": "magnet:?xt=urn:btih:abc123",
-                "configuredSeedTimeMinutes": 7200,
-                "configuredRatioLimit": 2,
-                "minimumSeedTime": 259200,
-                "minimumRatio": 1,
-            },
+    def test_resolve_download_uses_configured_seed_time_minutes(self):
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value={
+                    "protocol": "torrent",
+                    "title": "Test Release",
+                    "magnetUrl": "magnet:?xt=urn:btih:abc123",
+                    "configuredSeedTimeMinutes": 7200,
+                    "configuredRatioLimit": 2,
+                    "minimumSeedTime": 259200,
+                    "minimumRatio": 1,
+                },
+            ),
+            patch("shelfmark.release_sources.prowlarr.handler.config.get", return_value=True),
         ):
             handler = ProwlarrHandler()
             task = DownloadTask(
@@ -286,19 +289,23 @@ class TestProwlarrHandlerSeedCriteria:
             assert request.seeding_time_limit == 7200
             assert request.ratio_limit == 2.0
 
-    def test_resolve_download_rounds_seed_time_up_to_next_minute(self):
-        with patch(
-            "shelfmark.release_sources.prowlarr.handler.get_release",
-            return_value={
-                "protocol": "torrent",
-                "title": "Test Release",
-                "magnetUrl": "magnet:?xt=urn:btih:abc123",
-                "minimumSeedTime": 61,
-            },
+    def test_resolve_download_ignores_configured_seed_time_when_disabled(self):
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value={
+                    "protocol": "torrent",
+                    "title": "Test Release",
+                    "magnetUrl": "magnet:?xt=urn:btih:abc123",
+                    "configuredSeedTimeMinutes": 7200,
+                    "configuredRatioLimit": 2,
+                },
+            ),
+            patch("shelfmark.release_sources.prowlarr.handler.config.get", return_value=False),
         ):
             handler = ProwlarrHandler()
             task = DownloadTask(
-                task_id="seed-time-round-up",
+                task_id="configured-seed-time-disabled",
                 source="prowlarr",
                 title="Test Book",
             )
@@ -306,7 +313,8 @@ class TestProwlarrHandlerSeedCriteria:
             request = handler._resolve_download(task, lambda *_: None)
 
             assert request is not None
-            assert request.seeding_time_limit == 2
+            assert request.seeding_time_limit is None
+            assert request.ratio_limit is None
 
     def test_download_passes_seed_limits_to_client(self):
         mock_client = MagicMock()
@@ -321,8 +329,10 @@ class TestProwlarrHandlerSeedCriteria:
                     "protocol": "torrent",
                     "title": "Test Release",
                     "magnetUrl": "magnet:?xt=urn:btih:abc123",
+                    "configuredSeedTimeMinutes": 7200,
+                    "configuredRatioLimit": 1.25,
                     "minimumSeedTime": 259200,
-                    "minimumRatio": 1.25,
+                    "minimumRatio": 1,
                 },
             ),
             patch(
@@ -332,6 +342,7 @@ class TestProwlarrHandlerSeedCriteria:
             patch(
                 "shelfmark.release_sources.prowlarr.handler.remove_release",
             ),
+            patch("shelfmark.release_sources.prowlarr.handler.config.get", return_value=True),
             patch.object(
                 ProwlarrHandler,
                 "_poll_and_complete",
@@ -355,7 +366,7 @@ class TestProwlarrHandlerSeedCriteria:
             )
 
             call_kwargs = mock_client.add_download.call_args.kwargs
-            assert call_kwargs["seeding_time_limit"] == 4320
+            assert call_kwargs["seeding_time_limit"] == 7200
             assert call_kwargs["ratio_limit"] == 1.25
 
 

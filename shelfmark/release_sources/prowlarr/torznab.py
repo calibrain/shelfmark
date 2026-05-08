@@ -140,9 +140,6 @@ def parse_torznab_xml(xml_text: str) -> list[dict[str, Any]]:
 
         download_volume_factor = _coerce_float(attrs.get("downloadvolumefactor"))
         upload_volume_factor = _coerce_float(attrs.get("uploadvolumefactor"))
-        minimum_ratio = _coerce_float(attrs.get("minimumratio"))
-        minimum_seed_time = _coerce_int(attrs.get("minimumseedtime"))
-
         cleaned_title = _strip_author_from_title(title, author)
 
         results.append(
@@ -168,8 +165,6 @@ def parse_torznab_xml(xml_text: str) -> list[dict[str, Any]]:
                 "bookTitle": book_title,
                 "downloadVolumeFactor": download_volume_factor,
                 "uploadVolumeFactor": upload_volume_factor,
-                "minimumRatio": minimum_ratio,
-                "minimumSeedTime": minimum_seed_time,
                 # Pass through all torznab attributes for tooltip display
                 "torznabAttrs": attrs,
             }

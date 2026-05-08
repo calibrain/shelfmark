@@ -190,4 +190,11 @@ def prowlarr_config_settings() -> list[SettingsField]:
             description="Automatically retry search without category filtering if no results are found",
             show_when={"field": "PROWLARR_ENABLED", "value": True},
         ),
+        CheckboxField(
+            key="PROWLARR_USE_SEED_PREFERENCES",
+            label="Use Prowlarr seed preferences",
+            default=False,
+            description="Apply per-indexer seed time and ratio preferences from Prowlarr when sending torrents to the download client",
+            show_when={"field": "PROWLARR_ENABLED", "value": True},
+        ),
     ]

@@ -51,24 +51,6 @@ COMPLETED_PATH_RETRY_INTERVAL = _DEFAULT_COMPLETED_PATH_RETRY_INTERVAL
 COMPLETED_PATH_MAX_ATTEMPTS = _DEFAULT_COMPLETED_PATH_MAX_ATTEMPTS
 
 
-def _coerce_seed_time_minutes(raw_seed_time: object) -> int | None:
-    """Convert Prowlarr's minimum seed time from seconds to whole minutes."""
-    if raw_seed_time is None:
-        return None
-
-    seed_time_seconds = coerce_int_like(raw_seed_time)
-    if seed_time_seconds is None:
-        logger.warning("Invalid Prowlarr minimumSeedTime value: %r", raw_seed_time)
-        return None
-
-    if seed_time_seconds < 0:
-        logger.warning("Ignoring negative Prowlarr minimumSeedTime value: %s", seed_time_seconds)
-        return None
-
-    # Round up so we never under-seed when a tracker uses a non-minute boundary.
-    return (seed_time_seconds + 59) // 60
-
-
 def _coerce_positive_minutes(raw_minutes: object) -> int | None:
     minutes = coerce_int_like(raw_minutes)
     if minutes is None:
@@ -164,17 +146,14 @@ class ProwlarrHandler(ExternalClientHandler):
         release_name = prowlarr_result.get("title") or task.title or "Unknown"
         expected_hash = str(prowlarr_result.get("infoHash") or "").strip() or None
 
-        raw_configured_seed_time = prowlarr_result.get("configuredSeedTimeMinutes")
-        raw_configured_ratio = prowlarr_result.get("configuredRatioLimit")
-        raw_seed_time = prowlarr_result.get("minimumSeedTime")
-        raw_ratio = prowlarr_result.get("minimumRatio")
+        seeding_time_limit = None
+        ratio_limit = None
+        if config.get("PROWLARR_USE_SEED_PREFERENCES", False):
+            raw_configured_seed_time = prowlarr_result.get("configuredSeedTimeMinutes")
+            raw_configured_ratio = prowlarr_result.get("configuredRatioLimit")
 
-        seeding_time_limit = _coerce_positive_minutes(raw_configured_seed_time)
-        if seeding_time_limit is None:
-            seeding_time_limit = _coerce_seed_time_minutes(raw_seed_time)
-
-        ratio_source = raw_configured_ratio if raw_configured_ratio is not None else raw_ratio
-        ratio_limit = float(ratio_source) if ratio_source is not None else None
+            seeding_time_limit = _coerce_positive_minutes(raw_configured_seed_time)
+            ratio_limit = float(raw_configured_ratio) if raw_configured_ratio is not None else None
 
         return DownloadRequest(
             url=download_url,

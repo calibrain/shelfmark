@@ -433,8 +433,6 @@ def _prowlarr_result_to_release(
             "freeleech": is_freeleech,
             "download_volume_factor": result.get("downloadVolumeFactor"),
             "upload_volume_factor": result.get("uploadVolumeFactor"),
-            "minimum_ratio": result.get("minimumRatio"),
-            "minimum_seed_time": result.get("minimumSeedTime"),
             "configured_ratio_limit": result.get("configuredRatioLimit"),
             "configured_seed_time_minutes": result.get("configuredSeedTimeMinutes"),
             "info_hash": result.get("infoHash"),
@@ -785,7 +783,11 @@ class ProwlarrSource(ReleaseSource):
             # Some indexers benefit from title+author queries and extra format detection.
             enriched_indexer_ids = client.get_enriched_indexer_ids(restrict_to=indexer_ids)
             enriched_indexer_ids_set = set(enriched_indexer_ids)
-            indexer_seed_settings = client.get_indexer_seed_settings(restrict_to=indexer_ids)
+            indexer_seed_settings = (
+                client.get_indexer_seed_settings(restrict_to=indexer_ids)
+                if config.get("PROWLARR_USE_SEED_PREFERENCES", False)
+                else {}
+            )
 
             def _check_timeout() -> None:
                 if time.monotonic() > deadline:

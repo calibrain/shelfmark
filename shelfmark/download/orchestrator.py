@@ -138,13 +138,6 @@ def _optional_positive_int(value: object) -> int | None:
     return parsed if parsed > 0 else None
 
 
-def _seed_time_seconds_to_minutes(value: object) -> int | None:
-    seed_time_seconds = _optional_positive_int(value)
-    if seed_time_seconds is None:
-        return None
-    return (seed_time_seconds + 59) // 60
-
-
 def _config_float(value: object, default: float) -> float:
     if isinstance(value, bool) or value is None:
         return default
@@ -168,20 +161,16 @@ def _build_retry_resolution_fields(
 
     protocol = normalize_optional_text(release_data.get("protocol"))
     ratio_limit = _optional_number(release_data.get("ratio_limit"))
-    if ratio_limit is None:
+    if ratio_limit is None and config.get("PROWLARR_USE_SEED_PREFERENCES", False):
         ratio_limit = _optional_number(extra.get("configured_ratio_limit"))
-    if ratio_limit is None:
-        ratio_limit = _optional_number(extra.get("minimum_ratio"))
 
     seeding_time_limit_minutes = _optional_positive_int(
         release_data.get("seeding_time_limit_minutes")
     )
-    if seeding_time_limit_minutes is None:
+    if seeding_time_limit_minutes is None and config.get("PROWLARR_USE_SEED_PREFERENCES", False):
         seeding_time_limit_minutes = _optional_positive_int(
             extra.get("configured_seed_time_minutes")
         )
-    if seeding_time_limit_minutes is None:
-        seeding_time_limit_minutes = _seed_time_seconds_to_minutes(extra.get("minimum_seed_time"))
 
     return {
         "retry_download_url": normalize_optional_text(release_data.get("download_url")),

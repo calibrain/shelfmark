@@ -3,6 +3,16 @@ from unittest.mock import MagicMock
 from shelfmark.core.models import SearchMode
 
 
+def enable_prowlarr_seed_preferences(monkeypatch, orchestrator):
+    monkeypatch.setattr(
+        orchestrator.config,
+        "get",
+        lambda key, default=None, user_id=None: (
+            True if key == "PROWLARR_USE_SEED_PREFERENCES" else default
+        ),
+    )
+
+
 def test_queue_release_uses_user_specific_books_output_mode(monkeypatch):
     import shelfmark.download.orchestrator as orchestrator
 
@@ -125,6 +135,7 @@ def test_queue_release_persists_generic_retry_resolution_fields(monkeypatch):
 
     monkeypatch.setattr(orchestrator.book_queue, "add", fake_add)
     monkeypatch.setattr(orchestrator, "ws_manager", None)
+    enable_prowlarr_seed_preferences(monkeypatch, orchestrator)
 
     success, error = orchestrator.queue_release(
         {
@@ -135,8 +146,8 @@ def test_queue_release_persists_generic_retry_resolution_fields(monkeypatch):
             "protocol": "torrent",
             "indexer": "MyIndexer",
             "extra": {
-                "minimum_ratio": 1.25,
-                "minimum_seed_time": 5400,
+                "configured_ratio_limit": 1.25,
+                "configured_seed_time_minutes": 90,
                 "info_hash": "ABC123",
             },
         },
@@ -167,6 +178,7 @@ def test_queue_release_prefers_configured_seed_time_minutes_for_retry(monkeypatc
 
     monkeypatch.setattr(orchestrator.book_queue, "add", fake_add)
     monkeypatch.setattr(orchestrator, "ws_manager", None)
+    enable_prowlarr_seed_preferences(monkeypatch, orchestrator)
 
     success, error = orchestrator.queue_release(
         {
@@ -191,6 +203,76 @@ def test_queue_release_prefers_configured_seed_time_minutes_for_retry(monkeypatc
     task = captured["task"]
     assert task.retry_ratio_limit == 2.0
     assert task.retry_seeding_time_limit_minutes == 7200
+
+
+def test_queue_release_ignores_configured_seed_time_when_disabled_for_retry(monkeypatch):
+    import shelfmark.download.orchestrator as orchestrator
+
+    captured: dict[str, object] = {}
+
+    def fake_add(task):
+        captured["task"] = task
+        return True
+
+    monkeypatch.setattr(orchestrator.book_queue, "add", fake_add)
+    monkeypatch.setattr(orchestrator, "ws_manager", None)
+
+    success, error = orchestrator.queue_release(
+        {
+            "source": "prowlarr",
+            "source_id": "prowlarr-release-configured-seed-time-disabled",
+            "title": "Queued Prowlarr Release",
+            "download_url": "magnet:?xt=urn:btih:abc123",
+            "protocol": "torrent",
+            "extra": {
+                "configured_ratio_limit": 2,
+                "configured_seed_time_minutes": 7200,
+            },
+        },
+        user_id=42,
+        username="alice",
+    )
+
+    assert success is True
+    assert error is None
+    task = captured["task"]
+    assert task.retry_ratio_limit is None
+    assert task.retry_seeding_time_limit_minutes is None
+
+
+def test_queue_release_ignores_torznab_minimum_seed_criteria_for_retry(monkeypatch):
+    import shelfmark.download.orchestrator as orchestrator
+
+    captured: dict[str, object] = {}
+
+    def fake_add(task):
+        captured["task"] = task
+        return True
+
+    monkeypatch.setattr(orchestrator.book_queue, "add", fake_add)
+    monkeypatch.setattr(orchestrator, "ws_manager", None)
+
+    success, error = orchestrator.queue_release(
+        {
+            "source": "prowlarr",
+            "source_id": "prowlarr-release-minimum-only",
+            "title": "Queued Prowlarr Release",
+            "download_url": "magnet:?xt=urn:btih:abc123",
+            "protocol": "torrent",
+            "extra": {
+                "minimum_ratio": 1,
+                "minimum_seed_time": 259200,
+            },
+        },
+        user_id=42,
+        username="alice",
+    )
+
+    assert success is True
+    assert error is None
+    task = captured["task"]
+    assert task.retry_ratio_limit is None
+    assert task.retry_seeding_time_limit_minutes is None
 
 
 def test_queue_release_returns_error_for_operational_queue_failure(monkeypatch):
