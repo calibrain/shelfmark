@@ -587,7 +587,7 @@ def atomic_hardlink(source_path: Path, dest_path: Path, max_attempts: int = 100)
                     error=e,
                 )
             if permission_error or _hardlink_not_supported(e):
-                logger.debug(
+                logger.warning(
                     "Hardlink failed (%s), falling back to copy: %s -> %s",
                     e,
                     source_path,

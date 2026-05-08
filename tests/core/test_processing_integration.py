@@ -1,7 +1,9 @@
 """Integration tests for real filesystem processing flows."""
 
+import errno
 import os
 import zipfile
+from contextlib import nullcontext
 from pathlib import Path
 from threading import Event
 from unittest.mock import MagicMock, patch
@@ -44,6 +46,15 @@ def _build_config(
 def _sync_config(mock_config, mock_core):
     mock_core.get = mock_config.get
     mock_core.CUSTOM_SCRIPT = mock_config.CUSTOM_SCRIPT
+
+
+def _hardlink_support_patch(supported: bool):
+    if supported:
+        return nullcontext()
+    return patch(
+        "shelfmark.download.fs.os.link",
+        side_effect=OSError(errno.EXDEV, "Invalid cross-device link"),
+    )
 
 
 def test_direct_download_rename_moves_file(tmp_path):
@@ -366,7 +377,7 @@ def test_torrent_hardlink_enabled_copy_fallback_does_not_extract_archives(tmp_pa
     with (
         patch("shelfmark.core.config.config") as mock_config,
         patch("shelfmark.config.env.TMP_DIR", staging),
-        patch("shelfmark.download.postprocess.transfer.same_filesystem", return_value=False),
+        _hardlink_support_patch(False),
     ):
         mock_config.get = _build_config(ingest, organization="none", hardlink=True)
         mock_config.CUSTOM_SCRIPT = None
@@ -385,7 +396,7 @@ def test_torrent_hardlink_enabled_copy_fallback_does_not_extract_archives(tmp_pa
     # Most importantly: hardlink-setting-enabled fallback to copy should NOT extract.
     assert list(ingest.glob("*.epub")) == []
 
-    assert any(msg.startswith("Copying") for _, msg in statuses)
+    assert any(msg.startswith("Hardlinking") for _, msg in statuses)
 
 
 def test_torrent_hardlink_enabled_copy_fallback_directory_archive_kept_when_zip_supported(tmp_path):
@@ -422,7 +433,7 @@ def test_torrent_hardlink_enabled_copy_fallback_directory_archive_kept_when_zip_
     with (
         patch("shelfmark.core.config.config") as mock_config,
         patch("shelfmark.config.env.TMP_DIR", staging),
-        patch("shelfmark.download.postprocess.transfer.same_filesystem", return_value=False),
+        _hardlink_support_patch(False),
     ):
         mock_config.get = _build_config(
             ingest,
@@ -1028,20 +1039,20 @@ def test_postprocess_folder_blackbox_matrix(
 @pytest.mark.parametrize("content_kind", ["book", "audiobook"])
 @pytest.mark.parametrize("organization", ["none", "organize"])
 @pytest.mark.parametrize("hardlink_enabled", [False, True])
-@pytest.mark.parametrize("same_filesystem", [True, False])
+@pytest.mark.parametrize("hardlink_supported", [True, False])
 def test_postprocess_torrent_blackbox_matrix(
     tmp_path,
     input_kind: str,
     content_kind: str,
     organization: str,
     hardlink_enabled: bool,
-    same_filesystem: bool,
+    hardlink_supported: bool,
 ):
     """Torrent-like (original_download_path set) black-box test matrix.
 
     This exercises:
     - hardlink enabled/disabled
-    - same-filesystem hardlink vs copy fallback
+    - successful hardlink vs copy fallback
     - content type differences (book vs audiobook)
 
     Assertions focus on invariants:
@@ -1087,7 +1098,7 @@ def test_postprocess_torrent_blackbox_matrix(
         source_file.write_text("content")
 
     task = DownloadTask(
-        task_id=f"torrent-matrix-{input_kind}-{content_kind}-{organization}-{hardlink_enabled}-{same_filesystem}",
+        task_id=f"torrent-matrix-{input_kind}-{content_kind}-{organization}-{hardlink_enabled}-{hardlink_supported}",
         source="prowlarr",
         title=title,
         author=author,
@@ -1100,9 +1111,7 @@ def test_postprocess_torrent_blackbox_matrix(
     with (
         patch("shelfmark.core.config.config") as mock_config,
         patch("shelfmark.config.env.TMP_DIR", staging),
-        patch(
-            "shelfmark.download.postprocess.transfer.same_filesystem", return_value=same_filesystem
-        ),
+        _hardlink_support_patch(hardlink_supported),
     ):
         mock_config.get = _build_config(
             ingest,
@@ -1131,8 +1140,8 @@ def test_postprocess_torrent_blackbox_matrix(
         assert result_path.parent == ingest
         assert result_path.name == f"random.{extension}"
 
-    # Hardlink only when enabled and same filesystem.
-    if hardlink_enabled and same_filesystem:
+    # Hardlink only when enabled and supported by the filesystem.
+    if hardlink_enabled and hardlink_supported:
         assert os.stat(source_file).st_ino == os.stat(result_path).st_ino
     else:
         assert os.stat(source_file).st_ino != os.stat(result_path).st_ino

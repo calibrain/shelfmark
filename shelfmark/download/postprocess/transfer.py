@@ -13,7 +13,6 @@ from shelfmark.core.naming import (
     build_library_path,
     derive_primary_title,
     parse_naming_template,
-    same_filesystem,
     sanitize_filename,
 )
 from shelfmark.core.utils import is_audiobook as check_audiobook
@@ -93,21 +92,21 @@ def resolve_hardlink_source(
     if hardlink_enabled and task.original_download_path:
         hardlink_source = Path(task.original_download_path)
         hardlink_source_exists = run_blocking_io(hardlink_source.exists)
-        if (
-            destination
-            and hardlink_source_exists
-            and run_blocking_io(same_filesystem, hardlink_source, destination)
-        ):
+        if hardlink_source_exists:
             use_hardlink = True
             source_path = hardlink_source
-        elif hardlink_source_exists:
-            logger.warning(
-                "Cannot hardlink: %s and %s are on different filesystems. Falling back to copy. To fix: ensure torrent client downloads to same filesystem as destination.",
+            logger.info(
+                "Hardlink enabled for task %s; attempting link from %s to %s",
+                task.task_id,
                 hardlink_source,
                 destination,
             )
-            if status_callback:
-                status_callback("resolving", "Cannot hardlink (different filesystems), using copy")
+        else:
+            logger.warning(
+                "Hardlink enabled for task %s, but source path does not exist: %s",
+                task.task_id,
+                hardlink_source,
+            )
 
     return TransferPlan(
         source_path=source_path,

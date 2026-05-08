@@ -28,7 +28,6 @@ def _run_organize_post_process(
     task,
     library: Path,
     hardlink_enabled: bool = True,
-    same_fs: bool = True,
 ):
     from shelfmark.download.postprocess.router import (
         post_process_download as _post_process_download,
@@ -37,10 +36,7 @@ def _run_organize_post_process(
     status_cb = MagicMock()
     cancel_flag = Event()
 
-    with (
-        patch("shelfmark.core.config.config") as mock_config,
-        patch("shelfmark.download.postprocess.transfer.same_filesystem", return_value=same_fs),
-    ):
+    with patch("shelfmark.core.config.config") as mock_config:
         mock_config.CUSTOM_SCRIPT = None
         mock_config.get = MagicMock(
             side_effect=lambda key, default=None, **_kwargs: {
@@ -722,7 +718,6 @@ class TestHardlinkDecisionLogic:
             task=sample_task,
             library=library,
             hardlink_enabled=True,
-            same_fs=True,
         )
 
         assert result is not None
@@ -794,7 +789,6 @@ class TestHardlinkDecisionLogic:
             task=sample_task,
             library=library,
             hardlink_enabled=True,
-            same_fs=True,
         )
 
         assert result is not None
@@ -1371,7 +1365,7 @@ class TestTorrentSourceCleanupProtection:
         from shelfmark.download.postprocess.pipeline import transfer_file_to_library
 
         # Simulate by directly calling transfer_file_to_library with use_hardlink=False
-        # (this is what happens after same_filesystem check fails)
+        # (this is what happens when hardlinking is disabled before transfer)
         downloads = tmp_path / "downloads"
         downloads.mkdir()
         torrent_file = downloads / "book.epub"
