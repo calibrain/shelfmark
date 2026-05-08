@@ -39,10 +39,7 @@ _TRANSFER_PROCESS_ERRORS = (AttributeError, KeyError, OSError, RuntimeError, Typ
 
 
 def should_hardlink(task: DownloadTask) -> bool:
-    """Check if hardlinking is enabled for this task (Prowlarr torrents only)."""
-    if task.source != "prowlarr":
-        return False
-
+    """Check if hardlinking is enabled for this torrent-backed task."""
     if not task.original_download_path:
         return False
 

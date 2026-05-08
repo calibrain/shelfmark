@@ -776,6 +776,30 @@ class TestHardlinkDecisionLogic:
         assert result is not None
         assert not staged.exists()
 
+    def test_non_prowlarr_torrent_with_original_path_can_hardlink(self, tmp_path, sample_task):
+        """Torrent-backed sources such as AudiobookBay can hardlink client files."""
+        library = tmp_path / "library"
+        library.mkdir()
+        source = tmp_path / "downloads" / "book.m4b"
+        source.parent.mkdir()
+        source.write_bytes(b"content")
+
+        sample_task.source = "audiobookbay"
+        sample_task.content_type = "audiobook"
+        sample_task.format = "m4b"
+        sample_task.original_download_path = str(source)
+
+        result, _ = _run_organize_post_process(
+            temp_file=source,
+            task=sample_task,
+            library=library,
+            hardlink_enabled=True,
+            same_fs=True,
+        )
+
+        assert result is not None
+        assert Path(result).stat().st_ino == source.stat().st_ino
+
 
 class TestHardlinkInodeVerification:
     """Tests that verify hardlinks share the same inode."""
