@@ -4,8 +4,24 @@ from pathlib import Path
 from threading import Event
 from unittest.mock import MagicMock
 
+import pytest
+
 from shelfmark.core.models import DownloadTask, QueueStatus
 from shelfmark.core.queue import BookQueue
+
+
+class _AvailableSource:
+    display_name = "Test Source"
+
+    def is_available(self):
+        return True
+
+
+@pytest.fixture(autouse=True)
+def source_available_by_default(monkeypatch):
+    import shelfmark.download.orchestrator as orchestrator
+
+    monkeypatch.setattr(orchestrator, "get_source", lambda _source: _AvailableSource())
 
 
 def test_retry_download_requeues_error_task(monkeypatch):

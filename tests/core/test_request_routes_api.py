@@ -1532,6 +1532,12 @@ class TestRequestRoutes:
     def test_admin_fulfil_uses_real_queue_and_preserves_requesting_identity(
         self, main_module, client
     ):
+        class AvailableSource:
+            display_name = "Direct Download"
+
+            def is_available(self):
+                return True
+
         user = _create_user(main_module, prefix="reader")
         other_user = _create_user(main_module, prefix="reader")
         admin = _create_user(main_module, prefix="admin", role="admin")
@@ -1567,13 +1573,23 @@ class TestRequestRoutes:
                     "shelfmark.core.request_routes.load_users_request_policy_settings",
                     return_value=policy,
                 ):
-                    create_resp = client.post("/api/requests", json=create_payload)
-                    request_id = create_resp.json["id"]
+                    with patch.object(
+                        main_module.backend,
+                        "get_source",
+                        return_value=AvailableSource(),
+                    ):
+                        create_resp = client.post("/api/requests", json=create_payload)
+                        request_id = create_resp.json["id"]
 
-                    _set_session(
-                        client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True
-                    )
-                    fulfil_resp = client.post(f"/api/admin/requests/{request_id}/fulfil", json={})
+                        _set_session(
+                            client,
+                            user_id=admin["username"],
+                            db_user_id=admin["id"],
+                            is_admin=True,
+                        )
+                        fulfil_resp = client.post(
+                            f"/api/admin/requests/{request_id}/fulfil", json={}
+                        )
 
         assert fulfil_resp.status_code == 200
         assert fulfil_resp.json["status"] == "fulfilled"
