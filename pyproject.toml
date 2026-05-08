@@ -22,14 +22,14 @@ dependencies = [
     "qbittorrent-api",
     "transmission-rpc",
     "authlib>=1.7.0,<1.8",
-    "apprise>=1.9.0",
+    "apprise>=1.10.0",
 ]
 
 [project.optional-dependencies]
 browser = [
     "pyvirtualdisplay",
     "pyautogui",
-    "seleniumbase==4.48.2",
+    "seleniumbase==4.48.4",
     "python-xlib",
 ]
 
@@ -40,7 +40,7 @@ dev = [
     "pytest",
     "pytest-cov",
     "pytest-xdist>=3.8.0",
-    "ruff==0.15.11",
+    "ruff==0.15.12",
     "vulture>=2.14",
 ]
 
