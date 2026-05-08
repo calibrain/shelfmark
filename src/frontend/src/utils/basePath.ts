@@ -31,13 +31,13 @@ const resolveBasePath = (): string => {
 };
 
 // Lazy initialization to ensure DOM is ready when base path is resolved
-let _basePath: string | null = null;
+let cachedBasePath: string | null = null;
 
 export const getBasePath = (): string => {
-  if (_basePath === null) {
-    _basePath = normalizeBasePath(resolveBasePath());
+  if (cachedBasePath === null) {
+    cachedBasePath = normalizeBasePath(resolveBasePath());
   }
-  return _basePath;
+  return cachedBasePath;
 };
 
 export const withBasePath = (path: string): string => {

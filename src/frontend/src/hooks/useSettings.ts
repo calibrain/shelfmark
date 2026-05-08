@@ -75,8 +75,8 @@ const hydrateSettingsResponse = (response: SettingsResponse): HydratedSettingsSt
   });
 
   const values = extractSettingsValues(tabs);
-  if (values.general && Object.prototype.hasOwnProperty.call(values.general, '_THEME')) {
-    values.general._THEME = getStoredThemePreference();
+  if (values.general && Object.prototype.hasOwnProperty.call(values.general, THEME_FIELD.key)) {
+    values.general[THEME_FIELD.key] = getStoredThemePreference();
   }
 
   return {
@@ -208,7 +208,7 @@ export function useSettings(): UseSettingsReturn {
 
   const updateValue = useCallback(
     (tabName: string, key: string, value: unknown) => {
-      if (key === '_THEME' && typeof value === 'string') {
+      if (key === THEME_FIELD.key && typeof value === 'string') {
         setThemePreference(value);
         setOriginalValues((prev) => ({
           ...prev,
@@ -277,7 +277,7 @@ export function useSettings(): UseSettingsReturn {
         if (tab) {
           for (const field of getValueBearingFields(tab.fields)) {
             if (field.fromEnv) continue; // Skip env-locked fields
-            if (field.key === '_THEME') continue; // Skip client-side only theme field
+            if (field.key === THEME_FIELD.key) continue; // Skip client-side only theme field
 
             const value = tabValues[field.key];
             const originalValue = originalTabValues[field.key];

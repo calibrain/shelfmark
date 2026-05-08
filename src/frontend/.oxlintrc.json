@@ -58,6 +58,7 @@
     "react/jsx-no-useless-fragment": "error",
     "react/self-closing-comp": "error",
     "typescript/switch-exhaustiveness-check": "error",
+    "jsx-a11y/prefer-tag-over-role": "off",
     "no-restricted-imports": [
       "error",
       {
