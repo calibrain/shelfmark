@@ -173,6 +173,24 @@ def _generate_bootstrap_env_docs() -> list[str]:
             "default": "/auth/app.db",
         },
         {
+            "name": "HIDE_LOCAL_AUTH",
+            "description": "Hide the username/password login form when OIDC is active.",
+            "type": "boolean",
+            "default": "false",
+        },
+        {
+            "name": "DISABLE_LOCAL_AUTH",
+            "description": "Disable username/password login and remove the local-admin prerequisite for OIDC. Implies HIDE_LOCAL_AUTH; with AUTH_METHOD=builtin, everyone is locked out until auth env vars are changed.",
+            "type": "boolean",
+            "default": "false",
+        },
+        {
+            "name": "OIDC_AUTO_REDIRECT",
+            "description": "Automatically redirect to the OIDC provider instead of showing the login page.",
+            "type": "boolean",
+            "default": "false",
+        },
+        {
             "name": "DOCKERMODE",
             "description": "Indicates the application is running inside a Docker container.",
             "type": "boolean",
@@ -189,7 +207,7 @@ def _generate_bootstrap_env_docs() -> list[str]:
     lines = [
         "## Bootstrap Configuration",
         "",
-        "These environment variables are used at startup before the settings system loads. They typically configure paths and server settings.",
+        "These environment variables are used at startup before the settings system loads. They typically configure paths, server settings, and authentication startup behavior.",
         "",
         "| Variable | Description | Type | Default |",
         "|----------|-------------|------|---------|",

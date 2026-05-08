@@ -31,7 +31,7 @@ This document lists all configuration options that can be set via environment va
 
 ## Bootstrap Configuration
 
-These environment variables are used at startup before the settings system loads. They typically configure paths and server settings.
+These environment variables are used at startup before the settings system loads. They typically configure paths, server settings, and authentication startup behavior.
 
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
@@ -43,6 +43,9 @@ These environment variables are used at startup before the settings system loads
 | `FLASK_PORT` | Port number for the Flask web server. | number | `8084` |
 | `SESSION_COOKIE_SECURE` | Enable secure cookies (requires HTTPS). | boolean | `false` |
 | `CWA_DB_PATH` | Path to the Calibre-Web database for authentication integration. | string (path) | `/auth/app.db` |
+| `HIDE_LOCAL_AUTH` | Hide the username/password login form when OIDC is active. | boolean | `false` |
+| `DISABLE_LOCAL_AUTH` | Disable username/password login and remove the local-admin prerequisite for OIDC. Implies HIDE_LOCAL_AUTH; with AUTH_METHOD=builtin, everyone is locked out until auth env vars are changed. | boolean | `false` |
+| `OIDC_AUTO_REDIRECT` | Automatically redirect to the OIDC provider instead of showing the login page. | boolean | `false` |
 | `DOCKERMODE` | Indicates the application is running inside a Docker container. | boolean | `false` |
 | `ONBOARDING` | Show the onboarding wizard on first run. Set to false to skip (useful for ephemeral storage). | boolean | `true` |
 
@@ -104,6 +107,27 @@ Path to the Calibre-Web database for authentication integration.
 
 - **Type:** string (path)
 - **Default:** `/auth/app.db`
+
+#### `HIDE_LOCAL_AUTH`
+
+Hide the username/password login form when OIDC is active.
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `DISABLE_LOCAL_AUTH`
+
+Disable username/password login and remove the local-admin prerequisite for OIDC. Implies HIDE_LOCAL_AUTH; with AUTH_METHOD=builtin, everyone is locked out until auth env vars are changed.
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `OIDC_AUTO_REDIRECT`
+
+Automatically redirect to the OIDC provider instead of showing the login page.
+
+- **Type:** boolean
+- **Default:** `false`
 
 #### `DOCKERMODE`
 
@@ -1073,6 +1097,7 @@ How long to cache individual book details. Default: 600 (10 minutes). Max: 60480
 | `PROWLARR_API_KEY` | Found in Prowlarr: Settings > General > API Key | string (secret) | _none_ |
 | `PROWLARR_INDEXERS` | Select which indexers to search. 📚 = has book categories. Leave empty to search all. | string (comma-separated) | _empty list_ |
 | `PROWLARR_AUTO_EXPAND` | Automatically retry search without category filtering if no results are found | boolean | `false` |
+| `PROWLARR_USE_SEED_PREFERENCES` | Apply per-indexer seed time and ratio preferences from Prowlarr when sending torrents to the download client | boolean | `false` |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -1120,6 +1145,15 @@ Select which indexers to search. 📚 = has book categories. Leave empty to sear
 **Auto-expand search on no results**
 
 Automatically retry search without category filtering if no results are found
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `PROWLARR_USE_SEED_PREFERENCES`
+
+**Use Prowlarr seed preferences**
+
+Apply per-indexer seed time and ratio preferences from Prowlarr when sending torrents to the download client
 
 - **Type:** boolean
 - **Default:** `false`
