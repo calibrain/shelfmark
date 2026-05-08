@@ -48,8 +48,11 @@ export const getLanguageFilterValues = (
     return null;
   }
 
-  const supportedCodes = new Set(supportedLanguages.map((lang) => lang.code));
-  const defaultCodes = defaultLanguageCodes.filter((code) => supportedCodes.has(code));
+  const languageNormalizer = buildLanguageNormalizer(supportedLanguages);
+  const supportedCodes = new Set(supportedLanguages.map((lang) => lang.code.toLowerCase()));
+  const defaultCodes = defaultLanguageCodes
+    .map((code) => languageNormalizer.get(code.toLowerCase()) ?? code.toLowerCase())
+    .filter((code) => supportedCodes.has(code));
   const resolved = new Set<string>();
 
   uniqueSelection.forEach((code) => {
@@ -58,8 +61,9 @@ export const getLanguageFilterValues = (
       return;
     }
 
-    if (supportedCodes.has(code)) {
-      resolved.add(code);
+    const normalizedCode = languageNormalizer.get(code.toLowerCase()) ?? code.toLowerCase();
+    if (supportedCodes.has(normalizedCode)) {
+      resolved.add(normalizedCode);
     }
   });
 
@@ -130,6 +134,11 @@ export const releaseLanguageMatchesFilter = (
     return part;
   });
 
-  const selectedSet = new Set(selectedCodes.map((c) => c.toLowerCase()));
+  const selectedSet = new Set(
+    selectedCodes.map((code) => {
+      const normalizedCode = code.toLowerCase();
+      return languageNormalizer?.get(normalizedCode) ?? normalizedCode;
+    }),
+  );
   return releaseCodes.every((code) => selectedSet.has(code));
 };
