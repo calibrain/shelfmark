@@ -73,6 +73,16 @@ def _has_username_or_email(claims: dict[str, Any]) -> bool:
     return False
 
 
+def _is_email_verified(claims: dict[str, Any]) -> bool:
+    """Return True when claims explicitly mark the email address as verified."""
+    email_verified = claims.get("email_verified")
+    if isinstance(email_verified, bool):
+        return email_verified
+    if isinstance(email_verified, str):
+        return email_verified.strip().lower() == "true"
+    return False
+
+
 def _login_error_url(message: str) -> str:
     """Build a login URL (with script_root) that includes an OIDC error message."""
     script_root = request.script_root.rstrip("/")
@@ -295,7 +305,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             if admin_group and use_admin_group:
                 is_admin = admin_group in groups
 
-            allow_email_link = bool(user_info.get("email"))
+            allow_email_link = bool(user_info.get("email")) and _is_email_verified(claims)
             user = provision_oidc_user(
                 user_db,
                 user_info,

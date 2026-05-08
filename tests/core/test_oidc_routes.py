@@ -445,6 +445,7 @@ class TestOIDCCallbackEndpoint:
             "userinfo": {
                 "sub": "oidc-alice-sub",
                 "email": "alice@example.com",
+                "email_verified": True,
                 "preferred_username": "alice_oidc",
                 "groups": [],
             }
@@ -548,6 +549,7 @@ class TestOIDCCallbackEndpoint:
             "userinfo": {
                 "sub": "oidc-new-sub",
                 "email": "shared@example.com",
+                "email_verified": True,
                 "preferred_username": "oidcuser",
                 "groups": [],
             }
@@ -574,6 +576,7 @@ class TestOIDCCallbackEndpoint:
             "userinfo": {
                 "sub": "oidc-nomatch",
                 "email": "different@example.com",
+                "email_verified": True,
                 "preferred_username": "newuser",
                 "groups": [],
             }
@@ -585,6 +588,60 @@ class TestOIDCCallbackEndpoint:
 
         with client.session_transaction() as sess:
             assert sess["user_id"] == "newuser"
+
+        original = user_db.get_user(username="existing")
+        assert original["oidc_subject"] is None
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_does_not_link_with_unverified_email(self, mock_get_client, client, user_db):
+        """OIDC login should not link by email when email_verified is false."""
+        user_db.create_user(username="existing", email="shared@example.com", password_hash="hash")
+
+        fake_client = Mock()
+        fake_client.authorize_access_token.return_value = {
+            "userinfo": {
+                "sub": "oidc-unverified",
+                "email": "shared@example.com",
+                "email_verified": False,
+                "preferred_username": "attackeruser",
+                "groups": [],
+            }
+        }
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+        assert resp.status_code == 302
+
+        with client.session_transaction() as sess:
+            assert sess["user_id"] == "attackeruser"
+
+        original = user_db.get_user(username="existing")
+        assert original["oidc_subject"] is None
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_rejects_unverified_email_link_when_no_provision(
+        self, mock_get_client, client, user_db
+    ):
+        """OIDC login should not link by unverified email when creation is disabled."""
+        config = {**MOCK_OIDC_CONFIG, "OIDC_AUTO_PROVISION": False}
+        user_db.create_user(username="existing", email="shared@example.com", password_hash="hash")
+
+        fake_client = Mock()
+        fake_client.authorize_access_token.return_value = {
+            "userinfo": {
+                "sub": "oidc-unverified-no-provision",
+                "email": "shared@example.com",
+                "email_verified": False,
+                "preferred_username": "attackeruser",
+                "groups": [],
+            }
+        }
+        mock_get_client.return_value = (fake_client, config)
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+        error = _get_oidc_error(resp)
+        assert error is not None
+        assert "Account not found" in error
 
         original = user_db.get_user(username="existing")
         assert original["oidc_subject"] is None
