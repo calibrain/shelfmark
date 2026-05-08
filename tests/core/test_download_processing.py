@@ -240,6 +240,26 @@ class TestAtomicCopy:
         assert result.exists()
         assert result.read_text() == "content"
 
+    def test_copy_falls_back_when_copy2_hits_fuse_eio(self, tmp_path):
+        """Fall back to content copy when FUSE rejects xattr metadata reads."""
+        import errno
+
+        from shelfmark.download.fs import atomic_copy as _atomic_copy
+
+        source = tmp_path / "source.txt"
+        source.write_text("content")
+        dest = tmp_path / "dest.txt"
+
+        with patch(
+            "shelfmark.download.fs.shutil.copy2",
+            side_effect=OSError(errno.EIO, "Input/output error"),
+        ):
+            result = _atomic_copy(source, dest)
+
+        assert result == dest
+        assert result.exists()
+        assert result.read_text() == "content"
+
     def test_copy_tolerates_post_publish_estale(self, tmp_path, monkeypatch):
         """Treat ESTALE on the final destination as a successful NFS publish."""
         import errno

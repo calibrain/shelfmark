@@ -229,6 +229,10 @@ def _is_permission_error(e: Exception) -> bool:
     return isinstance(e, PermissionError) or (isinstance(e, OSError) and e.errno == errno.EPERM)
 
 
+def _should_fallback_to_content_copy(error: Exception) -> bool:
+    return _is_permission_error(error) or (isinstance(error, OSError) and error.errno == errno.EIO)
+
+
 def _system_op(op: str, source: Path, dest: Path) -> None:
     """Execute system command (mv or cp) as final fallback."""
     logger.warning("Attempting system %s as final fallback: %s -> %s", op, source, dest)
@@ -463,9 +467,9 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                     try:
                         run_blocking_io(shutil.copy2, str(source_path), str(temp_path))
                     except (PermissionError, OSError) as copy_error:
-                        if _is_permission_error(copy_error):
+                        if _should_fallback_to_content_copy(copy_error):
                             logger.debug(
-                                "Permission error during move-copy, falling back to copyfile (%s -> %s): %s",
+                                "copy2 failed during move-copy, falling back to copyfile (%s -> %s): %s",
                                 source_path,
                                 temp_path,
                                 copy_error,
@@ -631,16 +635,16 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
             try:
                 run_blocking_io(shutil.copy2, str(source_path), str(temp_path))
             except (PermissionError, OSError) as e:
-                # Handle NFS permission errors immediately here
-                if _is_permission_error(e):
-                    log_transfer_permission_context(
-                        "atomic_copy",
-                        source=source_path,
-                        dest=temp_path,
-                        error=e,
-                    )
+                if _should_fallback_to_content_copy(e):
+                    if _is_permission_error(e):
+                        log_transfer_permission_context(
+                            "atomic_copy",
+                            source=source_path,
+                            dest=temp_path,
+                            error=e,
+                        )
                     logger.debug(
-                        "Permission error during copy, falling back to copyfile (%s -> %s): %s",
+                        "copy2 failed during copy, falling back to copyfile (%s -> %s): %s",
                         source_path,
                         temp_path,
                         e,
