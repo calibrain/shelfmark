@@ -12,7 +12,7 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.release_sources import DownloadHandler, register_handler
 
 from .connection_manager import connection_manager
-from .dcc import DCCError, download_dcc
+from .dcc import DCCError, download_dcc, safe_dcc_filename
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -21,6 +21,15 @@ if TYPE_CHECKING:
     from shelfmark.core.models import DownloadTask
 
 logger = setup_logger(__name__)
+
+
+def _server_from_download_request(download_request: str) -> str | None:
+    """Extract the expected IRC bot nick from a release request line."""
+    stripped = download_request.strip()
+    if not stripped.startswith("!"):
+        return None
+    server = stripped[1:].split(maxsplit=1)[0]
+    return server or None
 
 
 def _config_text(key: str) -> str:
@@ -72,6 +81,7 @@ class IRCDownloadHandler(DownloadHandler):
         """Download a release via IRC DCC. task.task_id contains the IRC request string."""
         download_request = task.task_id
         logger.info("IRC download: %s...", download_request[:60])
+        expected_server = _server_from_download_request(download_request)
 
         # Get IRC settings
         server = _config_text("IRC_SERVER")
@@ -123,7 +133,8 @@ class IRCDownloadHandler(DownloadHandler):
             # Phase 3: Wait for DCC offer
             status_callback("resolving", "Waiting for bot response")
 
-            offer = client.wait_for_dcc(timeout=120.0, result_type=False)
+            wait_kwargs = {"expected_senders": {expected_server}} if expected_server else {}
+            offer = client.wait_for_dcc(timeout=120.0, result_type=False, **wait_kwargs)
 
             if not offer:
                 status_callback("error", "No response from bot")
@@ -137,7 +148,9 @@ class IRCDownloadHandler(DownloadHandler):
             status_callback("downloading", "")
 
             # Get file extension from offer filename
-            ext = Path(offer.filename).suffix.lstrip(".") or task.format or "epub"
+            ext = (
+                Path(safe_dcc_filename(offer.filename)).suffix.lstrip(".") or task.format or "epub"
+            )
 
             # Stage to temp directory (lazy import to avoid circular import)
             from shelfmark.download.staging import get_staging_path

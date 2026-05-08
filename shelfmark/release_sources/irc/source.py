@@ -30,7 +30,7 @@ from shelfmark.release_sources import (
 )
 
 from .connection_manager import connection_manager
-from .dcc import DCCError, download_dcc
+from .dcc import DCCError, download_dcc, safe_dcc_filename
 from .parser import SearchResult, extract_results_from_zip, parse_results_file
 
 logger = setup_logger(__name__)
@@ -227,7 +227,8 @@ class IRCReleaseSource(ReleaseSource):
 
             # Wait for results DCC - this is the long wait
             _emit_status(f"Connected to #{channel} - Waiting for results...", phase="searching")
-            offer = client.wait_for_dcc(timeout=60.0, result_type=True)
+            wait_kwargs = {"expected_senders": {search_bot}} if search_bot else {}
+            offer = client.wait_for_dcc(timeout=60.0, result_type=True, **wait_kwargs)
             if not offer:
                 logger.info("No search results received")
                 _emit_status("No results found", phase="complete")
@@ -247,7 +248,7 @@ class IRCReleaseSource(ReleaseSource):
             # Download results file
             _emit_status(f"Connected to #{channel} - Downloading results...", phase="downloading")
             with tempfile.TemporaryDirectory() as tmpdir:
-                result_path = Path(tmpdir) / offer.filename
+                result_path = Path(tmpdir) / safe_dcc_filename(offer.filename)
                 download_dcc(offer, result_path, timeout=30.0)
 
                 # Parse results

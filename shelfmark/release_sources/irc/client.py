@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Self
 
 from shelfmark.core.logger import setup_logger
 
-from .dcc import DCCOffer, parse_dcc_send
+from .dcc import DCCError, DCCOffer, parse_dcc_send, validate_dcc_endpoint
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
@@ -400,6 +400,33 @@ class IRCClient:
             self.send_notice(sender, f"\x01VERSION {self.version}\x01")
             logger.debug("Sent VERSION to %s", sender)
 
+    @staticmethod
+    def _sender_nick(msg: IRCMessage) -> str | None:
+        """Extract the nick from a message prefix."""
+        if not msg.prefix:
+            return None
+        return msg.prefix.split("!", maxsplit=1)[0]
+
+    def _is_allowed_dcc_sender(
+        self,
+        msg: IRCMessage,
+        expected_senders: set[str] | None,
+    ) -> bool:
+        allowed_senders = expected_senders or self.online_servers
+        if not allowed_senders:
+            return True
+
+        sender = self._sender_nick(msg)
+        if sender is None:
+            logger.warning("Ignoring DCC offer without sender prefix")
+            return False
+
+        normalized_allowed = {nick.casefold() for nick in allowed_senders}
+        if sender.casefold() not in normalized_allowed:
+            logger.warning("Ignoring DCC offer from unexpected sender: %s", sender)
+            return False
+        return True
+
     def read_messages(self, *, auto_handle: bool = True) -> Iterator[IRCMessage]:
         """Read and yield IRC messages, optionally auto-handling PING/VERSION."""
         for line in self._recv_lines():
@@ -422,6 +449,7 @@ class IRCClient:
         timeout: float = 60.0,
         *,
         result_type: bool = False,
+        expected_senders: set[str] | None = None,
     ) -> DCCOffer | None:
         """Wait for a DCC SEND offer. Returns None on timeout or no results."""
         target_event = IRCEvent.SEARCH_RESULT if result_type else IRCEvent.BOOK_RESULT
@@ -433,12 +461,15 @@ class IRCClient:
                 return None
 
             if msg.event == target_event:
+                if not self._is_allowed_dcc_sender(msg, expected_senders):
+                    continue
                 try:
                     offer = parse_dcc_send(msg.raw)
+                    validate_dcc_endpoint(offer)
                     logger.info("Received DCC offer: %s", offer.filename)
-                except Exception:
-                    logger.exception("Failed to parse DCC")
-                    return None
+                except DCCError:
+                    logger.exception("Rejected DCC offer")
+                    continue
                 else:
                     return offer
 

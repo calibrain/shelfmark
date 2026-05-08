@@ -7,6 +7,8 @@ import re
 import socket
 import struct
 from dataclasses import dataclass
+from ipaddress import ip_address
+from pathlib import PureWindowsPath
 from typing import TYPE_CHECKING
 
 from shelfmark.core.logger import setup_logger
@@ -59,6 +61,10 @@ class DCCConnectionError(DCCError):
     """Failed to connect to DCC sender."""
 
 
+class DCCSecurityError(DCCError):
+    """Rejected unsafe DCC offer metadata."""
+
+
 def int_to_ip(ip_int: int) -> str:
     """Convert 32-bit integer (DCC format) to dotted IP notation."""
     packed = struct.pack(">I", ip_int)
@@ -76,13 +82,51 @@ def parse_dcc_send(text: str) -> DCCOffer:
     ip_int = int(match.group(2))
     port = int(match.group(3))
     size = int(match.group(4))
+    try:
+        ip = int_to_ip(ip_int)
+    except struct.error as e:
+        msg = f"Invalid DCC IP integer: {ip_int}"
+        raise DCCParseError(msg) from e
 
     return DCCOffer(
-        filename=filename,
-        ip=int_to_ip(ip_int),
+        filename=safe_dcc_filename(filename),
+        ip=ip,
         port=port,
         size=size,
     )
+
+
+def safe_dcc_filename(filename: str) -> str:
+    """Return a DCC filename that cannot escape its destination directory."""
+    safe_name = filename.strip()
+    windows_path = PureWindowsPath(safe_name)
+    if (
+        not safe_name
+        or safe_name in {".", ".."}
+        or "/" in safe_name
+        or "\\" in safe_name
+        or windows_path.drive
+    ):
+        msg = f"Rejected unsafe DCC filename: {filename!r}"
+        raise DCCSecurityError(msg)
+    return safe_name
+
+
+def validate_dcc_endpoint(offer: DCCOffer) -> None:
+    """Reject DCC endpoints that can target local/internal network services."""
+    if not 1 <= offer.port <= 65535:
+        msg = f"Rejected invalid DCC port: {offer.port}"
+        raise DCCSecurityError(msg)
+
+    try:
+        address = ip_address(offer.ip)
+    except ValueError as e:
+        msg = f"Rejected invalid DCC IP address: {offer.ip}"
+        raise DCCSecurityError(msg) from e
+
+    if not address.is_global:
+        msg = f"Rejected non-public DCC endpoint: {offer.ip}"
+        raise DCCSecurityError(msg)
 
 
 def download_dcc(
@@ -93,6 +137,7 @@ def download_dcc(
     timeout: float = 30.0,
 ) -> None:
     """Download file via DCC protocol to dest_path. Raises DCCError on failure."""
+    validate_dcc_endpoint(offer)
     logger.info("DCC connecting to %s:%s for %s", offer.ip, offer.port, offer.filename)
 
     try:
