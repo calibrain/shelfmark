@@ -18,6 +18,10 @@ export const OidcEnvInfo = (_props: CustomSettingsFieldRendererProps) => {
           {'    '}
           <span className="opacity-40"># Hide the local login form</span>
           {'\n'}
+          {'  '}- <span className="text-blue-400">DISABLE_LOCAL_AUTH</span>=
+          <span className="text-green-400">true</span>{' '}
+          <span className="opacity-40"># Disable username/password login</span>
+          {'\n'}
           {'  '}- <span className="text-blue-400">OIDC_AUTO_REDIRECT</span>=
           <span className="text-green-400">true</span>
           {'  '}

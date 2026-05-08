@@ -2,6 +2,8 @@
 
 import sqlite3
 
+import pytest
+
 from shelfmark.core.auth_modes import (
     determine_auth_mode,
     get_auth_check_admin_status,
@@ -62,6 +64,31 @@ class TestDetermineAuthMode:
             "OIDC_CLIENT_ID": "shelfmark",
         }
         assert determine_auth_mode(config, cwa_db_path=None, has_local_admin=False) == "none"
+
+    @pytest.mark.parametrize(
+        ("auth_mode", "config"),
+        [
+            ("builtin", {"AUTH_METHOD": "builtin"}),
+            (
+                "oidc",
+                {
+                    "AUTH_METHOD": "oidc",
+                    "OIDC_DISCOVERY_URL": "https://auth.example.com/.well-known/openid-configuration",
+                    "OIDC_CLIENT_ID": "shelfmark",
+                },
+            ),
+        ],
+    )
+    def test_disable_local_auth_keeps_configured_mode_without_admin(self, auth_mode, config):
+        assert (
+            determine_auth_mode(
+                config,
+                cwa_db_path=None,
+                has_local_admin=False,
+                disable_local_auth=True,
+            )
+            == auth_mode
+        )
 
     def test_load_active_auth_mode_reads_env_backed_cwa_setting(self, monkeypatch, tmp_path):
         from shelfmark.core.config import config as app_config

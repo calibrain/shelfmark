@@ -71,14 +71,16 @@ def determine_auth_mode(
     cwa_db_path: object | None,
     *,
     has_local_admin: bool = True,
+    disable_local_auth: bool = False,
 ) -> str:
     """Determine active auth mode from security config and runtime prerequisites."""
     auth_mode = security_config.get("AUTH_METHOD", "none")
+    local_admin_available = has_local_admin or disable_local_auth
 
     if auth_mode == AUTH_SOURCE_CWA and cwa_db_path:
         return AUTH_SOURCE_CWA
 
-    if auth_mode == AUTH_SOURCE_BUILTIN and has_local_admin:
+    if auth_mode == AUTH_SOURCE_BUILTIN and local_admin_available:
         return AUTH_SOURCE_BUILTIN
 
     if auth_mode == AUTH_SOURCE_PROXY and security_config.get("PROXY_AUTH_USER_HEADER"):
@@ -86,7 +88,7 @@ def determine_auth_mode(
 
     if (
         auth_mode == AUTH_SOURCE_OIDC
-        and has_local_admin
+        and local_admin_available
         and security_config.get("OIDC_DISCOVERY_URL")
         and security_config.get("OIDC_CLIENT_ID")
     ):
@@ -102,6 +104,7 @@ def load_active_auth_mode(
 ) -> str:
     """Resolve active auth mode using current security config and runtime prerequisites."""
     try:
+        from shelfmark.config.env import DISABLE_LOCAL_AUTH
         from shelfmark.core.config import config as app_config
 
         security_config = {
@@ -114,6 +117,7 @@ def load_active_auth_mode(
             security_config,
             cwa_db_path,
             has_local_admin=has_local_password_admin(user_db),
+            disable_local_auth=DISABLE_LOCAL_AUTH,
         )
     except ImportError, OSError, RuntimeError, TypeError, ValueError, sqlite3.Error:
         return "none"

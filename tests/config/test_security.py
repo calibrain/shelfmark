@@ -381,6 +381,16 @@ class TestSecuritySettings:
         assert "inactive" in hint.label.lower()
         assert "local admin" in hint.label.lower()
 
+    def test_oidc_admin_requirement_hint_absent_when_local_auth_is_disabled(self):
+        """OIDC mode should not show the local-admin warning when local auth is disabled."""
+        from shelfmark.config.security import security_settings
+
+        with patch("shelfmark.config.env.DISABLE_LOCAL_AUTH", True):
+            fields = security_settings()
+
+        hint = next((f for f in fields if f.key == "oidc_admin_requirement"), None)
+        assert hint is None
+
     def test_builtin_option_label_is_local(self):
         """Builtin auth option should be labeled Local."""
         from shelfmark.config.security import security_settings
@@ -428,6 +438,28 @@ class TestSecurityOnSave:
 
         assert result["error"] is True
         assert "local admin" in result["message"].lower()
+
+    def test_on_save_allows_oidc_without_local_admin_when_local_auth_is_disabled(
+        self, tmp_path, monkeypatch
+    ):
+        from shelfmark.config.security import _on_save_security
+
+        _set_config_dir(monkeypatch, tmp_path)
+        UserDB(str(tmp_path / "users.db")).initialize()
+
+        with patch("shelfmark.config.security_handlers.DISABLE_LOCAL_AUTH", True):
+            result = _on_save_security(
+                {
+                    "AUTH_METHOD": "oidc",
+                    "OIDC_DISCOVERY_URL": (
+                        "https://auth.example.com/.well-known/openid-configuration"
+                    ),
+                    "OIDC_CLIENT_ID": "shelfmark",
+                    "OIDC_CLIENT_SECRET": "secret123",
+                }
+            )
+
+        assert result["error"] is False
 
     def test_on_save_blocks_oidc_when_client_id_is_missing(self, tmp_path, monkeypatch):
         from shelfmark.config.security import _on_save_security

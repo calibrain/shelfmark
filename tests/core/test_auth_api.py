@@ -126,6 +126,21 @@ class TestLoginSemantics:
         assert response.status_code == 403
         assert response.get_json()["error"] == "Local authentication is disabled"
 
+    @pytest.mark.parametrize("auth_mode", ["builtin", "oidc"])
+    def test_login_rejects_password_auth_when_local_auth_is_disabled(
+        self, main_module, client, auth_mode
+    ):
+        with patch.object(main_module, "get_auth_mode", return_value=auth_mode):
+            with patch.object(main_module, "DISABLE_LOCAL_AUTH", True):
+                response = client.post(
+                    "/api/auth/login",
+                    json={"username": "alice", "password": "wrong", "remember_me": False},
+                )
+
+        assert response.status_code == 403
+        assert response.get_json()["error"] == "Local authentication is disabled"
+        assert main_module.failed_login_attempts == {}
+
     def test_auth_check_none_mode_reports_full_access(self, main_module, client):
         with patch.object(main_module, "get_auth_mode", return_value="none"):
             response = client.get("/api/auth/check")
@@ -137,6 +152,19 @@ class TestLoginSemantics:
             "auth_mode": "none",
             "is_admin": True,
         }
+
+    @pytest.mark.parametrize("auth_mode", ["builtin", "oidc"])
+    def test_auth_check_hides_local_auth_when_disabled(self, main_module, client, auth_mode):
+        with patch.object(main_module, "get_auth_mode", return_value=auth_mode):
+            with patch.object(main_module, "DISABLE_LOCAL_AUTH", True):
+                response = client.get("/api/auth/check")
+
+        assert response.status_code == 200
+        body = response.get_json()
+        assert body["auth_mode"] == auth_mode
+        assert body["auth_required"] is True
+        assert body["authenticated"] is False
+        assert body["hide_local_auth"] is True
 
     def test_auth_check_includes_display_name_for_authenticated_user(
         self, main_module, client, temp_user_db, monkeypatch

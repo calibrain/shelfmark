@@ -4,6 +4,7 @@ import os
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from shelfmark.config.env import DISABLE_LOCAL_AUTH
 from shelfmark.core.user_db import UserDB
 from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.network import get_ssl_verify
@@ -78,7 +79,7 @@ def on_save_security(
     auth_method = str(effective_values.get("AUTH_METHOD", "") or "").strip().lower()
 
     if auth_method == "oidc":
-        if not _has_local_password_admin():
+        if not DISABLE_LOCAL_AUTH and not _has_local_password_admin():
             return {"error": True, "message": _OIDC_LOCKOUT_MESSAGE, "values": normalized_values}
 
         missing_fields = _get_missing_oidc_required_fields(effective_values)

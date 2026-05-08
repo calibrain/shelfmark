@@ -26,6 +26,7 @@ from shelfmark.config.env import (
     BUILD_VERSION,
     CONFIG_DIR,
     CWA_DB_PATH,
+    DISABLE_LOCAL_AUTH,
     FLASK_HOST,
     FLASK_PORT,
     HIDE_LOCAL_AUTH,
@@ -1956,6 +1957,9 @@ def api_login() -> Response | tuple[Response, int]:
         if auth_mode == "proxy":
             return jsonify({"error": "Proxy authentication is enabled"}), 401
 
+        if auth_mode in ("builtin", "oidc") and DISABLE_LOCAL_AUTH:
+            return jsonify({"error": "Local authentication is disabled"}), 403
+
         if auth_mode == "oidc" and HIDE_LOCAL_AUTH:
             return jsonify({"error": "Local authentication is disabled"}), 403
 
@@ -2184,6 +2188,9 @@ def api_auth_check() -> Response | tuple[Response, int]:
             logout_url = app_config.get("PROXY_AUTH_LOGOUT_URL", "")
             if logout_url:
                 response_data["logout_url"] = logout_url
+
+        if auth_mode in ("builtin", "oidc") and DISABLE_LOCAL_AUTH:
+            response_data["hide_local_auth"] = True
 
         # Add custom OIDC button label and SSO enforcement flags if configured
         if auth_mode == "oidc":

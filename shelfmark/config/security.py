@@ -76,7 +76,7 @@ def _test_oidc_connection(current_values: dict[str, Any] | None = None) -> dict[
 @register_settings("security", "Security", icon="shield", order=5)
 def security_settings() -> list[SettingsField]:
     """Security and authentication settings."""
-    from shelfmark.config.env import CWA_DB_PATH
+    from shelfmark.config.env import CWA_DB_PATH, DISABLE_LOCAL_AUTH
 
     cwa_db_available = CWA_DB_PATH is not None and CWA_DB_PATH.exists()
 
@@ -108,11 +108,17 @@ def security_settings() -> list[SettingsField]:
             ),
             show_when=_auth_condition("builtin"),
         ),
-        CustomComponentField(
-            key="oidc_admin_requirement",
-            component="oidc_admin_hint",
-            label="A local admin account is required before OIDC can be enabled.",
-            show_when=_auth_condition("oidc"),
+        *(
+            []
+            if DISABLE_LOCAL_AUTH
+            else [
+                CustomComponentField(
+                    key="oidc_admin_requirement",
+                    component="oidc_admin_hint",
+                    label="A local admin account is required before OIDC can be enabled.",
+                    show_when=_auth_condition("oidc"),
+                ),
+            ]
         ),
         *(
             []
