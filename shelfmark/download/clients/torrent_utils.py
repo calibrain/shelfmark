@@ -7,7 +7,7 @@ import hashlib
 import re
 from binascii import Error as BinasciiError
 from dataclasses import dataclass
-from urllib.parse import parse_qs, urljoin, urlparse
+from urllib.parse import ParseResult, parse_qs, urljoin, urlparse
 
 import requests
 
@@ -32,6 +32,7 @@ _TORRENT_FETCH_ERRORS = (
     ValueError,
 )
 _TORRENT_PARSE_ERRORS = (IndexError, KeyError, TypeError, ValueError)
+_TRUSTED_TORRENT_FETCH_URL_CONFIG_KEYS = ("PROWLARR_URL", "NEWZNAB_URL")
 
 type BencodeValue = dict[str | bytes, BencodeValue] | list[BencodeValue] | int | bytes | str
 
@@ -93,6 +94,9 @@ def extract_torrent_info(
     # Not a magnet - try to fetch and parse the .torrent file
     if not fetch_torrent:
         return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
+    if not _is_trusted_torrent_fetch_url(url):
+        logger.debug("Skipping torrent prefetch for untrusted URL: %s...", url[:80])
+        return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
 
     headers: dict[str, str] = {"Accept": "application/x-bittorrent"}
     # TODO(shelfmark): Move this source-specific Prowlarr auth handling into a source hook.
@@ -133,6 +137,12 @@ def extract_torrent_info(
                     is_magnet=True,
                     magnet_url=redirect_url,
                 )
+            if not _is_trusted_torrent_fetch_url(redirect_url):
+                logger.debug(
+                    "Skipping torrent prefetch redirect to untrusted URL: %s...",
+                    redirect_url[:80],
+                )
+                return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
             # Not a magnet redirect, follow it manually
             logger.debug("Following redirect to: %s...", redirect_url[:80])
             resp = requests.get(
@@ -170,6 +180,36 @@ def extract_torrent_info(
     except _TORRENT_FETCH_ERRORS as e:
         logger.debug("Could not fetch torrent file: %s", e)
         return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
+
+
+def _is_trusted_torrent_fetch_url(url: str) -> bool:
+    parsed = urlparse(url)
+    origin = _url_origin(parsed)
+    if origin is None:
+        return False
+
+    for key in _TRUSTED_TORRENT_FETCH_URL_CONFIG_KEYS:
+        configured_url = str(config.get(key, "") or "").strip()
+        if not configured_url:
+            continue
+        configured_origin = _url_origin(urlparse(configured_url))
+        if configured_origin == origin:
+            return True
+
+    return False
+
+
+def _url_origin(parsed_url: ParseResult) -> tuple[str, str, int] | None:
+    scheme = parsed_url.scheme.lower()
+    if scheme not in {"http", "https"}:
+        return None
+
+    hostname = parsed_url.hostname
+    if not hostname:
+        return None
+
+    default_port = 443 if scheme == "https" else 80
+    return (scheme, hostname.lower(), parsed_url.port or default_port)
 
 
 def parse_transmission_url(url: str) -> tuple[str, str, int, str]:

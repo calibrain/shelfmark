@@ -10,6 +10,7 @@ Tests:
 
 import base64
 import hashlib
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -18,6 +19,7 @@ from shelfmark.download.clients.torrent_utils import (
     bencode_encode,
     extract_hash_from_magnet,
     extract_info_hash_from_torrent,
+    extract_torrent_info,
     parse_transmission_url,
 )
 
@@ -354,6 +356,88 @@ class TestExtractInfoHash:
 
         expected = hashlib.sha256(bencode_encode(info_dict)).hexdigest().lower()
         assert extract_info_hash_from_torrent(torrent_bytes) == expected
+
+
+class TestExtractTorrentInfo:
+    """Tests for extracting torrent info from user-supplied URLs."""
+
+    def test_does_not_fetch_untrusted_http_torrent_url(self, monkeypatch):
+        """Arbitrary HTTP torrent URLs are passed through without backend prefetch."""
+        expected_hash = "3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0"
+        monkeypatch.setattr(
+            "shelfmark.download.clients.torrent_utils.config.get",
+            lambda key, default="": "",
+        )
+        mock_get = MagicMock()
+        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+
+        result = extract_torrent_info(
+            "https://attacker.example/book.torrent",
+            fetch_torrent=True,
+            expected_hash=expected_hash,
+        )
+
+        assert result.info_hash == expected_hash
+        assert result.torrent_data is None
+        assert result.is_magnet is False
+        mock_get.assert_not_called()
+
+    def test_fetches_configured_prowlarr_torrent_url(self, monkeypatch):
+        """Configured Prowlarr download URLs can still be prefetched and parsed."""
+        info_dict = {
+            b"name": b"trusted.txt",
+            b"length": 100,
+            b"piece length": 16384,
+            b"pieces": b"\x00" * 20,
+        }
+        torrent_data = bencode_encode({b"info": info_dict})
+        expected_hash = hashlib.sha1(bencode_encode(info_dict)).hexdigest().lower()
+
+        config_values = {
+            "PROWLARR_URL": "https://prowlarr.example",
+            "PROWLARR_API_KEY": "secret",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.torrent_utils.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+        response = MagicMock(status_code=200, content=torrent_data)
+        response.raise_for_status = MagicMock()
+        mock_get = MagicMock(return_value=response)
+        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+
+        result = extract_torrent_info(
+            "https://prowlarr.example/1/download?apikey=secret&indexer=7",
+            fetch_torrent=True,
+        )
+
+        assert result.info_hash == expected_hash
+        assert result.torrent_data == torrent_data
+        assert result.is_magnet is False
+        mock_get.assert_called_once()
+
+    def test_does_not_follow_trusted_torrent_url_redirect_to_untrusted_host(self, monkeypatch):
+        """Trusted HTTP prefetch does not continue through arbitrary redirects."""
+        expected_hash = "3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0"
+        monkeypatch.setattr(
+            "shelfmark.download.clients.torrent_utils.config.get",
+            lambda key, default="": "https://prowlarr.example" if key == "PROWLARR_URL" else "",
+        )
+        response = MagicMock(status_code=302)
+        response.headers = {"Location": "https://attacker.example/book.torrent"}
+        mock_get = MagicMock(return_value=response)
+        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+
+        result = extract_torrent_info(
+            "https://prowlarr.example/1/download?apikey=secret&indexer=7",
+            fetch_torrent=True,
+            expected_hash=expected_hash,
+        )
+
+        assert result.info_hash == expected_hash
+        assert result.torrent_data is None
+        assert result.is_magnet is False
+        mock_get.assert_called_once()
 
 
 class TestExtractHashFromMagnet:
