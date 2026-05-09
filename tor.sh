@@ -155,11 +155,14 @@ wait_for_tor() {
     return 1
 }
 
+tor_is_healthy() {
+    supervisorctl status tor | grep -q "RUNNING" &&
+        grep -q "Bootstrapped 100%" /var/log/tor/notices.log 2>/dev/null
+}
+
 FAIL_COUNT=0
 while true; do
-    # Try to resolve/connect to google.com (timeout 10s)
-    if curl -s --head --max-time 10 https://google.com > /dev/null; then
-        # Success
+    if tor_is_healthy; then
         FAIL_COUNT=0
     else
         FAIL_COUNT=$((FAIL_COUNT+1))

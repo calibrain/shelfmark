@@ -5,6 +5,14 @@ from pathlib import Path
 TOR_SCRIPT_PATH = Path(__file__).resolve().parents[2] / "tor.sh"
 
 
+def _generated_tor_healthcheck_script() -> str:
+    script = TOR_SCRIPT_PATH.read_text()
+    start = script.index("cat <<'HC' > /app/tor_healthcheck.sh")
+    content_start = script.index("\n", start) + 1
+    content_end = script.index("\nHC", content_start)
+    return script[content_start:content_end]
+
+
 def _tor_script_rule_lines() -> list[str]:
     return [
         line.strip()
@@ -46,3 +54,12 @@ def test_tor_nat_rules_handle_dns_before_tcp_redirect():
 
     assert _line_index(lines, "-p udp --dport 53") < tcp_redirect_index
     assert _line_index(lines, "-p tcp --dport 53") < tcp_redirect_index
+
+
+def test_tor_healthcheck_uses_local_tor_state_without_clear_net_probe():
+    healthcheck_script = _generated_tor_healthcheck_script()
+
+    assert "google.com" not in healthcheck_script
+    assert "curl " not in healthcheck_script
+    assert "supervisorctl status tor" in healthcheck_script
+    assert "Bootstrapped 100%" in healthcheck_script
