@@ -24,12 +24,31 @@ if TYPE_CHECKING:
     from shelfmark.core.models import DownloadTask
 
 logger = setup_logger(__name__)
+DEFAULT_ABB_HOSTNAME = "audiobookbay.lu"
+ALLOWED_DETAIL_URL_SCHEMES = {"https"}
 
 
 def _resolve_configured_hostname() -> str:
     """Return a normalized ABB hostname from config when available."""
     configured_hostname = config.get("ABB_HOSTNAME", "")
     return normalize_hostname(configured_hostname if isinstance(configured_hostname, str) else "")
+
+
+def _resolve_allowed_detail_hostname() -> str:
+    """Return the ABB hostname allowed for queued detail URLs."""
+    return _resolve_configured_hostname() or DEFAULT_ABB_HOSTNAME
+
+
+def _detail_url_matches_host(detail_url: str, hostname: str) -> bool:
+    """Return True when a detail URL uses the allowed ABB scheme and host."""
+    parsed = urlparse(detail_url)
+    detail_hostname = normalize_hostname(parsed.hostname)
+    allowed_hostname = normalize_hostname(hostname).lower().rstrip(".")
+    return (
+        parsed.scheme.lower() in ALLOWED_DETAIL_URL_SCHEMES
+        and bool(detail_hostname)
+        and detail_hostname.lower().rstrip(".") == allowed_hostname
+    )
 
 
 @register_handler("audiobookbay")
@@ -69,9 +88,14 @@ class AudiobookBayHandler(ExternalClientHandler):
             logger.warning("Missing details URL for AudiobookBay task: %s", task.task_id)
             return None
 
-        hostname = _resolve_configured_hostname()
-        if not hostname:
-            hostname = normalize_hostname(urlparse(detail_url).hostname)
+        hostname = _resolve_allowed_detail_hostname()
+        if not _detail_url_matches_host(detail_url, hostname):
+            status_callback("error", "Invalid AudiobookBay details URL")
+            logger.warning(
+                "Rejected AudiobookBay details URL with invalid scheme or host: %s",
+                detail_url,
+            )
+            return None
 
         status_callback("resolving", "Extracting magnet link")
         magnet_link = scraper.extract_magnet_link(detail_url, hostname)

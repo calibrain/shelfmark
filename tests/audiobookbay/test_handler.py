@@ -122,6 +122,83 @@ class TestAudiobookBayHandlerDownload:
 
     @patch("shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link")
     @patch("shelfmark.release_sources.audiobookbay.handler.get_client")
+    @patch("shelfmark.release_sources.audiobookbay.handler.config.get")
+    def test_download_rejects_source_url_host_mismatch(
+        self, mock_config_get, mock_get_client, mock_extract_magnet
+    ):
+        """Test hostile detail URLs are rejected before page fetch."""
+        mock_config_get.side_effect = lambda key, default="": (
+            "audiobookbay.lu" if key == "ABB_HOSTNAME" else default
+        )
+
+        handler = AudiobookBayHandler()
+        task = DownloadTask(
+            task_id="35f56a3e5734bfa69c3169ee8e605a60",
+            source="audiobookbay",
+            title="Test Book",
+            content_type="audiobook",
+            source_url="https://169.254.169.254/latest/meta-data/",
+        )
+        cancel_flag = Event()
+        recorder = ProgressRecorder()
+
+        result = handler.download(
+            task=task,
+            cancel_flag=cancel_flag,
+            progress_callback=recorder.progress_callback,
+            status_callback=recorder.status_callback,
+        )
+
+        assert result is None
+        assert recorder.last_status == "error"
+        assert "details url" in recorder.last_message.lower()
+        mock_extract_magnet.assert_not_called()
+        mock_get_client.assert_not_called()
+
+    @patch("shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link")
+    @patch("shelfmark.release_sources.audiobookbay.handler.get_client")
+    @patch("shelfmark.release_sources.audiobookbay.handler.config.get")
+    def test_download_allows_configured_source_url_host(
+        self, mock_config_get, mock_get_client, mock_extract_magnet
+    ):
+        """Test configured ABB host remains allowed for queued release URLs."""
+        mock_config_get.side_effect = lambda key, default="": (
+            "https://audiobookbay.lu/" if key == "ABB_HOSTNAME" else default
+        )
+        mock_extract_magnet.return_value = "magnet:?xt=urn:btih:abc123"
+
+        mock_client = MagicMock()
+        mock_client.name = "qbittorrent"
+        mock_client.find_existing.return_value = None
+        mock_client.add_download.return_value = "download_id_123"
+        mock_get_client.return_value = mock_client
+
+        handler = AudiobookBayHandler()
+        task = DownloadTask(
+            task_id="35f56a3e5734bfa69c3169ee8e605a60",
+            source="audiobookbay",
+            title="Test Book",
+            content_type="audiobook",
+            source_url="https://audiobookbay.lu/abss/test-book/",
+        )
+        cancel_flag = Event()
+        recorder = ProgressRecorder()
+        with patch.object(AudiobookBayHandler, "_poll_and_complete", return_value=None):
+            result = handler.download(
+                task=task,
+                cancel_flag=cancel_flag,
+                progress_callback=recorder.progress_callback,
+                status_callback=recorder.status_callback,
+            )
+
+        assert result is None
+        mock_extract_magnet.assert_called_once_with(
+            "https://audiobookbay.lu/abss/test-book/", "audiobookbay.lu"
+        )
+        mock_client.add_download.assert_called_once()
+
+    @patch("shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link")
+    @patch("shelfmark.release_sources.audiobookbay.handler.get_client")
     def test_download_existing_complete(self, mock_get_client, mock_extract_magnet):
         """Test handling existing complete download."""
         mock_extract_magnet.return_value = "magnet:?xt=urn:btih:abc123"
