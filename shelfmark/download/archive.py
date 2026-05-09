@@ -1,18 +1,21 @@
 """Archive extraction utilities for downloaded book archives."""
 
+import shutil
+import tempfile
 import zipfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import is_audiobook as check_audiobook
-from shelfmark.download.fs import atomic_write
+from shelfmark.download.fs import atomic_move
 from shelfmark.download.postprocess.policy import (
     get_supported_audiobook_formats,
     get_supported_formats,
 )
 
 logger = setup_logger(__name__)
+_ARCHIVE_COPY_CHUNK_SIZE = 1024 * 1024
 
 if TYPE_CHECKING:
     import rarfile
@@ -208,9 +211,25 @@ def _extract_files_from_archive(archive: ArchiveType, output_dir: Path) -> list[
             logger.warning("Path traversal attempt blocked: %r", info.filename)
             continue
 
-        with archive.open(info) as src:
-            data = src.read()
-        final_path = atomic_write(target_path, data)
+        temp_path: Path | None = None
+        try:
+            with (
+                archive.open(info) as src,
+                tempfile.NamedTemporaryFile(
+                    dir=output_dir,
+                    prefix=".shelfmark-extract-",
+                    suffix=".tmp",
+                    delete=False,
+                ) as temp_file,
+            ):
+                temp_path = Path(temp_file.name)
+                shutil.copyfileobj(src, temp_file, length=_ARCHIVE_COPY_CHUNK_SIZE)
+
+            final_path = atomic_move(cast("Path", temp_path), target_path)
+        except Exception:
+            if temp_path is not None:
+                temp_path.unlink(missing_ok=True)
+            raise
         extracted_files.append(final_path)
         logger.debug("Extracted: %s", filename)
 
