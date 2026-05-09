@@ -33,6 +33,24 @@ _SABNZBD_CLIENT_ERRORS = (
 _SabnzbdRequestParam = str | int | float | bool
 
 
+def _url_origin(value: str) -> tuple[str, str, int] | None:
+    try:
+        parsed = urlparse(value)
+        port = parsed.port
+    except ValueError:
+        return None
+
+    scheme = parsed.scheme.lower()
+    hostname = (parsed.hostname or "").lower()
+    if scheme not in {"http", "https"} or not hostname:
+        return None
+
+    if port is None:
+        port = 443 if scheme == "https" else 80
+
+    return scheme, hostname, port
+
+
 def _parse_eta(eta_str: str) -> int | None:
     """Parse SABnzbd ETA string (format: 'H:MM:SS') to seconds."""
     if not eta_str or eta_str == "0:00:00":
@@ -220,6 +238,18 @@ class SABnzbdClient(DownloadClient):
         response.raise_for_status()
         return response.content
 
+    def _can_prefetch_nzb_url(self, url: str) -> bool:
+        target_origin = _url_origin(url)
+        if target_origin is None:
+            return False
+
+        for key in ("PROWLARR_URL", "NEWZNAB_URL"):
+            trusted_url = normalize_http_config_url(config.get(key, ""))
+            if trusted_url and _url_origin(trusted_url) == target_origin:
+                return True
+
+        return False
+
     def _get_prowlarr_headers(self, url: str) -> dict:
         # TODO(shelfmark): Move this source-specific Prowlarr auth handling into a source hook.
         api_key = str(config.get("PROWLARR_API_KEY", "") or "").strip()
@@ -326,15 +356,20 @@ class SABnzbdClient(DownloadClient):
 
         try:
             logger.debug("Adding NZB to SABnzbd: %s", name)
-            nzb_filename = self._build_nzb_filename(name, url)
-            nzb_content = self._fetch_nzb_content(url)
-            result = self._api_post_file(nzb_content, nzb_filename, name, resolved_category)
-            nzo_id = self._extract_nzo_id(result)
-            logger.info("Added NZB to SABnzbd: %s", nzo_id)
+            if self._can_prefetch_nzb_url(url):
+                nzb_filename = self._build_nzb_filename(name, url)
+                nzb_content = self._fetch_nzb_content(url)
+                result = self._api_post_file(nzb_content, nzb_filename, name, resolved_category)
+                nzo_id = self._extract_nzo_id(result)
+                logger.info("Added NZB to SABnzbd: %s", nzo_id)
+            else:
+                logger.info("Skipping SABnzbd addfile prefetch for untrusted NZB URL")
+                nzo_id = ""
         except _SABNZBD_CLIENT_ERRORS as e:
             logger.warning("SABnzbd addfile failed, falling back to addurl: %s", e)
         else:
-            return nzo_id
+            if nzo_id:
+                return nzo_id
 
         try:
             result = self._api_call(

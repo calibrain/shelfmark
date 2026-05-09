@@ -476,6 +476,7 @@ class TestSABnzbdClientAddDownload:
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
             "SABNZBD_CATEGORY": "books",
+            "PROWLARR_URL": "https://example.com",
         }
         monkeypatch.setattr(
             "shelfmark.download.clients.sabnzbd.config.get",
@@ -512,6 +513,7 @@ class TestSABnzbdClientAddDownload:
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
             "SABNZBD_CATEGORY": "books",
+            "PROWLARR_URL": "https://example.com",
         }
         monkeypatch.setattr(
             "shelfmark.download.clients.sabnzbd.config.get",
@@ -551,6 +553,7 @@ class TestSABnzbdClientAddDownload:
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
             "SABNZBD_CATEGORY": "books",
+            "PROWLARR_URL": "https://example.com",
         }
         monkeypatch.setattr(
             "shelfmark.download.clients.sabnzbd.config.get",
@@ -592,6 +595,7 @@ class TestSABnzbdClientAddDownload:
             "SABNZBD_URL": "http://localhost:8080",
             "SABNZBD_API_KEY": "abc123",
             "SABNZBD_CATEGORY": "books",
+            "PROWLARR_URL": "https://example.com",
         }
         monkeypatch.setattr(
             "shelfmark.download.clients.sabnzbd.config.get",
@@ -619,6 +623,36 @@ class TestSABnzbdClientAddDownload:
 
             assert result == "SABnzbd_nzo_fallback"
             assert mock_api_call.call_args[0][0] == "addurl"
+
+    def test_add_download_does_not_prefetch_untrusted_nzb_url(self, monkeypatch):
+        """Untrusted NZB URLs should be handed to SABnzbd without backend prefetch."""
+        config_values = {
+            "SABNZBD_URL": "http://localhost:8080",
+            "SABNZBD_API_KEY": "abc123",
+            "SABNZBD_CATEGORY": "books",
+            "PROWLARR_URL": "https://prowlarr.example",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.sabnzbd.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        mock_response = MagicMock()
+        mock_response.json.return_value = {"status": True, "nzo_ids": ["SABnzbd_nzo_addurl"]}
+
+        with patch(
+            "shelfmark.download.clients.sabnzbd.requests.get",
+            return_value=mock_response,
+        ) as mock_get:
+            from shelfmark.download.clients.sabnzbd import SABnzbdClient
+
+            client = SABnzbdClient()
+            result = client.add_download("https://attacker.example/download.nzb", "Test Book")
+
+        assert result == "SABnzbd_nzo_addurl"
+        called_urls = [call.args[0] for call in mock_get.call_args_list]
+        assert "https://attacker.example/download.nzb" not in called_urls
+        assert called_urls == ["http://localhost:8080/api"]
 
 
 class TestSABnzbdClientRemove:
