@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+import os
 import time
 from http import HTTPStatus
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from types import SimpleNamespace
 from typing import NoReturn, TypedDict
 
@@ -44,6 +45,13 @@ _HASH_LENGTH_ED2K = 32
 _HTTP_STATUS_FORBIDDEN = HTTPStatus.FORBIDDEN
 _HTTP_STATUS_NOT_FOUND = HTTPStatus.NOT_FOUND
 _ONE_WEEK_IN_SECONDS = 604800
+
+
+class _UnsafeQBittorrentPath:
+    pass
+
+
+_UNSAFE_QBITTORRENT_PATH = _UnsafeQBittorrentPath()
 
 
 class _QBittorrentAddKwargs(TypedDict, total=False):
@@ -134,6 +142,24 @@ def _is_explicit_add_failure(raw_result: object) -> bool:
     """Detect add responses that clearly indicate failure."""
     normalized = _normalize_add_result(raw_result).rstrip(".").lower()
     return normalized in {"fail", "fails", "error", "errors"}
+
+
+def _build_qbittorrent_child_path(base_path: object, child_path: object) -> str | None:
+    """Build a qBittorrent-reported child path without allowing escape from base."""
+    if not isinstance(base_path, str) or not base_path:
+        return None
+    if not isinstance(child_path, str) or not child_path:
+        return None
+
+    child = child_path.replace("\\", "/")
+    posix_child = PurePosixPath(child)
+    windows_child = PureWindowsPath(child_path)
+    if posix_child.is_absolute() or windows_child.is_absolute() or windows_child.drive:
+        return None
+    if any(part == ".." for part in posix_child.parts):
+        return None
+
+    return os.path.normpath(str(Path(base_path) / child))
 
 
 @register_client("torrent")
@@ -629,16 +655,20 @@ class QBittorrentClient(DownloadClient):
         download_id = getattr(torrent, "hash", "")
         if isinstance(download_id, str) and download_id:
             derived = self._derive_download_path_from_files(download_id)
+            if isinstance(derived, _UnsafeQBittorrentPath):
+                return None
             if derived:
                 return derived
 
         # Legacy fallback: save_path + name (for older clients/emulators)
-        return self._build_path(
+        return _build_qbittorrent_child_path(
             getattr(torrent, "save_path", ""),
             getattr(torrent, "name", ""),
         )
 
-    def _derive_download_path_from_files(self, download_id: str) -> str | None:
+    def _derive_download_path_from_files(
+        self, download_id: str
+    ) -> str | _UnsafeQBittorrentPath | None:
         """Derive completed download path using `/torrents/properties` + `/torrents/files`.
 
         This mirrors how common automation apps derive the path when
@@ -685,9 +715,12 @@ class QBittorrentClient(DownloadClient):
             first_name_norm = first_name.replace("\\", "/")
             top_level = first_name_norm.split("/", 1)[0]
             if not top_level:
-                return None
+                return _UNSAFE_QBITTORRENT_PATH
 
-            return os.path.normpath(str(Path(save_path) / top_level))
+            derived = _build_qbittorrent_child_path(save_path, top_level)
+            if derived is None:
+                return _UNSAFE_QBITTORRENT_PATH
+            return os.path.normpath(derived)
         except _QBITTORRENT_CLIENT_ERRORS as e:
             logger.debug(
                 "qBittorrent could not derive path from files: %s: %s",

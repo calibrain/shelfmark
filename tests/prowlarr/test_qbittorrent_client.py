@@ -406,6 +406,156 @@ class TestQBittorrentClientGetStatus:
             assert status.complete is True
             assert status.file_path == "/downloads/Some Torrent"
 
+    @pytest.mark.parametrize(
+        "file_name",
+        ["/escape/book.epub", "../escape/book.epub", "C:\\escape\\book.epub"],
+    )
+    def test_get_status_rejects_unsafe_derived_file_path(self, monkeypatch, file_name):
+        """Fallback file-derived paths must stay inside save_path."""
+        config_values = {
+            "QBITTORRENT_URL": "http://localhost:8080",
+            "QBITTORRENT_USERNAME": "admin",
+            "QBITTORRENT_PASSWORD": "password",
+            "QBITTORRENT_CATEGORY": "test",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.qbittorrent.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        mock_torrent = MockTorrent(
+            hash_val="abc123",
+            progress=1.0,
+            state="uploading",
+            content_path="/downloads",
+            name="Some Torrent",
+        )
+        info_payload = mock_torrent.to_dict() | {"save_path": "/downloads"}
+
+        def response(kind: str):
+            r = MagicMock()
+            r.status_code = 200
+            r.raise_for_status = MagicMock()
+            if kind == "info":
+                r.json.return_value = [info_payload]
+            elif kind == "properties":
+                r.json.return_value = {"save_path": "/downloads"}
+            elif kind == "files":
+                r.json.return_value = [{"name": file_name}]
+            else:
+                raise AssertionError("unknown")
+            return r
+
+        mock_client_instance = MagicMock()
+
+        def get_side_effect(url, params=None, timeout=None):
+            if url.endswith("/api/v2/torrents/info"):
+                return response("info")
+            if url.endswith("/api/v2/torrents/properties"):
+                return response("properties")
+            if url.endswith("/api/v2/torrents/files"):
+                return response("files")
+            raise AssertionError(f"unexpected url: {url}")
+
+        mock_client_instance._session.get.side_effect = get_side_effect
+        mock_client_class = MagicMock(return_value=mock_client_instance)
+
+        with patch.dict("sys.modules", {"qbittorrentapi": MagicMock(Client=mock_client_class)}):
+            import importlib
+
+            import shelfmark.download.clients.qbittorrent as qb_module
+
+            importlib.reload(qb_module)
+
+            client = qb_module.QBittorrentClient()
+            status = client.get_status("abc123")
+
+            assert status.complete is True
+            assert status.file_path is None
+
+    @pytest.mark.parametrize("torrent_name", ["/escape", "../escape", "C:\\escape"])
+    def test_get_status_rejects_unsafe_legacy_name_path(self, monkeypatch, torrent_name):
+        """Legacy save_path/name fallback must reject absolute and traversal names."""
+        config_values = {
+            "QBITTORRENT_URL": "http://localhost:8080",
+            "QBITTORRENT_USERNAME": "admin",
+            "QBITTORRENT_PASSWORD": "password",
+            "QBITTORRENT_CATEGORY": "test",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.qbittorrent.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        mock_torrent = MockTorrent(
+            hash_val="abc123",
+            progress=1.0,
+            state="uploading",
+            content_path="/downloads",
+            name=torrent_name,
+        )
+        info_payload = mock_torrent.to_dict() | {"save_path": "/downloads"}
+        mock_client_instance = MagicMock()
+        mock_client_instance._session.get.side_effect = [
+            create_mock_session_response([info_payload], status_code=200),
+            create_mock_session_response([], status_code=404),
+        ]
+        mock_client_class = MagicMock(return_value=mock_client_instance)
+
+        with patch.dict("sys.modules", {"qbittorrentapi": MagicMock(Client=mock_client_class)}):
+            import importlib
+
+            import shelfmark.download.clients.qbittorrent as qb_module
+
+            importlib.reload(qb_module)
+
+            client = qb_module.QBittorrentClient()
+            status = client.get_status("abc123")
+
+            assert status.complete is True
+            assert status.file_path is None
+
+    def test_get_status_accepts_safe_legacy_name_path(self, monkeypatch):
+        """Normal relative torrent names still build under save_path."""
+        config_values = {
+            "QBITTORRENT_URL": "http://localhost:8080",
+            "QBITTORRENT_USERNAME": "admin",
+            "QBITTORRENT_PASSWORD": "password",
+            "QBITTORRENT_CATEGORY": "test",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.qbittorrent.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        mock_torrent = MockTorrent(
+            hash_val="abc123",
+            progress=1.0,
+            state="uploading",
+            content_path="/downloads",
+            name="Some Torrent",
+        )
+        info_payload = mock_torrent.to_dict() | {"save_path": "/downloads"}
+        mock_client_instance = MagicMock()
+        mock_client_instance._session.get.side_effect = [
+            create_mock_session_response([info_payload], status_code=200),
+            create_mock_session_response([], status_code=404),
+        ]
+        mock_client_class = MagicMock(return_value=mock_client_instance)
+
+        with patch.dict("sys.modules", {"qbittorrentapi": MagicMock(Client=mock_client_class)}):
+            import importlib
+
+            import shelfmark.download.clients.qbittorrent as qb_module
+
+            importlib.reload(qb_module)
+
+            client = qb_module.QBittorrentClient()
+            status = client.get_status("abc123")
+
+            assert status.complete is True
+            assert status.file_path == "/downloads/Some Torrent"
+
     def test_get_status_not_found(self, monkeypatch):
         """Test status for non-existent torrent."""
         config_values = {
