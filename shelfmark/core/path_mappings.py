@@ -10,7 +10,7 @@ A mapping rewrites a remote path prefix into a local path prefix.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -48,6 +48,42 @@ def _is_windows_path(path: str) -> bool:
 
 def _normalize_host(host: str) -> str:
     return str(host or "").strip().lower()
+
+
+def _is_relative_to(path: Path, prefix: Path) -> bool:
+    try:
+        path.relative_to(prefix)
+    except ValueError:
+        return False
+
+    return True
+
+
+def _join_contained_path(local_prefix: str, remainder: str) -> Path | None:
+    local_path = Path(local_prefix)
+
+    if remainder:
+        remainder_path = Path(remainder)
+        windows_remainder_path = PureWindowsPath(remainder)
+
+        if (
+            remainder_path.is_absolute()
+            or windows_remainder_path.is_absolute()
+            or ".." in remainder_path.parts
+            or ".." in windows_remainder_path.parts
+        ):
+            return None
+
+        remapped = local_path / remainder_path
+    else:
+        remapped = local_path
+
+    resolved_local_path = local_path.resolve(strict=False)
+    resolved_remapped = remapped.resolve(strict=False)
+    if not _is_relative_to(resolved_remapped, resolved_local_path):
+        return None
+
+    return remapped
 
 
 def parse_remote_path_mappings(value: object) -> list[RemotePathMapping]:
@@ -119,7 +155,10 @@ def remap_remote_to_local_with_match(
 
             remainder = remainder.removeprefix("/")
 
-            remapped = Path(local_prefix) / remainder if remainder else Path(local_prefix)
+            remapped = _join_contained_path(local_prefix, remainder)
+            if remapped is None:
+                return Path(remote_normalized), False
+
             return remapped, True
 
     return Path(remote_normalized), False
