@@ -856,3 +856,204 @@ class TestStatusEndpointGuardrails:
 
         assert resp.status_code == 200
         assert observed["user_id"] is None
+
+
+class TestQueueManagementEndpointGuardrails:
+    def test_non_owner_cannot_set_priority(self, main_module, client):
+        owner = _create_user(main_module, prefix="owner")
+        actor = _create_user(main_module, prefix="actor")
+        _set_authenticated_session(
+            client,
+            user_id=actor["username"],
+            db_user_id=actor["id"],
+            is_admin=False,
+        )
+        task = DownloadTask(
+            task_id="owned-priority-1",
+            source="direct_download",
+            title="Owned Task",
+            user_id=owner["id"],
+            username=owner["username"],
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
+                with patch.object(main_module.backend, "set_book_priority") as mock_set_priority:
+                    resp = client.put("/api/queue/owned-priority-1/priority", json={"priority": 1})
+
+        assert resp.status_code == 403
+        assert resp.get_json()["code"] == "download_not_owned"
+        mock_set_priority.assert_not_called()
+
+    def test_owner_can_set_priority(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+            is_admin=False,
+        )
+        task = DownloadTask(
+            task_id="reader-priority-1",
+            source="direct_download",
+            title="Reader Task",
+            user_id=user["id"],
+            username=user["username"],
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
+                with patch.object(
+                    main_module.backend, "set_book_priority", return_value=True
+                ) as mock_set_priority:
+                    resp = client.put("/api/queue/reader-priority-1/priority", json={"priority": 2})
+
+        assert resp.status_code == 200
+        assert resp.get_json() == {
+            "status": "updated",
+            "book_id": "reader-priority-1",
+            "priority": 2,
+        }
+        mock_set_priority.assert_called_once_with("reader-priority-1", 2)
+
+    def test_non_owner_cannot_reorder_other_users_task(self, main_module, client):
+        owner = _create_user(main_module, prefix="owner")
+        actor = _create_user(main_module, prefix="actor")
+        _set_authenticated_session(
+            client,
+            user_id=actor["username"],
+            db_user_id=actor["id"],
+            is_admin=False,
+        )
+        owned_task = DownloadTask(
+            task_id="actor-reorder-1",
+            source="direct_download",
+            title="Actor Task",
+            user_id=actor["id"],
+            username=actor["username"],
+        )
+        other_task = DownloadTask(
+            task_id="owner-reorder-1",
+            source="direct_download",
+            title="Owner Task",
+            user_id=owner["id"],
+            username=owner["username"],
+        )
+
+        def fake_get_task(task_id):
+            return {
+                "actor-reorder-1": owned_task,
+                "owner-reorder-1": other_task,
+            }.get(task_id)
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(
+                main_module.backend.book_queue, "get_task", side_effect=fake_get_task
+            ):
+                with patch.object(main_module.backend, "reorder_queue") as mock_reorder:
+                    resp = client.post(
+                        "/api/queue/reorder",
+                        json={
+                            "book_priorities": {
+                                "actor-reorder-1": 1,
+                                "owner-reorder-1": 0,
+                            }
+                        },
+                    )
+
+        assert resp.status_code == 403
+        assert resp.get_json()["code"] == "download_not_owned"
+        mock_reorder.assert_not_called()
+
+    def test_non_admin_queue_order_is_scoped_to_owned_tasks(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        other = _create_user(main_module, prefix="other")
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+            is_admin=False,
+        )
+        user_task = DownloadTask(
+            task_id="reader-order-1",
+            source="direct_download",
+            title="Reader Task",
+            user_id=user["id"],
+            username=user["username"],
+        )
+        other_task = DownloadTask(
+            task_id="other-order-1",
+            source="direct_download",
+            title="Other Task",
+            user_id=other["id"],
+            username=other["username"],
+        )
+
+        def fake_get_task(task_id):
+            return {
+                "reader-order-1": user_task,
+                "other-order-1": other_task,
+            }.get(task_id)
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(
+                main_module.backend,
+                "get_queue_order",
+                return_value=[
+                    {"id": "reader-order-1", "title": "Reader Task", "priority": 0},
+                    {"id": "other-order-1", "title": "Other Task", "priority": 1},
+                ],
+            ):
+                with patch.object(
+                    main_module.backend.book_queue, "get_task", side_effect=fake_get_task
+                ):
+                    resp = client.get("/api/queue/order")
+
+        assert resp.status_code == 200
+        assert resp.get_json()["queue"] == [
+            {"id": "reader-order-1", "title": "Reader Task", "priority": 0}
+        ]
+
+    def test_non_admin_active_downloads_are_scoped_to_owned_tasks(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        other = _create_user(main_module, prefix="other")
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+            is_admin=False,
+        )
+        user_task = DownloadTask(
+            task_id="reader-active-1",
+            source="direct_download",
+            title="Reader Task",
+            user_id=user["id"],
+            username=user["username"],
+        )
+        other_task = DownloadTask(
+            task_id="other-active-1",
+            source="direct_download",
+            title="Other Task",
+            user_id=other["id"],
+            username=other["username"],
+        )
+
+        def fake_get_task(task_id):
+            return {
+                "reader-active-1": user_task,
+                "other-active-1": other_task,
+            }.get(task_id)
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(
+                main_module.backend,
+                "get_active_downloads",
+                return_value=["reader-active-1", "other-active-1"],
+            ):
+                with patch.object(
+                    main_module.backend.book_queue, "get_task", side_effect=fake_get_task
+                ):
+                    resp = client.get("/api/downloads/active")
+
+        assert resp.status_code == 200
+        assert resp.get_json() == {"active_downloads": ["reader-active-1"]}

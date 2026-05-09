@@ -1478,6 +1478,43 @@ def _download_row_owned_by_actor(
     return False
 
 
+def _resolve_queue_actor() -> tuple[bool, int | None, str | None, Response | None]:
+    is_admin, db_user_id, can_access_status = _resolve_status_scope()
+    actor_username = session.get("user_id")
+    normalized_actor_username = actor_username if isinstance(actor_username, str) else None
+
+    if not is_admin and (not can_access_status or db_user_id is None):
+        return (
+            is_admin,
+            db_user_id,
+            normalized_actor_username,
+            jsonify({"error": "User identity unavailable", "code": "user_identity_unavailable"}),
+        )
+
+    return is_admin, db_user_id, normalized_actor_username, None
+
+
+def _queue_task_visible_to_actor(
+    task_id: str,
+    *,
+    is_admin: bool,
+    actor_user_id: int | None,
+    actor_username: str | None,
+) -> bool:
+    if is_admin:
+        return True
+
+    task = backend.book_queue.get_task(task_id)
+    if task is None:
+        return False
+
+    return _task_owned_by_actor(
+        task,
+        actor_user_id=actor_user_id,
+        actor_username=actor_username,
+    )
+
+
 backend.book_queue.set_queue_hook(_record_download_queued)
 backend.book_queue.set_terminal_status_hook(_record_download_terminal_snapshot)
 
@@ -1799,6 +1836,22 @@ def api_set_priority(book_id: str) -> Response | tuple[Response, int]:
             return jsonify({"error": "Priority not provided"}), 400
 
         priority = int(data["priority"])
+
+        is_admin, db_user_id, actor_username, identity_error = _resolve_queue_actor()
+        if identity_error is not None:
+            return identity_error, 403
+
+        task = backend.book_queue.get_task(book_id)
+        if task is None:
+            return jsonify({"error": "Failed to update priority or book not found"}), 404
+
+        if not is_admin and not _task_owned_by_actor(
+            task,
+            actor_user_id=db_user_id,
+            actor_username=actor_username,
+        ):
+            return jsonify({"error": "Forbidden", "code": "download_not_owned"}), 403
+
         success = backend.set_book_priority(book_id, priority)
 
         if success:
@@ -1837,6 +1890,23 @@ def api_reorder_queue() -> Response | tuple[Response, int]:
             if not isinstance(priority, int):
                 return jsonify({"error": f"Invalid priority for book {book_id}"}), 400
 
+        is_admin, db_user_id, actor_username, identity_error = _resolve_queue_actor()
+        if identity_error is not None:
+            return identity_error, 403
+
+        if not is_admin:
+            owned_book_priorities = {}
+            for book_id in book_priorities:
+                task = backend.book_queue.get_task(str(book_id))
+                if task is None:
+                    continue
+                if not _task_owned_by_actor(
+                    task, actor_user_id=db_user_id, actor_username=actor_username
+                ):
+                    return jsonify({"error": "Forbidden", "code": "download_not_owned"}), 403
+                owned_book_priorities[book_id] = book_priorities[book_id]
+            book_priorities = owned_book_priorities
+
         success = backend.reorder_queue(book_priorities)
 
         if success:
@@ -1858,6 +1928,20 @@ def api_queue_order() -> Response | tuple[Response, int]:
     """
     try:
         queue_order = backend.get_queue_order()
+        is_admin, db_user_id, actor_username, identity_error = _resolve_queue_actor()
+        if identity_error is not None:
+            return identity_error, 403
+        if not is_admin:
+            queue_order = [
+                item
+                for item in queue_order
+                if _queue_task_visible_to_actor(
+                    str(item.get("id", "")),
+                    is_admin=False,
+                    actor_user_id=db_user_id,
+                    actor_username=actor_username,
+                )
+            ]
         return jsonify({"queue": queue_order})
     except _OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Queue order error: {e}")
@@ -1875,6 +1959,20 @@ def api_active_downloads() -> Response | tuple[Response, int]:
     """
     try:
         active_downloads = backend.get_active_downloads()
+        is_admin, db_user_id, actor_username, identity_error = _resolve_queue_actor()
+        if identity_error is not None:
+            return identity_error, 403
+        if not is_admin:
+            active_downloads = [
+                task_id
+                for task_id in active_downloads
+                if _queue_task_visible_to_actor(
+                    task_id,
+                    is_admin=False,
+                    actor_user_id=db_user_id,
+                    actor_username=actor_username,
+                )
+            ]
         return jsonify({"active_downloads": active_downloads})
     except _OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Active downloads error: {e}")
