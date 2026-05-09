@@ -354,6 +354,53 @@ class TestRequestRoutes:
         mock_notify_admin.assert_not_called()
         mock_notify_user.assert_not_called()
 
+    def test_download_policy_rejects_mismatched_context_and_release_source(
+        self, main_module, client
+    ):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(
+            default_ebook="download",
+            rules=[{"source": "direct_download", "content_type": "*", "mode": "blocked"}],
+        )
+
+        payload = {
+            "book_data": {
+                "title": "Policy Source Mismatch",
+                "author": "Shelfmark",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "policy-source-mismatch-1",
+            },
+            "context": {
+                "source": "prowlarr",
+                "content_type": "ebook",
+                "request_level": "release",
+            },
+            "release_data": {
+                "source": "direct_download",
+                "source_id": "blocked-release-1",
+                "title": "Blocked Release.epub",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(
+                main_module, "load_users_request_policy_settings", return_value=policy
+            ):
+                with patch(
+                    "shelfmark.core.request_routes.load_users_request_policy_settings",
+                    return_value=policy,
+                ):
+                    with patch.object(main_module.backend, "queue_release") as mock_queue:
+                        resp = client.post("/api/requests", json=payload)
+
+        assert resp.status_code == 400
+        assert resp.json["code"] == "policy_source_mismatch"
+        assert resp.json["error"] == "Policy context source must match release_data.source"
+        assert main_module.user_db.list_requests(user_id=user["id"]) == []
+        mock_queue.assert_not_called()
+
     def test_batch_download_policy_queues_releases_without_creating_requests(
         self, main_module, client
     ):
