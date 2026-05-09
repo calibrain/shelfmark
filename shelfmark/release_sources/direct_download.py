@@ -222,6 +222,35 @@ def _is_configured_zlib_link(url: str) -> bool:
     return False
 
 
+def _get_direct_download_allowed_hosts() -> set[str]:
+    """Return configured hosts allowed for direct-download fallback fetches."""
+    from shelfmark.core import mirrors
+
+    candidate_urls = [
+        network.get_aa_base_url(),
+        *mirrors.get_aa_mirrors(),
+        *mirrors.get_welib_mirrors(),
+    ]
+    hosts: set[str] = set()
+    for candidate_url in candidate_urls:
+        parsed = urlparse(candidate_url)
+        if parsed.scheme not in {"http", "https"}:
+            continue
+        if parsed.hostname:
+            hosts.add(parsed.hostname.lower().rstrip("."))
+    return hosts
+
+
+def _is_allowed_direct_download_url(url: str) -> bool:
+    """Return True when URL scheme and host match configured direct-download mirrors."""
+    parsed = urlparse(url)
+    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
+        return False
+
+    hostname = parsed.hostname.lower().rstrip(".")
+    return hostname in _get_direct_download_allowed_hosts()
+
+
 def _get_md5_url_template(source_id: str) -> str | None:
     """Get URL template for MD5-based sources from centralized config."""
     from shelfmark.core import mirrors
@@ -897,6 +926,10 @@ def _try_download_url(
     try:
         logger.info("Trying download source [%s]: %s", source_id, url)
 
+        if source_id == "welib" and not _is_allowed_direct_download_url(url):
+            logger.warning("Blocked Welib fallback URL outside configured mirrors: %s", url)
+            return None
+
         if status_callback:
             status_callback("resolving", f"Trying {source_context}")
 
@@ -905,6 +938,12 @@ def _try_download_url(
         )
         if not download_url:
             _raise_runtime_error("No download URL resolved")
+
+        if source_id == "welib" and not _is_allowed_direct_download_url(download_url):
+            logger.warning(
+                "Blocked Welib download URL outside configured mirrors: %s", download_url
+            )
+            return None
 
         logger.info("Resolved download URL [%s]: %s", source_id, download_url)
 
@@ -986,9 +1025,12 @@ def _get_download_urls_from_welib(
 
     soup = BeautifulSoup(_html_response_text(html), "html.parser")
     links = [
-        downloader.get_absolute_url(url, href)
+        absolute_url
         for a in soup.find_all("a", href=True)
-        if (href := _get_attr(a, "href")) and "/slow_download/" in href
+        if (href := _get_attr(a, "href"))
+        and "/slow_download/" in href
+        and (absolute_url := downloader.get_absolute_url(url, href))
+        and _is_allowed_direct_download_url(absolute_url)
     ]
     return list(dict.fromkeys(links))  # Dedupe while preserving order
 
