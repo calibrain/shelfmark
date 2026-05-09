@@ -32,7 +32,6 @@ from shelfmark.release_sources.prowlarr.cache import cache_release
 from shelfmark.release_sources.prowlarr.utils import (
     coerce_float_like,
     coerce_int_like,
-    get_preferred_download_url,
     get_protocol,
 )
 
@@ -407,7 +406,7 @@ def _prowlarr_result_to_release(
         language=language_detected,
         size=_parse_size(size_bytes),
         size_bytes=size_bytes,
-        download_url=get_preferred_download_url(result),
+        download_url=None,
         info_url=result.get("infoUrl") or result.get("guid"),
         protocol=(
             ReleaseProtocol.TORRENT

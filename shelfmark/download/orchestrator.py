@@ -159,7 +159,20 @@ def _build_retry_resolution_fields(
     if not isinstance(extra, dict):
         extra = {}
 
+    retry_download_url = normalize_optional_text(release_data.get("download_url"))
     protocol = normalize_optional_text(release_data.get("protocol"))
+    source = normalize_optional_text(release_data.get("source"))
+    if source is not None:
+        handler = get_handler(source)
+        source_retry_fields = handler.build_retry_resolution_fields(release_data)
+        retry_download_url = (
+            normalize_optional_text(source_retry_fields.get("retry_download_url"))
+            or retry_download_url
+        )
+        protocol = (
+            normalize_optional_text(source_retry_fields.get("retry_download_protocol")) or protocol
+        )
+
     ratio_limit = _optional_number(release_data.get("ratio_limit"))
     if ratio_limit is None and config.get("PROWLARR_USE_SEED_PREFERENCES", False):
         ratio_limit = _optional_number(extra.get("configured_ratio_limit"))
@@ -173,7 +186,7 @@ def _build_retry_resolution_fields(
         )
 
     return {
-        "retry_download_url": normalize_optional_text(release_data.get("download_url")),
+        "retry_download_url": retry_download_url,
         "retry_download_protocol": protocol.lower() if protocol is not None else None,
         "retry_release_name": normalize_optional_text(release_data.get("title")),
         "retry_expected_hash": normalize_optional_text(

@@ -60,7 +60,7 @@ class TestResultToRelease:
         assert r.size_bytes == 2097152
         assert r.indexer == "MyIndexer"
         assert r.source_id == "https://indexer.example.com/nzb/42"
-        assert r.download_url == "https://indexer.example.com/nzb/42?apikey=secret"
+        assert r.download_url is None
 
     def test_torrent_result_has_torrent_protocol(self):
         r = _newznab_result_to_release(
@@ -133,6 +133,33 @@ class TestResultToRelease:
         assert r.extra["author"] == "Frank Herbert"
         assert r.extra["book_title"] == "Dune"
         assert r.extra["info_hash"] == "abc123"
+
+    def test_redacted_result_still_builds_private_retry_payload(self, monkeypatch):
+        import shelfmark.download.orchestrator as orchestrator
+
+        secret_download_url = "https://indexer.example.com/nzb/42?apikey=secret"
+        release = _newznab_result_to_release(_make_result(downloadUrl=secret_download_url))
+
+        assert release.download_url is None
+
+        captured_tasks = []
+
+        def fake_add(task):
+            captured_tasks.append(task)
+            return True
+
+        monkeypatch.setattr(orchestrator.book_queue, "add", fake_add)
+        monkeypatch.setattr(
+            orchestrator.config, "get", lambda key, default=None, user_id=None: default
+        )
+
+        success, error = orchestrator.queue_release(release.__dict__)
+
+        assert success is True
+        assert error is None
+        assert captured_tasks[0].retry_download_url == secret_download_url
+        assert captured_tasks[0].retry_download_protocol == "usenet"
+        assert "retry_download_url" not in orchestrator._task_to_dict(captured_tasks[0])
 
 
 # ── NewznabSource.is_available ─────────────────────────────────────────────────

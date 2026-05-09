@@ -1,6 +1,6 @@
 """Prowlarr download handler - resolves releases and delegates lifecycle to shared clients."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -78,6 +78,22 @@ class ProwlarrHandler(ExternalClientHandler):
 
     def _completed_path_max_attempts(self) -> int:
         return COMPLETED_PATH_MAX_ATTEMPTS
+
+    def build_retry_resolution_fields(self, release_data: dict[str, Any]) -> dict[str, Any]:
+        source_id = normalize_optional_text(release_data.get("source_id"))
+        if source_id is None:
+            return {}
+
+        prowlarr_result = get_release(source_id)
+        if prowlarr_result is None:
+            return {}
+
+        return {
+            "retry_download_url": normalize_optional_text(
+                get_preferred_download_url(prowlarr_result)
+            ),
+            "retry_download_protocol": normalize_optional_text(get_protocol(prowlarr_result)),
+        }
 
     @classmethod
     def _restore_download_request_from_task(cls, task: DownloadTask) -> DownloadRequest | None:

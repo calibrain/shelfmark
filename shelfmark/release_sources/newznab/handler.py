@@ -8,6 +8,7 @@ if TYPE_CHECKING:
     from shelfmark.core.models import DownloadTask
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.request_helpers import normalize_optional_text
 from shelfmark.download.clients import DownloadClient, get_client, list_configured_clients
 from shelfmark.download.clients.base_handler import (
     COMPLETED_PATH_MAX_ATTEMPTS as _DEFAULT_COMPLETED_PATH_MAX_ATTEMPTS,
@@ -83,6 +84,44 @@ class NewznabHandler(ExternalClientHandler):
     def _completed_path_max_attempts(self) -> int:
         return COMPLETED_PATH_MAX_ATTEMPTS
 
+    def build_retry_resolution_fields(self, release_data: dict) -> dict:
+        source_id = normalize_optional_text(release_data.get("source_id"))
+        if source_id is None:
+            return {}
+
+        result = get_release(source_id)
+        if result is None:
+            return {}
+
+        return {
+            "retry_download_url": normalize_optional_text(_get_download_url(result)),
+            "retry_download_protocol": normalize_optional_text(_get_protocol(result)),
+        }
+
+    @classmethod
+    def _restore_download_request_from_task(cls, task: DownloadTask) -> DownloadRequest | None:
+        retry_download_url = normalize_optional_text(getattr(task, "retry_download_url", None))
+        retry_download_protocol = normalize_optional_text(
+            getattr(task, "retry_download_protocol", None)
+        )
+        if retry_download_url is None or retry_download_protocol is None:
+            return None
+
+        protocol = retry_download_protocol.lower()
+        if protocol not in {"torrent", "usenet"}:
+            return None
+
+        return DownloadRequest(
+            url=retry_download_url,
+            protocol=protocol,
+            release_name=(
+                normalize_optional_text(getattr(task, "retry_release_name", None))
+                or task.title
+                or "Unknown"
+            ),
+            expected_hash=normalize_optional_text(getattr(task, "retry_expected_hash", None)),
+        )
+
     def _resolve_download(
         self,
         task: DownloadTask,
@@ -90,6 +129,10 @@ class NewznabHandler(ExternalClientHandler):
     ) -> DownloadRequest | None:
         result = get_release(task.task_id)
         if not result:
+            restored_request = self._restore_download_request_from_task(task)
+            if restored_request is not None:
+                logger.info("Restored Newznab download request for retry: %s", task.task_id)
+                return restored_request
             logger.warning("Newznab release cache miss: %s", task.task_id)
             status_callback("error", "Release not found in cache (may have expired)")
             return None

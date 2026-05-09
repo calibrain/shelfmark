@@ -96,6 +96,28 @@ class TestGetDownloadUrl:
 
 
 class TestHandlerErrors:
+    def test_cache_miss_uses_persisted_retry_fields(self):
+        with patch("shelfmark.release_sources.newznab.handler.get_release", return_value=None):
+            handler = NewznabHandler()
+            task = DownloadTask(
+                task_id="retryable",
+                source="newznab",
+                title="Book",
+                retry_download_url="https://indexer.example.com/nzb/42?apikey=secret",
+                retry_download_protocol="usenet",
+                retry_release_name="Book Release",
+                retry_expected_hash="abc123",
+            )
+            recorder = ProgressRecorder()
+            result = handler._resolve_download(task, recorder.status_callback)
+
+        assert result is not None
+        assert result.url == "https://indexer.example.com/nzb/42?apikey=secret"
+        assert result.protocol == "usenet"
+        assert result.release_name == "Book Release"
+        assert result.expected_hash == "abc123"
+        assert recorder.status_updates == []
+
     def test_cache_miss_returns_error(self):
         with patch("shelfmark.release_sources.newznab.handler.get_release", return_value=None):
             handler = NewznabHandler()

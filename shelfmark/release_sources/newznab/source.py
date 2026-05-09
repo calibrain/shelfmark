@@ -109,7 +109,6 @@ def _newznab_result_to_release(result: dict, content_type: str = "ebook") -> Rel
     if is_freeleech:
         add_flag("FreeLeech")
 
-    download_url = str(result.get("downloadUrl") or "").strip()
     info_url = result.get("infoUrl") or result.get("guid")
 
     return Release(
@@ -120,7 +119,7 @@ def _newznab_result_to_release(result: dict, content_type: str = "ebook") -> Rel
         language=None,
         size=_parse_size(size_bytes),
         size_bytes=size_bytes,
-        download_url=download_url or None,
+        download_url=None,
         info_url=info_url,
         protocol=protocol,
         indexer=indexer,

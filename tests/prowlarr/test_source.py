@@ -444,6 +444,67 @@ class TestProwlarrLocalizedQueries:
         assert releases[0].extra["configured_ratio_limit"] is None
         assert releases[0].extra["configured_seed_time_minutes"] is None
 
+    def test_redacted_search_result_still_builds_private_retry_payload(self, monkeypatch):
+        import shelfmark.download.orchestrator as orchestrator
+        import shelfmark.release_sources.prowlarr.source as prowlarr_source
+
+        secret_download_url = "https://prowlarr.example.com/1/download?apikey=secret"
+
+        def fake_get(key: str, default=None, user_id=None):
+            values = {
+                "PROWLARR_INDEXERS": "",
+                "PROWLARR_AUTO_EXPAND": False,
+                "PROWLARR_USE_SEED_PREFERENCES": False,
+            }
+            return values.get(key, default)
+
+        monkeypatch.setattr(prowlarr_source.config, "get", fake_get)
+        monkeypatch.setattr(orchestrator.config, "get", fake_get)
+
+        fake_client = FakeTorznabClient(
+            search_results=[
+                {
+                    "guid": "secret-prowlarr-release",
+                    "protocol": "usenet",
+                    "title": "Secret Bearing Release",
+                    "downloadUrl": secret_download_url,
+                }
+            ]
+        )
+        source = ProwlarrSource()
+        monkeypatch.setattr(source, "_get_client", lambda: fake_client)
+
+        book = BookMetadata(
+            provider="hardcover",
+            provider_id="123",
+            title="Anything",
+            authors=["Someone"],
+        )
+
+        from shelfmark.core.search_plan import build_release_search_plan
+
+        plan = build_release_search_plan(book, languages=["en"])
+        releases = source.search(book, plan, content_type="ebook")
+
+        assert len(releases) == 1
+        assert releases[0].download_url is None
+
+        captured_tasks = []
+
+        def fake_add(task):
+            captured_tasks.append(task)
+            return True
+
+        monkeypatch.setattr(orchestrator.book_queue, "add", fake_add)
+
+        success, error = orchestrator.queue_release(releases[0].__dict__)
+
+        assert success is True
+        assert error is None
+        assert captured_tasks[0].retry_download_url == secret_download_url
+        assert captured_tasks[0].retry_download_protocol == "usenet"
+        assert "retry_download_url" not in orchestrator._task_to_dict(captured_tasks[0])
+
     def test_search_uses_localized_titles_when_available(self, monkeypatch):
         import shelfmark.release_sources.prowlarr.source as prowlarr_source
 

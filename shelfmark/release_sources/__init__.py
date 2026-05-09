@@ -390,6 +390,10 @@ class DownloadHandler(ABC):
         """
         return
 
+    def build_retry_resolution_fields(self, release_data: dict[str, Any]) -> dict[str, Any]:
+        """Return private queue-time fields needed for restart-safe retry."""
+        return {}
+
     @abstractmethod
     def cancel(self, task_id: str) -> bool:
         """Cancel an in-progress download."""
