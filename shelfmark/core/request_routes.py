@@ -337,6 +337,10 @@ def _prepare_request_create_arguments(
     content_type = normalize_content_type(
         context.get("content_type") or data.get("content_type") or book_data.get("content_type")
     )
+    _validate_release_source_matches_policy_context(
+        source=source,
+        release_data=release_data,
+    )
     request_level, release_data = _normalize_release_result_request_payload(
         source=source,
         request_level=request_level,

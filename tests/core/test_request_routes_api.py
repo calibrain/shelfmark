@@ -401,6 +401,119 @@ class TestRequestRoutes:
         assert main_module.user_db.list_requests(user_id=user["id"]) == []
         mock_queue.assert_not_called()
 
+    def test_release_result_source_rejects_mismatch_before_normalization(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(
+            default_ebook="download",
+            rules=[{"source": "prowlarr", "content_type": "*", "mode": "blocked"}],
+        )
+
+        payload = {
+            "book_data": {
+                "title": "Release Result Source Mismatch",
+                "author": "Shelfmark",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "release-result-mismatch-1",
+            },
+            "context": {
+                "source": "direct_download",
+                "content_type": "ebook",
+                "request_level": "release",
+            },
+            "release_data": {
+                "source": "prowlarr",
+                "source_id": "blocked-prowlarr-release-1",
+                "title": "Blocked Prowlarr Release.epub",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(
+                main_module, "load_users_request_policy_settings", return_value=policy
+            ):
+                with patch(
+                    "shelfmark.core.request_routes.load_users_request_policy_settings",
+                    return_value=policy,
+                ):
+                    with patch.object(main_module.backend, "queue_release") as mock_queue:
+                        resp = client.post("/api/requests", json=payload)
+
+        assert resp.status_code == 400
+        assert resp.json["code"] == "policy_source_mismatch"
+        assert resp.json["error"] == "Policy context source must match release_data.source"
+        assert main_module.user_db.list_requests(user_id=user["id"]) == []
+        mock_queue.assert_not_called()
+
+    def test_batch_rejects_release_result_source_mismatch_before_creating_any_requests(
+        self, main_module, client
+    ):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(
+            default_ebook="request_release",
+            rules=[{"source": "prowlarr", "content_type": "*", "mode": "blocked"}],
+        )
+
+        payloads = [
+            {
+                "book_data": {
+                    "title": "Batch Valid Direct",
+                    "author": "Shelfmark",
+                    "content_type": "ebook",
+                    "provider": "openlibrary",
+                    "provider_id": "batch-valid-direct-1",
+                },
+                "context": {
+                    "source": "direct_download",
+                    "content_type": "ebook",
+                    "request_level": "release",
+                },
+                "release_data": {
+                    "source": "direct_download",
+                    "source_id": "batch-valid-direct-release-1",
+                    "title": "Batch Valid Direct.epub",
+                },
+            },
+            {
+                "book_data": {
+                    "title": "Batch Release Result Mismatch",
+                    "author": "Shelfmark",
+                    "content_type": "ebook",
+                    "provider": "openlibrary",
+                    "provider_id": "batch-release-result-mismatch-1",
+                },
+                "context": {
+                    "source": "direct_download",
+                    "content_type": "ebook",
+                    "request_level": "release",
+                },
+                "release_data": {
+                    "source": "prowlarr",
+                    "source_id": "batch-blocked-prowlarr-release-1",
+                    "title": "Batch Blocked Prowlarr.epub",
+                },
+            },
+        ]
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(
+                main_module, "load_users_request_policy_settings", return_value=policy
+            ):
+                with patch(
+                    "shelfmark.core.request_routes.load_users_request_policy_settings",
+                    return_value=policy,
+                ):
+                    with patch.object(main_module.backend, "queue_release") as mock_queue:
+                        resp = client.post("/api/requests/batch", json={"requests": payloads})
+
+        assert resp.status_code == 400
+        assert resp.json["code"] == "policy_source_mismatch"
+        assert resp.json["error"] == "Policy context source must match release_data.source"
+        assert main_module.user_db.list_requests(user_id=user["id"]) == []
+        mock_queue.assert_not_called()
+
     def test_batch_download_policy_queues_releases_without_creating_requests(
         self, main_module, client
     ):
