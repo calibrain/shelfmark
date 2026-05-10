@@ -29,6 +29,7 @@ from shelfmark.download.postprocess.pipeline import is_torrent_source, safe_clea
 from shelfmark.download.postprocess.router import post_process_download
 from shelfmark.release_sources import (
     get_handler,
+    get_source,
     get_source_display_name,
 )
 
@@ -106,6 +107,13 @@ def _parse_release_search_mode(value: object) -> SearchMode:
             raise ValueError(msg) from exc
     msg = f"Invalid search_mode: {value}"
     raise ValueError(msg)
+
+
+def _source_unavailable_message(source_name: str) -> str | None:
+    source = get_source(source_name)
+    if source.is_available():
+        return None
+    return f"{source.display_name} is unavailable. Enable and configure the source in Settings."
 
 
 def _optional_number(value: object) -> float | None:
@@ -207,6 +215,11 @@ def queue_release(
     """Add a release to the download queue. Returns (success, error_message)."""
     try:
         source = release_data["source"]
+        unavailable_message = _source_unavailable_message(source)
+        if unavailable_message:
+            logger.warning("Rejected queue request for unavailable source %s", source)
+            return False, unavailable_message
+
         extra = release_data.get("extra", {})
         raw_request_id = release_data.get("_request_id")
         request_id: int | None = None
@@ -596,6 +609,16 @@ def _download_task(task_id: str, cancel_flag: Event) -> str | None:
     task = book_queue.get_task(task_id)
     if not task:
         logger.error("Task not found in queue: %s", task_id)
+        return None
+
+    unavailable_message = _source_unavailable_message(task.source)
+    if unavailable_message:
+        logger.warning("Task %s: source unavailable: %s", task_id, unavailable_message)
+        _capture_task_error(
+            task,
+            message=unavailable_message,
+            exc_type="SourceUnavailable",
+        )
         return None
 
     title_label = task.title or "Unknown title"

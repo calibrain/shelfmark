@@ -1,6 +1,30 @@
+from threading import Event
 from unittest.mock import MagicMock
 
-from shelfmark.core.models import SearchMode
+import pytest
+
+from shelfmark.core.models import DownloadTask, SearchMode
+
+
+class _AvailableSource:
+    display_name = "Test Source"
+
+    def is_available(self):
+        return True
+
+
+class _UnavailableSource:
+    display_name = "Direct Download"
+
+    def is_available(self):
+        return False
+
+
+@pytest.fixture(autouse=True)
+def source_available_by_default(monkeypatch):
+    import shelfmark.download.orchestrator as orchestrator
+
+    monkeypatch.setattr(orchestrator, "get_source", lambda _source: _AvailableSource())
 
 
 def enable_prowlarr_seed_preferences(monkeypatch, orchestrator):
@@ -86,6 +110,28 @@ def test_queue_release_preserves_direct_search_mode_from_payload(monkeypatch):
     assert captured["task"].search_mode == SearchMode.DIRECT
 
 
+def test_queue_release_rejects_unavailable_source(monkeypatch):
+    import shelfmark.download.orchestrator as orchestrator
+
+    monkeypatch.setattr(orchestrator, "get_source", lambda _source: _UnavailableSource())
+    monkeypatch.setattr(orchestrator.book_queue, "add", MagicMock())
+
+    success, error = orchestrator.queue_release(
+        {
+            "source": "direct_download",
+            "source_id": "release-disabled-direct",
+            "title": "Disabled Direct Release",
+            "content_type": "ebook",
+        },
+        user_id=42,
+        username="alice",
+    )
+
+    assert success is False
+    assert error == "Direct Download is unavailable. Enable and configure the source in Settings."
+    orchestrator.book_queue.add.assert_not_called()
+
+
 def test_queue_release_email_mode_without_recipient_is_queued(monkeypatch):
     import shelfmark.download.orchestrator as orchestrator
 
@@ -122,6 +168,41 @@ def test_queue_release_email_mode_without_recipient_is_queued(monkeypatch):
     task = captured["task"]
     assert task.output_mode == "email"
     assert task.output_args == {}
+
+
+def test_download_task_rejects_unavailable_source_before_handler(monkeypatch):
+    import shelfmark.download.orchestrator as orchestrator
+
+    task = DownloadTask(
+        task_id="disabled-task",
+        source="direct_download",
+        title="Disabled Direct Release",
+    )
+    status_messages: list[tuple[str, str]] = []
+
+    monkeypatch.setattr(orchestrator, "get_source", lambda _source: _UnavailableSource())
+    monkeypatch.setattr(orchestrator, "get_handler", MagicMock())
+    monkeypatch.setattr(orchestrator.book_queue, "get_task", lambda _task_id: task)
+    monkeypatch.setattr(
+        orchestrator.book_queue,
+        "update_status_message",
+        lambda task_id, message: status_messages.append((task_id, message)),
+    )
+
+    result = orchestrator._download_task("disabled-task", Event())
+
+    assert result is None
+    assert task.last_error_type == "SourceUnavailable"
+    assert task.last_error_message == (
+        "Direct Download is unavailable. Enable and configure the source in Settings."
+    )
+    assert status_messages == [
+        (
+            "disabled-task",
+            "Direct Download is unavailable. Enable and configure the source in Settings.",
+        )
+    ]
+    orchestrator.get_handler.assert_not_called()
 
 
 def test_queue_release_persists_generic_retry_resolution_fields(monkeypatch):

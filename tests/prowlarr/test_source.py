@@ -5,6 +5,8 @@ Tests the utility functions for parsing release metadata.
 """
 
 # Import the functions to test
+import pytest
+
 from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources.prowlarr.api import ProwlarrClient
 from shelfmark.release_sources.prowlarr.source import (
@@ -14,6 +16,20 @@ from shelfmark.release_sources.prowlarr.source import (
     _parse_size,
 )
 from shelfmark.release_sources.prowlarr.utils import get_protocol_display, sanitize_download_url
+
+
+class _AvailableSource:
+    display_name = "Prowlarr"
+
+    def is_available(self):
+        return True
+
+
+@pytest.fixture(autouse=True)
+def source_available_by_default(monkeypatch):
+    import shelfmark.download.orchestrator as orchestrator
+
+    monkeypatch.setattr(orchestrator, "get_source", lambda _source: _AvailableSource())
 
 
 class TestParseSize:

@@ -2,6 +2,8 @@
 
 from unittest.mock import MagicMock
 
+import pytest
+
 from shelfmark.core.search_plan import ReleaseSearchPlan, ReleaseSearchVariant
 from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources import ReleaseProtocol
@@ -11,6 +13,20 @@ from shelfmark.release_sources.newznab.source import (
 )
 
 # ── fixtures / helpers ─────────────────────────────────────────────────────────
+
+
+class _AvailableSource:
+    display_name = "Newznab"
+
+    def is_available(self):
+        return True
+
+
+@pytest.fixture(autouse=True)
+def source_available_by_default(monkeypatch):
+    import shelfmark.download.orchestrator as orchestrator
+
+    monkeypatch.setattr(orchestrator, "get_source", lambda _source: _AvailableSource())
 
 
 def _make_book(**kwargs) -> BookMetadata:
