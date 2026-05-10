@@ -13,6 +13,7 @@ import requests
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.network import get_ssl_verify
 
 logger = setup_logger(__name__)
@@ -192,7 +193,7 @@ def _is_trusted_torrent_fetch_url(url: str) -> bool:
         configured_url = str(config.get(key, "") or "").strip()
         if not configured_url:
             continue
-        configured_origin = _url_origin(urlparse(configured_url))
+        configured_origin = _url_origin(urlparse(normalize_http_url(configured_url)))
         if configured_origin == origin:
             return True
 

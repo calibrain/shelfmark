@@ -416,6 +416,39 @@ class TestExtractTorrentInfo:
         assert result.is_magnet is False
         mock_get.assert_called_once()
 
+    def test_normalizes_configured_origin_before_trusting_torrent_url(self, monkeypatch):
+        """Configured Prowlarr URLs match the same normalization used by the source."""
+        info_dict = {
+            b"name": b"trusted.txt",
+            b"length": 100,
+            b"piece length": 16384,
+            b"pieces": b"\x00" * 20,
+        }
+        torrent_data = bencode_encode({b"info": info_dict})
+        expected_hash = hashlib.sha1(bencode_encode(info_dict)).hexdigest().lower()
+
+        config_values = {
+            "PROWLARR_URL": "prowlarr.example:9696/",
+            "PROWLARR_API_KEY": "secret",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.torrent_utils.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+        response = MagicMock(status_code=200, content=torrent_data)
+        response.raise_for_status = MagicMock()
+        mock_get = MagicMock(return_value=response)
+        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+
+        result = extract_torrent_info(
+            "http://prowlarr.example:9696/1/download?apikey=secret&indexer=7",
+            fetch_torrent=True,
+        )
+
+        assert result.info_hash == expected_hash
+        assert result.torrent_data == torrent_data
+        mock_get.assert_called_once()
+
     def test_does_not_follow_trusted_torrent_url_redirect_to_untrusted_host(self, monkeypatch):
         """Trusted HTTP prefetch does not continue through arbitrary redirects."""
         expected_hash = "3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0"
