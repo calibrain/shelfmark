@@ -655,9 +655,7 @@ class QBittorrentClient(DownloadClient):
         download_id = getattr(torrent, "hash", "")
         if isinstance(download_id, str) and download_id:
             derived = self._derive_download_path_from_files(download_id)
-            if isinstance(derived, _UnsafeQBittorrentPath):
-                return None
-            if derived:
+            if derived and not isinstance(derived, _UnsafeQBittorrentPath):
                 return derived
 
         # Legacy fallback: save_path + name (for older clients/emulators)

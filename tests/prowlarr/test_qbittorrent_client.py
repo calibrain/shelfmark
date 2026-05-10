@@ -410,8 +410,8 @@ class TestQBittorrentClientGetStatus:
         "file_name",
         ["/escape/book.epub", "../escape/book.epub", "C:\\escape\\book.epub"],
     )
-    def test_get_status_rejects_unsafe_derived_file_path(self, monkeypatch, file_name):
-        """Fallback file-derived paths must stay inside save_path."""
+    def test_get_status_falls_back_after_unsafe_derived_file_path(self, monkeypatch, file_name):
+        """Unsafe file-derived paths do not block the safe legacy fallback."""
         config_values = {
             "QBITTORRENT_URL": "http://localhost:8080",
             "QBITTORRENT_USERNAME": "admin",
@@ -469,9 +469,11 @@ class TestQBittorrentClientGetStatus:
 
             client = qb_module.QBittorrentClient()
             status = client.get_status("abc123")
+            path = client.get_download_path("abc123")
 
             assert status.complete is True
-            assert status.file_path is None
+            assert status.file_path == "/downloads/Some Torrent"
+            assert path == "/downloads/Some Torrent"
 
     @pytest.mark.parametrize("torrent_name", ["/escape", "../escape", "C:\\escape"])
     def test_get_status_rejects_unsafe_legacy_name_path(self, monkeypatch, torrent_name):
