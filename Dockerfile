@@ -103,6 +103,15 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-default-groups
 
+# Runtime dependencies are installed into /app/.venv during the build. Remove the
+# base image's system pip so stale installer CVEs do not ship in the final image.
+RUN rm -rf \
+        /usr/local/bin/pip \
+        /usr/local/bin/pip3 \
+        /usr/local/bin/pip3.* \
+        /usr/local/lib/python*/site-packages/pip \
+        /usr/local/lib/python*/site-packages/pip-*.dist-info
+
 # Copy application code *after* dependencies are installed
 COPY . .
 
@@ -164,6 +173,9 @@ RUN apt-get update && \
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-default-groups --extra browser
 
+# uv is only needed while building the image.
+RUN rm -f /usr/bin/uv /usr/bin/uvx
+
 # Keep SeleniumBase's bundled driver cache writable for the fixed non-root user.
 RUN SELENIUMBASE_DRIVERS_DIR=$(/app/.venv/bin/python -c "import pathlib, seleniumbase; print(pathlib.Path(seleniumbase.__file__).resolve().parent / 'drivers')") && \
     chown -R 1000:1000 "${SELENIUMBASE_DRIVERS_DIR}" && \
@@ -179,5 +191,8 @@ CMD ["/app/entrypoint.sh"]
 FROM base AS shelfmark-lite
 
 ENV USING_EXTERNAL_BYPASSER=true
+
+# uv is only needed while building the image.
+RUN rm -f /usr/bin/uv /usr/bin/uvx
 
 CMD ["/app/entrypoint.sh"]
