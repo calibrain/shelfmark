@@ -117,8 +117,12 @@ def remap_remote_to_local_with_match(
     mappings: Iterable[RemotePathMapping],
     host: str,
     remote_path: str | Path,
-) -> tuple[Path, bool]:
-    """Remap a remote path and report whether a configured mapping matched."""
+) -> tuple[Path | None, bool]:
+    """Remap a remote path and report whether a configured mapping matched.
+
+    Returns ``(None, True)`` when a mapping prefix matched but the remainder was
+    unsafe to join under the local prefix.
+    """
     host_normalized = _normalize_host(host)
     remote_normalized = _normalize_prefix(str(remote_path))
 
@@ -157,7 +161,7 @@ def remap_remote_to_local_with_match(
 
             remapped = _join_contained_path(local_prefix, remainder)
             if remapped is None:
-                return Path(remote_normalized), False
+                return None, True
 
             return remapped, True
 
@@ -173,6 +177,8 @@ def remap_remote_to_local(
         host=host,
         remote_path=remote_path,
     )
+    if remapped is None:
+        return Path(str(remote_path))
     return remapped
 
 

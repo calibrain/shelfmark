@@ -1,5 +1,3 @@
-from pathlib import Path
-
 from shelfmark.core.path_mappings import (
     RemotePathMapping,
     remap_remote_to_local_with_match,
@@ -20,8 +18,8 @@ def test_remap_rejects_parent_directory_remainder(tmp_path):
         remote_path=remote_path,
     )
 
-    assert matched is False
-    assert remapped == Path(remote_path)
+    assert matched is True
+    assert remapped is None
 
 
 def test_remap_rejects_path_that_resolves_outside_local_prefix(tmp_path):
@@ -39,8 +37,8 @@ def test_remap_rejects_path_that_resolves_outside_local_prefix(tmp_path):
         remote_path=remote_path,
     )
 
-    assert matched is False
-    assert remapped == Path(remote_path)
+    assert matched is True
+    assert remapped is None
 
 
 def test_remap_allows_normal_child_path_under_local_prefix(tmp_path):

@@ -276,7 +276,18 @@ class ExternalClientHandler(DownloadHandler, ABC):
             remote_path=source_path_obj,
         )
 
-        delete_path = remapped if matched_mapping else source_path_obj
+        if matched_mapping:
+            if remapped is None:
+                logger.warning(
+                    "Refusing to delete download data for %s %s because remote path mapping rejected unsafe path: %s",
+                    client.name,
+                    download_id,
+                    source_path_obj,
+                )
+                return
+            delete_path = remapped
+        else:
+            delete_path = source_path_obj
 
         if str(delete_path) in ("", "/"):
             logger.warning(
@@ -435,6 +446,19 @@ class ExternalClientHandler(DownloadHandler, ABC):
         )
 
         if matched_mapping:
+            if remapped is None:
+                message = (
+                    f"Remote path mapping rejected unsafe path '{source_path_obj}'. "
+                    f"Check Settings > Advanced > Remote Path Mappings."
+                )
+                failure_log = "Remote path mapping rejected unsafe path for %s (%s): %s"
+                failure_args = (client.name, download_id, source_path_obj)
+                if log_details:
+                    logger.error(failure_log, *failure_args)
+                else:
+                    logger.debug(failure_log, *failure_args)
+                return None, message
+
             remapped_exists, remapped_error = _probe_completed_path(remapped)
 
             if log_details:

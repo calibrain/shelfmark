@@ -410,3 +410,83 @@ def test_windows_path_case_insensitive_matching():
 
             assert result == str(local_file)
             assert task.original_download_path == str(local_file)
+
+
+def test_resolve_download_path_rejects_unsafe_mapping_remainder_even_if_original_exists(
+    tmp_path,
+):
+    remote_dir = tmp_path / "remote" / "downloads"
+    local_dir = tmp_path / "local" / "downloads"
+    escaped_file = tmp_path / "escape" / "book.epub"
+    remote_dir.mkdir(parents=True)
+    local_dir.mkdir(parents=True)
+    escaped_file.parent.mkdir(parents=True)
+    escaped_file.write_text("escaped content")
+
+    raw_path = f"{remote_dir}/../../escape/book.epub"
+
+    mock_client = MagicMock()
+    mock_client.name = "qbittorrent"
+    mock_client.get_download_path.return_value = raw_path
+
+    def config_get(key: str, default=""):
+        if key == "PROWLARR_REMOTE_PATH_MAPPINGS":
+            return [
+                {
+                    "host": "qbittorrent",
+                    "remotePath": str(remote_dir),
+                    "localPath": str(local_dir),
+                }
+            ]
+        return default
+
+    with patch("shelfmark.download.clients.base_handler.config.get", side_effect=config_get):
+        handler = ProwlarrHandler()
+
+        resolved_path, error = handler._resolve_download_path_once(
+            mock_client,
+            "download_id",
+            log_details=False,
+        )
+
+    assert Path(raw_path).exists()
+    assert resolved_path is None
+    assert error is not None
+    assert "rejected unsafe path" in error
+
+
+def test_delete_local_download_data_skips_unsafe_mapping_remainder_even_if_original_exists(
+    tmp_path,
+):
+    remote_dir = tmp_path / "remote" / "downloads"
+    local_dir = tmp_path / "local" / "downloads"
+    escaped_file = tmp_path / "escape" / "book.epub"
+    remote_dir.mkdir(parents=True)
+    local_dir.mkdir(parents=True)
+    escaped_file.parent.mkdir(parents=True)
+    escaped_file.write_text("escaped content")
+
+    raw_path = f"{remote_dir}/../../escape/book.epub"
+
+    mock_client = MagicMock()
+    mock_client.name = "nzbget"
+    mock_client.get_download_path.return_value = raw_path
+
+    def config_get(key: str, default=""):
+        if key == "PROWLARR_REMOTE_PATH_MAPPINGS":
+            return [
+                {
+                    "host": "nzbget",
+                    "remotePath": str(remote_dir),
+                    "localPath": str(local_dir),
+                }
+            ]
+        return default
+
+    with patch("shelfmark.download.clients.base_handler.config.get", side_effect=config_get):
+        handler = ProwlarrHandler()
+        handler._delete_local_download_data(mock_client, "download_id")
+
+    assert Path(raw_path).exists()
+    assert escaped_file.exists()
+    assert escaped_file.read_text() == "escaped content"
