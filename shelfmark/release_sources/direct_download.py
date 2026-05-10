@@ -222,8 +222,27 @@ def _is_configured_zlib_link(url: str) -> bool:
     return False
 
 
-def _get_direct_download_allowed_hosts() -> set[str]:
-    """Return configured hosts allowed for direct-download fallback fetches."""
+def _direct_download_origin(url: str) -> tuple[str, str, int] | None:
+    """Return normalized origin tuple for allowlist comparisons."""
+    parsed = urlparse(url)
+    scheme = parsed.scheme.lower()
+    if scheme not in {"http", "https"} or not parsed.hostname:
+        return None
+
+    try:
+        port = parsed.port
+    except ValueError:
+        return None
+
+    hostname = parsed.hostname.lower().rstrip(".")
+    if not hostname:
+        return None
+
+    return (scheme, hostname, port or (443 if scheme == "https" else 80))
+
+
+def _get_direct_download_allowed_origins() -> set[tuple[str, str, int]]:
+    """Return configured origins allowed for direct-download fallback fetches."""
     from shelfmark.core import mirrors
 
     candidate_urls = [
@@ -231,24 +250,17 @@ def _get_direct_download_allowed_hosts() -> set[str]:
         *mirrors.get_aa_mirrors(),
         *mirrors.get_welib_mirrors(),
     ]
-    hosts: set[str] = set()
+    origins: set[tuple[str, str, int]] = set()
     for candidate_url in candidate_urls:
-        parsed = urlparse(candidate_url)
-        if parsed.scheme not in {"http", "https"}:
-            continue
-        if parsed.hostname:
-            hosts.add(parsed.hostname.lower().rstrip("."))
-    return hosts
+        if origin := _direct_download_origin(candidate_url):
+            origins.add(origin)
+    return origins
 
 
 def _is_allowed_direct_download_url(url: str) -> bool:
-    """Return True when URL scheme and host match configured direct-download mirrors."""
-    parsed = urlparse(url)
-    if parsed.scheme not in {"http", "https"} or not parsed.hostname:
-        return False
-
-    hostname = parsed.hostname.lower().rstrip(".")
-    return hostname in _get_direct_download_allowed_hosts()
+    """Return True when URL origin matches configured direct-download mirrors."""
+    origin = _direct_download_origin(url)
+    return bool(origin and origin in _get_direct_download_allowed_origins())
 
 
 def _get_md5_url_template(source_id: str) -> str | None:
@@ -933,8 +945,15 @@ def _try_download_url(
         if status_callback:
             status_callback("resolving", f"Trying {source_context}")
 
+        redirect_allowed = _is_allowed_direct_download_url if source_id == "welib" else None
         download_url = _get_download_url(
-            url, book_info.title, cancel_flag, status_callback, selector, source_context
+            url,
+            book_info.title,
+            cancel_flag,
+            status_callback,
+            selector,
+            source_context,
+            redirect_allowed=redirect_allowed,
         )
         if not download_url:
             _raise_runtime_error("No download URL resolved")
@@ -955,6 +974,7 @@ def _try_download_url(
             selector,
             status_callback,
             referer=url,
+            redirect_allowed=redirect_allowed,
         )
 
         if not data:
@@ -1008,6 +1028,7 @@ def _get_download_urls_from_welib(
             selector=selector or network.AAMirrorSelector(),
             cancel_flag=cancel_flag,
             status_callback=status_callback,
+            redirect_allowed=_is_allowed_direct_download_url,
         )
     except (
         SearchUnavailableError,
@@ -1201,6 +1222,7 @@ def _get_download_url(
     status_callback: Callable[[str, str | None], None] | None = None,
     selector: network.AAMirrorSelector | None = None,
     source_context: str | None = None,
+    redirect_allowed: Callable[[str], bool] | None = None,
 ) -> str:
     """Extract actual download URL from various source pages.
 
@@ -1211,6 +1233,7 @@ def _get_download_url(
         status_callback: Optional callback for status updates
         selector: Optional AA mirror selector
         source_context: Optional context string like "Welib (1/12)" for status messages
+        redirect_allowed: Optional callback used to validate redirect targets.
 
     """
     sel = selector or network.AAMirrorSelector()
@@ -1218,7 +1241,11 @@ def _get_download_url(
     # AA fast download API (JSON response)
     if link.startswith(f"{network.get_aa_base_url()}/dyn/api/fast_download.json"):
         page = downloader.html_get_page(
-            link, selector=sel, cancel_flag=cancel_flag, status_callback=status_callback
+            link,
+            selector=sel,
+            cancel_flag=cancel_flag,
+            status_callback=status_callback,
+            redirect_allowed=redirect_allowed,
         )
         page_data = json.loads(_html_response_text(page))
         download_url = page_data.get("download_url", "")
@@ -1230,7 +1257,11 @@ def _get_download_url(
         return _extract_libgen_download_url(link, cancel_flag)
 
     html = downloader.html_get_page(
-        link, selector=sel, cancel_flag=cancel_flag, status_callback=status_callback
+        link,
+        selector=sel,
+        cancel_flag=cancel_flag,
+        status_callback=status_callback,
+        redirect_allowed=redirect_allowed,
     )
     if not html:
         return ""
@@ -1245,7 +1276,11 @@ def _get_download_url(
             # Retry after delay if page not fully loaded
             time.sleep(2)
             html = downloader.html_get_page(
-                link, selector=sel, cancel_flag=cancel_flag, status_callback=status_callback
+                link,
+                selector=sel,
+                cancel_flag=cancel_flag,
+                status_callback=status_callback,
+                redirect_allowed=redirect_allowed,
             )
             if html:
                 soup = BeautifulSoup(_html_response_text(html), "html.parser")
@@ -1255,7 +1290,14 @@ def _get_download_url(
     # AA slow download / partner servers
     elif "/slow_download/" in link:
         url = _extract_slow_download_url(
-            soup, link, title, cancel_flag, status_callback, sel, source_context
+            soup,
+            link,
+            title,
+            cancel_flag,
+            status_callback,
+            sel,
+            source_context,
+            redirect_allowed=redirect_allowed,
         )
 
     else:
@@ -1279,6 +1321,7 @@ def _extract_slow_download_url(
     status_callback: Callable[[str, str | None], None] | None,
     selector: network.AAMirrorSelector,
     source_context: str | None = None,
+    redirect_allowed: Callable[[str], bool] | None = None,
 ) -> str:
     """Extract download URL from AA slow download pages."""
     html_str = str(soup)
@@ -1373,7 +1416,13 @@ def _extract_slow_download_url(
             status_callback("resolving", f"{source_context} - Fetching")
 
         return _get_download_url(
-            link, title, cancel_flag, status_callback, selector, source_context
+            link,
+            title,
+            cancel_flag,
+            status_callback,
+            selector,
+            source_context,
+            redirect_allowed=redirect_allowed,
         )
 
     link_texts = [a.get_text(strip=True)[:50] for a in soup.find_all("a", href=True)[:10]]
