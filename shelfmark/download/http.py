@@ -54,62 +54,6 @@ def _raise_too_many_redirects(message: str) -> NoReturn:
     raise requests.exceptions.TooManyRedirects(message)
 
 
-def _close_response(response: requests.Response) -> None:
-    close = getattr(response, "close", None)
-    if callable(close):
-        close()
-
-
-def _get_redirect_url(current_url: str, response: requests.Response) -> str:
-    location = response.headers.get("Location", "")
-    if not location:
-        _raise_too_many_redirects(f"Redirect with no Location header: {current_url}")
-    return urljoin(current_url, location)
-
-
-def _redirect_blocked(
-    redirect_url: str,
-    redirect_allowed: Callable[[str], bool] | None,
-) -> bool:
-    return redirect_allowed is not None and not redirect_allowed(redirect_url)
-
-
-def _preflight_redirects_for_bypasser(
-    url: str,
-    headers: dict[str, str],
-    redirect_allowed: Callable[[str], bool],
-    session: requests.Session | None,
-) -> tuple[bool, str]:
-    current_url = url
-    redirects_followed = 0
-    request_client = session or requests
-
-    while True:
-        response = request_client.get(
-            current_url,
-            proxies=get_proxies(current_url),
-            timeout=REQUEST_TIMEOUT,
-            headers=headers,
-            allow_redirects=False,
-            verify=get_ssl_verify(current_url),
-        )
-        try:
-            if not response.is_redirect:
-                return True, current_url
-
-            redirect_url = _get_redirect_url(current_url, response)
-            if _redirect_blocked(redirect_url, redirect_allowed):
-                logger.warning("Blocked redirect from %s to %s", current_url, redirect_url)
-                return False, current_url
-
-            redirects_followed += 1
-            if redirects_followed > _MAX_REDIRECTS:
-                _raise_too_many_redirects(f"Too many redirects for {current_url}")
-            current_url = redirect_url
-        finally:
-            _close_response(response)
-
-
 def _get_internal_bypasser() -> ModuleType:
     """Lazy import of internal bypasser module."""
     global _internal_bypasser
@@ -285,7 +229,6 @@ def html_get_page(
     include_response_url: bool = False,
     success_delay: float = 1.0,
     session: requests.Session | None = None,
-    redirect_allowed: Callable[[str], bool] | None = None,
 ) -> str | tuple[str, str]:
     """Fetch HTML content from a URL with retry mechanism.
 
@@ -302,8 +245,6 @@ def html_get_page(
             resolved response URL after redirects.
         success_delay: Optional delay (seconds) after successful fetch.
         session: Optional requests session to reuse across attempts.
-        redirect_allowed: Optional callback used to validate each redirect target.
-            When omitted, existing requests redirect behavior is unchanged.
 
     """
 
@@ -330,25 +271,6 @@ def html_get_page(
         cookies: dict[str, str] = {}
         try:
             if use_bypasser_now and _is_cf_bypass_enabled():
-                headers = {"User-Agent": DOWNLOAD_HEADERS["User-Agent"]}
-                if redirect_allowed is not None:
-                    try:
-                        redirects_ok, current_url = _preflight_redirects_for_bypasser(
-                            current_url,
-                            headers,
-                            redirect_allowed,
-                            session,
-                        )
-                    except requests.exceptions.RequestException as e:
-                        logger.debug(
-                            "Bypasser redirect preflight failed for %s: %s",
-                            current_url,
-                            e,
-                        )
-                    else:
-                        if not redirects_ok:
-                            return _result("", current_url)
-
                 if status_callback:
                     status_callback("resolving", "Bypassing protection...")
                 heartbeat_stop = Event()
@@ -389,7 +311,7 @@ def html_get_page(
             # requests follow those redirects, the request fails on DNS and we rotate away
             # from an otherwise working mirror. Handle AA redirects manually instead.
             is_aa_url = network.should_rotate_dns_for_url(current_url)
-            allow_redirects = not is_aa_url and redirect_allowed is None
+            allow_redirects = not is_aa_url
 
             redirects_followed = 0
             while True:
@@ -406,13 +328,14 @@ def html_get_page(
                     verify=get_ssl_verify(current_url),
                 )
 
-                if (is_aa_url or redirect_allowed is not None) and response.is_redirect:
-                    redirect_url = _get_redirect_url(current_url, response)
-                    if _redirect_blocked(redirect_url, redirect_allowed):
-                        logger.warning("Blocked redirect from %s to %s", current_url, redirect_url)
-                        _close_response(response)
-                        return _result("", current_url)
+                if is_aa_url and response.is_redirect:
+                    location = response.headers.get("Location", "")
+                    if not location:
+                        _raise_too_many_redirects(
+                            f"Redirect with no Location header: {current_url}"
+                        )
 
+                    redirect_url = urljoin(current_url, location)
                     current_host = urlparse(current_url).hostname or ""
                     redirect_host = urlparse(redirect_url).hostname or ""
 
@@ -434,7 +357,7 @@ def html_get_page(
                             # Reset per-request state for the new host.
                             headers = {"User-Agent": DOWNLOAD_HEADERS["User-Agent"]}
                             is_aa_url = network.should_rotate_dns_for_url(current_url)
-                            allow_redirects = not is_aa_url and redirect_allowed is None
+                            allow_redirects = not is_aa_url
                             redirects_followed = 0
                             continue
 
@@ -451,8 +374,6 @@ def html_get_page(
                     if redirects_followed > _MAX_REDIRECTS:
                         _raise_too_many_redirects(f"Too many redirects for {current_url}")
                     current_url = redirect_url
-                    is_aa_url = network.should_rotate_dns_for_url(current_url)
-                    allow_redirects = not is_aa_url and redirect_allowed is None
                     continue
 
                 response.raise_for_status()
@@ -531,7 +452,6 @@ def download_url(
     _selector: network.AAMirrorSelector | None = None,
     status_callback: Callable[[str, str | None], None] | None = None,
     referer: str | None = None,
-    redirect_allowed: Callable[[str], bool] | None = None,
 ) -> BytesIO | None:
     """Download content from URL with automatic retry and resume support."""
     selector = _selector or network.AAMirrorSelector()
@@ -567,39 +487,16 @@ def download_url(
                 MAX_DOWNLOAD_RETRIES,
             )
             # Try with CF cookies/UA if available
-            redirects_followed = 0
-            while True:
-                cookies = _apply_cf_bypass(current_url, headers)
-                response = requests.get(
-                    current_url,
-                    stream=True,
-                    proxies=get_proxies(current_url),
-                    timeout=REQUEST_TIMEOUT,
-                    cookies=cookies,
-                    headers=headers,
-                    allow_redirects=redirect_allowed is None,
-                    verify=get_ssl_verify(current_url),
-                )
-
-                if redirect_allowed is not None and response.is_redirect:
-                    redirect_url = _get_redirect_url(current_url, response)
-                    if _redirect_blocked(redirect_url, redirect_allowed):
-                        logger.warning(
-                            "Blocked download redirect from %s to %s",
-                            current_url,
-                            redirect_url,
-                        )
-                        _close_response(response)
-                        return None
-                    redirects_followed += 1
-                    if redirects_followed > _MAX_REDIRECTS:
-                        _raise_too_many_redirects(f"Too many redirects for {current_url}")
-                    _close_response(response)
-                    current_url = redirect_url
-                    continue
-
-                break
-
+            cookies = _apply_cf_bypass(current_url, headers)
+            response = requests.get(
+                current_url,
+                stream=True,
+                proxies=get_proxies(current_url),
+                timeout=REQUEST_TIMEOUT,
+                cookies=cookies,
+                headers=headers,
+                verify=get_ssl_verify(current_url),
+            )
             response.raise_for_status()
 
             if status_callback:
@@ -683,7 +580,6 @@ def download_url(
                     progress_callback,
                     cancel_flag,
                     headers,
-                    redirect_allowed,
                 )
                 if resumed:
                     return resumed
@@ -733,7 +629,6 @@ def _try_resume(
     progress_callback: Callable[[float], None] | None,
     cancel_flag: Event | None,
     base_headers: dict | None = None,
-    redirect_allowed: Callable[[str], bool] | None = None,
 ) -> BytesIO | None:
     """Try to resume an interrupted download."""
     for attempt in range(MAX_RESUME_ATTEMPTS):
@@ -751,37 +646,16 @@ def _try_resume(
                 **(base_headers or DOWNLOAD_HEADERS),
                 "Range": f"bytes={start_byte}-",
             }
-            current_url = url
-            redirects_followed = 0
-            while True:
-                cookies = _apply_cf_bypass(current_url, resume_headers)
-                response = requests.get(
-                    current_url,
-                    stream=True,
-                    proxies=get_proxies(current_url),
-                    timeout=REQUEST_TIMEOUT,
-                    headers=resume_headers,
-                    cookies=cookies,
-                    allow_redirects=redirect_allowed is None,
-                    verify=get_ssl_verify(current_url),
-                )
-                if redirect_allowed is not None and response.is_redirect:
-                    redirect_url = _get_redirect_url(current_url, response)
-                    if _redirect_blocked(redirect_url, redirect_allowed):
-                        logger.warning(
-                            "Blocked resume redirect from %s to %s",
-                            current_url,
-                            redirect_url,
-                        )
-                        _close_response(response)
-                        return None
-                    redirects_followed += 1
-                    if redirects_followed > _MAX_REDIRECTS:
-                        _raise_too_many_redirects(f"Too many redirects for {current_url}")
-                    _close_response(response)
-                    current_url = redirect_url
-                    continue
-                break
+            cookies = _apply_cf_bypass(url, resume_headers)
+            response = requests.get(
+                url,
+                stream=True,
+                proxies=get_proxies(url),
+                timeout=REQUEST_TIMEOUT,
+                headers=resume_headers,
+                cookies=cookies,
+                verify=get_ssl_verify(url),
+            )
 
             # Check resume support
             if response.status_code == _HTTP_STATUS_OK:  # Server doesn't support resume
