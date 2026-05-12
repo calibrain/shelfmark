@@ -10,6 +10,9 @@ from pathlib import Path
 ENTRYPOINT_PATH = Path(__file__).resolve().parents[2] / "entrypoint.sh"
 ENTRYPOINT_LOCK_PATH = Path("/tmp/shelfmark_entrypoint_test.lock")
 BASH_PATH = shutil.which("bash") or "/bin/bash"
+ID_PATH = shutil.which("id") or "/usr/bin/id"
+MKDIR_PATH = shutil.which("mkdir") or "/bin/mkdir"
+STAT_PATH = shutil.which("stat") or "/usr/bin/stat"
 
 
 @contextlib.contextmanager
@@ -57,6 +60,61 @@ printf '%s' "$*" > "$ENTRYPOINT_GUNICORN_ARGS_FILE"
 exit 0
 """,
     )
+    _write_executable(
+        bin_dir / "id",
+        """#!/bin/sh
+if [ -n "${ENTRYPOINT_STUB_CURRENT_UID:-}" ]; then
+  if [ "$1" = "-u" ]; then
+    printf '%s\\n' "$ENTRYPOINT_STUB_CURRENT_UID"
+    exit 0
+  fi
+  if [ "$1" = "-g" ]; then
+    printf '%s\\n' "$ENTRYPOINT_STUB_CURRENT_GID"
+    exit 0
+  fi
+fi
+exec "$ENTRYPOINT_REAL_ID" "$@"
+""",
+    )
+    _write_executable(
+        bin_dir / "gosu",
+        """#!/bin/sh
+shift
+if [ "${ENTRYPOINT_STUB_GOSU_FAIL_WRITES:-false}" = "true" ] && [ "$1" = "sh" ] && [ "$2" = "-c" ]; then
+  exit 1
+fi
+exec "$@"
+""",
+    )
+    _write_executable(
+        bin_dir / "mkdir",
+        """#!/bin/sh
+for arg in "$@"; do
+  if [ "$arg" = "/var/log/shelfmark" ]; then
+    exit 0
+  fi
+done
+exec "$ENTRYPOINT_REAL_MKDIR" "$@"
+""",
+    )
+    _write_executable(
+        bin_dir / "stat",
+        """#!/bin/sh
+if [ "$1" = "-c" ]; then
+  if [ "$2" = "%u:%g" ]; then
+    printf '%s\\n' "${ENTRYPOINT_STUB_STAT_OWNER:-0:0}"
+    exit 0
+  fi
+fi
+exec "$ENTRYPOINT_REAL_STAT" "$@"
+""",
+    )
+    _write_executable(
+        bin_dir / "chown",
+        """#!/bin/sh
+exit 0
+""",
+    )
 
     return bin_dir, runtime_home_file, runtime_args_file
 
@@ -65,6 +123,8 @@ def _run_entrypoint(
     tmp_path: Path,
     *,
     extra_env: dict[str, str] | None = None,
+    simulate_root_startup: bool = False,
+    fail_gosu_writes: bool = False,
     stub_home: Path | str | None = None,
 ) -> tuple[subprocess.CompletedProcess[str], Path, Path, Path]:
     runtime_home = tmp_path / "runtime-home"
@@ -86,6 +146,9 @@ def _run_entrypoint(
             "ENABLE_LOGGING": "false",
             "ENTRYPOINT_GUNICORN_ARGS_FILE": str(runtime_args_file),
             "ENTRYPOINT_GUNICORN_HOME_FILE": str(runtime_home_file),
+            "ENTRYPOINT_REAL_ID": ID_PATH,
+            "ENTRYPOINT_REAL_MKDIR": MKDIR_PATH,
+            "ENTRYPOINT_REAL_STAT": STAT_PATH,
             "ENTRYPOINT_STUB_GID": str(os.getgid()),
             "ENTRYPOINT_STUB_HOME": str(stub_home),
             "ENTRYPOINT_STUB_UID": str(os.getuid()),
@@ -99,6 +162,18 @@ def _run_entrypoint(
             "USING_EXTERNAL_BYPASSER": "true",
         }
     )
+    if simulate_root_startup:
+        env.update(
+            {
+                "ENTRYPOINT_STUB_CURRENT_GID": "0",
+                "ENTRYPOINT_STUB_CURRENT_UID": "0",
+                "ENTRYPOINT_STUB_STAT_OWNER": "0:0",
+                "PGID": str(os.getgid()),
+                "PUID": str(os.getuid()),
+            }
+        )
+    if fail_gosu_writes:
+        env["ENTRYPOINT_STUB_GOSU_FAIL_WRITES"] = "true"
     if extra_env:
         env.update(extra_env)
 
@@ -168,3 +243,17 @@ def test_entrypoint_non_root_mode_requires_writable_config_dir(tmp_path):
         f"Config directory is not writable in non-root mode: {readonly_config_dir}" in result.stdout
     )
     assert "Prepare ownership outside the container" in result.stdout
+
+
+def test_entrypoint_root_bootstrap_fails_closed_when_config_repair_fails(tmp_path):
+    result, _, _, _ = _run_entrypoint(
+        tmp_path,
+        simulate_root_startup=True,
+        fail_gosu_writes=True,
+    )
+
+    assert result.returncode == 1
+    assert "ERROR: Config directory is not writable!" in result.stdout
+    assert f"Configured runtime identity: {os.getuid()}:{os.getgid()}" in result.stdout
+    assert f"chown -R {os.getuid()}:{os.getgid()} /path/to/config" in result.stdout
+    assert "Startup mode: root" not in result.stdout

@@ -322,6 +322,27 @@ require_writable_dir() {
     fi
 }
 
+fail_unwritable_config_dir() {
+    local folder="$1"
+    local owner
+
+    owner=$(stat -c '%u:%g' "$folder" 2>/dev/null || echo "unknown")
+
+    echo ""
+    echo "========================================================"
+    echo "ERROR: Config directory is not writable!"
+    echo ""
+    echo "Config directory: $folder"
+    echo "Current owner: $owner"
+    echo "Configured runtime identity: ${RUN_UID}:${RUN_GID}"
+    echo ""
+    echo "To fix this permanently, run on your HOST machine:"
+    echo "  chown -R $RUN_UID:$RUN_GID /path/to/config"
+    echo "========================================================"
+    echo ""
+    exit 1
+}
+
 resolve_runtime_home() {
     local runtime_home
 
@@ -417,37 +438,15 @@ else
     # Config is Shelfmark-owned state, so it keeps the thorough repair path.
     make_writable "${CONFIG_DIR:-/config}" tree
 
-    # Fallback to root if config dir is still not writable (common on NAS/Unraid after upgrade from v0.4.0)
+    # Refuse to continue if the config directory is still not writable after repair.
     CONFIG_PATH=${CONFIG_DIR:-/config}
     set +e
     test_write "$CONFIG_PATH" >/dev/null 2>&1
     config_ok=$?
     set -e
 
-    if [ $config_ok -ne 0 ] && [ "$RUN_UID" != "0" ]; then
-        config_owner=$(stat -c '%u' "$CONFIG_PATH" 2>/dev/null || echo "unknown")
-        if [ "$config_owner" = "0" ]; then
-            echo ""
-            echo "========================================================"
-            echo "WARNING: Permission issue detected!"
-            echo ""
-            echo "Config directory is owned by root but PUID=$RUN_UID."
-            echo "This typically happens after upgrading from v0.4.0 where"
-            echo "PUID/PGID settings were not respected."
-            echo ""
-            echo "Falling back to running as root to prevent data loss."
-            echo ""
-            echo "To fix this permanently, run on your HOST machine:"
-            echo "  chown -R $RUN_UID:$RUN_GID /path/to/config"
-            echo ""
-            echo "Then restart the container."
-            echo "========================================================"
-            echo ""
-            RUN_UID=0
-            RUN_GID=0
-            USERNAME=root
-            TARGET_USER_SPEC="0:0"
-        fi
+    if [ $config_ok -ne 0 ]; then
+        fail_unwritable_config_dir "$CONFIG_PATH"
     fi
 fi
 
