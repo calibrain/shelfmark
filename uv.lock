@@ -1117,16 +1117,16 @@ wheels = [
 
 [[package]]
 name = "qbittorrent-api"
-version = "2025.11.1"
+version = "2026.5.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "packaging" },
     { name = "requests" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/63/b4/506b0296fd17d90cb2185149b4fa576645c6fd26397684bfb0806a35435b/qbittorrent_api-2025.11.1.tar.gz", hash = "sha256:5cb2a469f8bc95f616e03bd0259d8b4be60a5c3df0d49910c44309b0f59724c4", size = 1323104, upload-time = "2025-11-20T07:34:50.263Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/31/ad/a1031a87dc68d80282a3ee7fcdd48d170b79310210350fc118ef1e6eaa14/qbittorrent_api-2026.5.1.tar.gz", hash = "sha256:a42c120feab9bea87f592c60e22db42c1450bfc247504b41ce83730bdc7a0b5b", size = 1323872, upload-time = "2026-05-06T04:59:31.615Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/b4/c5/b77517fb2179ec640034ed8850fee9f9dcff457daef7aeebaf6463cf962d/qbittorrent_api-2025.11.1-py3-none-any.whl", hash = "sha256:6e60f1daa25232d48753d0e6860b0684092910b3fe16fbe449be7fa31caa687a", size = 67042, upload-time = "2025-11-20T07:34:48.684Z" },
+    { url = "https://files.pythonhosted.org/packages/88/03/81be01c43881d94e4ac58a589c41c4ab6f9ad2767cbd67e7d632aaaa1463/qbittorrent_api-2026.5.1-py3-none-any.whl", hash = "sha256:904dd74be5bf42e5bb08a814c19c61eb05aeb39ca6a241bb439c5da4df600ff0", size = 67228, upload-time = "2026-05-06T04:59:29.924Z" },
 ]
 
 [[package]]
