@@ -139,8 +139,12 @@ if [ "$RUN_AS_NON_ROOT" = "true" ]; then
     if [ -z "$USERNAME" ]; then
         USERNAME="$RUN_UID"
         echo "No passwd entry found for UID $RUN_UID; using numeric identity"
+        TARGET_USER_SPEC="${RUN_UID}:${RUN_GID}"
+        USE_GOSU_FALLBACK="true"
+    else
+        TARGET_USER_SPEC="$USERNAME"
+        USE_GOSU_FALLBACK="false"
     fi
-    TARGET_USER_SPEC="${RUN_UID}:${RUN_GID}"
 else
     # Determine user ID with proper precedence:
     # 1. PUID (LinuxServer.io standard - recommended)
@@ -190,8 +194,12 @@ else
     USERNAME=$(getent passwd "$RUN_UID" | cut -d: -f1)
     if [ -z "$USERNAME" ]; then
         USERNAME="$RUN_UID"
+        TARGET_USER_SPEC="${RUN_UID}:${RUN_GID}"
+        USE_GOSU_FALLBACK="true"
+    else
+        TARGET_USER_SPEC="$USERNAME"
+        USE_GOSU_FALLBACK="false"
     fi
-    TARGET_USER_SPEC="${RUN_UID}:${RUN_GID}"
 fi
 
 # Avoid unnecessary gosu hops when we're already running as the target user.
@@ -208,7 +216,11 @@ needs_user_switch() {
 
 run_as_target_user() {
     if needs_user_switch; then
-        gosu "$TARGET_USER_SPEC" "$@"
+        if [ "$USE_GOSU_FALLBACK" = "true" ]; then
+            gosu "$TARGET_USER_SPEC" "$@"
+        else
+            runuser -u "$USERNAME" -- "$@"
+        fi
         return $?
     fi
 
@@ -217,7 +229,11 @@ run_as_target_user() {
 
 exec_as_target_user() {
     if needs_user_switch; then
-        exec gosu "$TARGET_USER_SPEC" "$@"
+        if [ "$USE_GOSU_FALLBACK" = "true" ]; then
+            exec gosu "$TARGET_USER_SPEC" "$@"
+        else
+            exec runuser -u "$USERNAME" -- "$@"
+        fi
     fi
 
     exec "$@"
