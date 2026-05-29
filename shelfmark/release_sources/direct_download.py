@@ -198,8 +198,23 @@ _DOWNLOAD_SOURCES = [
 _SOURCE_FAILURE_THRESHOLD = 4
 _MIN_VALID_FILE_SIZE = 10 * 1024
 _AA_COUNTDOWN_MAX_SECONDS = 300
+_DISTANT_PATH_EXTENSIONS = (
+    "epub",
+    "mobi",
+    "azw3",
+    "fb2",
+    "djvu",
+    "cbz",
+    "cbr",
+    "pdf",
+    "zip",
+    "rar",
+    "m4b",
+    "mp3",
+)
+_DISTANT_PATH_EXTENSION_PATTERN = "|".join(re.escape(extension) for extension in _DISTANT_PATH_EXTENSIONS)
 _DISTANT_PATH_PATTERN = re.compile(
-    r"(?:[A-Za-z0-9._-]+/)?[A-Za-z]:(?:\\|/)[^\n\r<>\"]+?\.(?:epub|mobi|azw3|fb2|djvu|cbz|cbr|pdf|zip|rar|m4b|mp3)\b",
+    rf"(?:[A-Za-z0-9._-]+/)?[A-Za-z]:(?:\\|/)[^\n\r<>\"]+?\.(?:{_DISTANT_PATH_EXTENSION_PATTERN})\b",
     re.IGNORECASE,
 )
 _DISTANT_PATH_FALLBACK_PATTERN = re.compile(
