@@ -3,6 +3,7 @@
 import itertools
 import json
 import re
+import threading
 import time
 import unicodedata
 from dataclasses import replace
@@ -232,9 +233,10 @@ _KEYED_LANGUAGE_CODE_PATTERN = re.compile(
     r"\b(?:bd|lang(?:uage)?)\s*[:._-]?\s*([A-Za-z]{2,3})\b",
     re.IGNORECASE,
 )
-_LANGUAGE_NAME_TOKEN_PATTERN = re.compile(r"[a-z]{3,}(?:-[a-z0-9]+)?")
+_LANGUAGE_NAME_TOKEN_PATTERN = re.compile(r"[a-z]{4,}(?:-[a-z0-9]+)?")
 _LANGUAGE_ALIAS_TO_CODE: dict[str, str] | None = None
-_LANGUAGE_PLACEHOLDERS = frozenset({"", "-", "--", "—", "unknown", "unk", "n/a", "na"})
+_LANGUAGE_ALIAS_LOCK = threading.Lock()
+_LANGUAGE_PLACEHOLDERS = frozenset({"", "-", "--", "unknown", "unk", "n/a", "na"})
 _AMBIGUOUS_SHORT_LANGUAGE_CODES = frozenset({"de", "en", "it", "la", "no", "or", "is", "in"})
 
 # Sources that require Cloudflare bypass
@@ -266,45 +268,54 @@ def _fold_text(value: str) -> str:
 def _language_alias_to_code() -> dict[str, str]:
     """Build alias->code map from bundled language metadata."""
     global _LANGUAGE_ALIAS_TO_CODE
-    if _LANGUAGE_ALIAS_TO_CODE is not None:
+    cached = _LANGUAGE_ALIAS_TO_CODE
+    if cached is not None:
+        return cached
+
+    with _LANGUAGE_ALIAS_LOCK:
+        cached = _LANGUAGE_ALIAS_TO_CODE
+        if cached is not None:
+            return cached
+
+        mapping: dict[str, str] = {}
+        data_path = Path(__file__).resolve().parents[2] / "data" / "book-languages.json"
+
+        try:
+            raw = json.loads(data_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            _LANGUAGE_ALIAS_TO_CODE = {}
+            return _LANGUAGE_ALIAS_TO_CODE
+
+        if not isinstance(raw, list):
+            _LANGUAGE_ALIAS_TO_CODE = {}
+            return _LANGUAGE_ALIAS_TO_CODE
+
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+
+            code = _normalize_language_token(str(item.get("code", "")))
+            name = _normalize_language_token(str(item.get("language", "")))
+            if not code:
+                continue
+
+            mapping.setdefault(code, code)
+            mapping.setdefault(code.replace("-", "_"), code)
+            mapping.setdefault(code.split("-")[0], code)
+            mapping.setdefault(_fold_text(code), code)
+            if name:
+                mapping.setdefault(name, code)
+                mapping.setdefault(_fold_text(name), code)
+
+        _LANGUAGE_ALIAS_TO_CODE = mapping
         return _LANGUAGE_ALIAS_TO_CODE
 
-    mapping: dict[str, str] = {}
-    data_path = Path(__file__).resolve().parents[2] / "data" / "book-languages.json"
 
-    try:
-        raw = json.loads(data_path.read_text(encoding="utf-8"))
-    except (OSError, ValueError, TypeError):
-        _LANGUAGE_ALIAS_TO_CODE = {}
-        return _LANGUAGE_ALIAS_TO_CODE
-
-    if not isinstance(raw, list):
-        _LANGUAGE_ALIAS_TO_CODE = {}
-        return _LANGUAGE_ALIAS_TO_CODE
-
-    for item in raw:
-        if not isinstance(item, dict):
-            continue
-
-        code = _normalize_language_token(str(item.get("code", "")))
-        name = _normalize_language_token(str(item.get("language", "")))
-        if not code:
-            continue
-
-        mapping.setdefault(code, code)
-        mapping.setdefault(code.replace("-", "_"), code)
-        mapping.setdefault(code.split("-")[0], code)
-        mapping.setdefault(_fold_text(code), code)
-        if name:
-            mapping.setdefault(name, code)
-            mapping.setdefault(_fold_text(name), code)
-
-    _LANGUAGE_ALIAS_TO_CODE = mapping
-    return _LANGUAGE_ALIAS_TO_CODE
-
-
-def _extract_distant_path(row: Tag) -> str | None:
+def _extract_distant_path(row: Tag, *, enabled: bool) -> str | None:
     """Extract distant path hints from a direct-download search row."""
+    if not enabled:
+        return None
+
     def _normalize_candidate(text: str) -> str:
         # Some mirrors render paths with spaces around separators (e.g. "V: \comics \ ...").
         normalized = re.sub(r"\s*([\\/])\s*", r"\1", text)
@@ -354,24 +365,36 @@ def _detect_language_from_distant_path(path: str | None) -> str | None:
         return None
 
     folded_path = _fold_text(path)
+    strong_candidates: list[str] = []
 
     # Strongest signal: explicit bracket tags like [Fr], [BD FR], [EN].
     for code in _BRACKETED_LANGUAGE_CODE_PATTERN.findall(path):
         normalized = _normalize_language_token(code)
         if normalized in aliases:
-            return aliases[normalized]
+            strong_candidates.append(aliases[normalized])
 
     # Strong signal: explicit keyed markers like "BD FR" or "language: fr".
     for code in _KEYED_LANGUAGE_CODE_PATTERN.findall(path):
         normalized = _normalize_language_token(code)
         if normalized in aliases:
-            return aliases[normalized]
+            strong_candidates.append(aliases[normalized])
+
+    non_ambiguous_strong = [
+        candidate for candidate in strong_candidates if candidate not in _AMBIGUOUS_SHORT_LANGUAGE_CODES
+    ]
+    if non_ambiguous_strong:
+        return non_ambiguous_strong[0]
 
     # Medium signal: full language names (french, francais, deutsch, etc.).
     for token in _LANGUAGE_NAME_TOKEN_PATTERN.findall(folded_path):
         normalized = _normalize_language_token(token)
         if normalized in aliases:
-            return aliases[normalized]
+            candidate = aliases[normalized]
+            if candidate not in _AMBIGUOUS_SHORT_LANGUAGE_CODES:
+                return candidate
+
+    if strong_candidates:
+        return strong_candidates[0]
 
     for code in _LANGUAGE_CODE_TOKEN_PATTERN.findall(path):
         normalized = _normalize_language_token(code)
@@ -588,12 +611,9 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
     path_language_enabled = _is_language_from_path_enabled()
     requested_langs = _normalize_requested_languages(filters.lang)
 
-    # When path-language inference is enabled, language filtering must happen
-    # after row parsing, otherwise source-side lang filters drop rows too early.
-    if not (path_language_enabled and requested_langs):
-        for value in filters.lang or []:
-            if value and value != "all":
-                filters_query += f"&lang={quote(value)}"
+    for value in filters.lang or []:
+        if value and value != "all":
+            filters_query += f"&lang={quote(value)}"
 
     if filters.sort and filters.sort != "relevance":
         filters_query += f"&sort={quote(filters.sort)}"
@@ -707,7 +727,8 @@ def _parse_search_result_row(row: Tag) -> BrowseRecord | None:
         if not record_id:
             return None
 
-        distant_path = _extract_distant_path(row)
+        path_language_enabled = _is_language_from_path_enabled()
+        distant_path = _extract_distant_path(row, enabled=path_language_enabled)
 
         preview_img = cells[0].find("img")
         preview = _get_attr(preview_img, "src") if isinstance(preview_img, Tag) else None
@@ -724,8 +745,8 @@ def _parse_search_result_row(row: Tag) -> BrowseRecord | None:
         detected_from_path = _detect_language_from_distant_path(distant_path)
 
         # Temporary visual diagnostics for field mapping and path-language inference.
-        if _is_language_from_path_enabled():
-            logger.info(
+        if path_language_enabled:
+            logger.debug(
                 "DD lang debug | id=%s | title=%s | raw_lang=%s | detected_from_path=%s | distant_path=%s | cell11=%s | row=%s",
                 record_id,
                 _short_debug(title),
@@ -736,10 +757,10 @@ def _parse_search_result_row(row: Tag) -> BrowseRecord | None:
                 _short_debug(row.get_text(" ", strip=True), limit=260),
             )
 
-        if _is_language_from_path_enabled() and _is_missing_or_placeholder_language(language):
+        if path_language_enabled and _is_missing_or_placeholder_language(language):
             language = detected_from_path or "unknown"
 
-            logger.info(
+            logger.debug(
                 "DD lang debug resolved | id=%s | final_lang=%s | fallback=%s",
                 record_id,
                 _short_debug(language),

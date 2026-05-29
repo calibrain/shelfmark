@@ -1445,7 +1445,8 @@ def download_source_settings() -> list[SettingsField]:
             label="Detect Language From Distant Path",
             description=(
                 "When language metadata is missing, parse the distant path and set language "
-                "from tags like [BD FR]. Falls back to unknown when not detected."
+                "from tags like [BD FR]. Falls back to unknown when not detected. "
+                "Note: source-side language filters still apply and may exclude poorly tagged rows."
             ),
             default=False,
         ),

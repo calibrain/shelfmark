@@ -460,66 +460,105 @@ def test_parse_search_result_row_avoids_en_false_positive_when_french_is_present
 
 
 def test_search_books_filters_language_locally_when_path_language_enabled(monkeypatch):
-        import shelfmark.release_sources.direct_download as dd
+    import shelfmark.release_sources.direct_download as dd
 
-        captured_url: dict[str, str] = {}
+    captured_url: dict[str, str] = {}
 
-        original_get = dd.config.get
+    original_get = dd.config.get
 
-        def _fake_get(key: str, default=None, user_id=None):
-                del user_id
-                if key == "DIRECT_DOWNLOAD_LANGUAGE_FROM_PATH":
-                        return True
-                return original_get(key, default)
+    def _fake_get(key: str, default=None, user_id=None):
+        del user_id
+        if key == "DIRECT_DOWNLOAD_LANGUAGE_FROM_PATH":
+            return True
+        return original_get(key, default)
 
-        monkeypatch.setattr(dd.config, "get", _fake_get)
-        monkeypatch.setattr(dd.network, "get_aa_base_url", lambda: "https://mirror.example")
-        monkeypatch.setattr(dd.network, "AAMirrorSelector", lambda: object())
+    monkeypatch.setattr(dd.config, "get", _fake_get)
+    monkeypatch.setattr(dd.network, "get_aa_base_url", lambda: "https://mirror.example")
+    monkeypatch.setattr(dd.network, "AAMirrorSelector", lambda: object())
 
-        def _fake_html_get_page(url: str, selector, allow_bypasser_fallback=False):
-                del selector, allow_bypasser_fallback
-                captured_url["url"] = url
-                return r"""
-                <table>
-                    <tr>
-                        <td><a href="/md5/record-fr"><img src="cover.jpg"></a></td>
-                        <td><span>Livre FR</span></td>
-                        <td><span>Auteur</span></td>
-                        <td><span>Editeur</span></td>
-                        <td><span>2025</span></td>
-                        <td><span>-</span></td>
-                        <td><span>-</span></td>
-                        <td></td>
-                        <td><span>fiction</span></td>
-                        <td><span>pdf</span></td>
-                        <td><span>2 mb</span></td>
-                        <td><span>lgli/V:\comics\_0DAY3\[Fr]\BDs [Fr]\!Pdf\S\Book FR.pdf</span></td>
-                    </tr>
-                    <tr>
-                        <td><a href="/md5/record-en"><img src="cover.jpg"></a></td>
-                        <td><span>Book EN</span></td>
-                        <td><span>Author</span></td>
-                        <td><span>Publisher</span></td>
-                        <td><span>2025</span></td>
-                        <td><span>-</span></td>
-                        <td><span>-</span></td>
-                        <td></td>
-                        <td><span>fiction</span></td>
-                        <td><span>pdf</span></td>
-                        <td><span>2 mb</span></td>
-                        <td><span>lgli/V:\comics\_0DAY3\[En]\Comics\!Pdf\S\Book EN.pdf</span></td>
-                    </tr>
-                </table>
-                """
+    def _fake_html_get_page(url: str, selector, allow_bypasser_fallback=False):
+        del selector, allow_bypasser_fallback
+        captured_url["url"] = url
+        return r"""
+        <table>
+            <tr>
+                <td><a href="/md5/record-fr"><img src="cover.jpg"></a></td>
+                <td><span>Livre FR</span></td>
+                <td><span>Auteur</span></td>
+                <td><span>Editeur</span></td>
+                <td><span>2025</span></td>
+                <td><span>-</span></td>
+                <td><span>-</span></td>
+                <td></td>
+                <td><span>fiction</span></td>
+                <td><span>pdf</span></td>
+                <td><span>2 mb</span></td>
+                <td><span>lgli/V:\comics\_0DAY3\[Fr]\BDs [Fr]\!Pdf\S\Book FR.pdf</span></td>
+            </tr>
+            <tr>
+                <td><a href="/md5/record-en"><img src="cover.jpg"></a></td>
+                <td><span>Book EN</span></td>
+                <td><span>Author</span></td>
+                <td><span>Publisher</span></td>
+                <td><span>2025</span></td>
+                <td><span>-</span></td>
+                <td><span>-</span></td>
+                <td></td>
+                <td><span>fiction</span></td>
+                <td><span>pdf</span></td>
+                <td><span>2 mb</span></td>
+                <td><span>lgli/V:\comics\_0DAY3\[En]\Comics\!Pdf\S\Book EN.pdf</span></td>
+            </tr>
+        </table>
+        """
 
-        monkeypatch.setattr(dd.downloader, "html_get_page", _fake_html_get_page)
+    monkeypatch.setattr(dd.downloader, "html_get_page", _fake_html_get_page)
 
-        records = dd.search_books("demo", SearchFilters(lang=["fr"], format=["pdf"]))
+    records = dd.search_books("demo", SearchFilters(lang=["fr"], format=["pdf"]))
 
-        assert "&lang=" not in captured_url["url"]
-        assert len(records) == 1
-        assert records[0].id == "record-fr"
-        assert records[0].language == "fr"
+    assert "&lang=fr" in captured_url["url"]
+    assert len(records) == 1
+    assert records[0].id == "record-fr"
+    assert records[0].language == "fr"
+
+
+def test_parse_search_result_row_prefers_non_ambiguous_bracketed_language(monkeypatch):
+    from bs4 import BeautifulSoup
+
+    import shelfmark.release_sources.direct_download as dd
+
+    original_get = dd.config.get
+
+    def _fake_get(key: str, default=None, user_id=None):
+        del user_id
+        if key == "DIRECT_DOWNLOAD_LANGUAGE_FROM_PATH":
+            return True
+        return original_get(key, default)
+
+    monkeypatch.setattr(dd.config, "get", _fake_get)
+
+    html = r"""
+    <tr>
+      <td><a href="/md5/record-en-first"><img src="cover.jpg"></a></td>
+      <td><span>Le totem de l'espace</span></td>
+      <td><span>Gos</span></td>
+      <td><span>Dupuis</span></td>
+      <td><span>1977</span></td>
+      <td><span>-</span></td>
+      <td><span>-</span></td>
+      <td></td>
+      <td><span>Comic book</span></td>
+      <td><span>cbr</span></td>
+      <td><span>40.6MB</span></td>
+      <td><span>lgli/V:\comics\_0DAY2\[EN]\Stripboeken Frans - Comix in French\Le Scrameustache\[BD Fr] Le Scrameustache - 04 - Le Totem De L'Espace.cbr</span></td>
+    </tr>
+    """
+    row = BeautifulSoup(html, "html.parser").find("tr")
+
+    record = dd._parse_search_result_row(row)
+
+    assert record is not None
+    assert record.language == "fr"
 
 
 def test_parse_search_result_row_sets_unknown_when_path_language_not_detected(monkeypatch):
