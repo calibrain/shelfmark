@@ -236,3 +236,5 @@ AGENTS.md
 .playwright-mcp/
 frontend-dist/
 node_modules/
+
+/data/

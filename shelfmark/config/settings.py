@@ -143,6 +143,61 @@ def _log_external_bypasser_warning() -> None:
 
 
 register_group("direct_download", "Direct Download", icon="download", order=20)
+register_group("custom_sources", "Custom Sources", icon="download", order=58)
+
+
+@register_settings(
+    "custom_sources_about", "About Custom Sources", icon="info", order=58, group="custom_sources"
+)
+def _custom_sources_about_fields() -> list:
+    return [
+        HeadingField(
+            key="custom_sources_what_heading",
+            title="What are custom sources?",
+            description=(
+                "Custom sources are Python scripts you place in the custom_sources/ folder "
+                "inside your Shelfmark config directory. Each script adds a new search and "
+                "download source without touching Shelfmark's built-in code."
+            ),
+        ),
+        HeadingField(
+            key="custom_sources_how_heading",
+            title="How to add one",
+            description="Follow these three steps:",
+        ),
+        HeadingField(
+            key="custom_sources_how_step1",
+            title="1.  Drop the plugin file in place",
+            description="Copy your .py plugin file into config/custom_sources/ inside your Shelfmark config folder.",
+        ),
+        HeadingField(
+            key="custom_sources_how_step2",
+            title="2.  Restart Shelfmark",
+            description="Shelfmark picks it up automatically on the next start — it appears here under Custom Sources.",
+        ),
+        HeadingField(
+            key="custom_sources_how_step3",
+            title="3.  Add dependencies (if needed)",
+            description=(
+                "If the plugin uses a library that isn't already built into Shelfmark "
+                "(e.g. beautifulsoup4, lxml), create a file called requirements.txt in the same "
+                "config/custom_sources/ folder and list each package on its own line. "
+                "Shelfmark installs them automatically the next time it starts."
+            ),
+        ),
+        HeadingField(
+            key="custom_sources_security_heading",
+            title="⚠ Security — only install plugins you trust",
+            description=(
+                "Plugin files run as full Python code with the same access as Shelfmark itself — "
+                "they can read your config, access the network, and write files. "
+                "Only install plugins from sources you trust, the same way you would treat "
+                "any program you install on your computer. "
+                "Do not run plugins shared by strangers without reviewing the code first."
+            ),
+        ),
+    ]
+
 
 register_group(
     "metadata_providers",
@@ -1869,3 +1924,31 @@ def advanced_settings() -> list[SettingsField]:
 
 
 register_on_save("advanced", _on_save_advanced)
+
+# Eagerly load custom source plugins here, after all settings.py tabs are
+# registered and _REGISTRY_LOCK is fully released, so custom source tabs are in
+# _SETTINGS_REGISTRY before the first /api/settings snapshot.
+#
+# Without this, the lazy trigger inside serialize_tab() (via the callable
+# _get_book_release_source_options) registers custom tabs AFTER
+# get_all_settings_tabs() has already snapshotted, leaving them absent from the
+# first settings response.
+#
+# Side-effect: importing shelfmark.config.settings now loads custom plugins and
+# may run `pip install -r requirements.txt`. This is intentional — it is startup
+# work that must finish before the app serves requests. It does NOT run on plain
+# `import shelfmark.release_sources`; that import is now side-effect free.
+try:
+    from shelfmark.release_sources import _ensure_builtin_sources_registered as _load_sources
+
+    _load_sources()
+except ImportError:
+    pass  # shelfmark.release_sources unavailable in lightweight test environments
+except Exception as _exc:  # noqa: BLE001
+    import logging as _logging
+
+    _logging.getLogger(__name__).warning(
+        "Custom source startup hook raised %s: %s — custom tabs may be absent",
+        type(_exc).__name__,
+        _exc,
+    )

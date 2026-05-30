@@ -14,7 +14,7 @@ from shelfmark.core.utils import (
 )
 from shelfmark.download.fs import run_blocking_io
 from shelfmark.download.permissions_debug import log_path_permission_context
-from shelfmark.release_sources import get_source
+from shelfmark.release_sources import SourceUnavailableError, get_source
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -74,7 +74,7 @@ def get_final_destination(task: DownloadTask) -> Path:
 
     try:
         override = get_source(task.source).get_destination_override(task)
-    except ValueError:
+    except ValueError, SourceUnavailableError:
         override = None
 
     if override:

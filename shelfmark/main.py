@@ -3134,10 +3134,10 @@ def api_settings_get_tab(tab_name: str) -> Response | tuple[Response, int]:
         # Ensure settings are registered
         import_module("shelfmark.config.settings")
         import_module("shelfmark.config.users_settings")
-        from shelfmark.core.settings_registry import (
-            get_settings_tab,
-            serialize_tab,
-        )
+        from shelfmark.core.settings_registry import get_settings_tab, serialize_tab
+        from shelfmark.release_sources import _apply_deferred_field_updates
+
+        _apply_deferred_field_updates()
 
         tab = get_settings_tab(tab_name)
         if not tab:

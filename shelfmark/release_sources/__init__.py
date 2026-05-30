@@ -14,7 +14,10 @@ if TYPE_CHECKING:
     from shelfmark.core.models import DownloadTask
     from shelfmark.core.search_plan import ReleaseSearchPlan
 
+from shelfmark.core.logger import setup_logger
 from shelfmark.metadata_providers import BookMetadata
+
+logger = setup_logger(__name__)
 
 
 class ReleaseProtocol(StrEnum):
@@ -403,6 +406,9 @@ class DownloadHandler(ABC):
 
 _SOURCES: dict[str, type[ReleaseSource]] = {}
 _HANDLERS: dict[str, type[DownloadHandler]] = {}
+# Maps custom source name → config key for its enable toggle (e.g. "my_source" → "CUSTOM_MY_SOURCE_ENABLED")
+# Checked in list_available_sources() before the plugin's own is_available() — plugin has no say.
+_CUSTOM_SOURCE_ENABLE_KEYS: dict[str, str] = {}
 _BUILTIN_SOURCE_MODULES = (
     "shelfmark.release_sources.audiobookbay",
     "shelfmark.release_sources.direct_download",
@@ -411,17 +417,362 @@ _BUILTIN_SOURCE_MODULES = (
     "shelfmark.release_sources.prowlarr",
 )
 _builtin_source_state = {"loaded": False}
+# Plugin field registrations deferred because _cache_lock was held at load time.
+# Applied lazily on the first public API call after startup.
+# key: tab_name ("custom_<stem>")  value: (stem, get_settings_fields callable)
+_deferred_field_updates: dict[str, tuple[str, Any]] = {}
+
+
+def _register_custom_source_settings(
+    stem: str, module: object, source_names: set[str], order: int
+) -> None:
+    """Register a settings tab and enable-key mapping for a loaded custom source plugin."""
+    from shelfmark.core.settings_registry import CheckboxField, HeadingField, register_settings
+
+    # Derive display name from whichever source class the plugin registered.
+    # Read the class attribute directly — no instantiation, so a buggy __init__ can't
+    # throw here and leave the source registered without an enable-key entry.
+    source_cls = next((cls for n, cls in _SOURCES.items() if n in source_names), None)
+    display_name = source_cls.display_name if source_cls else stem.replace("_", " ").title()
+
+    # Stable config key owned entirely by Shelfmark — the plugin never touches it
+    enable_key = f"CUSTOM_{stem.upper()}_ENABLED"
+
+    # Register the enable key for every source name the plugin added.
+    # list_available_sources() checks this dict before the plugin's is_available().
+    for source_name in source_names:
+        _CUSTOM_SOURCE_ENABLE_KEYS[source_name] = enable_key
+
+    get_fields = getattr(module, "get_settings_fields", None)
+
+    # Call get_settings_fields() NOW — before register_settings() — because
+    # register_settings() invokes its argument immediately (see settings_registry.py).
+    # That means any config.get() call inside the plugin would run while
+    # Config._cache_lock is potentially held (we may be inside _load_settings()),
+    # causing a deadlock. Guard with a non-blocking lock acquire: if the lock is
+    # already held by this thread's call stack, skip plugin fields rather than hang.
+    plugin_extra_fields: list = []
+    if callable(get_fields):
+        _config_lock_free = True
+        try:
+            from shelfmark.core.config import config as _cfg
+
+            _lock = getattr(_cfg, "_cache_lock", None)
+            if _lock is not None:
+                _acquired = _lock.acquire(blocking=False)
+                if _acquired:
+                    _lock.release()
+                else:
+                    _config_lock_free = False
+                    _deferred_field_updates[f"custom_{stem}"] = (stem, get_fields)
+                    logger.debug(
+                        "Plugin %s: deferring get_settings_fields() — config lock is held. "
+                        "Fields will be applied on the next source API call.",
+                        stem,
+                    )
+        except Exception:  # noqa: BLE001, S110
+            pass  # if we can't inspect the lock, assume safe; real errors surface below
+
+        if _config_lock_free:
+            try:
+                result = get_fields()
+                if isinstance(result, list):
+                    # Remove fields whose key is already claimed globally OR by the
+                    # Shelfmark-owned fields we always inject into this very tab.
+                    # Field keys are global across all plugins; a plugin using
+                    # CUSTOM_FOO_ENABLED would silently overwrite Shelfmark's own
+                    # enable checkbox unless we guard it here.
+                    from shelfmark.core.settings_registry import get_settings_field_map
+
+                    existing_keys = set(get_settings_field_map().keys())
+                    shelfmark_owned = {f"custom_{stem}_heading", f"CUSTOM_{stem.upper()}_ENABLED"}
+                    reserved = existing_keys | shelfmark_owned
+                    clean: list = []
+                    for field in result:
+                        fkey = getattr(field, "key", None)
+                        if fkey and fkey in reserved:
+                            logger.warning(
+                                "Plugin %s: field key %r conflicts with a reserved key — "
+                                "skipping. Prefix plugin keys e.g. %s_%s.",
+                                stem,
+                                fkey,
+                                stem.upper(),
+                                fkey,
+                            )
+                        else:
+                            clean.append(field)
+                            if fkey:
+                                reserved.add(fkey)  # prevent same-plugin duplicates
+                    plugin_extra_fields = clean
+                else:
+                    logger.warning(
+                        "get_settings_fields() for %s returned %s, expected list — ignored",
+                        stem,
+                        type(result).__name__,
+                    )
+            except Exception:
+                logger.exception("Error calling get_settings_fields() for plugin: %s", stem)
+
+    def _build_fields() -> list:
+        fields: list = [
+            HeadingField(
+                key=f"custom_{stem}_heading",
+                title=display_name,
+                description=f"Loaded from custom_sources/{stem}.py",
+            ),
+            CheckboxField(
+                key=enable_key,
+                label=f"Enable {display_name}",
+                default=True,
+                description=f"Enable or disable the {display_name} source",
+            ),
+        ]
+        fields.extend(plugin_extra_fields)
+        return fields
+
+    register_settings(
+        name=f"custom_{stem}",
+        display_name=display_name,
+        icon="download",
+        order=order,
+        group="custom_sources",
+    )(_build_fields)
+
+
+def _apply_deferred_field_updates() -> None:
+    """Apply plugin settings fields that were skipped because _cache_lock was held at load time.
+
+    Called lazily from the first public source API call after startup so the lock
+    is guaranteed to be free. Idempotent — clears the deferred queue on each run.
+    """
+    if not _deferred_field_updates:
+        return
+
+    from shelfmark.core.config import config as _cfg
+
+    _lock = getattr(_cfg, "_cache_lock", None)
+    if _lock is not None:
+        _acquired = _lock.acquire(blocking=False)
+        if not _acquired:
+            return  # still locked — will retry on the next API call
+        _lock.release()
+
+    from shelfmark.core.settings_registry import (
+        _REGISTRY_LOCK,
+        _SETTINGS_REGISTRY,
+        get_settings_field_map,
+    )
+
+    pending = list(_deferred_field_updates.items())
+    _deferred_field_updates.clear()
+
+    for tab_name, (stem, get_fields_fn) in pending:
+        try:
+            result = get_fields_fn()
+            if not isinstance(result, list):
+                logger.warning(
+                    "Plugin %s deferred get_settings_fields() returned %s — ignored",
+                    stem,
+                    type(result).__name__,
+                )
+                continue
+            existing_keys = set(get_settings_field_map().keys())
+            shelfmark_owned = {f"custom_{stem}_heading", f"CUSTOM_{stem.upper()}_ENABLED"}
+            reserved = existing_keys | shelfmark_owned
+            clean: list = []
+            for field in result:
+                fkey = getattr(field, "key", None)
+                if fkey and fkey in reserved:
+                    logger.warning(
+                        "Plugin %s deferred: field key %r conflicts — skipped", stem, fkey
+                    )
+                else:
+                    clean.append(field)
+                    if fkey:
+                        reserved.add(fkey)
+            if clean:
+                with _REGISTRY_LOCK:
+                    tab = _SETTINGS_REGISTRY.get(tab_name)
+                    if tab is not None:
+                        tab.fields.extend(clean)
+                        logger.debug(
+                            "Applied %d deferred settings fields for plugin %s", len(clean), stem
+                        )
+        except Exception:
+            logger.exception("Error applying deferred settings fields for plugin: %s", stem)
+
+    if pending:
+        # Rebuild config cache so config.get() reflects the newly-added fields.
+        from shelfmark.core.config import config as _cfg2
+
+        try:
+            _cfg2.refresh(force=True)
+        except Exception:  # noqa: BLE001
+            logger.debug("config.refresh() after deferred field apply raised — cache may be stale")
+
+
+def _install_custom_source_requirements(custom_dir: object) -> None:
+    """Install packages from custom_sources/requirements.txt if it exists."""
+    import subprocess
+    import sys
+
+    req_file = custom_dir / "requirements.txt"  # type: ignore[operator]
+    if not req_file.is_file():
+        return
+
+    logger.info("Installing custom source dependencies from %s — this may take a moment…", req_file)
+    try:
+        result = subprocess.run(
+            [
+                sys.executable,
+                "-m",
+                "pip",
+                "install",
+                "-r",
+                str(req_file),
+                "--quiet",
+                "--disable-pip-version-check",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+        if result.returncode == 0:
+            logger.info("Custom source dependencies installed successfully.")
+        else:
+            logger.warning(
+                "Custom source dependency install finished with errors:\n%s",
+                result.stderr.strip(),
+            )
+    except Exception:
+        logger.exception("Failed to install custom source dependencies from %s", req_file)
+
+
+def _load_custom_sources() -> None:
+    """Load user-defined source plugins from $CONFIG_DIR/custom_sources/*.py."""
+    import importlib.util
+    import re
+    import sys
+    from importlib.abc import Loader
+
+    from shelfmark.config.env import CONFIG_DIR
+
+    custom_dir = CONFIG_DIR / "custom_sources"
+    if not custom_dir.is_dir():
+        return
+
+    _install_custom_source_requirements(custom_dir)
+
+    loaded_count = 0
+    used_stems: set[str] = set()
+    for plugin_file in sorted(custom_dir.glob("*.py")):
+        if plugin_file.name.startswith("_"):
+            continue
+
+        # Sanitize the file stem so it's safe to embed in Python identifiers
+        # and config key names. A filename like "my-source.py" would otherwise
+        # produce an invalid module name and a broken config key.
+        safe_stem = re.sub(r"[^a-zA-Z0-9_]", "_", plugin_file.stem).strip("_")
+        if not safe_stem:
+            logger.warning(
+                "Plugin %s: filename produces an empty identifier after sanitization — skipping",
+                plugin_file.name,
+            )
+            continue
+        if safe_stem != plugin_file.stem:
+            logger.info(
+                "Plugin %s: stem sanitized from %r to %r for config keys",
+                plugin_file.name,
+                plugin_file.stem,
+                safe_stem,
+            )
+        if safe_stem in used_stems:
+            logger.warning(
+                "Plugin %s: sanitized stem %r collides with an already-loaded plugin — skipping",
+                plugin_file.name,
+                safe_stem,
+            )
+            continue
+        # NOTE: used_stems.add(safe_stem) is called only after a successful load
+        # so that a broken plugin (syntax error, import failure) does not block
+        # a valid sibling that maps to the same sanitized stem.
+
+        module_name = f"shelfmark_custom_{safe_stem}"
+
+        # Full registry snapshot before each plugin so we can detect overwrites
+        # (same source name = same key, so key-set diffs miss it) and do a clean
+        # rollback on any failure — including partial registrations mid-module.
+        sources_snapshot = dict(_SOURCES)
+        handlers_snapshot = dict(_HANDLERS)
+        enable_keys_snapshot = dict(_CUSTOM_SOURCE_ENABLE_KEYS)
+        try:
+            spec = importlib.util.spec_from_file_location(module_name, plugin_file)
+            if spec is None or not isinstance(spec.loader, Loader):
+                logger.warning(
+                    "Could not create module spec for custom source: %s", plugin_file.name
+                )
+                continue
+            module = importlib.util.module_from_spec(spec)
+            # Register in sys.modules BEFORE exec so that @dataclass and other
+            # metaclass machinery can resolve cls.__module__ back to this module.
+            sys.modules[module_name] = module
+            try:
+                spec.loader.exec_module(module)
+            except Exception:
+                sys.modules.pop(module_name, None)
+                raise
+
+            new_sources = set(_SOURCES.keys()) - set(sources_snapshot.keys())
+
+            # Detect overwrites of ANY previously registered source or handler
+            # (built-in OR a plugin already loaded this session).
+            overwritten = {
+                n for n in sources_snapshot if _SOURCES.get(n) is not sources_snapshot[n]
+            } | {n for n in handlers_snapshot if _HANDLERS.get(n) is not handlers_snapshot[n]}
+            if overwritten:
+                logger.warning(
+                    "Plugin %s tried to overwrite already-registered name(s) %s — skipping plugin",
+                    plugin_file.name,
+                    overwritten,
+                )
+                _SOURCES.clear()
+                _SOURCES.update(sources_snapshot)
+                _HANDLERS.clear()
+                _HANDLERS.update(handlers_snapshot)
+                sys.modules.pop(module_name, None)
+                continue
+
+            _register_custom_source_settings(
+                safe_stem, module, new_sources, order=59 + loaded_count
+            )
+            loaded_count += 1
+            used_stems.add(safe_stem)
+            logger.info("Loaded custom source plugin: %s", plugin_file.name)
+        except Exception:
+            # Full rollback: restore all three registries to their pre-plugin state.
+            _SOURCES.clear()
+            _SOURCES.update(sources_snapshot)
+            _HANDLERS.clear()
+            _HANDLERS.update(handlers_snapshot)
+            _CUSTOM_SOURCE_ENABLE_KEYS.clear()
+            _CUSTOM_SOURCE_ENABLE_KEYS.update(enable_keys_snapshot)
+            logger.exception("Failed to load custom source plugin: %s", plugin_file.name)
 
 
 def _ensure_builtin_sources_registered() -> None:
     """Import built-in source modules once to populate source registries."""
     if _builtin_source_state["loaded"]:
         return
+    _builtin_source_state["loaded"] = True  # set early to prevent re-entrancy
 
     for module_name in _BUILTIN_SOURCE_MODULES:
-        import_module(module_name)
+        try:
+            import_module(module_name)
+        except Exception:
+            logger.exception("Failed to import builtin source module: %s", module_name)
 
-    _builtin_source_state["loaded"] = True
+    _load_custom_sources()
 
 
 def register_source(
@@ -451,15 +802,22 @@ def register_handler(
 def get_source(name: str) -> ReleaseSource:
     """Get a release source instance by name."""
     _ensure_builtin_sources_registered()
+    _apply_deferred_field_updates()
     if name not in _SOURCES:
         msg = f"Unknown release source: {name}"
         raise ValueError(msg)
+    if name in _CUSTOM_SOURCE_ENABLE_KEYS:
+        from shelfmark.core.config import config
+
+        if not config.get(_CUSTOM_SOURCE_ENABLE_KEYS[name], True):
+            raise SourceUnavailableError(f"Source '{name}' is disabled")
     return _SOURCES[name]()
 
 
 def get_handler(name: str) -> DownloadHandler:
     """Get a download handler instance by name."""
     _ensure_builtin_sources_registered()
+    _apply_deferred_field_updates()
     if name not in _HANDLERS:
         msg = f"Unknown download handler: {name}"
         raise ValueError(msg)
@@ -469,14 +827,38 @@ def get_handler(name: str) -> DownloadHandler:
 def list_available_sources() -> list[dict]:
     """List all registered sources with their availability status."""
     _ensure_builtin_sources_registered()
+    _apply_deferred_field_updates()
+    from shelfmark.core.config import config
+
     result = []
     for name, src_class in _SOURCES.items():
+        # Check Shelfmark's own enable toggle BEFORE instantiating the plugin.
+        # A disabled plugin may have a broken __init__ that raises, and we must
+        # not let that crash the whole source list.
+        if name in _CUSTOM_SOURCE_ENABLE_KEYS and not config.get(
+            _CUSTOM_SOURCE_ENABLE_KEYS[name], True
+        ):
+            result.append(
+                {
+                    "name": name,
+                    "display_name": src_class.display_name,
+                    "enabled": False,
+                    "supported_content_types": getattr(
+                        src_class, "supported_content_types", ["ebook", "audiobook"]
+                    ),
+                    "browse_results_are_releases": False,
+                    "can_be_default": getattr(src_class, "can_be_default", True),
+                }
+            )
+            continue
+
         instance = src_class()
+        enabled = instance.is_available()
         result.append(
             {
                 "name": name,
                 "display_name": instance.display_name,
-                "enabled": instance.is_available(),
+                "enabled": enabled,
                 "supported_content_types": getattr(
                     instance, "supported_content_types", ["ebook", "audiobook"]
                 ),
@@ -537,6 +919,3 @@ def source_results_are_releases(name: str) -> bool:
     if name not in _SOURCES:
         return False
     return _SOURCES[name]().search_results_are_releases()
-
-
-_ensure_builtin_sources_registered()

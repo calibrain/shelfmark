@@ -8,7 +8,7 @@ export const HeadingField = ({ field }: HeadingFieldProps) => (
   <div className="pb-1 not-first:mt-1 not-first:border-t not-first:border-(--border-muted) not-first:pt-5">
     <h3 className="mb-1 text-base font-semibold">{field.title}</h3>
     {field.description && (
-      <p className="text-sm opacity-70">
+      <p className="whitespace-pre-line text-sm opacity-70">
         {field.description}
         {field.linkUrl && (
           <>
