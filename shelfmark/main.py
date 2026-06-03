@@ -80,6 +80,8 @@ from shelfmark.core.requests_service import (
     sync_delivery_states_from_queue_status,
 )
 from shelfmark.core.user_db import UserDB
+from shelfmark.watchlist.db import WatchlistDB
+from shelfmark.watchlist.routes import init_watchlist_routes, watchlist_bp
 from shelfmark.core.utils import normalize_base_path
 from shelfmark.download import orchestrator as backend
 from shelfmark.release_sources import (
@@ -179,6 +181,8 @@ try:
     user_db.initialize()
     download_history_service = DownloadHistoryService(_user_db_path)
     activity_view_state_service = ActivityViewStateService(_user_db_path)
+    watchlist_db = WatchlistDB(_user_db_path)
+    watchlist_db.initialize()
     import_module("shelfmark.config.users_settings")
     from shelfmark.core.admin_routes import register_admin_routes
     from shelfmark.core.oidc_routes import register_oidc_routes
@@ -187,6 +191,8 @@ try:
     register_oidc_routes(app, user_db)
     register_admin_routes(app, user_db)
     register_self_user_routes(app, user_db)
+    init_watchlist_routes(watchlist_db)
+    app.register_blueprint(watchlist_bp)
 except (sqlite3.OperationalError, OSError) as e:
     logger.warning(
         "User database initialization failed: %s. Multi-user authentication features will be disabled. Ensure CONFIG_DIR (%s) exists and is writable.",
