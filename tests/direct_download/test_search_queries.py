@@ -516,7 +516,9 @@ def test_search_books_filters_language_locally_when_path_language_enabled(monkey
 
     records = dd.search_books("demo", SearchFilters(lang=["fr"], format=["pdf"]))
 
-    assert "&lang=fr" in captured_url["url"]
+    # Server-side &lang= must be suppressed so lgli files without AA language
+    # metadata are not dropped before we can infer the language from the path.
+    assert "&lang=" not in captured_url["url"]
     assert len(records) == 1
     assert records[0].id == "record-fr"
     assert records[0].language == "fr"
@@ -600,7 +602,8 @@ def test_parse_search_result_row_sets_unknown_when_path_language_not_detected(mo
     assert record.language == "unknown"
 
 
-def test_parse_search_result_row_keeps_legacy_behavior_when_toggle_disabled(monkeypatch):
+def test_parse_search_result_row_keeps_row_when_language_missing_and_toggle_disabled(monkeypatch):
+    """Rows with no language metadata should be kept even when path-language is off."""
     from bs4 import BeautifulSoup
 
     import shelfmark.release_sources.direct_download as dd
@@ -635,4 +638,62 @@ def test_parse_search_result_row_keeps_legacy_behavior_when_toggle_disabled(monk
 
     record = dd._parse_search_result_row(row)
 
-    assert record is None
+    assert record is not None
+    assert record.language is None
+
+
+def test_parse_search_result_row_keeps_sparse_lgli_row(monkeypatch):
+    """lgli rows with missing author/publisher/year must not be silently dropped."""
+    from bs4 import BeautifulSoup
+
+    import shelfmark.release_sources.direct_download as dd
+
+    original_get = dd.config.get
+
+    def _fake_get(key: str, default=None, user_id=None):
+        del user_id
+        if key == "DIRECT_DOWNLOAD_LANGUAGE_FROM_PATH":
+            return True
+        return original_get(key, default)
+
+    monkeypatch.setattr(dd.config, "get", _fake_get)
+
+    # Simulates a real lgli row: author/publisher/year/language cells are empty.
+    html = r"""
+    <tr>
+      <td><a href="/md5/sparse-1"><img src="cover.jpg"></a></td>
+      <td><span>Gos - 1978 - Le scrameustache T06 La fugue du Scrameustache.cbz</span></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td></td>
+      <td><span>Comic book</span></td>
+      <td><span>cbz</span></td>
+      <td><span>17.4MB</span></td>
+      <td><span>lgli/N:\comics1\ftp\[BD.FR] French Comics\Gos\Gos - 1978 - Le scrameustache T06 La fugue du Scrameustache.cbz</span></td>
+    </tr>
+    """
+    row = BeautifulSoup(html, "html.parser").find("tr")
+
+    record = dd._parse_search_result_row(row)
+
+    assert record is not None
+    assert record.id == "sparse-1"
+    assert record.format == "cbz"
+    # [BD.FR] in path should be detected as French
+    assert record.language == "fr"
+    assert record.author is None
+    assert record.publisher is None
+    assert record.year is None
+
+
+def test_book_matches_requested_languages_accepts_none_language():
+    """Books returned by the server-side lang filter with no language metadata should pass."""
+    import shelfmark.release_sources.direct_download as dd
+
+    assert dd._book_matches_requested_languages(None, {"fr"}) is True
+    assert dd._book_matches_requested_languages(None, set()) is True
+    assert dd._book_matches_requested_languages("en", {"fr"}) is False
+    assert dd._book_matches_requested_languages("fr", {"fr"}) is True

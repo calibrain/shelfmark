@@ -432,11 +432,17 @@ def _normalize_requested_languages(languages: list[str] | None) -> set[str]:
 
 
 def _book_matches_requested_languages(book_language: str | None, requested: set[str]) -> bool:
-    """Return True when a book language matches normalized requested filters."""
+    """Return True when a book language matches normalized requested filters.
+
+    A book whose language is unknown (None) passes through: the server-side
+    ``&lang=`` filter already constrained the result set, so dropping rows
+    that simply lack metadata would hide relevant results.
+    """
     if not requested:
         return True
     if not book_language:
-        return False
+        # Language unknown but returned by the server-side filter → accept.
+        return True
 
     aliases = _language_alias_to_code()
     normalized_book = aliases.get(_normalize_language_token(book_language), _normalize_language_token(book_language))
@@ -611,9 +617,14 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
     path_language_enabled = _is_language_from_path_enabled()
     requested_langs = _normalize_requested_languages(filters.lang)
 
-    for value in filters.lang or []:
-        if value and value != "all":
-            filters_query += f"&lang={quote(value)}"
+    # When path-language inference is enabled and a specific language is requested,
+    # skip the server-side &lang= filter: many lgli/archive files have no language
+    # metadata on AA's side and would be excluded before we can infer their language
+    # from the distant path.  Local filtering (below) handles the narrowing instead.
+    if not (path_language_enabled and requested_langs):
+        for value in filters.lang or []:
+            if value and value != "all":
+                filters_query += f"&lang={quote(value)}"
 
     if filters.sort and filters.sort != "relevance":
         filters_query += f"&sort={quote(filters.sort)}"
@@ -767,16 +778,9 @@ def _parse_search_result_row(row: Tag) -> BrowseRecord | None:
                 "unknown" if detected_from_path is None else "detected",
             )
 
-        if (
-            title is None
-            or author is None
-            or publisher is None
-            or year is None
-            or language is None
-            or content is None
-            or file_format is None
-            or size is None
-        ):
+        # Only truly required fields — all others are optional in BrowseRecord.
+        # Rows with sparse metadata (e.g. lgli sources) must not be silently dropped.
+        if title is None or file_format is None:
             return None
 
         return BrowseRecord(
