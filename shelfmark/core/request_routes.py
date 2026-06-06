@@ -72,13 +72,7 @@ def _require_request_endpoints_available(
     resolve_auth_mode: Callable[[], str],
 ) -> tuple[Response, int] | None:
     auth_mode = resolve_auth_mode()
-    if auth_mode == "none":
-        return _error_response(
-            "Request workflow is unavailable in no-auth mode",
-            403,
-            code="requests_unavailable",
-        )
-    if "user_id" not in session:
+    if auth_mode != "none" and "user_id" not in session:
         return jsonify({"error": "Unauthorized"}), 401
     return None
 
@@ -87,6 +81,9 @@ def _require_db_user_id() -> tuple[int | None, ResponseReturnValue | None]:
     """Return the logged-in DB user id or a ready-made error response."""
     raw_user_id = session.get("db_user_id")
     if raw_user_id is None:
+        from shelfmark.main import get_auth_mode
+        if get_auth_mode() == "none":
+            return 1, None
         return None, _error_response(
             "User identity is unavailable for request workflow",
             403,
@@ -103,10 +100,15 @@ def _require_db_user_id() -> tuple[int | None, ResponseReturnValue | None]:
 
 
 def _require_admin_user_id() -> tuple[int | None, ResponseReturnValue | None]:
-    if not session.get("is_admin", False):
+    from shelfmark.main import get_auth_mode
+    auth_mode = get_auth_mode()
+    is_admin = bool(session.get("is_admin", False)) or (auth_mode == "none")
+    if not is_admin:
         return None, (jsonify({"error": "Admin access required"}), 403)
     raw_admin_id = session.get("db_user_id")
     if raw_admin_id is None:
+        if auth_mode == "none":
+            return 1, None
         return None, (jsonify({"error": "Admin user identity unavailable"}), 403)
     normalized_admin_user_id = normalize_positive_int(raw_admin_id)
     if normalized_admin_user_id is None:
@@ -244,6 +246,91 @@ def _resolve_request_title(request_row: dict[str, Any]) -> str:
     return _resolve_title_from_book_data(request_row.get("book_data"))
 
 
+def _populate_requests_metadata(
+    rows: list[dict[str, Any]],
+    user_db: UserDB,
+) -> list[dict[str, Any]]:
+    """Populate missing metadata (covers, subtitle, etc.) on request items."""
+    from shelfmark.metadata_providers import (
+        get_configured_provider,
+        get_provider,
+        get_provider_kwargs,
+        is_provider_registered,
+    )
+
+    for row in rows:
+        book_data = row.get("book_data")
+        if not isinstance(book_data, dict):
+            continue
+
+        if "preview" not in book_data:
+            provider_name = book_data.get("provider")
+            provider_id = book_data.get("provider_id") or book_data.get("id")
+            if not provider_id:
+                continue
+
+            prov = None
+            if provider_name and is_provider_registered(provider_name):
+                try:
+                    kwargs = get_provider_kwargs(provider_name)
+                    prov = get_provider(provider_name, **kwargs)
+                except Exception as exc:  # noqa: BLE001 - provider init must not break the loop
+                    logger.warning(
+                        "Failed to instantiate metadata provider %s: %s",
+                        provider_name,
+                        exc,
+                    )
+
+            if not prov:
+                try:
+                    prov = get_configured_provider(row.get("content_type") or "ebook")
+                except Exception as exc:  # noqa: BLE001 - fallback lookup must not break the loop
+                    logger.warning(
+                        "Failed to get configured provider for content type: %s",
+                        exc,
+                    )
+
+            if prov:
+                try:
+                    metadata = prov.get_book(str(provider_id))
+                    if metadata:
+                        book_data["preview"] = metadata.cover_url or ""
+                        if metadata.publish_year and not book_data.get("year"):
+                            book_data["year"] = metadata.publish_year
+                        if metadata.subtitle and not book_data.get("subtitle"):
+                            book_data["subtitle"] = metadata.subtitle
+                    else:
+                        book_data["preview"] = ""
+
+                    updated_row = user_db.update_request(row["id"], book_data=book_data)
+                    row.update(updated_row)
+                except Exception:
+                    logger.exception(
+                        "Failed to populate metadata for request ID %s",
+                        row.get("id"),
+                    )
+
+    return rows
+
+
+def _transform_requests_for_response(
+    rows: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Transform book_data preview URLs to local proxy URLs before returning to client."""
+    from shelfmark.core.utils import transform_cover_url
+
+    for row in rows:
+        book_data = row.get("book_data")
+        if isinstance(book_data, dict):
+            preview = book_data.get("preview")
+            if isinstance(preview, str) and preview:
+                provider = book_data.get("provider") or "manual"
+                provider_id = book_data.get("provider_id") or book_data.get("id") or str(row["id"])
+                cache_id = f"{provider}_{provider_id}"
+                book_data["preview"] = transform_cover_url(preview, cache_id)
+    return rows
+
+
 def _format_user_label(username: str | None, user_id: int | None = None) -> str:
     normalized_username = normalize_optional_text(username)
     if normalized_username is not None:
@@ -276,7 +363,9 @@ def _resolve_request_user_context(
         actor_label = _format_user_label(actor_username, actor_user_id)
         return actor_user_id, actor_username, actor_label
 
-    if not session.get("is_admin", False):
+    from shelfmark.main import get_auth_mode
+    is_admin = bool(session.get("is_admin", False)) or (get_auth_mode() == "none")
+    if not is_admin:
         msg = "Admin required"
         raise RequestServiceError(msg, status_code=403)
 
@@ -570,7 +659,7 @@ def register_request_routes(
         if auth_gate is not None:
             return auth_gate
 
-        is_admin = bool(session.get("is_admin", False))
+        is_admin = bool(session.get("is_admin", False)) or (resolve_auth_mode() == "none")
         db_user_id: int | None = None
         if not is_admin:
             db_user_id, db_gate = _require_db_user_id()
@@ -700,6 +789,7 @@ def register_request_routes(
             request_row=created,
         )
 
+        _transform_requests_for_response([created])
         return jsonify(created), 201
 
     @app.route("/api/requests/batch", methods=["POST"])
@@ -814,6 +904,7 @@ def register_request_routes(
 
         ordered_results = [results_by_index[index] for index in range(len(prepared_requests))]
         status_code = 201 if request_prepared_items else 200
+        _transform_requests_for_response(ordered_results)
         return jsonify(ordered_results), status_code
 
     @app.route("/api/requests", methods=["GET"])
@@ -845,6 +936,8 @@ def register_request_routes(
             )
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
+        _populate_requests_metadata(rows, user_db)
+        _transform_requests_for_response(rows)
         return jsonify(rows)
 
     @app.route("/api/requests/<int:request_id>", methods=["DELETE"])
@@ -871,6 +964,8 @@ def register_request_routes(
             )
         except RequestServiceError as exc:
             return _error_response(str(exc), exc.status_code, code=exc.code)
+
+        _populate_requests_metadata([updated], user_db)
 
         event_payload = {
             "request_id": updated["id"],
@@ -899,6 +994,7 @@ def register_request_routes(
             room="admins",
         )
 
+        _transform_requests_for_response([updated])
         return jsonify(updated)
 
     @app.route("/api/admin/requests", methods=["GET"])
@@ -906,7 +1002,7 @@ def register_request_routes(
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
-        if not session.get("is_admin", False):
+        if not (session.get("is_admin", False) or resolve_auth_mode() == "none"):
             return jsonify({"error": "Admin access required"}), 403
 
         status = request.args.get("status")
@@ -919,6 +1015,8 @@ def register_request_routes(
             return jsonify({"error": str(exc)}), 400
 
         populate_request_usernames(rows, user_db)
+        _populate_requests_metadata(rows, user_db)
+        _transform_requests_for_response(rows)
 
         return jsonify(rows)
 
@@ -927,7 +1025,7 @@ def register_request_routes(
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
-        if not session.get("is_admin", False):
+        if not (session.get("is_admin", False) or resolve_auth_mode() == "none"):
             return jsonify({"error": "Admin access required"}), 403
 
         by_status = {status: len(user_db.list_requests(status=status)) for status in RequestStatus}
@@ -968,6 +1066,8 @@ def register_request_routes(
         except RequestServiceError as exc:
             return _error_response(str(exc), exc.status_code, code=exc.code)
 
+        _populate_requests_metadata([updated], user_db)
+
         event_payload = {
             "request_id": updated["id"],
             "status": updated["status"],
@@ -1003,6 +1103,7 @@ def register_request_routes(
             request_row=updated,
         )
 
+        _transform_requests_for_response([updated])
         return jsonify(updated)
 
     @app.route("/api/admin/requests/<int:request_id>/reject", methods=["POST"])
@@ -1030,6 +1131,8 @@ def register_request_routes(
             )
         except RequestServiceError as exc:
             return _error_response(str(exc), exc.status_code, code=exc.code)
+
+        _populate_requests_metadata([updated], user_db)
 
         event_payload = {
             "request_id": updated["id"],
@@ -1066,4 +1169,5 @@ def register_request_routes(
             request_row=updated,
         )
 
+        _transform_requests_for_response([updated])
         return jsonify(updated)
