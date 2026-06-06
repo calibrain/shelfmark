@@ -304,15 +304,20 @@ rotation_monitor() {
         echo "[*] Circuit rotation #$rotation_count at $(date)"
 
         # Test DNS resolution through Tor
+        dns_ok=true
         if ! timeout 10 nslookup google.com 127.0.0.1 > /dev/null 2>&1; then
             echo "[!] $(date): DNS resolution slow/failing, rotating circuits..."
             pkill -HUP tor || true
             sleep 10
+            dns_ok=false
         fi
 
         # Proactively rotate circuits every 5 minutes to keep them fresh
-        echo "[*] $(date): Proactive circuit rotation..."
-        pkill -HUP tor || true
+        # Skip if we already rotated for DNS failure this cycle
+        if $dns_ok; then
+            echo "[*] $(date): Proactive circuit rotation..."
+            pkill -HUP tor || true
+        fi
 
         # Verify Tor is still responsive after rotation
         sleep 5
