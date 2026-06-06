@@ -1,6 +1,6 @@
 services:
   shelfmark:
-    image: ghcr.io/calibrain/shelfmark:latest
+    image: ghcr.io/infiniteavenger/shelfmark:latest
     container_name: shelfmark
     environment:
       PUID: 1000

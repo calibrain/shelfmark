@@ -2,7 +2,8 @@
 
 set -euo pipefail
 
-LATEST_IMAGE="${LATEST_IMAGE:-ghcr.io/calibrain/shelfmark:latest}"
+LATEST_IMAGE="${LATEST_IMAGE:-ghcr.io/infiniteavenger/shelfmark:latest}"
+# Historical upstream baseline for comparison (the fork has no equivalent old tag).
 LEGACY_IMAGE="${LEGACY_IMAGE:-ghcr.io/calibrain/shelfmark:v1.0.2}"
 WAIT_SECONDS="${WAIT_SECONDS:-5}"
 STARTUP_TIMEOUT_SECONDS="${STARTUP_TIMEOUT_SECONDS:-120}"

@@ -3,7 +3,11 @@
 <img src="src/frontend/public/logo.png" alt="Shelfmark" width="200">
 
 > [!NOTE]
-> This project is in a stable state as of May 2026 but is not under active maintenance. 
+> This is a **fork** of [calibrain/shelfmark](https://github.com/calibrain/shelfmark) that adds the
+> automation the upstream project intentionally left out — Hardcover wishlist sync, automatic
+> downloading, and Audiobookshelf library-aware de-duplication. All original functionality is
+> preserved and full credit goes to the original authors; upstream is in maintenance mode. See
+> [Fork Additions](#-fork-additions) for what's different.
 
 Shelfmark is a self-hosted web interface for searching and requesting books and audiobooks across multiple sources. Bring your own sources, metadata providers, and download clients to build a single hub for your digital library. Supports multiple users with a built-in request system, so you can share your instance with others and let them browse and request books on their own.
 
@@ -24,6 +28,19 @@ Works great alongside the following library tools, with support for automatic im
 - **Authentication** - Built-in login, OIDC single sign-on, proxy auth, and Calibre-Web database support
 - **Real-Time Progress** - Unified download queue with live status updates across all sources
 - **Network Flexibility** - Configurable proxy support, DNS settings, and optional Cloudflare handling for protected sources
+
+## 🔱 Fork Additions
+
+This fork adds an optional automation pipeline on top of upstream Shelfmark, configurable under **Settings → Hardcover Sync**. Everything here is **off by default and opt-in**:
+
+- **Hardcover Wishlist Sync** - Automatically pull books from a Hardcover reading shelf (e.g. "Want to Read") into Shelfmark as requests, on a schedule (configurable in minutes or hours) or on demand via a "Sync now" button. Synced requests carry full metadata and cover art.
+- **Automatic Downloads** - Auto-approve and download synced books, selecting the best release from a **drag-to-reorder source priority** list. A strict title/author/audiobook-format (and seeder) match guard avoids grabbing the wrong file; anything without a confident match is left as a pending request for manual review.
+- **Library-Aware De-duplication** - Check your [Audiobookshelf](https://github.com/advplyr/audiobookshelf) library before adding or downloading a book and skip anything you already own. Fails open (proceeds) if Audiobookshelf is unreachable, so the pipeline never stalls.
+
+> [!TIP]
+> **Designed to pair with [ShelfBridge](https://github.com/rohit-purandare/ShelfBridge).** ShelfBridge syncs your Audiobookshelf *listening progress* **up to** Hardcover; this fork closes the loop in the other direction — pulling your Hardcover "Want to Read" shelf **down into** your library and skipping anything you already own. Run both and Hardcover becomes a single hub: mark a book "Want to Read" and it lands in your library automatically; finish listening and your Hardcover status updates on its own.
+
+These build on Shelfmark's existing request and download systems; with all of them disabled, the app behaves exactly like upstream.
 
 ## 🖼️ Screenshots
 
@@ -49,7 +66,7 @@ Works great alongside the following library tools, with support for automatic im
 
 1. Download the [docker-compose file](compose/docker-compose.yml):
    ```bash
-   curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/docker-compose.yml
+   curl -O https://raw.githubusercontent.com/InfiniteAvenger/shelfmark/main/compose/docker-compose.yml
    ```
 
 2. Start the service:
@@ -131,7 +148,7 @@ The full-featured image with all network capabilities included.
 #### Tor Routing
 Optional Tor support for network privacy:
 ```bash
-curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/docker-compose.tor.yml
+curl -O https://raw.githubusercontent.com/InfiniteAvenger/shelfmark/main/compose/docker-compose.tor.yml
 docker compose -f docker-compose.tor.yml up -d
 ```
 
@@ -149,7 +166,7 @@ A lighter image without the built-in browser automation. Ideal for:
 - **Audiobooks** - Using Shelfmark primarily for audiobooks
 
 ```bash
-curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/docker-compose.lite.yml
+curl -O https://raw.githubusercontent.com/InfiniteAvenger/shelfmark/main/compose/docker-compose.lite.yml
 docker compose -f docker-compose.lite.yml up -d
 ```
 
@@ -181,25 +198,6 @@ volumes:
 ### Multi-User Support
 
 With any authentication method enabled, Shelfmark supports multi-user management with admin/user roles. Users can have per-user settings for download destinations, email recipients, and notification preferences. Non-admin users only see their own downloads and can submit book requests for admin review. Admins can configure request policies per source to control whether users can download directly, must submit a request, or are blocked entirely.
-
-## Project Scope
-
-Shelfmark is a manual search and download tool, the entry point to your book library, not a library manager. It finds books, downloads them, and sends them to a configured destination. That's the full scope.
-
-Shelfmark intentionally does not:
-
-- **Track or manage your library** - it doesn't know or care what you already own
-- **Integrate with library software** - what happens after delivery is up to your library tool
-- **Monitor authors, series, or new releases** - there is no background automation
-- **Queue future downloads** - if a book isn't available now, Shelfmark won't watch for it
-
-These are non-goals, not missing features.
-
-## Contributing
-
-Shelfmark's core feature set is complete. Development focuses on stability, bug fixes, quality-of-life improvements, and refining the search experience. Contributions in these areas are welcome, please file issues or submit pull requests on GitHub.
-
-Feature requests that fall outside the project scope (library integration, automation, collection management) will be closed. If you're unsure whether something fits, open a discussion first.
 
 ## Health Monitoring
 
@@ -261,4 +259,4 @@ Use of this tool is entirely at your own risk.
 
 ## Support
 
-For issues or questions, please [file an issue](https://github.com/calibrain/shelfmark/issues) on GitHub.
+For issues or questions about this fork, please [file an issue](https://github.com/InfiniteAvenger/shelfmark/issues) on GitHub. For issues with upstream Shelfmark, see [calibrain/shelfmark](https://github.com/calibrain/shelfmark/issues).

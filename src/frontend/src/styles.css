@@ -497,7 +497,7 @@
 
   .toast-notification {
     opacity: 0;
-    transform: translateX(100%);
+    transform: translateX(-100%);
     max-width: 100%;
     word-wrap: break-word;
     pointer-events: auto;

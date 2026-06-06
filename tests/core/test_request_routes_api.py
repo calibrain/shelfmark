@@ -188,12 +188,12 @@ class TestDownloadPolicyGuards:
 
 
 class TestRequestRoutes:
-    def test_request_endpoints_are_unavailable_in_no_auth_mode(self, main_module, client):
+    def test_request_endpoints_are_available_in_no_auth_mode(self, main_module, client):
         with patch.object(main_module, "get_auth_mode", return_value="none"):
             resp = client.get("/api/requests")
 
-        assert resp.status_code == 403
-        assert resp.json["code"] == "requests_unavailable"
+        assert resp.status_code == 200
+        assert resp.json == []
 
     def test_request_policy_endpoint_returns_effective_policy(self, main_module, client):
         user = _create_user(main_module, prefix="reader")

@@ -200,6 +200,15 @@ except (sqlite3.OperationalError, OSError) as e:
 # Start download coordinator
 backend.start()
 
+# Start the Hardcover wishlist sync + auto-download scheduler (in-process daemon).
+if user_db is not None:
+    try:
+        from shelfmark.core import hardcover_scheduler
+
+        hardcover_scheduler.start(user_db, backend.queue_release, _user_db_path)
+    except (ImportError, RuntimeError, OSError) as exc:
+        logger.warning("Failed to start Hardcover scheduler: %s", exc)
+
 # Rate limiting for login attempts
 # Map usernames to their failed-attempt counters and lockout timestamps.
 failed_login_attempts: dict[str, dict[str, Any]] = {}
@@ -2808,7 +2817,7 @@ def api_releases() -> Response | tuple[Response, int]:
     try:
         from dataclasses import asdict
 
-        from shelfmark.core.search_plan import build_release_search_plan
+        from shelfmark.core.release_search import search_source_releases
         from shelfmark.metadata_providers import (
             BookMetadata,
             get_provider,
@@ -2827,53 +2836,20 @@ def api_releases() -> Response | tuple[Response, int]:
             source_name: str, search_book: BookMetadata
         ) -> tuple[Any | None, list[Any], str | None]:
             """Search one source and return any error message instead of raising."""
-            try:
-                source = get_source(source_name)
-
-                plan = build_release_search_plan(
-                    search_book,
-                    languages=browse_filters.lang
-                    if source_query_filters is not None
-                    else languages,
-                    manual_query=query_text if source_query_filters is not None else manual_query,
-                    indexers=indexers,
-                    source_filters=source_query_filters,
-                )
-
-                if plan.source_filters is not None:
-                    planned_query = plan.manual_query or plan.primary_query
-                    planned_query_type = "query"
-                elif plan.manual_query:
-                    planned_query = plan.manual_query
-                    planned_query_type = "manual"
-                elif not expand_search and plan.isbn_candidates:
-                    planned_query = plan.isbn_candidates[0]
-                    planned_query_type = "isbn"
-                else:
-                    planned_query = plan.primary_query
-                    planned_query_type = "title_author"
-
-                logger.debug(
-                    "Searching %s: %s='%s' (title='%s', authors=%s, expand=%s, content_type=%s)",
-                    source_name,
-                    planned_query_type,
-                    planned_query,
-                    search_book.title,
-                    search_book.authors,
-                    expand_search,
-                    content_type,
-                )
-
-                releases = source.search(
-                    search_book, plan, expand_search=expand_search, content_type=content_type
-                )
-            except ValueError:
-                return None, [], f"Unknown source: {source_name}"
-            except (SourceUnavailableError, *_OPERATIONAL_ERRORS) as e:
-                logger.warning("Release search failed for source %s: %s", source_name, e)
-                return None, [], f"{source_name}: {e!s}"
-            else:
-                return source, releases, None
+            return search_source_releases(
+                source_name,
+                search_book,
+                languages=(
+                    browse_filters.lang if source_query_filters is not None else languages
+                ),
+                manual_query=(
+                    query_text if source_query_filters is not None else manual_query
+                ),
+                indexers=indexers,
+                expand_search=expand_search,
+                content_type=content_type,
+                source_filters=source_query_filters,
+            )
 
         provider = request.args.get("provider", "").strip()
         book_id = request.args.get("book_id", "").strip()

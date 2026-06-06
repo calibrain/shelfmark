@@ -577,6 +577,13 @@ def register_activity_routes(
                 continue
             visible_request_rows.append(row)
 
+        from shelfmark.core.request_routes import (
+            _populate_requests_metadata,
+            _transform_requests_for_response,
+        )
+        _populate_requests_metadata(visible_request_rows, user_db)
+        _transform_requests_for_response(visible_request_rows)
+
         return jsonify(
             {
                 "status": status,
@@ -1047,6 +1054,8 @@ def register_activity_routes(
                         raise RuntimeError(msg)
 
                 populate_request_usernames([request_row], user_db)
+                from shelfmark.core.request_routes import _transform_requests_for_response
+                _transform_requests_for_response([request_row])
                 entry = _request_history_entry(
                     request_row,
                     dismissed_at=dismissed_at,

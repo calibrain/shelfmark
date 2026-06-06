@@ -7,7 +7,7 @@ Shelfmark is typically deployed with Docker Compose.
 1. Download the compose file from the repository:
 
 ```bash
-curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/docker-compose.yml
+curl -O https://raw.githubusercontent.com/InfiniteAvenger/shelfmark/main/compose/docker-compose.yml
 ```
 
 2. Start the service:

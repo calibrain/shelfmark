@@ -22,7 +22,7 @@ If you run Shelfmark in Docker, the script must exist inside the container. The 
 ```yaml
 services:
   shelfmark:
-    image: ghcr.io/calibrain/shelfmark:latest
+    image: ghcr.io/infiniteavenger/shelfmark:latest
     volumes:
       - /path/to/your/scripts:/scripts:ro
 ```

@@ -34,7 +34,7 @@ Example `docker-compose`:
 ```yaml
 services:
   shelfmark:
-    image: ghcr.io/calibrain/shelfmark:latest
+    image: ghcr.io/infiniteavenger/shelfmark:latest
     volumes:
       - /path/to/config:/config
       - /path/to/books:/books

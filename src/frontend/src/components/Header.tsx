@@ -448,7 +448,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
             >
               <div className="py-1">
                 <a
-                  href="https://github.com/calibrain/shelfmark/issues"
+                  href="https://github.com/InfiniteAvenger/shelfmark/issues"
                   target="_blank"
                   rel="noopener noreferrer"
                   className="hover-surface flex w-full items-center gap-3 px-4 py-2 text-left text-slate-700 transition-colors dark:text-slate-200"

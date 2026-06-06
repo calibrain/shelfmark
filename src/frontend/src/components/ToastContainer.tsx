@@ -12,7 +12,7 @@ export const ToastContainer = ({ toasts }: ToastContainerProps) => {
   };
 
   return (
-    <div id="toast-container" className="fixed right-4 bottom-4 z-1100 space-y-2">
+    <div id="toast-container" className="fixed left-4 bottom-4 z-1100 space-y-2">
       {toasts.map((toast) => (
         <div
           key={toast.id}

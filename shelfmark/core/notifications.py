@@ -31,7 +31,7 @@ _ROUTE_EVENT_ALL = "all"
 _APPRISE_APP_ID = "Shelfmark"
 _APPRISE_APP_DESC = "Shelfmark notifications"
 _APPRISE_LOGO_URL = (
-    "https://raw.githubusercontent.com/calibrain/shelfmark/main/src/frontend/public/logo.png"
+    "https://raw.githubusercontent.com/InfiniteAvenger/shelfmark/main/src/frontend/public/logo.png"
 )
 _APPRISE_LOGGER_NAME = "apprise"
 _APPRISE_DISPATCH_ERRORS = (RuntimeError, TypeError, ValueError)
