@@ -1448,6 +1448,17 @@ def download_source_settings() -> list[SettingsField]:
             ),
             default=False,
         ),
+        CheckboxField(
+            key="DIRECT_DOWNLOAD_LANGUAGE_FROM_PATH",
+            label="Detect Language From Distant Path",
+            description=(
+                "When language metadata is missing or unknown, parse the distant path "
+                "(file path shown in search results) for language tags like [BD FR] or [En]. "
+                "Also enables local language filtering so lgli files without AA language "
+                "metadata are not excluded before the distant path can be checked."
+            ),
+            default=False,
+        ),
         PasswordField(
             key="AA_DONATOR_KEY",
             label="Account Donator Key",

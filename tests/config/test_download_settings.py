@@ -368,6 +368,20 @@ def test_download_source_settings_include_direct_download_toggle():
     assert "Add your own mirror URLs" in toggle_field.description
 
 
+def test_download_source_settings_include_distant_path_language_toggle():
+    from shelfmark.config.settings import download_source_settings
+
+    fields = download_source_settings()
+    toggle_field = next(
+        field
+        for field in fields
+        if getattr(field, "key", None) == "DIRECT_DOWNLOAD_LANGUAGE_FROM_PATH"
+    )
+
+    assert toggle_field.default is False
+    assert "distant path" in toggle_field.description.lower()
+
+
 def test_fast_source_options_lock_entries_without_mirror_or_donator_requirements(monkeypatch):
     from shelfmark.config.settings import _get_fast_source_options
 

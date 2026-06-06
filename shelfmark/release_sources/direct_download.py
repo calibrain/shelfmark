@@ -3,9 +3,12 @@
 import itertools
 import json
 import re
+import threading
 import time
+import unicodedata
 from dataclasses import replace
 from http import HTTPStatus
+from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar, NoReturn, TypedDict
 from urllib.parse import quote, urlparse
 
@@ -197,11 +200,228 @@ _SOURCE_FAILURE_THRESHOLD = 4
 _MIN_VALID_FILE_SIZE = 10 * 1024
 _AA_COUNTDOWN_MAX_SECONDS = 300
 
+# --- Distant-path language detection ---
+
+_DISTANT_PATH_EXTENSIONS = (
+    "epub", "mobi", "azw3", "fb2", "djvu", "cbz", "cbr",
+    "pdf", "zip", "rar", "m4b", "mp3",
+)
+_DISTANT_PATH_EXTENSION_PATTERN = "|".join(re.escape(e) for e in _DISTANT_PATH_EXTENSIONS)
+_DISTANT_PATH_PATTERN = re.compile(
+    rf"(?:[A-Za-z0-9._-]+/)?[A-Za-z]:(?:\\|/)[^\n\r<>\"]+?\.(?:{_DISTANT_PATH_EXTENSION_PATTERN})\b",
+    re.IGNORECASE,
+)
+_DISTANT_PATH_FALLBACK_PATTERN = re.compile(
+    r"(?:[A-Za-z0-9._-]+/)?[A-Za-z]:(?:\\|/)[^\n\r<>\"]+",
+    re.IGNORECASE,
+)
+_BRACKETED_LANGUAGE_CODE_PATTERN = re.compile(
+    r"\[(?:bd[\s._-]*)?([A-Za-z]{2,3})\]",
+    re.IGNORECASE,
+)
+_KEYED_LANGUAGE_CODE_PATTERN = re.compile(
+    r"\b(?:bd|lang(?:uage)?)\s*[:._-]?\s*([A-Za-z]{2,3})\b",
+    re.IGNORECASE,
+)
+_LANGUAGE_CODE_TOKEN_PATTERN = re.compile(
+    r"(?:^|[\s_./\\\-\[(])([A-Za-z]{2,3})(?=$|[\s_./\\\-)\]])"
+)
+_LANGUAGE_NAME_TOKEN_PATTERN = re.compile(r"[a-z]{4,}(?:-[a-z0-9]+)?")
+_LANGUAGE_ALIAS_TO_CODE: dict[str, str] | None = None
+_LANGUAGE_ALIAS_LOCK = threading.Lock()
+_LANGUAGE_PLACEHOLDERS = frozenset({"", "-", "--", "unknown", "unk", "n/a", "na"})
+# Short codes that appear in common words — require bracket/key context to accept
+_AMBIGUOUS_SHORT_LANGUAGE_CODES = frozenset({"de", "en", "it", "la", "no", "or", "is", "in"})
+
 # Sources that require Cloudflare bypass
 _CF_BYPASS_REQUIRED = frozenset({"aa-slow-nowait", "aa-slow-wait", "zlib", "welib"})
 
 # Sources whose URLs come from AA page (multiple mirrors)
 _AA_PAGE_SOURCES = frozenset({"aa-slow-nowait", "aa-slow-wait"})
+
+
+def _is_language_from_path_enabled() -> bool:
+    return bool(config.get("DIRECT_DOWNLOAD_LANGUAGE_FROM_PATH", False))
+
+
+def _normalize_language_token(value: str) -> str:
+    normalized = value.strip().lower()
+    for dash in ("‑", "–", "—", "−"):
+        normalized = normalized.replace(dash, "-")
+    return normalized
+
+
+def _fold_text(value: str) -> str:
+    normalized = unicodedata.normalize("NFKD", value)
+    return "".join(c for c in normalized if not unicodedata.combining(c)).lower()
+
+
+def _language_alias_to_code() -> dict[str, str]:
+    """Build alias→code map from bundled language metadata (lazy, cached)."""
+    global _LANGUAGE_ALIAS_TO_CODE
+    cached = _LANGUAGE_ALIAS_TO_CODE
+    if cached is not None:
+        return cached
+
+    with _LANGUAGE_ALIAS_LOCK:
+        cached = _LANGUAGE_ALIAS_TO_CODE
+        if cached is not None:
+            return cached
+
+        mapping: dict[str, str] = {}
+        data_path = Path(__file__).resolve().parents[2] / "data" / "book-languages.json"
+
+        try:
+            raw = json.loads(data_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError, TypeError):
+            _LANGUAGE_ALIAS_TO_CODE = {}
+            return _LANGUAGE_ALIAS_TO_CODE
+
+        if not isinstance(raw, list):
+            _LANGUAGE_ALIAS_TO_CODE = {}
+            return _LANGUAGE_ALIAS_TO_CODE
+
+        for item in raw:
+            if not isinstance(item, dict):
+                continue
+            code = _normalize_language_token(str(item.get("code", "")))
+            name = _normalize_language_token(str(item.get("language", "")))
+            if not code:
+                continue
+            mapping.setdefault(code, code)
+            mapping.setdefault(code.replace("-", "_"), code)
+            mapping.setdefault(code.split("-")[0], code)
+            mapping.setdefault(_fold_text(code), code)
+            if name:
+                mapping.setdefault(name, code)
+                mapping.setdefault(_fold_text(name), code)
+
+        _LANGUAGE_ALIAS_TO_CODE = mapping
+        return _LANGUAGE_ALIAS_TO_CODE
+
+
+def _extract_distant_path(row: Tag, *, enabled: bool) -> str | None:
+    """Extract the Windows-style file path from an AA search result row."""
+    if not enabled:
+        return None
+
+    def _normalize_candidate(text: str) -> str:
+        normalized = re.sub(r"\s*([\\/])\s*", r"\1", text)
+        normalized = re.sub(r":\s*([\\/])", r":\1", normalized)
+        normalized = re.sub(
+            r"\s+\.(epub|mobi|azw3|fb2|djvu|cbz|cbr|pdf|zip|rar|m4b|mp3)\b",
+            r".\1",
+            normalized,
+            flags=re.IGNORECASE,
+        )
+        return normalized
+
+    candidates = [row.get_text(" ", strip=True)]
+    for cell in row.find_all("td"):
+        cell_text = cell.get_text(" ", strip=True)
+        if cell_text:
+            candidates.append(cell_text)
+
+    best: str | None = None
+    for text in candidates:
+        for match in _DISTANT_PATH_PATTERN.findall(_normalize_candidate(text)):
+            candidate = match.strip().rstrip(".,;")
+            if best is None or len(candidate) > len(best):
+                best = candidate
+
+    if best is not None:
+        return best
+
+    for text in candidates:
+        for match in _DISTANT_PATH_FALLBACK_PATTERN.findall(_normalize_candidate(text)):
+            candidate = match.strip().rstrip(".,;")
+            if best is None or len(candidate) > len(best):
+                best = candidate
+
+    return best
+
+
+def _detect_language_from_distant_path(path: str | None) -> str | None:
+    """Infer a language code from distant-path tags such as [BD FR] or [Fr]."""
+    if not path:
+        return None
+
+    aliases = _language_alias_to_code()
+    if not aliases:
+        return None
+
+    folded_path = _fold_text(path)
+    strong_candidates: list[str] = []
+
+    for code in _BRACKETED_LANGUAGE_CODE_PATTERN.findall(path):
+        normalized = _normalize_language_token(code)
+        if normalized in aliases:
+            strong_candidates.append(aliases[normalized])
+
+    for code in _KEYED_LANGUAGE_CODE_PATTERN.findall(path):
+        normalized = _normalize_language_token(code)
+        if normalized in aliases:
+            strong_candidates.append(aliases[normalized])
+
+    non_ambiguous = [c for c in strong_candidates if c not in _AMBIGUOUS_SHORT_LANGUAGE_CODES]
+    if non_ambiguous:
+        return non_ambiguous[0]
+
+    for token in _LANGUAGE_NAME_TOKEN_PATTERN.findall(folded_path):
+        normalized = _normalize_language_token(token)
+        if normalized in aliases:
+            candidate = aliases[normalized]
+            if candidate not in _AMBIGUOUS_SHORT_LANGUAGE_CODES:
+                return candidate
+
+    if strong_candidates:
+        return strong_candidates[0]
+
+    for code in _LANGUAGE_CODE_TOKEN_PATTERN.findall(path):
+        normalized = _normalize_language_token(code)
+        if normalized in _AMBIGUOUS_SHORT_LANGUAGE_CODES:
+            continue
+        if normalized in aliases:
+            return aliases[normalized]
+
+    return None
+
+
+def _is_missing_or_placeholder_language(language: str | None) -> bool:
+    if language is None:
+        return True
+    return _normalize_language_token(language) in _LANGUAGE_PLACEHOLDERS
+
+
+def _normalize_requested_languages(languages: list[str] | None) -> set[str]:
+    if not languages:
+        return set()
+    aliases = _language_alias_to_code()
+    normalized: set[str] = set()
+    for value in languages:
+        token = _normalize_language_token(str(value))
+        if not token or token == "all":
+            continue
+        normalized.add(aliases.get(token, token))
+    return normalized
+
+
+def _book_matches_requested_languages(book_language: str | None, requested: set[str]) -> bool:
+    """Return True when a book's language matches the requested filter.
+
+    Books with unknown/missing language always pass — the server-side &lang= filter
+    already narrowed the result set, so dropping unlabelled rows hides valid results.
+    """
+    if not requested:
+        return True
+    if not book_language:
+        return True
+    aliases = _language_alias_to_code()
+    normalized_book = aliases.get(
+        _normalize_language_token(book_language),
+        _normalize_language_token(book_language),
+    )
+    return normalized_book in requested
 
 
 def _is_configured_zlib_link(url: str) -> bool:
@@ -360,9 +580,17 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
 
     filters_query = ""
 
-    for value in filters.lang or []:
-        if value and value != "all":
-            filters_query += f"&lang={quote(value)}"
+    path_language_enabled = _is_language_from_path_enabled()
+    requested_langs = _normalize_requested_languages(filters.lang)
+
+    # When path-language inference is on and a language is requested, skip the
+    # server-side &lang= filter: lgli files often have no AA language metadata
+    # and would be excluded before we can infer language from the distant path.
+    # Local filtering below handles the narrowing instead.
+    if not (path_language_enabled and requested_langs):
+        for value in filters.lang or []:
+            if value and value != "all":
+                filters_query += f"&lang={quote(value)}"
 
     if filters.sort and filters.sort != "relevance":
         filters_query += f"&sort={quote(filters.sort)}"
@@ -418,6 +646,9 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
         if book:
             books.append(book)
 
+    if path_language_enabled and requested_langs:
+        books = [b for b in books if _book_matches_requested_languages(b.language, requested_langs)]
+
     supported_formats = _get_supported_formats()
 
     books.sort(
@@ -471,6 +702,9 @@ def _parse_search_result_row(row: Tag) -> BrowseRecord | None:
         if not record_id:
             return None
 
+        path_language_enabled = _is_language_from_path_enabled()
+        distant_path = _extract_distant_path(row, enabled=path_language_enabled)
+
         preview_img = cells[0].find("img")
         preview = _get_attr(preview_img, "src") if isinstance(preview_img, Tag) else None
 
@@ -483,17 +717,13 @@ def _parse_search_result_row(row: Tag) -> BrowseRecord | None:
         file_format = _first_stripped_text(cells[9].find("span"))
         size = _first_stripped_text(cells[10].find("span"))
 
-        if (
-            title is None
-            or author is None
-            or publisher is None
-            or year is None
-            or language is None
-            or content is None
-            or file_format is None
-            or size is None
-        ):
+        # Only title and format are truly required — lgli rows often have sparse metadata
+        if title is None or file_format is None:
             return None
+
+        if path_language_enabled and _is_missing_or_placeholder_language(language):
+            detected = _detect_language_from_distant_path(distant_path)
+            language = detected or "unknown"
 
         return BrowseRecord(
             id=record_id,
@@ -507,6 +737,7 @@ def _parse_search_result_row(row: Tag) -> BrowseRecord | None:
             content=content.lower() if content else None,
             format=file_format.lower() if file_format else None,
             size=size,
+            download_path=distant_path,
         )
     except (AttributeError, IndexError, KeyError, TypeError) as e:
         logger.error_trace(f"Error parsing search result row: {e}")
