@@ -708,7 +708,17 @@ def _parse_search_result_row(row: Tag) -> BrowseRecord | None:
         preview_img = cells[0].find("img")
         preview = _get_attr(preview_img, "src") if isinstance(preview_img, Tag) else None
 
-        title = _first_stripped_text(cells[1].find("span"))
+        title_span = cells[1].find("span")
+        if isinstance(title_span, Tag):
+            # AA nests related-edition spans inside the main title span — take only direct text.
+            direct = " ".join(
+                str(c).strip()
+                for c in title_span.children
+                if isinstance(c, NavigableString) and str(c).strip()
+            ).strip()
+            title = direct or _first_stripped_text(title_span)
+        else:
+            title = None
         author = _first_stripped_text(cells[2].find("span"))
         publisher = _first_stripped_text(cells[3].find("span"))
         year = _first_stripped_text(cells[4].find("span"))
@@ -719,6 +729,11 @@ def _parse_search_result_row(row: Tag) -> BrowseRecord | None:
 
         # Only title and format are truly required — lgli rows often have sparse metadata
         if title is None or file_format is None:
+            return None
+
+        # Skip entries where the title is a catalog format descriptor, not a real title
+        # e.g. "Book/Online Audio", "Print book" — lgli metadata pollution
+        if title and "/" in title and len(title) < 40 and not any(c.isdigit() for c in title):
             return None
 
         if path_language_enabled and _is_missing_or_placeholder_language(language):
@@ -1902,7 +1917,6 @@ class DirectDownloadSource(ReleaseSource):
                 except Exception:
                     logger.exception("Search error")
 
-        logger.info("Found %s releases via title+author", len(all_results))
         return [_browse_record_to_release(record) for record in all_results]
 
     def is_available(self) -> bool:
