@@ -7,5 +7,5 @@
 
   // This script is intentionally loaded from index.html as a classic script,
   // so we need to declare it as an entry point manually.
-  "entry": ["public/theme-init.js"]
+  "entry": ["public/theme-init.js"],
 }

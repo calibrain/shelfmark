@@ -436,6 +436,7 @@ const RejectInlinePanel = ({
         Reject request for <span className="opacity-80">{itemTitle || 'Untitled request'}</span>
       </p>
       <textarea
+        aria-label="Optional note shown to the user"
         value={rejectNote}
         onChange={(event) => setRejectNote(event.target.value.slice(0, MAX_ADMIN_NOTE_LENGTH))}
         rows={3}

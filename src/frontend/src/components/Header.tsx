@@ -79,6 +79,15 @@ const applyTheme = (preference: string): void => {
   document.documentElement.style.colorScheme = effective;
 };
 
+const DEFAULT_STATUS_COUNTS: ActivityStatusCounts = {
+  ongoing: 0,
+  completed: 0,
+  errored: 0,
+  pendingRequests: 0,
+};
+const EMPTY_ADMIN_USERS: ActingAsUserSelection[] = [];
+const EMPTY_QUERY_TARGETS: QueryTargetOption[] = [];
+
 export const Header = forwardRef<HeaderHandle, HeaderProps>(
   (
     {
@@ -98,7 +107,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
       onSettingsClick,
       isAdmin = false,
       canAccessSettings,
-      statusCounts = { ongoing: 0, completed: 0, errored: 0, pendingRequests: 0 },
+      statusCounts = DEFAULT_STATUS_COUNTS,
       onLogoClick,
       authRequired = false,
       isAuthenticated = false,
@@ -106,7 +115,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
       displayName,
       actingAsUser = null,
       onActingAsUserChange,
-      adminUsers = [],
+      adminUsers = EMPTY_ADMIN_USERS,
       isAdminUsersLoading = false,
       adminUsersError = null,
       hasLoadedAdminUsers = false,
@@ -119,7 +128,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
       allowedContentTypes,
       combinedMode,
       onCombinedModeChange,
-      queryTargets = [],
+      queryTargets = EMPTY_QUERY_TARGETS,
       activeQueryTarget = 'general',
       onQueryTargetChange,
       activeQueryField = null,
@@ -305,8 +314,8 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
     // Determine if we should show icons only (both URLs configured)
     const showIconsOnly = Boolean(calibreWebUrl && audiobookLibraryUrl);
 
-    // Icon buttons component - reused for both states
-    const IconButtons = () => (
+    // Icon buttons - reused for both states
+    const iconButtonsNode = (
       <div className="flex items-center gap-2">
         {/* Book Library Button */}
         {calibreWebUrl && (
@@ -579,6 +588,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
                           onClick={handleLogout}
                           className="hover-action shrink-0 rounded-full p-2 text-red-600 transition-colors dark:text-red-400"
                           title="Sign Out"
+                          aria-label="Sign Out"
                         >
                           <svg
                             className="h-5 w-5"
@@ -674,7 +684,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
                     />
                   ))}
 
-                <IconButtons />
+                {iconButtonsNode}
               </div>
 
               {/* Search bar - appear second on mobile (below logo+icons), first on desktop (left side) */}
@@ -723,9 +733,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
 
           {/* When search is NOT active: show icon buttons only on the right */}
           {!showSearch && (
-            <div className="flex min-h-[48px] items-center justify-end">
-              <IconButtons />
-            </div>
+            <div className="flex min-h-[48px] items-center justify-end">{iconButtonsNode}</div>
           )}
         </div>
       </header>

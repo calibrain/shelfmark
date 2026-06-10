@@ -318,7 +318,10 @@ class TransmissionClient(DownloadClient):
             progress = torrent.percent_done * 100
             # Only mark complete when seeding or stopped (e.g. if seed limit/ratio is 0)
             # and progress is complete. seed pending means files still being moved
-            complete = progress >= _SEEDING_PROGRESS_PERCENT and status_value in ("seeding", "stopped")
+            complete = progress >= _SEEDING_PROGRESS_PERCENT and status_value in (
+                "seeding",
+                "stopped",
+            )
 
             if complete:
                 message = "Complete"

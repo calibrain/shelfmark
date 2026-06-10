@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useId, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useDismiss } from '../hooks/useDismiss';
@@ -55,6 +55,7 @@ export const Dropdown = ({
   onOpenChange,
 }: DropdownProps) => {
   const [isOpen, setIsOpen] = useState(false);
+  const dropdownId = useId();
   const containerRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -240,8 +241,8 @@ export const Dropdown = ({
     <div className={widthClassName} ref={containerRef}>
       {label && (
         <label
-          className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400"
-          onClick={toggleOpen}
+          htmlFor={dropdownId}
+          className="mb-1.5 block cursor-pointer text-xs font-medium text-gray-500 dark:text-gray-400"
         >
           {label}
         </label>
@@ -251,6 +252,7 @@ export const Dropdown = ({
           renderTrigger({ isOpen, toggle: toggleOpen })
         ) : (
           <button
+            id={dropdownId}
             type="button"
             onClick={toggleOpen}
             disabled={disabled}

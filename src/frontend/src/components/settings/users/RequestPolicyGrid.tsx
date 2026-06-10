@@ -60,6 +60,8 @@ const modeDescriptions: Record<RequestPolicyMode, string> = {
   blocked: 'Downloads and requests are blocked.',
 };
 
+const EMPTY_BASE_RULES: RequestPolicyRuleRow[] = [];
+
 export const RequestPolicyGrid = ({
   defaultModes,
   onDefaultModeChange,
@@ -67,7 +69,7 @@ export const RequestPolicyGrid = ({
   defaultModeOverrides,
   defaultModeDisabled,
   explicitRules,
-  baseRules = [],
+  baseRules = EMPTY_BASE_RULES,
   onExplicitRulesChange,
   sourceCapabilities,
   rulesDisabled = false,
