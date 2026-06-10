@@ -214,7 +214,7 @@ class OpenLibraryProvider(MetadataProvider):
             logger.warning("Open Library search timed out")
             return []
         except requests.HTTPError as e:
-            if e.response.status_code == HTTPStatus.SERVICE_UNAVAILABLE:
+            if e.response is not None and e.response.status_code == HTTPStatus.SERVICE_UNAVAILABLE:
                 logger.warning("Open Library service unavailable (503)")
             else:
                 logger.exception("Open Library HTTP error")
@@ -253,7 +253,7 @@ class OpenLibraryProvider(MetadataProvider):
             logger.warning("Open Library get_book timed out")
             return None
         except requests.HTTPError as e:
-            if e.response.status_code == HTTPStatus.NOT_FOUND:
+            if e.response is not None and e.response.status_code == HTTPStatus.NOT_FOUND:
                 logger.debug("Open Library work not found: %s", book_id)
             else:
                 logger.exception("Open Library HTTP error")
@@ -314,7 +314,7 @@ class OpenLibraryProvider(MetadataProvider):
             return self._parse_edition(edition, clean_isbn)
 
         except requests.HTTPError as e:
-            if e.response.status_code == HTTPStatus.NOT_FOUND:
+            if e.response is not None and e.response.status_code == HTTPStatus.NOT_FOUND:
                 logger.debug("Open Library ISBN not found: %s", isbn)
             else:
                 logger.exception("Open Library ISBN search HTTP error")

@@ -242,7 +242,7 @@ export const Dropdown = ({
       {label && (
         <label
           htmlFor={dropdownId}
-          className="mb-1.5 block text-xs font-medium text-gray-500 dark:text-gray-400 cursor-pointer"
+          className="mb-1.5 block cursor-pointer text-xs font-medium text-gray-500 dark:text-gray-400"
         >
           {label}
         </label>

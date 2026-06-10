@@ -79,7 +79,12 @@ const applyTheme = (preference: string): void => {
   document.documentElement.style.colorScheme = effective;
 };
 
-const DEFAULT_STATUS_COUNTS: ActivityStatusCounts = { ongoing: 0, completed: 0, errored: 0, pendingRequests: 0 };
+const DEFAULT_STATUS_COUNTS: ActivityStatusCounts = {
+  ongoing: 0,
+  completed: 0,
+  errored: 0,
+  pendingRequests: 0,
+};
 const EMPTY_ADMIN_USERS: ActingAsUserSelection[] = [];
 const EMPTY_QUERY_TARGETS: QueryTargetOption[] = [];
 
@@ -728,9 +733,7 @@ export const Header = forwardRef<HeaderHandle, HeaderProps>(
 
           {/* When search is NOT active: show icon buttons only on the right */}
           {!showSearch && (
-            <div className="flex min-h-[48px] items-center justify-end">
-               {iconButtonsNode}
-            </div>
+            <div className="flex min-h-[48px] items-center justify-end">{iconButtonsNode}</div>
           )}
         </div>
       </header>

@@ -2628,7 +2628,7 @@ class HardcoverProvider(MetadataProvider):
                 raise RuntimeError(msg) from e
             return None
         except requests.HTTPError as e:
-            if e.response.status_code == HTTPStatus.UNAUTHORIZED:
+            if e.response is not None and e.response.status_code == HTTPStatus.UNAUTHORIZED:
                 logger.exception("Hardcover API key is invalid")
                 if raise_on_error:
                     msg = "Hardcover API key is invalid"
