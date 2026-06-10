@@ -2,6 +2,9 @@
 
 <img src="src/frontend/public/logo.png" alt="Shelfmark" width="200">
 
+> [!NOTE]
+> This project is in a stable state as of May 2026 but is not under active maintenance. 
+
 Shelfmark is a self-hosted web interface for searching and requesting books and audiobooks across multiple sources. Bring your own sources, metadata providers, and download clients to build a single hub for your digital library. Supports multiple users with a built-in request system, so you can share your instance with others and let them browse and request books on their own.
 
 Works great alongside the following library tools, with support for automatic imports:

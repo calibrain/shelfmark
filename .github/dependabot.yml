@@ -31,7 +31,8 @@ updates:
         patterns: ["*"]
         update-types: ["minor", "patch"]
 
-  # Dockerfile base images
+  # Dockerfile base image digests. When a tag stays the same, Dependabot titles
+  # can only show digest prefixes, so keep the group name explicit.
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
@@ -40,7 +41,7 @@ updates:
       default-days: 3
     open-pull-requests-limit: 5
     groups:
-      docker-images:
+      docker-base-image-digests:
         patterns: ["*"]
     ignore:
       # Node.js: block major-version bumps so dependabot never proposes
