@@ -139,9 +139,11 @@ function formatUserOverrideValue(value: unknown): string {
   }
 }
 
+const EMPTY_DETAILS: Array<{ userId: number; username: string; value: unknown }> = [];
+
 const UserOverriddenBadge = ({
   count,
-  details = [],
+  details = EMPTY_DETAILS,
 }: {
   count: number;
   details?: Array<{ userId: number; username: string; value: unknown }>;

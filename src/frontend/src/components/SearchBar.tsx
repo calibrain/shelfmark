@@ -48,6 +48,7 @@ export interface SearchBarHandle {
 
 const EMPTY_SORT_OPTIONS: SortOption[] = [];
 const EMPTY_AUTOCOMPLETE_OPTIONS: DynamicFieldOption[] = [];
+const EMPTY_QUERY_TARGETS: QueryTargetOption[] = [];
 
 const BookIcon = () => (
   <svg
@@ -181,7 +182,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       allowedContentTypes,
       combinedMode = false,
       onCombinedModeChange,
-      queryTargets = [],
+      queryTargets = EMPTY_QUERY_TARGETS,
       activeQueryTarget = 'general',
       onQueryTargetChange,
       activeQueryField,
@@ -518,6 +519,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                 type="checkbox"
                 checked={Boolean(value)}
                 onChange={(e) => onChange(e.target.checked)}
+                aria-label={activeQueryField.label}
                 className="h-4 w-4 rounded-sm border-(--border-muted) text-emerald-500 focus:ring-emerald-500/50"
               />
               <span className="truncate text-sm" style={{ color: 'var(--text)' }}>

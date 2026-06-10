@@ -729,6 +729,8 @@ function ErrorState({ message }: { message: string }) {
   );
 }
 
+const EMPTY_SUPPORTED_AUDIOBOOK_FORMATS: string[] = [];
+
 const ReleaseModalSession = ({
   book,
   onClose,
@@ -737,7 +739,7 @@ const ReleaseModalSession = ({
   onRequestBook,
   getPolicyModeForSource,
   supportedFormats,
-  supportedAudiobookFormats = [],
+  supportedAudiobookFormats = EMPTY_SUPPORTED_AUDIOBOOK_FORMATS,
   contentType,
   defaultLanguages,
   bookLanguages,
@@ -2094,6 +2096,7 @@ const ReleaseModalSession = ({
                     value={manualQuery}
                     onChange={(e) => setManualQuery(e.target.value)}
                     placeholder="Type a custom search query (overrides all sources)"
+                    aria-label="Custom search query"
                     className="w-full rounded-lg border border-(--border-muted) bg-(--bg) px-3 py-2 text-sm text-(--text)"
                   />
                   <button

@@ -64,9 +64,11 @@ const getRequestConfirmationSessionKey = (payload: CreateRequestPayload): string
   ].join('|');
 };
 
+const EMPTY_PAYLOADS: CreateRequestPayload[] = [];
+
 export function RequestConfirmationModal({
   payload,
-  extraPayloads = [],
+  extraPayloads = EMPTY_PAYLOADS,
   allowNotes,
   onConfirm,
   onClose,
@@ -89,7 +91,7 @@ export function RequestConfirmationModal({
 
 function RequestConfirmationModalSession({
   payload,
-  extraPayloads = [],
+  extraPayloads = EMPTY_PAYLOADS,
   allowNotes,
   onConfirm,
   onClose,
@@ -305,6 +307,7 @@ function RequestConfirmationModalSession({
               </label>
               <textarea
                 id="request-note"
+                aria-label="Note (optional)"
                 value={note}
                 onChange={(event) => setNote(truncateRequestNote(event.target.value))}
                 maxLength={MAX_REQUEST_NOTE_LENGTH}

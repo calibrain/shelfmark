@@ -277,6 +277,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
                         checked={Boolean(cellValue)}
                         onChange={(e) => updateCell(rowIndex, col.key, e.target.checked)}
                         disabled={isDisabled}
+                        aria-label={`${col.label || col.key} row ${rowIndex + 1}`}
                         className="h-4 w-4 rounded border-gray-300 text-sky-600 focus:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-60"
                       />
                     </div>
@@ -361,6 +362,7 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
                     value={toPrimitiveString(cellValue)}
                     onChange={(e) => updateCell(rowIndex, col.key, e.target.value)}
                     placeholder={col.placeholder}
+                    aria-label={`${col.label || col.key} row ${rowIndex + 1}`}
                     disabled={isDisabled}
                     className="w-full rounded-lg border border-(--border-muted) bg-(--bg-soft) px-3 py-2 text-sm transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50 focus:outline-hidden disabled:cursor-not-allowed disabled:opacity-60"
                   />

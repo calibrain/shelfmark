@@ -101,6 +101,7 @@ const PasswordLoginForm = ({
           type="text"
           id="username"
           name="username"
+          aria-label="Username"
           autoComplete="username"
           autoCapitalize="none"
           autoCorrect="off"
@@ -131,6 +132,7 @@ const PasswordLoginForm = ({
             type={showPassword ? 'text' : 'password'}
             id="password"
             name="password"
+            aria-label="Password"
             autoComplete="current-password"
             autoCapitalize="none"
             autoCorrect="off"
@@ -168,6 +170,7 @@ const PasswordLoginForm = ({
           checked={rememberMe}
           onChange={(event) => setRememberMe(event.target.checked)}
           disabled={isLoading}
+          aria-label="Remember me for 7 days"
           className="h-4 w-4 rounded-sm accent-sky-900 focus:ring-2 focus:ring-sky-500 disabled:cursor-not-allowed disabled:opacity-50"
           style={{ borderColor: 'var(--border-color)' }}
         />

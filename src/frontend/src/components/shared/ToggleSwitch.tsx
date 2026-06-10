@@ -3,6 +3,7 @@ interface ToggleSwitchProps {
   onChange: (checked: boolean) => void;
   disabled?: boolean;
   color?: 'sky' | 'emerald';
+  ariaLabel?: string;
 }
 
 const colorClasses = {
@@ -15,6 +16,7 @@ export const ToggleSwitch = ({
   onChange,
   disabled = false,
   color = 'sky',
+  ariaLabel = 'Toggle switch',
 }: ToggleSwitchProps) => {
   const { active, ring } = colorClasses[color];
 
@@ -23,6 +25,7 @@ export const ToggleSwitch = ({
       type="button"
       role="switch"
       aria-checked={checked}
+      aria-label={ariaLabel}
       onClick={() => !disabled && onChange(!checked)}
       disabled={disabled}
       className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:ring-2 focus:outline-hidden ${ring} disabled:cursor-not-allowed disabled:opacity-60 ${checked ? active : 'bg-gray-300 dark:bg-gray-600'}`}

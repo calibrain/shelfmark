@@ -21,6 +21,7 @@ export const PasswordField = ({ field, value, onChange, disabled }: PasswordFiel
         value={value}
         onChange={(e) => onChange(e.target.value)}
         placeholder={field.placeholder}
+        aria-label={field.label || field.placeholder || 'Password field'}
         disabled={isDisabled}
         className="w-full rounded-lg border border-(--border-muted) bg-(--bg-soft) px-3 py-2 pr-10 text-sm transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50 focus:outline-hidden disabled:cursor-not-allowed disabled:opacity-60"
       />

@@ -58,6 +58,8 @@ const SEARCH_MODE_OPTIONS = [
   },
 ];
 
+const EMPTY_PROVIDERS: MetadataProviderSummary[] = [];
+
 export const AdvancedFilters = ({
   visible,
   bookLanguages,
@@ -68,7 +70,7 @@ export const AdvancedFilters = ({
   renderWrapper,
   searchMode,
   onSearchModeChange,
-  metadataProviders = [],
+  metadataProviders = EMPTY_PROVIDERS,
   activeMetadataProvider,
   onMetadataProviderChange,
   contentType = 'ebook',

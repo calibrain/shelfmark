@@ -143,6 +143,7 @@ export const TagListField = ({
             type="text"
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
+            aria-label={field.label || field.placeholder || 'Add item'}
             onKeyDown={(e) => {
               if (e.key === 'Enter') {
                 e.preventDefault();

@@ -225,6 +225,9 @@ const getInitialPinnedPreference = (): boolean => {
   }
 };
 
+const EMPTY_KEYS: string[] = [];
+const EMPTY_ITEMS: ActivityItem[] = [];
+
 export const ActivitySidebar = ({
   isOpen,
   onClose,
@@ -235,8 +238,8 @@ export const ActivitySidebar = ({
   onRetry,
   onDownloadDismiss,
   requestItems,
-  dismissedItemKeys = [],
-  historyItems = [],
+  dismissedItemKeys = EMPTY_KEYS,
+  historyItems = EMPTY_ITEMS,
   historyLoaded = false,
   historyHasMore = false,
   historyLoading = false,
