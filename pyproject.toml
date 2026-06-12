@@ -35,7 +35,7 @@ browser = [
 
 [dependency-groups]
 dev = [
-    "basedpyright>=1.39.6",
+    "basedpyright>=1.39.7",
     "prek",
     "pytest",
     "pytest-cov",
