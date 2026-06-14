@@ -19,7 +19,7 @@ http://your-server:8084/?q=harry+potter
 | `lang` | Filter by language (ISO 639-1 code) | `/?lang=en` |
 | `format` | Filter by file format | `/?format=epub` |
 | `content` | Filter by content type | `/?content=fiction` |
-| `content_type` | Select media type (`ebook` or `audiobook`) in Universal mode only | `/?q=dune&content_type=audiobook` |
+| `content_type` | Select media type (`ebook`, `audiobook`, or `combined`) in Universal mode only | `/?q=dune&content_type=audiobook` |
 | `sort` | Sort order for results | `/?sort=newest` |
 
 ## Multiple Values
@@ -63,6 +63,11 @@ Some parameters support multiple values by repeating the parameter:
 /?q=dune&content_type=audiobook
 ```
 
+**Universal search forcing combined (ebook + audiobook):**
+```
+/?q=dune&content_type=combined
+```
+
 ## Search Mode Behavior
 
 ### Direct Mode
@@ -73,6 +78,8 @@ When Search Mode is set to Direct, all parameters are used to filter results fro
 ### Universal Mode
 
 `q`, `sort`, and `content_type` are used. Other parameters (author, title, format, etc.) are silently ignored since metadata providers have their own search capabilities.
+
+`content_type=combined` forces combined mode (search ebook and audiobook providers together), overriding the last-used preference. It is silently ignored if combined mode is unavailable (e.g. the combined selector is disabled in settings, or either content type is blocked by request policy).
 
 ## Notes
 

@@ -453,6 +453,14 @@ def search_mode_settings() -> list[SettingsField]:
             show_when={"field": "SEARCH_MODE", "value": "universal"},
             user_overridable=True,
         ),
+        CheckboxField(
+            key="FORCE_COMBINED_SEARCH",
+            label="Always Use Combined Search",
+            description="Force combined search whenever it's available. Locks the combined toggle on.",
+            default=False,
+            show_when={"field": "SEARCH_MODE", "value": "universal"},
+            user_overridable=True,
+        ),
         HeadingField(
             key="universal_mode_heading",
             title="Universal Mode Settings",

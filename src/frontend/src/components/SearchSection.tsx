@@ -32,6 +32,7 @@ interface SearchSectionProps {
   onContentTypeChange?: (type: ContentType) => void;
   allowedContentTypes?: ContentType[];
   combinedMode?: boolean;
+  combinedModeLocked?: boolean;
   onCombinedModeChange?: (enabled: boolean) => void;
   activeQueryField?: MetadataSearchField | null;
   searchMode: SearchMode;
@@ -64,6 +65,7 @@ export const SearchSection = ({
   onContentTypeChange,
   allowedContentTypes,
   combinedMode,
+  combinedModeLocked,
   onCombinedModeChange,
   activeQueryField,
   searchMode,
@@ -105,6 +107,7 @@ export const SearchSection = ({
           onContentTypeChange={onContentTypeChange}
           allowedContentTypes={allowedContentTypes}
           combinedMode={combinedMode}
+          combinedModeLocked={combinedModeLocked}
           onCombinedModeChange={onCombinedModeChange}
           queryTargets={queryTargets}
           activeQueryTarget={activeQueryTarget}

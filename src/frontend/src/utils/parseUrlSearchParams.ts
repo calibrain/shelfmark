@@ -7,18 +7,24 @@ export interface ParsedUrlSearch {
   searchInput: string;
   advancedFilters: Partial<AdvancedFilterState>;
   contentType?: ContentType;
+  combinedMode?: boolean;
   hasSearchParams: boolean;
 }
 
-const parseContentType = (value: string | null): ContentType | undefined => {
+const parseContentTypeParam = (
+  value: string | null,
+): { contentType?: ContentType; combinedMode?: true } => {
   if (!value) {
-    return undefined;
+    return {};
   }
   const normalized = value.trim().toLowerCase();
   if (normalized === 'ebook' || normalized === 'audiobook') {
-    return normalized;
+    return { contentType: normalized };
   }
-  return undefined;
+  if (normalized === 'combined') {
+    return { combinedMode: true };
+  }
+  return {};
 };
 
 /**
@@ -26,21 +32,23 @@ const parseContentType = (value: string | null): ContentType | undefined => {
  *
  * Supports both Direct Download and Universal mode parameters.
  * In Universal mode, query/sort are used for search text, and content_type
- * is used to select ebook vs audiobook.
+ * selects ebook, audiobook, or combined (search both at once).
  *
  * @example
  * // Direct mode: /?q=harry+potter&author=rowling&format=epub&lang=en
  * // Universal mode: /?q=dune&sort=popularity
+ * // Universal combined: /?q=dune&content_type=combined
  */
 export function parseUrlSearchParams(searchParams: URLSearchParams): ParsedUrlSearch {
-  const parsedContentType = parseContentType(
+  const contentTypeParam = parseContentTypeParam(
     searchParams.get('content_type') || searchParams.get('contentType'),
   );
 
   const result: ParsedUrlSearch = {
     searchInput: '',
     advancedFilters: {},
-    contentType: parsedContentType,
+    contentType: contentTypeParam.contentType,
+    combinedMode: contentTypeParam.combinedMode,
     hasSearchParams: false,
   };
 

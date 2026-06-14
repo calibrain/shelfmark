@@ -223,6 +223,7 @@ Default language filter for searches.
 | `AA_DEFAULT_SORT` | Default sort order for search results. | string (choice) | `relevance` |
 | `SHOW_RELEASE_SOURCE_LINKS` | Show clickable release-source links in release and details modals. Metadata provider links stay enabled. | boolean | `true` |
 | `SHOW_COMBINED_SELECTOR` | Show the option to search for and download both a book and audiobook together. | boolean | `true` |
+| `FORCE_COMBINED_SEARCH` | Force combined search whenever it's available. Locks the combined toggle on. | boolean | `false` |
 | `METADATA_PROVIDER` | Choose which metadata provider to use for book searches. | string (choice) | `openlibrary` |
 | `METADATA_PROVIDER_AUDIOBOOK` | Metadata provider for audiobook searches. Uses the book provider if not set. | string (choice) | _empty string_ |
 | `METADATA_PROVIDER_COMBINED` | Metadata provider for combined mode searches. Uses the book provider if not set. | string (choice) | _empty string_ |
@@ -269,6 +270,15 @@ Show the option to search for and download both a book and audiobook together.
 
 - **Type:** boolean
 - **Default:** `true`
+
+#### `FORCE_COMBINED_SEARCH`
+
+**Always Use Combined Search**
+
+Force combined search whenever it's available. Locks the combined toggle on.
+
+- **Type:** boolean
+- **Default:** `false`
 
 #### `METADATA_PROVIDER`
 

@@ -34,6 +34,7 @@ interface SearchBarProps {
   onContentTypeChange?: (type: ContentType) => void;
   allowedContentTypes?: ContentType[];
   combinedMode?: boolean;
+  combinedModeLocked?: boolean;
   onCombinedModeChange?: (enabled: boolean) => void;
   queryTargets?: QueryTargetOption[];
   activeQueryTarget?: string;
@@ -181,6 +182,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       onContentTypeChange,
       allowedContentTypes,
       combinedMode = false,
+      combinedModeLocked = false,
       onCombinedModeChange,
       queryTargets = EMPTY_QUERY_TARGETS,
       activeQueryTarget = 'general',
@@ -798,11 +800,19 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                                         stroke="currentColor"
                                         aria-hidden="true"
                                       >
-                                        <path
-                                          strokeLinecap="round"
-                                          strokeLinejoin="round"
-                                          d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"
-                                        />
+                                        {combinedModeLocked ? (
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"
+                                          />
+                                        ) : (
+                                          <path
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"
+                                          />
+                                        )}
                                       </svg>
                                     </div>
                                   </div>

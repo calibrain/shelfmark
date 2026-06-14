@@ -42,4 +42,22 @@ describe('parseUrlSearchParams', () => {
     expect(parsed.hasSearchParams).toBe(false);
     expect(parsed.contentType).toBe('ebook');
   });
+
+  it('parses content_type=combined as a combined-mode override', () => {
+    const parsed = parseUrlSearchParams(new URLSearchParams('q=dune&content_type=combined'));
+
+    expect(parsed.searchInput).toBe('dune');
+    expect(parsed.hasSearchParams).toBe(true);
+    expect(parsed.contentType).toBe(undefined);
+    expect(parsed.combinedMode).toBe(true);
+  });
+
+  it('keeps combined-only links from auto-triggering a blank search', () => {
+    const parsed = parseUrlSearchParams(new URLSearchParams('content_type=combined'));
+
+    expect(parsed.searchInput).toBe('');
+    expect(parsed.hasSearchParams).toBe(false);
+    expect(parsed.contentType).toBe(undefined);
+    expect(parsed.combinedMode).toBe(true);
+  });
 });

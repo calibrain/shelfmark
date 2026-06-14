@@ -12,10 +12,13 @@ interface UrlSearchBootstrapMountProps {
   parsedParams: ParsedUrlSearch;
   config: AppConfig;
   contentType: ContentType;
+  combinedMode: boolean;
+  combinedModeAllowed: boolean;
   advancedFilters: AdvancedFilterState;
   resolvedMetadataDefaultSort: string;
   resolvedMetadataSortOptions: SortOption[];
   setContentType: (value: ContentType) => void;
+  setCombinedMode: (value: boolean) => void;
   setSearchInput: (value: string) => void;
   setAdvancedFilters: Dispatch<SetStateAction<AdvancedFilterState>>;
   setShowAdvanced: (value: boolean) => void;
@@ -32,10 +35,13 @@ export const UrlSearchBootstrapMount = ({
   parsedParams,
   config,
   contentType,
+  combinedMode,
+  combinedModeAllowed,
   advancedFilters,
   resolvedMetadataDefaultSort,
   resolvedMetadataSortOptions,
   setContentType,
+  setCombinedMode,
   setSearchInput,
   setAdvancedFilters,
   setShowAdvanced,
@@ -49,9 +55,17 @@ export const UrlSearchBootstrapMount = ({
     const parsedSearchMode = config.search_mode || 'universal';
     const urlContentTypeOverride =
       parsedSearchMode === 'universal' ? parsedParams.contentType : undefined;
+    const urlForcesCombined =
+      parsedSearchMode === 'universal' && parsedParams.combinedMode === true && combinedModeAllowed;
 
     if (urlContentTypeOverride && urlContentTypeOverride !== contentType) {
       setContentType(urlContentTypeOverride);
+    }
+
+    if (urlForcesCombined && !combinedMode) {
+      setCombinedMode(true);
+    } else if (urlContentTypeOverride && combinedMode) {
+      setCombinedMode(false);
     }
 
     if (!parsedParams.hasSearchParams) {

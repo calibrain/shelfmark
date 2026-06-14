@@ -1267,6 +1267,7 @@ class TestAdminSearchPreferences:
         assert data["keys"] == [
             "SEARCH_MODE",
             "SHOW_COMBINED_SELECTOR",
+            "FORCE_COMBINED_SEARCH",
             "METADATA_PROVIDER",
             "METADATA_PROVIDER_AUDIOBOOK",
             "METADATA_PROVIDER_COMBINED",

@@ -41,7 +41,7 @@ export function useUrlSearch({ enabled }: UseUrlSearchOptions): UseUrlSearchRetu
     }
 
     const parsed = parseUrlSearchParams(searchParams);
-    return parsed.hasSearchParams || parsed.contentType ? parsed : null;
+    return parsed.hasSearchParams || parsed.contentType || parsed.combinedMode ? parsed : null;
   }, [enabled, searchParams]);
 
   return {

@@ -766,7 +766,8 @@ function App() {
           (cfg.show_combined_selector ?? true) &&
           getDefaultMode('ebook') !== 'blocked' &&
           getDefaultMode('audiobook') !== 'blocked';
-        const nextEffectiveCombinedMode = combinedMode && nextCombinedModeAllowed;
+        const nextEffectiveCombinedMode =
+          nextCombinedModeAllowed && (combinedMode || cfg.force_combined_search);
         const activeConfiguredProvider =
           nextEffectiveCombinedMode && metadataProviderState.configured_provider_combined
             ? metadataProviderState.configured_provider_combined
@@ -864,7 +865,8 @@ function App() {
     const audiobookMode = getDefaultMode('audiobook');
     return ebookMode !== 'blocked' && audiobookMode !== 'blocked';
   }, [effectiveSearchMode, config?.show_combined_selector, getDefaultMode]);
-  const effectiveCombinedMode = combinedMode && combinedModeAllowed;
+  const combinedModeLocked = combinedModeAllowed && config?.force_combined_search === true;
+  const effectiveCombinedMode = combinedModeAllowed && (combinedMode || combinedModeLocked);
   const effectiveCombinedState = effectiveCombinedMode ? combinedState : null;
 
   const defaultMetadataProviderForContentType =
@@ -2418,6 +2420,7 @@ function App() {
           onContentTypeChange={setContentType}
           allowedContentTypes={allowedContentTypes}
           combinedMode={effectiveCombinedMode}
+          combinedModeLocked={combinedModeLocked}
           onCombinedModeChange={combinedModeAllowed ? setCombinedMode : undefined}
           queryTargets={queryTargets}
           activeQueryTarget={effectiveActiveQueryTarget}
@@ -2499,6 +2502,7 @@ function App() {
             onContentTypeChange={setContentType}
             allowedContentTypes={allowedContentTypes}
             combinedMode={effectiveCombinedMode}
+            combinedModeLocked={combinedModeLocked}
             onCombinedModeChange={combinedModeAllowed ? setCombinedMode : undefined}
             activeQueryField={activeQueryField}
             searchMode={effectiveSearchMode}
@@ -2774,10 +2778,13 @@ function App() {
         parsedParams={parsedParams}
         config={config}
         contentType={contentType}
+        combinedMode={combinedMode}
+        combinedModeAllowed={combinedModeAllowed}
         advancedFilters={advancedFilters}
         resolvedMetadataDefaultSort={resolvedMetadataDefaultSort}
         resolvedMetadataSortOptions={resolvedMetadataSortOptions}
         setContentType={setContentType}
+        setCombinedMode={setCombinedMode}
         setSearchInput={setSearchInput}
         setAdvancedFilters={setAdvancedFilters}
         setShowAdvanced={setShowAdvanced}
