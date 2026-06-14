@@ -748,9 +748,16 @@ def prowlarr_clients_settings() -> list[SettingsField]:
         TextField(
             key="RTORRENT_LABEL",
             label="Book Label",
-            description="Label to assign to book downloads in rTorrent",
+            description="Label to assign to ebook downloads in rTorrent",
             placeholder="cwabd",
             default="cwabd",
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "rtorrent"},
+        ),
+        TextField(
+            key="RTORRENT_AUDIOBOOK_LABEL",
+            label="Audiobook Label",
+            description="Label to assign to audiobook downloads in rTorrent (falls back to Book Label if not set)",
+            placeholder="audiobooks",
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "rtorrent"},
         ),
         TextField(

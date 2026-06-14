@@ -393,6 +393,41 @@ def _plugin_label(plugin: object, fallback_scheme: str) -> str:
     return " ".join(parts)
 
 
+def _apprise_proxy_env() -> dict[str, str]:
+    """Build proxy env vars from app config so Apprise respects the proxy setting."""
+    import os
+
+    from shelfmark.core.config import config as _cfg
+
+    mode = str(_cfg.get("PROXY_MODE", "") or "").lower()
+    env: dict[str, str] = {}
+
+    if mode == "http":
+        http = str(_cfg.get("HTTP_PROXY", "") or "").strip()
+        https = str(_cfg.get("HTTPS_PROXY", "") or "").strip() or http
+        if http:
+            env["HTTP_PROXY"] = http
+            env["http_proxy"] = http
+        if https:
+            env["HTTPS_PROXY"] = https
+            env["https_proxy"] = https
+    elif mode == "socks5":
+        socks = str(_cfg.get("SOCKS5_PROXY", "") or "").strip()
+        if socks:
+            env["HTTP_PROXY"] = socks
+            env["http_proxy"] = socks
+            env["HTTPS_PROXY"] = socks
+            env["https_proxy"] = socks
+
+    no_proxy = str(_cfg.get("NO_PROXY", "") or "").strip()
+    if no_proxy and env:
+        env["NO_PROXY"] = no_proxy
+        env["no_proxy"] = no_proxy
+
+    # Don't override if the user already set these in the environment directly
+    return {k: v for k, v in env.items() if not os.environ.get(k)}
+
+
 def _dispatch_to_apprise(
     urls: Iterable[str],
     *,
@@ -400,6 +435,8 @@ def _dispatch_to_apprise(
     body: str,
     notify_type: object,
 ) -> dict[str, Any]:
+    import os
+
     normalized_urls = _normalize_urls(list(urls))
     url_schemes = _extract_url_schemes(normalized_urls)
     if not normalized_urls:
@@ -407,6 +444,11 @@ def _dispatch_to_apprise(
 
     if apprise is None:
         return {"success": False, "message": "Apprise is not installed"}
+
+    proxy_env = _apprise_proxy_env()
+    if proxy_env:
+        logger.debug("Applying proxy env for Apprise dispatch: %s", list(proxy_env.keys()))
+        os.environ.update(proxy_env)
 
     valid_urls = 0
     invalid_urls = 0

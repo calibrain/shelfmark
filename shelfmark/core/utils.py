@@ -52,6 +52,13 @@ def normalize_http_url(
         if scheme:
             normalized = f"{scheme}://{normalized}"
 
+    # Strip query string and fragment — mirrors are used as base URLs for
+    # constructing search requests; params/fragments on the configured URL
+    # produce malformed URLs when paths are appended (issue #999).
+    parsed = urlparse(normalized)
+    if parsed.query or parsed.fragment:
+        normalized = parsed._replace(query="", fragment="").geturl()
+
     if strip_trailing_slash:
         normalized = normalized.rstrip("/")
 

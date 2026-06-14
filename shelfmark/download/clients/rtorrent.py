@@ -115,6 +115,7 @@ class RTorrentClient(DownloadClient):
         self._rpc = _create_rtorrent_server_proxy(self._base_url)
         self._download_dir = config_text(config.get("RTORRENT_DOWNLOAD_DIR", ""))
         self._label = config_text(config.get("RTORRENT_LABEL", ""))
+        self._audiobook_label = config_text(config.get("RTORRENT_AUDIOBOOK_LABEL", ""))
 
     @staticmethod
     def is_configured() -> bool:
@@ -161,7 +162,9 @@ class RTorrentClient(DownloadClient):
 
             commands = []
 
-            label = category or self._label
+            is_audiobook = kwargs.get("content_type") == "audiobook"
+            default_label = self._audiobook_label if is_audiobook and self._audiobook_label else self._label
+            label = category or default_label
             if label:
                 logger.debug("Setting rTorrent label: %s", label)
                 commands.append(f"d.custom1.set={label}")
