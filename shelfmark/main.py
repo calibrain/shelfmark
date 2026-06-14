@@ -1163,6 +1163,9 @@ def api_config() -> Response | tuple[Response, int]:
             "show_combined_selector": app_config.get(
                 "SHOW_COMBINED_SELECTOR", True, user_id=db_user_id
             ),
+            "force_combined_search": app_config.get(
+                "FORCE_COMBINED_SEARCH", False, user_id=db_user_id
+            ),
             "books_output_mode": app_config.get("BOOKS_OUTPUT_MODE", "folder"),
             "auto_open_downloads_sidebar": app_config.get("AUTO_OPEN_DOWNLOADS_SIDEBAR", True),
             "hardcover_auto_remove_on_download": app_config.get(

@@ -82,6 +82,7 @@ _SEARCH_PREFERENCE_VALIDATABLE_KEYS = {
     "DEFAULT_RELEASE_SOURCE",
     "DEFAULT_RELEASE_SOURCE_AUDIOBOOK",
     "SHOW_COMBINED_SELECTOR",
+    "FORCE_COMBINED_SEARCH",
     *_SEARCH_PREFERENCE_PROVIDER_KEYS,
 }
 
@@ -219,6 +220,11 @@ def validate_search_preference_value(key: str, value: Any) -> tuple[Any, str | N
         return normalized_value, None
 
     if key == "SHOW_COMBINED_SELECTOR":
+        if isinstance(value, bool):
+            return value, None
+        return bool(value), None
+
+    if key == "FORCE_COMBINED_SEARCH":
         if isinstance(value, bool):
             return value, None
         return bool(value), None
