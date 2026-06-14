@@ -494,8 +494,6 @@ def _test_sabnzbd_connection(current_values: dict[str, Any] | None = None) -> di
     url = normalize_http_url(raw_url)
     if not url:
         return {"success": False, "message": "SABnzbd URL is invalid"}
-    if not api_key:
-        return {"success": False, "message": "API key is required"}
 
     try:
         api_url = f"{url.rstrip('/')}/api"
@@ -846,7 +844,7 @@ def prowlarr_clients_settings() -> list[SettingsField]:
         PasswordField(
             key="SABNZBD_API_KEY",
             label="API Key",
-            description="Found in SABnzbd: Config > General > API Key",
+            description="Found in SABnzbd: Config > General > API Key. Leave blank if SABnzbd has no API key set.",
             show_when={"field": "PROWLARR_USENET_CLIENT", "value": "sabnzbd"},
         ),
         ActionButton(

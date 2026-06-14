@@ -68,7 +68,7 @@ class TestSABnzbdClientIsConfigured:
         assert SABnzbdClient.is_configured() is False
 
     def test_is_configured_no_api_key(self, monkeypatch):
-        """Test is_configured returns False when API key not set."""
+        """Test is_configured returns True when API key is not set (API key is optional)."""
         config_values = {
             "PROWLARR_USENET_CLIENT": "sabnzbd",
             "SABNZBD_URL": "http://localhost:8080",
@@ -83,7 +83,45 @@ class TestSABnzbdClientIsConfigured:
             SABnzbdClient,
         )
 
-        assert SABnzbdClient.is_configured() is False
+        assert SABnzbdClient.is_configured() is True
+
+
+class TestSABnzbdClientInit:
+    """Tests for SABnzbdClient.__init__()."""
+
+    def test_init_succeeds_without_api_key(self, monkeypatch):
+        """Test that SABnzbdClient can be initialised with an empty API key."""
+        config_values = {
+            "SABNZBD_URL": "http://localhost:8080",
+            "SABNZBD_API_KEY": "",
+            "SABNZBD_CATEGORY": "books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.sabnzbd.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        from shelfmark.download.clients.sabnzbd import SABnzbdClient
+
+        client = SABnzbdClient()
+        assert client.api_key == ""
+
+    def test_init_stores_api_key_when_provided(self, monkeypatch):
+        """Test that a provided API key is stored correctly."""
+        config_values = {
+            "SABNZBD_URL": "http://localhost:8080",
+            "SABNZBD_API_KEY": "abc123",
+            "SABNZBD_CATEGORY": "books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.sabnzbd.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        from shelfmark.download.clients.sabnzbd import SABnzbdClient
+
+        client = SABnzbdClient()
+        assert client.api_key == "abc123"
 
 
 class TestSABnzbdClientTestConnection:
