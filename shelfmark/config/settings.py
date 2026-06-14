@@ -1448,6 +1448,16 @@ def download_source_settings() -> list[SettingsField]:
             ),
             default=False,
         ),
+        CheckboxField(
+            key="DIRECT_DOWNLOAD_LANGUAGE_FROM_PATH",
+            label="Detect Language From Distant Path",
+            description=(
+                "When language metadata is missing, parse the distant path and set language "
+                "from tags like [BD FR]. Falls back to unknown when not detected. "
+                "Note: source-side language filters still apply and may exclude poorly tagged rows."
+            ),
+            default=False,
+        ),
         PasswordField(
             key="AA_DONATOR_KEY",
             label="Account Donator Key",
