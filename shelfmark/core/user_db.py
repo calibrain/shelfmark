@@ -497,7 +497,7 @@ class UserDB:
                 continue
             try:
                 payload[key] = json.loads(raw_value)
-            except (ValueError, TypeError):
+            except ValueError, TypeError:
                 payload[key] = None
         return payload
 

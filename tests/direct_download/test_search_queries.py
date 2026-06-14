@@ -186,6 +186,7 @@ class TestDirectDownloadSearchQueries:
 
 # --- Distant-path language detection tests ---
 
+
 def _patch_path_language(monkeypatch, enabled: bool = True):
     import shelfmark.release_sources.direct_download as dd
 
@@ -203,6 +204,7 @@ def _patch_path_language(monkeypatch, enabled: bool = True):
 
 def _row_from_html(html: str):
     from bs4 import BeautifulSoup
+
     return BeautifulSoup(html, "html.parser").find("tr")
 
 
@@ -260,9 +262,9 @@ def test_sets_unknown_when_path_has_no_language(monkeypatch):
 
 def test_avoids_en_false_positive_when_french_present(monkeypatch):
     dd = _patch_path_language(monkeypatch)
-    row = _row_from_html(_make_row(
-        r"lgli/V:\comics\_0DAY2\Stripboeken Frans - BD en Français\[BD Fr] Book.cbr"
-    ))
+    row = _row_from_html(
+        _make_row(r"lgli/V:\comics\_0DAY2\Stripboeken Frans - BD en Français\[BD Fr] Book.cbr")
+    )
     record = dd._parse_search_result_row(row)
     assert record is not None
     assert record.language == "fr"

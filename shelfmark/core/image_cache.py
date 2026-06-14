@@ -112,7 +112,7 @@ class ImageCacheService:
         try:
             with self.index_path.open() as f:
                 self._index = json.load(f)
-        except (OSError, json.JSONDecodeError):
+        except OSError, json.JSONDecodeError:
             self._index = {}
 
     def _sync_index_with_files(self) -> None:
@@ -495,7 +495,7 @@ class ImageCacheService:
                 return None
             parsed = urlparse(prepared_url)
             hostname = parsed.hostname
-        except (requests.exceptions.RequestException, ValueError):
+        except requests.exceptions.RequestException, ValueError:
             return None
 
         if not prepared_url:
@@ -519,7 +519,7 @@ class ImageCacheService:
                 ip = ipaddress.ip_address(sockaddr[0])
                 if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
                     return None
-        except (socket.gaierror, ValueError):
+        except socket.gaierror, ValueError:
             return None
 
         return prepared_url

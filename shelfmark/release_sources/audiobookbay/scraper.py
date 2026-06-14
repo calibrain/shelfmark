@@ -418,10 +418,10 @@ def extract_magnet_link(details_url: str, hostname: str = "audiobookbay.lu") -> 
         info_hash = re.sub(r"\s+", "", info_hash).upper()
 
         # Validate: SHA1 = 40 hex chars, SHA256 = 64 hex chars
-        if not re.match(r'^[0-9A-F]{40}$|^[0-9A-F]{64}$', info_hash):
+        if not re.match(r"^[0-9A-F]{40}$|^[0-9A-F]{64}$", info_hash):
             logger.warning("Info Hash invalid (got %r), trying magnet fallback.", info_hash)
             # Fallback: search entire page for a complete magnet link (e.g. posted in comments)
-            magnet_match = re.search(r'magnet:\?xt=urn:btih:([0-9a-fA-F]{40,64})', detail_html)
+            magnet_match = re.search(r"magnet:\?xt=urn:btih:([0-9a-fA-F]{40,64})", detail_html)
             if magnet_match:
                 info_hash = magnet_match.group(1).upper()
                 logger.info("Found hash via magnet fallback: %s", info_hash)

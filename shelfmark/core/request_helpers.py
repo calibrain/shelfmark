@@ -101,7 +101,7 @@ def get_session_db_user_id(session_obj: object) -> int | None:
     raw = session_obj.get("db_user_id") if _is_mapping_with_get(session_obj) else None
     try:
         return int(raw) if raw is not None and _is_convertible_to_int(raw) else None
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
 
 
@@ -111,7 +111,7 @@ def coerce_int(value: object, default: int) -> int:
         return default
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return default
 
 
@@ -129,7 +129,7 @@ def normalize_positive_int(value: object) -> int | None:
         return None
     try:
         parsed = int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return None
     return parsed if parsed > 0 else None
 

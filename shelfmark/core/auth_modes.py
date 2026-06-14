@@ -49,7 +49,7 @@ def has_local_password_admin(user_db: object | None = None) -> bool:
         if not _has_admin_password_api(db):
             return False
         return db.has_admin_with_password()
-    except (AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError, sqlite3.Error):
+    except AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError, sqlite3.Error:
         return False
 
 
@@ -119,7 +119,7 @@ def load_active_auth_mode(
             has_local_admin=has_local_password_admin(user_db),
             disable_local_auth=DISABLE_LOCAL_AUTH,
         )
-    except (ImportError, OSError, RuntimeError, TypeError, ValueError, sqlite3.Error):
+    except ImportError, OSError, RuntimeError, TypeError, ValueError, sqlite3.Error:
         return "none"
 
 

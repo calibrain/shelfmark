@@ -163,7 +163,9 @@ class RTorrentClient(DownloadClient):
             commands = []
 
             is_audiobook = kwargs.get("content_type") == "audiobook"
-            default_label = self._audiobook_label if is_audiobook and self._audiobook_label else self._label
+            default_label = (
+                self._audiobook_label if is_audiobook and self._audiobook_label else self._label
+            )
             label = category or default_label
             if label:
                 logger.debug("Setting rTorrent label: %s", label)

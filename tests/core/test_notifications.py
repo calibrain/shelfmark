@@ -611,12 +611,15 @@ class TestAppriseProxyEnv:
         monkeypatch.setattr(config_module.config, "get", _fake_get)
 
     def test_http_proxy_mode_injects_proxy_env(self, monkeypatch):
-        self._patch_config(monkeypatch, {
-            "PROXY_MODE": "http",
-            "HTTP_PROXY": "http://proxy.example.com:8080",
-            "HTTPS_PROXY": "",
-            "NO_PROXY": "",
-        })
+        self._patch_config(
+            monkeypatch,
+            {
+                "PROXY_MODE": "http",
+                "HTTP_PROXY": "http://proxy.example.com:8080",
+                "HTTPS_PROXY": "",
+                "NO_PROXY": "",
+            },
+        )
         monkeypatch.delenv("HTTP_PROXY", raising=False)
         monkeypatch.delenv("HTTPS_PROXY", raising=False)
 
@@ -626,11 +629,14 @@ class TestAppriseProxyEnv:
         assert result["HTTPS_PROXY"] == "http://proxy.example.com:8080"
 
     def test_socks5_proxy_mode_injects_socks_env(self, monkeypatch):
-        self._patch_config(monkeypatch, {
-            "PROXY_MODE": "socks5",
-            "SOCKS5_PROXY": "socks5://proxy.example.com:1080",
-            "NO_PROXY": "",
-        })
+        self._patch_config(
+            monkeypatch,
+            {
+                "PROXY_MODE": "socks5",
+                "SOCKS5_PROXY": "socks5://proxy.example.com:1080",
+                "NO_PROXY": "",
+            },
+        )
         monkeypatch.delenv("HTTP_PROXY", raising=False)
         monkeypatch.delenv("HTTPS_PROXY", raising=False)
 
@@ -647,11 +653,14 @@ class TestAppriseProxyEnv:
         assert result == {}
 
     def test_does_not_override_already_set_env_vars(self, monkeypatch):
-        self._patch_config(monkeypatch, {
-            "PROXY_MODE": "http",
-            "HTTP_PROXY": "http://new-proxy.example.com:8080",
-            "NO_PROXY": "",
-        })
+        self._patch_config(
+            monkeypatch,
+            {
+                "PROXY_MODE": "http",
+                "HTTP_PROXY": "http://new-proxy.example.com:8080",
+                "NO_PROXY": "",
+            },
+        )
         monkeypatch.setenv("HTTP_PROXY", "http://existing-proxy.example.com:3128")
 
         result = notifications_module._apprise_proxy_env()

@@ -146,7 +146,7 @@ def _parse_attachment_limit_mb(value: object) -> int:
         return 25
     try:
         return int(value)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 25
 
 
@@ -164,7 +164,7 @@ def _render_subject(template: str, task: DownloadTask) -> str:
     }
     try:
         rendered = template.format(**mapping)
-    except (IndexError, KeyError, ValueError):
+    except IndexError, KeyError, ValueError:
         rendered = template
 
     rendered = " ".join(str(rendered).split()).strip()

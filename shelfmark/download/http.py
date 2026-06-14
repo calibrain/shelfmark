@@ -176,7 +176,7 @@ def parse_size_string(size: str) -> float | None:
             if normalized.endswith(suffix):
                 return float(normalized[:-2]) * mult
         return float(normalized)
-    except (ValueError, IndexError):
+    except ValueError, IndexError:
         return None
 
 

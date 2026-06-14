@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import uuid
 from typing import TYPE_CHECKING
 
@@ -66,10 +67,8 @@ def validate_destination(
         logger.warning("Destination not writable: %s (%s)", destination, exc)
         status_callback("error", f"Destination not writable: {destination} ({exc})")
         if created_by_us:
-            try:
+            with contextlib.suppress(OSError):
                 run_blocking_io(destination.rmdir)
-            except OSError:
-                pass
         return False
 
     return True

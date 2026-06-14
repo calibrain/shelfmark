@@ -97,7 +97,7 @@ def _newznab_result_to_release(result: dict, content_type: str = "ebook") -> Rel
     try:
         if download_volume_factor is not None and float(download_volume_factor) == 0.0:
             is_freeleech = True
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         pass
 
     if any(f.lower() in {"freeleech", "fl"} for f in indexer_flags):

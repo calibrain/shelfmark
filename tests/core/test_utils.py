@@ -4,8 +4,6 @@ import sys
 import types
 import xmlrpc.client as stdlib_xmlrpc_client
 
-import pytest
-
 from shelfmark.core import utils
 from shelfmark.core.utils import normalize_http_url
 

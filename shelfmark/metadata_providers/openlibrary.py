@@ -222,7 +222,7 @@ class OpenLibraryProvider(MetadataProvider):
         except requests.RequestException:
             logger.exception("Open Library search request failed")
             return []
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             logger.exception("Open Library search parsing error")
             return []
         return books
@@ -261,7 +261,7 @@ class OpenLibraryProvider(MetadataProvider):
         except requests.RequestException:
             logger.exception("Open Library get_book request failed")
             return None
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             logger.exception("Open Library get_book parsing error")
             return None
 
@@ -322,7 +322,7 @@ class OpenLibraryProvider(MetadataProvider):
         except requests.RequestException:
             logger.exception("Open Library ISBN search request failed")
             return None
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             logger.exception("Open Library ISBN search parsing error")
             return None
 
@@ -513,7 +513,7 @@ class OpenLibraryProvider(MetadataProvider):
             author = response.json()
             return author.get("name")
 
-        except (requests.RequestException, ValueError):
+        except requests.RequestException, ValueError:
             # Don't log errors for author lookups - they're supplementary
             return None
 
