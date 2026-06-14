@@ -88,6 +88,13 @@ def _emit_status(message: str, phase: str = "searching") -> None:
 MIN_SEARCH_INTERVAL = 15.0
 _last_search_time: float = 0
 
+# Per-query cooldown: never re-post an identical search to the channel within this
+# window, even when a user hits "Refresh" or retries a book that returned nothing.
+# This stops retry loops from flooding the channel with the same message over and over.
+# One day: results don't change minute-to-minute, so there's no reason to re-ask sooner.
+QUERY_COOLDOWN_SECONDS = 24 * 60 * 60  # 1 day
+_recent_query_times: dict[str, float] = {}
+
 
 def _enforce_rate_limit() -> None:
     """Ensure minimum time between searches."""
@@ -100,6 +107,31 @@ def _enforce_rate_limit() -> None:
         time.sleep(wait_time)
 
     _last_search_time = time.time()
+
+
+def _query_cooldown_key(channel: str, query: str) -> str:
+    """Build a normalized key identifying a search posted to a channel."""
+    return f"{channel.casefold()}:{query.casefold().strip()}"
+
+
+def _query_on_cooldown(key: str) -> bool:
+    """Return True if an identical query was posted to the channel recently."""
+    last = _recent_query_times.get(key)
+    if last is None:
+        return False
+    return (time.time() - last) < QUERY_COOLDOWN_SECONDS
+
+
+def _record_query_sent(key: str) -> None:
+    """Record that a query was just posted to the channel (for cooldown)."""
+    now = time.time()
+    _recent_query_times[key] = now
+    # Opportunistically prune stale entries so the dict can't grow unbounded.
+    stale = [
+        k for k, sent_at in _recent_query_times.items() if now - sent_at > QUERY_COOLDOWN_SECONDS
+    ]
+    for k in stale:
+        _recent_query_times.pop(k, None)
 
 
 @register_source("irc")
@@ -117,11 +149,16 @@ class IRCReleaseSource(ReleaseSource):
         self._online_servers: set[str] | None = None
 
     def is_available(self) -> bool:
-        """Check if IRC is configured (server, channel, and nick are set)."""
+        """Check if IRC is configured (server, channel, nick, and search bot are set).
+
+        The search bot is required: without it we would post bare queries straight
+        to the channel, which reads as spam and gets the nick banned.
+        """
         server = _config_text("IRC_SERVER")
         channel = _config_text("IRC_CHANNEL")
         nick = _config_text("IRC_NICK")
-        return bool(server and channel and nick)
+        search_bot = _config_text("IRC_SEARCH_BOT")
+        return bool(server and channel and nick and search_bot)
 
     def get_column_config(self) -> ReleaseColumnConfig:
         """Configure UI columns for IRC results."""
@@ -193,11 +230,6 @@ class IRCReleaseSource(ReleaseSource):
             logger.warning("No search query could be built")
             return []
 
-        logger.info("IRC search: %s", query)
-
-        # Enforce rate limit
-        _enforce_rate_limit()
-
         # Get IRC settings
         server = _config_text("IRC_SERVER")
         port = _config_port("IRC_PORT", 6697)
@@ -205,6 +237,34 @@ class IRCReleaseSource(ReleaseSource):
         channel = _config_text("IRC_CHANNEL")
         nick = _config_text("IRC_NICK")
         search_bot = _config_text("IRC_SEARCH_BOT")
+
+        # Never post an unaddressed query to the channel. A bare book title looks like
+        # spam to everyone else in the channel and gets the nick banned. Searches must
+        # be addressed to a search bot ("@<bot> <query>").
+        if not search_bot:
+            logger.warning(
+                "IRC search bot not configured; refusing to post unaddressed query to channel"
+            )
+            _emit_status("IRC search bot not configured", phase="error")
+            return []
+
+        # Don't re-post an identical query to the channel within the cooldown window,
+        # even on refresh. This is what stops a frustrated user (or a retry loop) from
+        # spamming the same title over and over. Fall back to whatever is cached.
+        cooldown_key = _query_cooldown_key(channel, query)
+        if _query_on_cooldown(cooldown_key):
+            logger.info("IRC query on cooldown, not re-posting to channel: %s", query)
+            _emit_status("Search sent recently — showing latest results", phase="complete")
+            cached = get_cached_results(book.provider, book.provider_id, content_type=content_type)
+            if cached:
+                self._online_servers = set(cached.get("online_servers", []))
+                return cached["releases"]
+            return []
+
+        logger.info("IRC search: %s", query)
+
+        # Enforce rate limit
+        _enforce_rate_limit()
 
         client = None
         try:
@@ -221,9 +281,10 @@ class IRCReleaseSource(ReleaseSource):
             # Capture online servers (elevated users in channel)
             self._online_servers = client.online_servers
 
-            # Send search request
-            search_msg = f"@{search_bot} {query}" if search_bot else query
+            # Send search request (always addressed to the search bot, never bare)
+            search_msg = f"@{search_bot} {query}"
             client.send_message(f"#{channel}", search_msg)
+            _record_query_sent(cooldown_key)
 
             # Wait for results DCC - this is the long wait
             _emit_status(f"Connected to #{channel} - Waiting for results...", phase="searching")
