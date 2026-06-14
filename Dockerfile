@@ -72,7 +72,10 @@ RUN apt-get update && \
     # --- Tor support (activated via USING_TOR=true) ---
     tor \
     supervisor \
-    iptables && \
+    iptables \
+    # Build tools for compiling Python packages with C extensions
+    build-essential \
+    python3-dev && \
     # Configure iptables alternatives for tor.sh compatibility
     update-alternatives --set iptables /usr/sbin/iptables-legacy && \
     update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy && \
