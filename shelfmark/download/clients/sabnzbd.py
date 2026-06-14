@@ -135,16 +135,11 @@ class SABnzbdClient(DownloadClient):
             msg = "SABNZBD_URL is required"
             raise ValueError(msg)
 
-        api_key = config_text(config.get("SABNZBD_API_KEY", ""))
-        if not api_key:
-            msg = "SABNZBD_API_KEY is required"
-            raise ValueError(msg)
-
         self.url = normalize_http_config_url(raw_url)
         if not self.url:
             msg = "SABNZBD_URL is invalid"
             raise ValueError(msg)
-        self.api_key = api_key
+        self.api_key = config_text(config.get("SABNZBD_API_KEY", ""))
         self._category = config_text(config.get("SABNZBD_CATEGORY", "books"))
 
     @staticmethod
@@ -152,8 +147,7 @@ class SABnzbdClient(DownloadClient):
         """Check if SABnzbd is configured and selected as the usenet client."""
         client = config_text(config.get("PROWLARR_USENET_CLIENT", ""))
         url = normalize_http_config_url(config.get("SABNZBD_URL", ""))
-        api_key = config_text(config.get("SABNZBD_API_KEY", ""))
-        return client == "sabnzbd" and bool(url) and bool(api_key)
+        return client == "sabnzbd" and bool(url)
 
     @with_retry()
     def _api_call(self, mode: str, params: dict[str, _SabnzbdRequestParam] | None = None) -> Any:
