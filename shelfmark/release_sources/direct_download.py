@@ -397,14 +397,13 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
         msg = "Unable to reach download source. Network restricted or mirrors are blocked."
         raise SearchUnavailableError(msg)
 
-    if "No files found." in html:
-        logger.info("No books found for query: %s", query)
-        return []
-
     soup = BeautifulSoup(_html_response_text(html), "html.parser")
     tbody = soup.find("table")
 
     if tbody is None:
+        if "No files found." in html:
+            logger.info("No books found for query: %s", query)
+            return []
         logger.warning("No results table found for query: %s", query)
         msg = "No books found. Please try another query."
         raise RuntimeError(msg)
