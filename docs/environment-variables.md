@@ -1293,7 +1293,7 @@ Delay between requests in seconds to avoid rate limiting (0-10).
 | `IRC_USE_TLS` | Enable TLS/SSL encryption for the IRC connection. Disable for servers that don't support TLS. | boolean | `true` |
 | `IRC_CHANNEL` | Channel name without the # prefix | string | _none_ |
 | `IRC_NICK` | Your IRC nickname (required). Must be unique on the IRC network. | string | _none_ |
-| `IRC_SEARCH_BOT` | The search bot to query for results | string | _none_ |
+| `IRC_SEARCH_BOT` | The search bot to address queries to (required). | string | _none_ |
 | `IRC_CACHE_TTL` | How long to keep cached search results before they expire. | string (choice) | `2592000` |
 
 <details>
@@ -1351,10 +1351,11 @@ Your IRC nickname (required). Must be unique on the IRC network.
 
 **Search bot**
 
-The search bot to query for results
+The search bot to address queries to (required). Searches are sent as "@<bot> <query>". Without it, queries would be posted unaddressed to the channel.
 
 - **Type:** string
 - **Default:** _none_
+- **Required:** Yes
 
 #### `IRC_CACHE_TTL`
 
