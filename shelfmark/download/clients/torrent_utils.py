@@ -95,15 +95,22 @@ def extract_torrent_info(
     # Not a magnet - try to fetch and parse the .torrent file
     if not fetch_torrent:
         return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
-    if not _is_trusted_torrent_fetch_url(url):
-        logger.debug("Skipping torrent prefetch for untrusted URL: %s...", url[:80])
-        return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
+
+    # A release source can legitimately hand us a download URL on a different
+    # origin than the configured Prowlarr/Newznab endpoint (e.g. a direct
+    # tracker link, or Prowlarr reached through a separate proxy). We still need
+    # to fetch the .torrent to recover the info_hash when the source did not
+    # provide one, so the prefetch runs regardless of origin. The Prowlarr API
+    # key, however, is only ever sent to a trusted origin so it can never leak
+    # to an arbitrary indexer/tracker host.
+    trusted_origin = _is_trusted_torrent_fetch_url(url)
 
     headers: dict[str, str] = {"Accept": "application/x-bittorrent"}
-    # TODO(shelfmark): Move this source-specific Prowlarr auth handling into a source hook.
-    api_key = str(config.get("PROWLARR_API_KEY", "") or "").strip()
-    if api_key:
-        headers["X-Api-Key"] = api_key
+    if trusted_origin:
+        # TODO(shelfmark): Move this source-specific Prowlarr auth handling into a source hook.
+        api_key = str(config.get("PROWLARR_API_KEY", "") or "").strip()
+        if api_key:
+            headers["X-Api-Key"] = api_key
 
     def resolve_url(current: str, location: str) -> str:
         if not location:
