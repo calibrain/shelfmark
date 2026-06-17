@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 from shelfmark.api.websocket import ws_manager
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import is_audiobook
 from shelfmark.release_sources import (
     ColumnColorHint,
     ColumnRenderType,
@@ -88,12 +89,16 @@ def _emit_status(message: str, phase: str = "searching") -> None:
 MIN_SEARCH_INTERVAL = 15.0
 _last_search_time: float = 0
 
-# Per-query cooldown: never re-post an identical search to the channel within this
-# window, even when a user hits "Refresh" or retries a book that returned nothing.
-# This stops retry loops from flooding the channel with the same message over and over.
-# One day: results don't change minute-to-minute, so there's no reason to re-ask sooner.
-QUERY_COOLDOWN_SECONDS = 24 * 60 * 60  # 1 day
-_recent_query_times: dict[str, float] = {}
+# Anti-spam budget: the exact same message may only be posted to the channel a limited
+# number of times within a rolling window. This stops a retry/refresh loop from flooding
+# the channel with the same line over and over, while still allowing a few genuine retries
+# (a search that came back empty can be tried again, and Refresh works until the budget runs
+# out). Normal use never hits this: successful searches are served from the result cache
+# without re-posting at all.
+MAX_IDENTICAL_SENDS = 3
+IDENTICAL_SEND_WINDOW_SECONDS = 24 * 60 * 60  # 24 hours
+# message-send-key -> timestamps of recent posts of that exact message
+_recent_message_sends: dict[str, list[float]] = {}
 
 
 def _enforce_rate_limit() -> None:
@@ -109,29 +114,34 @@ def _enforce_rate_limit() -> None:
     _last_search_time = time.time()
 
 
-def _query_cooldown_key(channel: str, query: str) -> str:
-    """Build a normalized key identifying a search posted to a channel."""
-    return f"{channel.casefold()}:{query.casefold().strip()}"
+def _query_identity(server: str, channel: str, query: str) -> str:
+    """Stable identity for a query on a given IRC server-channel.
+
+    Used as BOTH the result-cache key and the per-query send-counter key, so the same
+    query shares one cached answer and one send budget regardless of which book or
+    content type triggered it.
+    """
+    return f"{server.casefold()}:{channel.casefold()}:{query.strip().casefold()}"
 
 
-def _query_on_cooldown(key: str) -> bool:
-    """Return True if an identical query was posted to the channel recently."""
-    last = _recent_query_times.get(key)
-    if last is None:
-        return False
-    return (time.time() - last) < QUERY_COOLDOWN_SECONDS
+def _recent_send_count(key: str) -> int:
+    """Number of times this exact message was posted within the rolling window."""
+    cutoff = time.time() - IDENTICAL_SEND_WINDOW_SECONDS
+    timestamps = [ts for ts in _recent_message_sends.get(key, []) if ts > cutoff]
+    if timestamps:
+        _recent_message_sends[key] = timestamps
+    else:
+        _recent_message_sends.pop(key, None)
+    return len(timestamps)
 
 
-def _record_query_sent(key: str) -> None:
-    """Record that a query was just posted to the channel (for cooldown)."""
+def _record_message_sent(key: str) -> None:
+    """Record that an exact message was just posted to the channel."""
     now = time.time()
-    _recent_query_times[key] = now
-    # Opportunistically prune stale entries so the dict can't grow unbounded.
-    stale = [
-        k for k, sent_at in _recent_query_times.items() if now - sent_at > QUERY_COOLDOWN_SECONDS
-    ]
-    for k in stale:
-        _recent_query_times.pop(k, None)
+    cutoff = now - IDENTICAL_SEND_WINDOW_SECONDS
+    timestamps = [ts for ts in _recent_message_sends.get(key, []) if ts > cutoff]
+    timestamps.append(now)
+    _recent_message_sends[key] = timestamps
 
 
 @register_source("irc")
@@ -216,14 +226,6 @@ class IRCReleaseSource(ReleaseSource):
             logger.debug("IRC source is disabled, skipping search")
             return []
 
-        # Check cache first (unless expand_search/refresh is requested)
-        if not expand_search:
-            cached = get_cached_results(book.provider, book.provider_id, content_type=content_type)
-            if cached:
-                _emit_status("Using cached results", phase="complete")
-                self._online_servers = set(cached.get("online_servers", []))
-                return cached["releases"]
-
         # Build search query
         query = plan.primary_query or self._build_query(book)
         if not query:
@@ -248,17 +250,37 @@ class IRCReleaseSource(ReleaseSource):
             _emit_status("IRC search bot not configured", phase="error")
             return []
 
-        # Don't re-post an identical query to the channel within the cooldown window,
-        # even on refresh. This is what stops a frustrated user (or a retry loop) from
-        # spamming the same title over and over. Fall back to whatever is cached.
-        cooldown_key = _query_cooldown_key(channel, query)
-        if _query_on_cooldown(cooldown_key):
-            logger.info("IRC query on cooldown, not re-posting to channel: %s", query)
-            _emit_status("Search sent recently — showing latest results", phase="complete")
-            cached = get_cached_results(book.provider, book.provider_id, content_type=content_type)
+        # One identity per query on this server-channel. The result cache and the send
+        # counter are both keyed on it: the SAME query shares one cached answer and one
+        # send budget regardless of which book/content type triggered it, while different
+        # queries are independent (searching 100 different books posts 100 messages).
+        requested = "audiobook" if is_audiobook(content_type) else "ebook"
+        query_key = _query_identity(server, channel, query)
+
+        # Serve the cached whole answer for an identical query (unless this is a refresh).
+        if not expand_search:
+            cached = get_cached_results(query_key)
+            if cached:
+                _emit_status("Using cached results", phase="complete")
+                self._online_servers = set(cached.get("online_servers", []))
+                return self._filter_by_content_type(cached["releases"], requested)
+
+        # Anti-spam cap: the exact same query may only be POSTED a limited number of times
+        # per window, even via refresh. Beyond that, serve whatever is cached rather than
+        # re-posting the identical message to the channel.
+        if _recent_send_count(query_key) >= MAX_IDENTICAL_SENDS:
+            logger.info(
+                "IRC query hit %s-send limit in window, not re-posting: %s",
+                MAX_IDENTICAL_SENDS,
+                query,
+            )
+            _emit_status(
+                "Search limit reached for this query — showing latest results", phase="complete"
+            )
+            cached = get_cached_results(query_key)
             if cached:
                 self._online_servers = set(cached.get("online_servers", []))
-                return cached["releases"]
+                return self._filter_by_content_type(cached["releases"], requested)
             return []
 
         logger.info("IRC search: %s", query)
@@ -282,28 +304,26 @@ class IRCReleaseSource(ReleaseSource):
             self._online_servers = client.online_servers
 
             # Send search request (always addressed to the search bot, never bare)
-            search_msg = f"@{search_bot} {query}"
-            client.send_message(f"#{channel}", search_msg)
-            _record_query_sent(cooldown_key)
+            client.send_message(f"#{channel}", f"@{search_bot} {query}")
+            _record_message_sent(query_key)
 
-            # Wait for results DCC - this is the long wait
+            # Wait for results DCC - this is the long wait.
+            # Don't restrict the sender to the trigger bot's nick: many channels answer an
+            # "@search" from a differently-named results bot. The DCC endpoint/filename are
+            # still validated, and wait_for_dcc falls back to the channel's server list.
             _emit_status(f"Connected to #{channel} - Waiting for results...", phase="searching")
-            wait_kwargs = {"expected_senders": {search_bot}} if search_bot else {}
-            offer = client.wait_for_dcc(timeout=60.0, result_type=True, **wait_kwargs)
+            offer = client.wait_for_dcc(timeout=60.0, result_type=True)
+
+            online_servers = list(self._online_servers) if self._online_servers else None
+
             if not offer:
                 logger.info("No search results received")
                 _emit_status("No results found", phase="complete")
                 # Release connection for reuse (don't close it)
                 connection_manager.release_connection(client)
-                # Cache empty result to avoid repeated failed searches
-                cache_results(
-                    book.provider,
-                    book.provider_id,
-                    book.title,
-                    [],
-                    content_type=content_type,
-                    online_servers=list(self._online_servers) if self._online_servers else None,
-                )
+                # Cache the (empty) answer under the query identity so an identical query
+                # is served from cache instead of re-posting.
+                cache_results(query_key, query, [], online_servers=online_servers)
                 return []
 
             # Download results file
@@ -321,19 +341,22 @@ class IRCReleaseSource(ReleaseSource):
             # Release connection for reuse (don't close it)
             connection_manager.release_connection(client)
 
-            # Convert to Release objects
-            results = parse_results_file(content, content_type=content_type)
-            releases = self._convert_to_releases(results, content_type=content_type)
-
-            # Cache results
-            cache_results(
-                book.provider,
-                book.provider_id,
-                book.title,
-                releases,
-                content_type=content_type,
-                online_servers=list(self._online_servers) if self._online_servers else None,
+            # A single "@search" returns one file containing every format. Parse the whole
+            # answer (both ebooks and audiobooks) and cache it under the query identity, so
+            # requesting the other content type is served from cache without re-posting.
+            ebook_releases = self._convert_to_releases(
+                parse_results_file(content, content_type="ebook"), content_type="ebook"
             )
+            audiobook_releases = self._convert_to_releases(
+                parse_results_file(content, content_type="audiobook"), content_type="audiobook"
+            )
+            cache_results(
+                query_key,
+                query,
+                ebook_releases + audiobook_releases,
+                online_servers=online_servers,
+            )
+            releases = audiobook_releases if requested == "audiobook" else ebook_releases
 
         except DCCError as e:
             logger.exception("DCC error during search")
@@ -450,6 +473,15 @@ class IRCReleaseSource(ReleaseSource):
         releases.sort(key=sort_key)
 
         return releases
+
+    @staticmethod
+    def _filter_by_content_type(releases: list[Release], requested: str) -> list[Release]:
+        """Pick the requested content type out of a cached whole answer.
+
+        The cache stores releases for every content type under one query identity; each
+        release is tagged with its content type (defaulting to ebook when missing).
+        """
+        return [release for release in releases if (release.content_type or "ebook") == requested]
 
     @staticmethod
     def _parse_size(size_str: str) -> int | None:

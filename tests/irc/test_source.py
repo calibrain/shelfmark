@@ -1,3 +1,4 @@
+import time
 from types import SimpleNamespace
 
 from shelfmark.metadata_providers import BookMetadata
@@ -47,8 +48,18 @@ def test_search_uses_cached_results_without_opening_a_connection(monkeypatch):
 
     monkeypatch.setattr(source, "is_available", lambda: True)
     monkeypatch.setattr(
+        irc_source,
+        "_config_text",
+        lambda key: {
+            "IRC_SERVER": "irc.example.net",
+            "IRC_CHANNEL": "ebooks",
+            "IRC_NICK": "tester",
+            "IRC_SEARCH_BOT": "search",
+        }.get(key, ""),
+    )
+    monkeypatch.setattr(
         "shelfmark.release_sources.irc.cache.get_cached_results",
-        lambda provider, provider_id, *, content_type: {
+        lambda cache_key, *_args, **_kwargs: {
             "releases": [cached_release],
             "online_servers": ["AudioBot"],
         },
@@ -102,29 +113,25 @@ def test_search_no_dcc_offer_releases_connection_and_caches_empty_result(monkeyp
             "IRC_SEARCH_BOT": "search",
         }.get(key, ""),
     )
-    # Ensure no leftover cooldown entry from a previous test blocks the send.
-    irc_source._recent_query_times.clear()
+    # Ensure no leftover send budget from a previous test blocks the send.
+    irc_source._recent_message_sends.clear()
 
     monkeypatch.setattr(source, "is_available", lambda: True)
     monkeypatch.setattr(irc_source, "_enforce_rate_limit", lambda: None)
     monkeypatch.setattr(irc_source, "_emit_status", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(
         "shelfmark.release_sources.irc.cache.get_cached_results",
-        lambda provider, provider_id, *, content_type: None,
+        lambda cache_key, *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         "shelfmark.release_sources.irc.cache.cache_results",
-        lambda provider, provider_id, title, releases, *, content_type, online_servers: (
-            cache_calls.append(
-                {
-                    "provider": provider,
-                    "provider_id": provider_id,
-                    "title": title,
-                    "releases": releases,
-                    "content_type": content_type,
-                    "online_servers": online_servers,
-                }
-            )
+        lambda cache_key, title, releases, *, online_servers=None: cache_calls.append(
+            {
+                "cache_key": cache_key,
+                "title": title,
+                "releases": releases,
+                "online_servers": online_servers,
+            }
         ),
     )
     monkeypatch.setattr(
@@ -143,13 +150,12 @@ def test_search_no_dcc_offer_releases_connection_and_caches_empty_result(monkeyp
 
     assert releases == []
     assert released_clients == [client]
+    # One query maps to one cache entry (the whole, empty answer), keyed by server:channel:query.
     assert cache_calls == [
         {
-            "provider": "hardcover",
-            "provider_id": "abc",
+            "cache_key": "irc.example.net:ebooks:missing result",
             "title": "Missing Result",
             "releases": [],
-            "content_type": "audiobook",
             "online_servers": ["AudioBot"],
         }
     ]
@@ -167,7 +173,7 @@ def test_search_without_search_bot_never_posts_to_channel(monkeypatch):
     monkeypatch.setattr(irc_source, "_enforce_rate_limit", lambda: None)
     monkeypatch.setattr(
         "shelfmark.release_sources.irc.cache.get_cached_results",
-        lambda provider, provider_id, *, content_type: None,
+        lambda cache_key, *_args, **_kwargs: None,
     )
     monkeypatch.setattr(
         irc_source,
@@ -192,8 +198,30 @@ def test_search_without_search_bot_never_posts_to_channel(monkeypatch):
     assert source.search(book, plan) == []
 
 
-def test_search_on_cooldown_returns_cache_without_reposting(monkeypatch):
-    """An identical query within the cooldown window must not be re-posted to the channel."""
+def test_recent_send_count_caps_and_windows():
+    """The send budget counts identical queries and prunes entries outside the window."""
+    import shelfmark.release_sources.irc.source as irc_source
+
+    irc_source._recent_message_sends.clear()
+    key = irc_source._query_identity("irc.example.net", "ebooks", "Dubliners")
+    other = irc_source._query_identity("irc.example.net", "ebooks", "Ulysses")
+
+    assert irc_source._recent_send_count(key) == 0
+    for expected in range(1, irc_source.MAX_IDENTICAL_SENDS + 1):
+        irc_source._record_message_sent(key)
+        assert irc_source._recent_send_count(key) == expected
+
+    # A different query has its own independent budget.
+    assert irc_source._recent_send_count(other) == 0
+
+    # Timestamps older than the window are pruned and don't count.
+    stale = time.time() - irc_source.IDENTICAL_SEND_WINDOW_SECONDS - 10
+    irc_source._recent_message_sends[key] = [stale, stale]
+    assert irc_source._recent_send_count(key) == 0
+
+
+def test_search_send_budget_blocks_repost_and_returns_cache(monkeypatch):
+    """Once the exact query hit its per-window send limit, don't re-post; serve cache."""
     import shelfmark.release_sources.irc.source as irc_source
 
     source = IRCReleaseSource()
@@ -214,7 +242,7 @@ def test_search_on_cooldown_returns_cache_without_reposting(monkeypatch):
     )
     monkeypatch.setattr(
         "shelfmark.release_sources.irc.cache.get_cached_results",
-        lambda provider, provider_id, *, content_type: {
+        lambda cache_key, *_args, **_kwargs: {
             "releases": [cached_release],
             "online_servers": ["AudioBot"],
         },
@@ -222,18 +250,20 @@ def test_search_on_cooldown_returns_cache_without_reposting(monkeypatch):
     monkeypatch.setattr(
         "shelfmark.release_sources.irc.connection_manager.connection_manager.get_connection",
         lambda **_kwargs: (_ for _ in ()).throw(
-            AssertionError("cooldown should skip IRC connection")
+            AssertionError("send budget should skip IRC connection")
         ),
     )
 
-    # Pretend the same query was just posted to the channel.
-    irc_source._recent_query_times.clear()
-    irc_source._record_query_sent(irc_source._query_cooldown_key("ebooks", "Cooldown Book"))
+    # Exhaust the budget for this exact query on this server-channel.
+    irc_source._recent_message_sends.clear()
+    send_key = irc_source._query_identity("irc.example.net", "ebooks", "Budget Book")
+    for _ in range(irc_source.MAX_IDENTICAL_SENDS):
+        irc_source._record_message_sent(send_key)
 
-    book = BookMetadata(provider="hardcover", provider_id="cd", title="Cooldown Book")
-    plan = SimpleNamespace(primary_query="Cooldown Book")
+    book = BookMetadata(provider="hardcover", provider_id="cd", title="Budget Book")
+    plan = SimpleNamespace(primary_query="Budget Book")
 
-    # expand_search=True bypasses the normal top-level cache, forcing the cooldown path.
+    # expand_search=True bypasses the top-level cache, forcing the budget path.
     releases = source.search(book, plan, expand_search=True)
 
     assert releases == [cached_release]

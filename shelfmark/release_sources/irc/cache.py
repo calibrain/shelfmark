@@ -13,7 +13,6 @@ from typing import Any
 
 from shelfmark.config import env
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.release_sources import Release, ReleaseProtocol
 
 logger = setup_logger(__name__)
@@ -54,12 +53,6 @@ def _coerce_timestamp(value: object) -> float:
             except ValueError:
                 return 0.0
     return 0.0
-
-
-def _generate_cache_key(provider: str, provider_id: str, content_type: str | None = None) -> str:
-    """Generate a cache key from provider, provider_id, and content type."""
-    normalized_content_type = "audiobook" if check_audiobook(content_type) else "ebook"
-    return f"{provider}:{provider_id}:{normalized_content_type}"
 
 
 def _load_cache() -> dict[str, Any]:
@@ -103,17 +96,17 @@ def _dict_to_release(data: dict[str, Any]) -> Release:
 
 
 def get_cached_results(
-    provider: str,
-    provider_id: str,
-    content_type: str | None = None,
+    cache_key: str,
     ttl_seconds: int | None = None,
 ) -> dict[str, Any] | None:
-    """Get cached search results for a book.
+    """Get the cached IRC answer for a query identity (server:channel:query).
+
+    The cache stores the whole answer (releases for all content types) under the query
+    identity, so it is not isolated by book or content type. Callers filter by content
+    type after reading.
 
     Args:
-        provider: Metadata provider name (e.g., "hardcover", "openlibrary")
-        provider_id: Book ID in the provider's system
-        content_type: Search content type for cache isolation
+        cache_key: Query identity (e.g. "server:channel:query")
         ttl_seconds: Cache TTL in seconds (from settings)
 
     Returns:
@@ -127,8 +120,6 @@ def get_cached_results(
         ttl_value = config.get("IRC_CACHE_TTL", DEFAULT_CACHE_TTL)
         ttl_seconds = _coerce_cache_ttl(ttl_value, DEFAULT_CACHE_TTL)
 
-    cache_key = _generate_cache_key(provider, provider_id, content_type)
-
     with _cache_lock:
         cache = _load_cache()
         entry = cache.get("entries", {}).get(cache_key)
@@ -141,10 +132,9 @@ def get_cached_results(
         age = time.time() - cached_at
 
         if ttl_seconds != 0 and age > ttl_seconds:
-            title = entry.get("title", cache_key)
             logger.debug(
                 "IRC cache expired for '%s' (age: %.0fs > TTL: %ss)",
-                title,
+                entry.get("title", cache_key),
                 age,
                 ttl_seconds,
             )
@@ -153,44 +143,36 @@ def get_cached_results(
 
         # Convert dicts back to Release objects
         releases = [_dict_to_release(r) for r in entry.get("releases", [])]
-        online_servers = entry.get("online_servers", [])
-        title = entry.get("title", "")
 
         logger.info(
             "IRC cache hit for '%s' (%s releases, age: %.0fs)",
-            title,
+            entry.get("title", ""),
             len(releases),
             age,
         )
 
         return {
             "releases": releases,
-            "online_servers": online_servers,
+            "online_servers": entry.get("online_servers", []),
             "cached_at": cached_at,
         }
 
 
 def cache_results(
-    provider: str,
-    provider_id: str,
+    cache_key: str,
     title: str,
     releases: list[Release],
-    content_type: str | None = None,
     online_servers: list[str] | None = None,
 ) -> None:
-    """Cache search results for a book.
+    """Cache the whole IRC answer for a query identity.
 
     Args:
-        provider: Metadata provider name
-        provider_id: Book ID in the provider's system
-        title: Book title (for logging/display)
-        releases: List of Release objects from search
-        content_type: Search content type for cache isolation
+        cache_key: Query identity (e.g. "server:channel:query")
+        title: Query text (for logging/display)
+        releases: All Release objects from the search (every content type)
         online_servers: List of online server nicks (optional)
 
     """
-    cache_key = _generate_cache_key(provider, provider_id, content_type)
-
     with _cache_lock:
         cache = _load_cache()
 
@@ -198,9 +180,6 @@ def cache_results(
             cache["entries"] = {}
 
         cache["entries"][cache_key] = {
-            "provider": provider,
-            "provider_id": provider_id,
-            "content_type": "audiobook" if check_audiobook(content_type) else "ebook",
             "title": title,
             "releases": [_release_to_dict(r) for r in releases],
             "online_servers": list(online_servers) if online_servers else [],
@@ -211,27 +190,23 @@ def cache_results(
         logger.info("Cached %s IRC releases for '%s'", len(releases), title)
 
 
-def invalidate_cache(provider: str, provider_id: str, content_type: str | None = None) -> bool:
+def invalidate_cache(cache_key: str) -> bool:
     """Remove a specific entry from the cache.
 
     Args:
-        provider: Metadata provider name
-        provider_id: Book ID in the provider's system
-        content_type: Search content type for cache isolation
+        cache_key: Query identity to remove
 
     Returns:
         True if entry was found and removed
 
     """
-    cache_key = _generate_cache_key(provider, provider_id, content_type)
-
     with _cache_lock:
         cache = _load_cache()
-        entry = cache.get("entries", {}).get(cache_key)
-        title = entry.get("title", cache_key) if entry else cache_key
+        entries = cache.get("entries", {})
 
-        if cache_key in cache.get("entries", {}):
-            del cache["entries"][cache_key]
+        if cache_key in entries:
+            title = entries[cache_key].get("title", cache_key)
+            del entries[cache_key]
             _save_cache(cache)
             logger.info("Invalidated IRC cache for '%s'", title)
             return True
