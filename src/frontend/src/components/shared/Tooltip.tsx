@@ -188,6 +188,7 @@ export function Tooltip({
         isVisible &&
         coords &&
         createPortal(
+          // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- interactive tooltip stays open while hovered; keyboard users are served by focus handlers on the trigger element
           <div
             ref={tooltipRef}
             role="tooltip"

@@ -67,6 +67,7 @@ export const CardView = ({
   };
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- mouse handlers drive a decorative hover shadow only; no interactive behavior requiring keyboard support
     <article
       className="book-card space-between animate-pop-up relative flex h-full w-full flex-col transition-shadow duration-300 max-sm:h-[180px] max-sm:flex-row sm:max-w-[292px] sm:flex-col"
       style={{
