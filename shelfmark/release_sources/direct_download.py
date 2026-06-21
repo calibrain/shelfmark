@@ -1621,6 +1621,12 @@ def _extract_slow_download_url(
 
     link_texts = [a.get_text(strip=True)[:50] for a in soup.find_all("a", href=True)[:10]]
     logger.warning("No download URL found. First 10 links: %s", link_texts)
+    # A bypassed page with no AA download links often means the network served a wrong
+    # page (e.g. an ISP block page) instead of Anna's Archive. Probe for DNS interference
+    # so we can give the user an actionable hint instead of a generic failure.
+    host = urlparse(link).hostname or ""
+    if host:
+        network.note_possible_dns_interference(host)
     return ""
 
 
@@ -2053,7 +2059,14 @@ class DirectDownloadHandler(DownloadHandler):
                 return None
 
             if not success_url:
-                status_callback("error", "All download sources failed")
+                if network.dns_interference_detected():
+                    status_callback(
+                        "error",
+                        "All sources failed - your network/ISP appears to be blocking "
+                        "Anna's Archive. Enable DNS-over-HTTPS in settings.",
+                    )
+                else:
+                    status_callback("error", "All download sources failed")
                 return None
 
             # Return temp path - orchestrator handles post-processing (archive extraction, ingest)

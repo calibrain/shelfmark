@@ -852,6 +852,99 @@ def _init_custom_resolver_internal(servers: list[str]) -> dns.resolver.Resolver:
     return custom_resolver
 
 
+# --- ISP / network DNS interference detection ---------------------------------
+# Compare what the (tamperable) system resolver returns for a host against a
+# tamper-resistant DoH lookup. Divergent answers are a strong signal the network is
+# hijacking or NXDOMAIN-blocking the domain (a common reason AA downloads "work" but
+# land on an ISP block page). Used to surface an actionable hint to the user.
+_dns_interference_warned: set[str] = set()
+_dns_interference_active = False
+
+
+def _build_detection_doh_resolver() -> DoHResolver | None:
+    """Build a throwaway DoH resolver for interference checks (no socket patching).
+
+    Honours the DoH provider the user selected (``DNS_PROVIDERS[_current_dns_index]``),
+    falling back to the first configured provider when none is active. The endpoint is
+    pinned to the provider's own nameserver IP so resolving the DoH host can't be
+    redirected by the very DNS layer the check is meant to detect.
+    """
+    if 0 <= _current_dns_index < len(DNS_PROVIDERS):
+        _name, servers, doh_url = DNS_PROVIDERS[_current_dns_index]
+    elif DNS_PROVIDERS:
+        _name, servers, doh_url = DNS_PROVIDERS[0]
+    else:
+        return None
+    server_hostname = urllib.parse.urlparse(doh_url).hostname or ""
+    if not server_hostname or not servers:
+        return None
+    return DoHResolver(doh_url, server_hostname, servers[0])
+
+
+def detect_dns_interference(hostname: str) -> dict[str, list[str]] | None:
+    """Detect network DNS interference by comparing system DNS against DoH.
+
+    Returns ``{"system_ips": [...], "doh_ips": [...]}`` when the two resolvers disagree
+    (no overlapping IPs), otherwise None. No-op for IP literals / local hostnames and
+    when DoH resolution is unavailable, so it never produces a false positive.
+    """
+    host = (hostname or "").strip().lower()
+    if not host or _is_ip_address(host) or _is_local_address(host):
+        return None
+    resolver = _build_detection_doh_resolver()
+    if resolver is None:
+        return None
+    try:
+        system_ips = {str(info[4][0]) for info in original_getaddrinfo(host, 443, socket.AF_INET)}
+    except OSError:
+        return None
+    if not system_ips:
+        return None
+    doh_ips = {ip for ip in resolver.resolve(host, "A") if ip}
+    if not doh_ips or (system_ips & doh_ips):
+        return None
+    return {"system_ips": sorted(system_ips), "doh_ips": sorted(doh_ips)}
+
+
+def note_possible_dns_interference(hostname: str) -> bool:
+    """Check ``hostname`` for DNS interference, logging an actionable warning once.
+
+    Returns True when interference has been detected this session. The check runs at
+    most once per host to avoid repeated DoH lookups and log spam.
+    """
+    global _dns_interference_active
+    host = (hostname or "").strip().lower()
+    if not host or host in _dns_interference_warned:
+        return _dns_interference_active
+    _dns_interference_warned.add(host)
+
+    result = detect_dns_interference(host)
+    if not result:
+        return _dns_interference_active
+
+    _dns_interference_active = True
+    routing_via_doh = _current_dns_index >= 0 and bool(DOH_SERVER)
+    remedy = (
+        "Shelfmark is routing this domain through DNS-over-HTTPS to work around it."
+        if routing_via_doh
+        else "Enable DNS-over-HTTPS (USE_DOH=true) or set a custom DNS provider to bypass it."
+    )
+    logger.warning(
+        "Possible ISP/network DNS interference for %s: system DNS resolves to %s but DoH "
+        "resolves to %s. The network appears to be blocking or redirecting this domain. %s",
+        host,
+        result["system_ips"],
+        result["doh_ips"],
+        remedy,
+    )
+    return True
+
+
+def dns_interference_detected() -> bool:
+    """Whether network DNS interference has been detected this session."""
+    return _dns_interference_active
+
+
 def init_doh_resolver(doh_server: str = "") -> DoHResolver | None:
     """Initialize DNS over HTTPS resolver."""
     server = doh_server or DOH_SERVER

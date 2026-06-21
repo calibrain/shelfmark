@@ -274,6 +274,75 @@ def test_run_child_process_writes_failure_for_unexpected_exception(monkeypatch, 
     assert "plain SeleniumBase startup failure" in result["traceback"]
 
 
+def test_run_child_process_applies_parent_dns_config(monkeypatch, tmp_path):
+    """Regression test for issue #1028: the helper subprocess must mirror the parent's
+    DNS provider, otherwise it pre-resolves AA hostnames against (possibly hijacked)
+    system DNS and Chrome loads the wrong page."""
+    import io
+    import json
+
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    result_path = tmp_path / "result.json"
+    request = {
+        "url": "https://annas-archive.pk/slow_download/abc/0/0",
+        "retry": 1,
+        "result_path": str(result_path),
+        "dns_config": {
+            "provider": "cloudflare",
+            "servers": ["1.1.1.1", "1.0.0.1"],
+            "doh_url": "https://cloudflare-dns.com/dns-query",
+            "doh_enabled": True,
+            "is_auto_mode": True,
+        },
+    }
+
+    applied: list[tuple] = []
+    monkeypatch.setattr(
+        internal_bypasser.network,
+        "set_dns_provider",
+        lambda provider, manual=None, *, use_doh=None: applied.append((provider, manual, use_doh)),
+    )
+    monkeypatch.setattr(internal_bypasser, "get", lambda *_a, **_k: "<html>ok</html>")
+    monkeypatch.setattr(internal_bypasser.sys, "stdin", io.StringIO(json.dumps(request)))
+
+    assert internal_bypasser._run_child_process() == 0
+    assert applied == [("cloudflare", None, True)]
+
+
+def test_apply_parent_dns_config_skips_auto_and_empty(monkeypatch):
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    calls: list = []
+    monkeypatch.setattr(
+        internal_bypasser.network,
+        "set_dns_provider",
+        lambda *a, **k: calls.append((a, k)),
+    )
+
+    internal_bypasser._apply_parent_dns_config({"provider": "auto"})
+    internal_bypasser._apply_parent_dns_config({})
+
+    assert calls == []
+
+
+def test_apply_parent_dns_config_forwards_manual_servers(monkeypatch):
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    calls: list = []
+    monkeypatch.setattr(
+        internal_bypasser.network,
+        "set_dns_provider",
+        lambda provider, manual=None, *, use_doh=None: calls.append((provider, manual, use_doh)),
+    )
+
+    internal_bypasser._apply_parent_dns_config(
+        {"provider": "manual", "servers": ["9.9.9.9"], "doh_enabled": False}
+    )
+
+    assert calls == [("manual", ["9.9.9.9"], False)]
+
+
 def test_prepare_child_browser_env_uses_writable_runtime_paths(monkeypatch, tmp_path):
     import stat
 
