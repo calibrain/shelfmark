@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from typing import Any
 import hashlib
+from typing import Any
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
