@@ -895,7 +895,7 @@ def detect_dns_interference(hostname: str) -> dict[str, list[str]] | None:
     if resolver is None:
         return None
     try:
-        system_ips = {info[4][0] for info in original_getaddrinfo(host, 443, socket.AF_INET)}
+        system_ips = {str(info[4][0]) for info in original_getaddrinfo(host, 443, socket.AF_INET)}
     except OSError:
         return None
     if not system_ips:
