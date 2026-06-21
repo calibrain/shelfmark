@@ -939,7 +939,17 @@ def _get_via_subprocess(url: str, retry: int, cancel_flag: Event | None = None) 
     result_path = (
         Path(tempfile.gettempdir()) / f"shelfmark-bypass-{os.getpid()}-{time.time_ns()}.json"
     )
-    payload = {"url": url, "retry": retry, "result_path": str(result_path)}
+    # DNS provider state lives only in the parent's memory (no disk persistence), so the
+    # freshly spawned helper would otherwise pre-resolve AA hostnames against the system
+    # resolver - which may be blocked or hijacked by the user's ISP. Pass the parent's
+    # active DNS config so the helper mirrors it (e.g. DoH) when building Chrome's host
+    # resolver rules.
+    payload = {
+        "url": url,
+        "retry": retry,
+        "result_path": str(result_path),
+        "dns_config": network.get_dns_config(),
+    }
     env_vars = os.environ.copy()
     env_vars[_BYPASS_CHILD_ENV] = "1"
     env_vars = _prepare_child_browser_env(env_vars)
@@ -1278,6 +1288,30 @@ def get_bypassed_page(
     return response_html
 
 
+def _apply_parent_dns_config(dns_config: dict[str, Any]) -> None:
+    """Mirror the parent process's active DNS provider in this helper subprocess.
+
+    DNS state is in-memory only, so a fresh helper defaults to system DNS and would
+    pre-resolve AA hostnames (for Chrome's --host-resolver-rules) against a resolver
+    that may be blocked/hijacked. Re-applying the parent's provider keeps the helper on
+    the same DoH/custom resolver the parent already validated.
+    """
+    provider = str(dns_config.get("provider") or "").strip().lower()
+    # "auto" means the parent has not rotated off system DNS yet, so the helper's own
+    # default initialization already matches it - nothing to override.
+    if not provider or provider == "auto":
+        return
+    manual_servers = dns_config.get("servers") if provider == "manual" else None
+    try:
+        network.set_dns_provider(
+            provider,
+            manual_servers,
+            use_doh=bool(dns_config.get("doh_enabled")),
+        )
+    except (OSError, RuntimeError, ValueError) as exc:
+        logger.warning("Could not apply parent DNS config (%s): %s", provider, exc)
+
+
 def _run_child_process() -> int:
     """CLI entrypoint used by the Docker helper subprocess."""
     request = json.loads(sys.stdin.read() or "{}")
@@ -1286,6 +1320,10 @@ def _run_child_process() -> int:
     retry = _coerce_positive_int(
         request.get("retry"), _coerce_positive_int(app_config.MAX_RETRY, 10)
     )
+
+    dns_config = request.get("dns_config")
+    if isinstance(dns_config, dict):
+        _apply_parent_dns_config(dns_config)
 
     try:
         html = get(url, retry=retry)
