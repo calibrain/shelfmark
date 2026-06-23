@@ -1,4 +1,4 @@
-.PHONY: help install install-ci install-python-dev dev build preview frontend-typecheck frontend-lint frontend-format frontend-format-fix frontend-checks frontend-test clean up down docker-build refresh restart build-serve python-lint python-lint-fix python-format python-format-fix python-typecheck python-dead-code python-checks python-test python-test-cov checks fix
+.PHONY: help install install-ci install-python-dev dev build preview frontend-typecheck frontend-lint frontend-format frontend-format-fix frontend-checks frontend-test clean up down docker-build refresh restart build-serve python-lint python-lint-fix python-format python-format-fix python-typecheck python-dead-code python-checks python-test python-test-cov e2e-platform e2e-platform-profile e2e-platform-matrix e2e-platform-full e2e-platform-build checks fix
 
 # Frontend directory
 FRONTEND_DIR := src/frontend
@@ -38,6 +38,10 @@ help:
 	@echo "  python-checks - Run all Python static analysis checks"
 	@echo "  python-test - Run unit tests"
 	@echo "  python-test-cov - Run unit tests with coverage report"
+	@echo "  e2e-platform - Run e2e docker platform (baseline profile)"
+	@echo "  e2e-platform-profile PROFILE=<name> - Run e2e platform for one profile"
+	@echo "  e2e-platform-matrix - Run e2e platform across all config profiles"
+	@echo "  e2e-platform-full - Run heavy 'full' profile (real Chrome bypasser + DoH + real qBittorrent)"
 	@echo "  clean      - Remove node_modules and build artifacts"
 	@echo ""
 	@echo "Backend (Docker):"
@@ -126,6 +130,30 @@ python-test:
 python-test-cov:
 	@echo "Running tests with coverage..."
 	uv run pytest tests/ -x --tb=short -m "not integration and not e2e" --cov --cov-report=term-missing
+
+# E2E docker platform: hermetic stack (mock AA/Cloudflare/bypasser/DNS/proxy/Tor)
+# exercised across config profiles. See tests/e2e/platform/README.md.
+E2E_PLATFORM_DIR := tests/e2e/platform
+
+e2e-platform:
+	@echo "Running e2e platform (baseline profile)..."
+	cd $(E2E_PLATFORM_DIR) && ./run-e2e.sh env/baseline.env
+
+e2e-platform-profile:
+	@echo "Running e2e platform (profile=$(PROFILE))..."
+	cd $(E2E_PLATFORM_DIR) && ./run-e2e.sh env/$(PROFILE).env
+
+e2e-platform-matrix:
+	@echo "Running e2e platform matrix (all profiles)..."
+	cd $(E2E_PLATFORM_DIR) && ./run-matrix.sh
+
+e2e-platform-build:
+	@echo "Pre-building e2e platform images once (reused across profiles)..."
+	cd $(E2E_PLATFORM_DIR) && ./build-images.sh
+
+e2e-platform-full:
+	@echo "Running e2e platform FULL profile (real Chrome bypasser + DoH + real qBittorrent)..."
+	cd $(E2E_PLATFORM_DIR) && ./run-e2e.sh env/full.env
 
 # Frontend linting
 frontend-lint:
