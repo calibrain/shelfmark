@@ -69,7 +69,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install uv and Python
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           python-version: "3.14"
           enable-cache: true
@@ -92,7 +92,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Install uv and Python
-        uses: astral-sh/setup-uv@v8
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
         with:
           python-version: "3.14"
           enable-cache: true
