@@ -1,0 +1,294 @@
+# Shelfmark e2e Docker testing platform
+# ---------------------------------------------------------------------------
+# A hermetic stack: the app under test plus *controllable* dependencies
+# (fake Anna's Archive, a Cloudflare gate, a mock FlareSolverr bypasser, a DoH
+# responder, a DNS server, HTTP + SOCKS5 proxies, and a Tor profile).
+#
+# Config profiles are env-driven: pick a profile with an env file under env/
+# (it sets COMPOSE_PROFILES + the SM_* config the app boots with). The runner
+# brings the stack up per profile, runs the matching cluster tests, tears down.
+#
+#   ./run-e2e.sh env/baseline.env
+#   ./run-e2e.sh env/bypasser-external.env
+#   ./run-e2e.sh env/dns-blocked.env
+#
+# See README.md for the full cluster x profile matrix.
+
+x-mock-build: &mock-build
+  build:
+    context: ./mocks
+    dockerfile: Dockerfile
+
+networks:
+  e2e:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.30.0.0/24
+
+services:
+  # ----- App under test --------------------------------------------------- #
+  shelfmark:
+    build:
+      context: ../../..
+      dockerfile: Dockerfile
+      target: ${SM_BUILD_TARGET:-shelfmark}
+    container_name: e2e-shelfmark
+    cap_add:
+      - NET_ADMIN   # required by tor.sh iptables when USING_TOR=true
+      - NET_RAW
+    environment:
+      TZ: UTC
+      DEBUG: "true"
+      ONBOARDING: "false"          # skip wizard; ephemeral storage
+      DISABLE_LOCAL_AUTH: "${SM_DISABLE_LOCAL_AUTH:-true}"
+      PUID: "${SM_PUID:-1000}"
+      PGID: "${SM_PGID:-1000}"
+      # --- source / mirror config (cluster 2/3) ---
+      DIRECT_DOWNLOAD_ENABLED: "${SM_DIRECT_DOWNLOAD_ENABLED:-true}"
+      AA_ADDITIONAL_URLS: "${SM_AA_URL:-http://mock-aa}"
+      # --- bypasser config (cluster 1) ---
+      USE_CF_BYPASS: "${SM_USE_CF_BYPASS:-false}"
+      # Selects the external (FlareSolverr) bypasser; when false the in-image
+      # Chrome (internal) bypasser is used. NOT derived from EXT_BYPASSER_URL.
+      USING_EXTERNAL_BYPASSER: "${SM_USING_EXTERNAL_BYPASSER:-false}"
+      EXT_BYPASSER_URL: "${SM_EXT_BYPASSER_URL:-}"
+      # --- prowlarr indexer + torrent client (cluster 5, `full` profile) ---
+      PROWLARR_ENABLED: "${SM_PROWLARR_ENABLED:-false}"
+      PROWLARR_URL: "${SM_PROWLARR_URL:-}"
+      PROWLARR_API_KEY: "${SM_PROWLARR_API_KEY:-}"
+      PROWLARR_TORRENT_CLIENT: "${SM_PROWLARR_TORRENT_CLIENT:-}"
+      QBITTORRENT_URL: "${SM_QBITTORRENT_URL:-}"
+      QBITTORRENT_USERNAME: "${SM_QBITTORRENT_USERNAME:-}"
+      QBITTORRENT_PASSWORD: "${SM_QBITTORRENT_PASSWORD:-}"
+      QBITTORRENT_CATEGORY: "${SM_QBITTORRENT_CATEGORY:-}"
+      # transmission / deluge / rtorrent (client-* profiles)
+      TRANSMISSION_URL: "${SM_TRANSMISSION_URL:-}"
+      TRANSMISSION_USERNAME: "${SM_TRANSMISSION_USERNAME:-}"
+      TRANSMISSION_PASSWORD: "${SM_TRANSMISSION_PASSWORD:-}"
+      DELUGE_HOST: "${SM_DELUGE_HOST:-}"
+      DELUGE_PORT: "${SM_DELUGE_PORT:-}"
+      DELUGE_PASSWORD: "${SM_DELUGE_PASSWORD:-}"
+      RTORRENT_URL: "${SM_RTORRENT_URL:-}"
+      # --- DNS / DoH (config cluster) ---
+      CUSTOM_DNS: "${SM_CUSTOM_DNS:-}"
+      CUSTOM_DNS_MANUAL: "${SM_CUSTOM_DNS_MANUAL:-}"
+      USE_DOH: "${SM_USE_DOH:-false}"
+      # Disable TLS verification so the in-stack DoH-over-HTTPS mock (self-signed)
+      # is accepted in the dns-doh profile. Default keeps verification ON.
+      CERTIFICATE_VALIDATION: "${SM_CERTIFICATE_VALIDATION:-enabled}"
+      # --- proxy (config cluster) ---
+      PROXY_MODE: "${SM_PROXY_MODE:-none}"
+      HTTP_PROXY_URL: "${SM_HTTP_PROXY:-}"
+      HTTP_PROXY: "${SM_HTTP_PROXY:-}"
+      SOCKS5_PROXY: "${SM_SOCKS5_PROXY:-}"
+      NO_PROXY: "${SM_NO_PROXY:-}"
+      # --- tor (cluster 1/6) ---
+      USING_TOR: "${SM_USING_TOR:-false}"
+    ports:
+      - "8084:8084"
+    volumes:
+      - ./.state/config:/config
+      - ./.state/books:/books
+      - ./.state/downloads:/downloads
+      - ./.state/tmp:/tmp/shelfmark
+    networks:
+      - e2e
+    dns:
+      # When a DNS profile is active, point the container's system resolver at
+      # our controllable server; otherwise Docker's embedded DNS (127.0.0.11).
+      - ${SM_SYSTEM_DNS:-127.0.0.11}
+    extra_hosts:
+      # Redirect the DoH provider hostname to the in-stack mock-doh (dns-doh
+      # profile). Harmless elsewhere — only the dns-doh profile enables DoH against
+      # the cloudflare provider, and /etc/hosts is consulted before the resolver.
+      - "cloudflare-dns.com:172.30.0.21"
+    restart: "no"
+
+  # ----- Fake Anna's Archive origin (always on) --------------------------- #
+  mock-aa:
+    <<: *mock-build
+    container_name: e2e-mock-aa
+    environment:
+      MOCK_ROLE: origin-aa
+      # When set (the `full` profile sets it to the CF gate), AA slow-download
+      # links point through Cloudflare so a real download forces the internal
+      # Chrome bypasser to solve the challenge. Empty -> same-origin (no CF).
+      SLOW_DOWNLOAD_BASE: "${SM_SLOW_DOWNLOAD_BASE:-}"
+      AA_FILE_BASE: "http://mock-aa"
+    networks:
+      e2e:
+        ipv4_address: 172.30.0.10
+        aliases:
+          - aa.mock.test
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost/healthz')"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+  # ----- Cloudflare gate (profiles: bypasser-external, full) -------------- #
+  # `full` puts AA's slow-download behind this gate so the real Chrome bypasser
+  # must solve it; `bypasser-external` puts AA search behind it for the
+  # FlareSolverr negative/positive controls.
+  mock-cf:
+    <<: *mock-build
+    container_name: e2e-mock-cf
+    profiles: ["bypasser-external", "full"]
+    environment:
+      MOCK_ROLE: cloudflare
+      ORIGIN_INTERNAL_URL: http://mock-aa
+    networks:
+      e2e:
+        ipv4_address: 172.30.0.11
+        aliases:
+          - cf.mock.test
+
+  # ----- Mock FlareSolverr external bypasser (profile: bypasser-external) -- #
+  mock-flaresolverr:
+    <<: *mock-build
+    container_name: e2e-mock-flaresolverr
+    profiles: ["bypasser-external"]
+    environment:
+      MOCK_ROLE: flaresolverr
+    networks:
+      e2e:
+        ipv4_address: 172.30.0.12
+
+  # NOTE: the mock `doh` role lives in mock_services.py and is exercised by
+  # tests/download/test_doh_resolver_mock.py (real DoHResolver over localhost HTTP).
+  # An in-stack DoH service is intentionally absent — see README "Known limitations".
+
+  # ----- DNS server (profile: dns-manual) --------------------------------- #
+  coredns:
+    image: coredns/coredns:1.11.1
+    container_name: e2e-coredns
+    profiles: ["dns-manual"]
+    command: ["-conf", "/Corefile"]
+    volumes:
+      - ./dns/Corefile:/Corefile:ro
+      - ./dns/mock.test.db:/zones/mock.test.db:ro
+    networks:
+      e2e:
+        ipv4_address: 172.30.0.20
+
+  # ----- DNS server that NXDOMAINs the AA host (profile: dns-blocked) ------ #
+  # Simulates ISP DNS blocking (#1028); the app must fall back (DoH / direct).
+  coredns-blocked:
+    image: coredns/coredns:1.11.1
+    container_name: e2e-coredns-blocked
+    profiles: ["dns-blocked"]
+    command: ["-conf", "/Corefile"]
+    volumes:
+      - ./dns/Corefile.blocked:/Corefile:ro
+    networks:
+      e2e:
+        ipv4_address: 172.30.0.22
+
+  # ----- HTTP proxy (profile: proxy-http) --------------------------------- #
+  tinyproxy:
+    image: monokal/tinyproxy:latest
+    container_name: e2e-tinyproxy
+    profiles: ["proxy-http"]
+    command: ANY
+    networks:
+      e2e:
+        ipv4_address: 172.30.0.30
+
+  # ----- SOCKS5 proxy (profile: proxy-socks) ------------------------------ #
+  microsocks:
+    image: vimagick/microsocks:latest
+    container_name: e2e-microsocks
+    profiles: ["proxy-socks"]
+    networks:
+      e2e:
+        ipv4_address: 172.30.0.31
+
+  # ----- Mock Prowlarr indexer (full + client-* profiles) ----------------- #
+  # Minimal Prowlarr API returning one torrent release whose .torrent is a
+  # webseed pointing at mock-aa. Drives the real torrent-client download in the
+  # `full` (qBittorrent) and `client-*` (transmission/deluge/rtorrent) profiles.
+  mock-prowlarr:
+    <<: *mock-build
+    container_name: e2e-mock-prowlarr
+    profiles: ["full", "client-transmission", "client-deluge"]
+    environment:
+      MOCK_ROLE: prowlarr
+      AA_INTERNAL_URL: http://mock-aa
+    networks:
+      e2e:
+        ipv4_address: 172.30.0.40
+        aliases:
+          - prowlarr.mock.test
+
+  # ----- Real qBittorrent download client (profile: full) ----------------- #
+  # Auth is bypassed for the e2e subnet (qBittorrent.conf) so shelfmark connects
+  # without juggling the image's random temp password.
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: e2e-qbittorrent
+    profiles: ["full"]
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: UTC
+      WEBUI_PORT: "8080"
+    volumes:
+      - ./qbittorrent/qBittorrent.conf:/config/qBittorrent/qBittorrent.conf
+      # Shared with shelfmark so completed files are visible for the move step.
+      - ./.state/downloads:/downloads
+    networks:
+      - e2e
+
+  # ----- Real Transmission client (profile: client-transmission) ---------- #
+  # Same webseed torrent + mock Prowlarr as `full`, different real client.
+  transmission:
+    image: lscr.io/linuxserver/transmission:latest
+    container_name: e2e-transmission
+    profiles: ["client-transmission"]
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: UTC
+      USER: admin
+      PASS: admin
+    volumes:
+      - ./.state/downloads:/downloads
+    networks:
+      - e2e
+
+  # ----- Real Deluge client (profile: client-deluge) ---------------------- #
+  # shelfmark talks to deluge-web (default WebUI password "deluge"), which
+  # connects to the bundled daemon — no daemon auth-file juggling.
+  deluge:
+    image: lscr.io/linuxserver/deluge:latest
+    container_name: e2e-deluge
+    profiles: ["client-deluge"]
+    environment:
+      PUID: "1000"
+      PGID: "1000"
+      TZ: UTC
+    volumes:
+      - ./.state/downloads:/downloads
+    networks:
+      - e2e
+
+  # NOTE: rTorrent is intentionally absent — its rakshasa-libtorrent has no
+  # GetRight/webseed support, so the hermetic webseed torrent can't drive it.
+  # Supporting it would need a real tracker + seeder (see README limitations).
+
+  # ----- DoH-over-HTTPS responder (profile: dns-doh) ---------------------- #
+  # In-stack DoH: serves the DNS JSON API over HTTPS with a self-signed cert.
+  # shelfmark reaches it because the profile (a) maps the DoH provider hostname
+  # to this container via extra_hosts and (b) sets CERTIFICATE_VALIDATION=disabled.
+  mock-doh:
+    <<: *mock-build
+    container_name: e2e-mock-doh
+    profiles: ["dns-doh"]
+    environment:
+      MOCK_ROLE: doh
+      DOH_TLS: "1"
+      DOH_MAP: "aa.mock.test=172.30.0.10,cf.mock.test=172.30.0.11"
+    networks:
+      e2e:
+        ipv4_address: 172.30.0.21

@@ -1,0 +1,13 @@
+# coredns: authoritative for mock.test, forwards everything else.
+mock.test:53 {
+    file /zones/mock.test.db
+    log
+    errors
+}
+
+. :53 {
+    forward . 1.1.1.1 8.8.8.8
+    cache 30
+    log
+    errors
+}

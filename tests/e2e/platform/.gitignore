@@ -1,0 +1,7 @@
+# Runtime state created by run-e2e.sh: per-profile shelfmark logs, the app's
+# /config (settings, users.db, secrets), downloaded books, and staging dirs.
+.state/
+
+# Python bytecode from the mock services + suite.
+__pycache__/
+*.pyc

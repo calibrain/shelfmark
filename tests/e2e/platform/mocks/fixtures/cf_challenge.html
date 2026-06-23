@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="en-US">
+<head>
+  <title>Just a moment...</title>
+  <!-- No-JS fallback: a browser with scripting disabled just keeps waiting,
+       exactly like a real managed challenge. The internal bypasser drives a real
+       Chrome, so the script branch below is what actually clears it. -->
+  <meta http-equiv="refresh" content="8">
+</head>
+<body>
+  <div class="main-wrapper" role="main">
+    <div class="main-content">
+      <noscript>
+        <div id="challenge-error-title">Enable JavaScript and cookies to continue</div>
+      </noscript>
+      <div id="cf-please-wait">
+        <p>Checking if the site connection is secure</p>
+        <p>Verifying you are human. This may take a few seconds.</p>
+      </div>
+    </div>
+  </div>
+  <script>
+    // Mimics a managed Cloudflare challenge: after a short "verification"
+    // delay a real browser is issued cf_clearance, then the page reloads and
+    // the (now cookie-bearing) request is passed through to the real origin.
+    // A regression that ignores the challenge / bypasser never reaches here.
+    window._cf_chl_opt = { cType: 'managed' };
+    (function () {
+      function solve() {
+        document.cookie = 'cf_clearance=e2e-cleared-token; path=/; SameSite=Lax';
+        // Reload so the cleared cookie is sent on the next request.
+        window.location.reload();
+      }
+      // Small delay so the bypasser observes a genuine challenge first.
+      setTimeout(solve, 1200);
+    })();
+  </script>
+</body>
+</html>

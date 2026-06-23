@@ -1,0 +1,13 @@
+$ORIGIN mock.test.
+$TTL 60
+@   IN  SOA ns.mock.test. admin.mock.test. (
+        1          ; serial
+        7200       ; refresh
+        3600       ; retry
+        1209600    ; expire
+        3600 )     ; minimum
+@   IN  NS  ns.mock.test.
+ns  IN  A   172.30.0.20
+aa  IN  A   172.30.0.10
+cf  IN  A   172.30.0.11
+doh IN  A   172.30.0.21

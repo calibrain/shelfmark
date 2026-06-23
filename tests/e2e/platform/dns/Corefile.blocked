@@ -1,0 +1,18 @@
+# coredns: ISP-DNS-block simulation. Resolves nothing under mock.test
+# (returns NXDOMAIN), so an app that relies on *system* DNS for book sources
+# fails — while an app that uses its own custom DNS resolver still works.
+# Regression harness for #1028 (internal bypasser used system DNS in subprocess).
+mock.test:53 {
+    template IN ANY mock.test {
+        rcode NXDOMAIN
+    }
+    log
+    errors
+}
+
+. :53 {
+    # Everything else still resolves, so only the book-source host is "blocked".
+    forward . 1.1.1.1 8.8.8.8
+    log
+    errors
+}

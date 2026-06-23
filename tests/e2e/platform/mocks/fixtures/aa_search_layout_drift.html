@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="en">
+<head><title>Anna's Archive (mock - layout drift)</title></head>
+<body>
+<main>
+  <!--
+    Simulates Anna's Archive changing its DOM (the recurring root cause behind
+    #878/#879/#880 and the repeated "Fix AA ... after they changed layout" PRs).
+    The result rows now use <div class="result"> cards instead of a <table> of
+    <tr>/<td>. A parser with hardcoded table/cell indices yields ZERO rows here.
+    The matching e2e test asserts the app FAILS LOUDLY (SearchUnavailableError /
+    explicit "no results" surfaced to the client) rather than silently returning
+    an empty list that users read as "book doesn't exist".
+  -->
+  <div class="results">
+    <div class="result">
+      <a href="/md5/cccccccccccccccccccccccccccccccc">
+        <h3>Drifted Title</h3>
+        <span class="author">Brandon Sanderson</span>
+        <span class="ext">epub</span>
+        <span class="size">1.2 MB</span>
+      </a>
+    </div>
+  </div>
+</main>
+</body>
+</html>

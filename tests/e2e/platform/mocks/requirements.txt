@@ -1,0 +1,4 @@
+flask>=3.0
+requests>=2.31
+# Only used by the `doh` role when DOH_TLS=1, to self-sign a cert at startup.
+cryptography>=42.0

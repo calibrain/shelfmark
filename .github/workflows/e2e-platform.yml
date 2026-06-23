@@ -1,0 +1,130 @@
+name: E2E Platform
+
+# Hermetic end-to-end matrix: boots the app under test against mock
+# Anna's Archive / Cloudflare / bypasser / DNS / proxy / Tor / real torrent
+# clients and runs the cluster suite under each config profile.
+#
+# On a PR that touches relevant code, this runs a fast core subset *and* the heavy
+# `full` profile (real Chrome solving Cloudflare + DoH + real qBittorrent). The
+# `e2e-required` job aggregates them into ONE status check — make that check a
+# required status check in branch protection to block merges on any e2e failure
+# (see tests/e2e/platform/README.md "Gating PRs").
+
+on:
+  pull_request:
+  schedule:
+    - cron: "0 4 * * *"   # nightly full matrix
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-platform-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # Detect whether anything that affects the e2e platform changed. This lets the
+  # required check always report (never stuck "pending") while only spending CI on
+  # PRs that can actually break the e2e stack.
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.filter.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            relevant:
+              - 'shelfmark/**'
+              - 'entrypoint.sh'
+              - 'tor.sh'
+              - 'Dockerfile'
+              - 'tests/e2e/platform/**'
+              - '.github/workflows/e2e-platform.yml'
+
+  select-profiles:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true' || github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    outputs:
+      profiles: ${{ steps.pick.outputs.profiles }}
+    steps:
+      - id: pick
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo 'profiles=["baseline","bypasser-external","dns-blocked"]' >> "$GITHUB_OUTPUT"
+          else
+            echo 'profiles=["baseline","bypasser-external","bypasser-disabled","dns-manual","dns-blocked","dns-doh","proxy-http","proxy-socks","tor","client-transmission","client-deluge"]' >> "$GITHUB_OUTPUT"
+          fi
+
+  e2e:
+    needs: select-profiles
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        profile: ${{ fromJSON(needs.select-profiles.outputs.profiles) }}
+    name: e2e (${{ matrix.profile }})
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v8
+        with:
+          python-version: "3.14"
+          enable-cache: true
+      - name: Sync dependencies
+        run: make install-python-dev
+      - name: Run e2e platform (${{ matrix.profile }})
+        run: tests/e2e/platform/run-e2e.sh env/${{ matrix.profile }}.env
+      - name: Dump shelfmark logs on failure
+        if: failure()
+        run: cat tests/e2e/platform/.state/shelfmark.${{ matrix.profile }}.log || true
+
+  # Heavy "everything real" job: real Chrome internal bypasser solving Cloudflare +
+  # DoH + real qBittorrent webseed download. Runs on relevant PRs and nightly.
+  e2e-full:
+    needs: changes
+    if: needs.changes.outputs.relevant == 'true' || github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    name: e2e (full — real Chrome + qBittorrent)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v8
+        with:
+          python-version: "3.14"
+          enable-cache: true
+      - name: Sync dependencies
+        run: make install-python-dev
+      - name: Run full pipeline
+        run: tests/e2e/platform/run-e2e.sh env/full.env
+      - name: Dump logs on failure
+        if: failure()
+        run: |
+          cat tests/e2e/platform/.state/shelfmark.full.log || true
+          docker logs e2e-qbittorrent || true
+
+  # Single aggregated gate. ALWAYS runs (so a required check never hangs "pending"
+  # on unrelated PRs) and FAILS if any e2e job failed/was cancelled. Make THIS the
+  # required status check in branch protection.
+  e2e-required:
+    name: e2e required
+    needs: [e2e, e2e-full]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Aggregate e2e results
+        run: |
+          matrix='${{ needs.e2e.result }}'
+          full='${{ needs.e2e-full.result }}'
+          echo "e2e matrix=$matrix, e2e-full=$full"
+          # success or skipped (unrelated PR) is OK; failure/cancelled blocks.
+          for r in "$matrix" "$full"; do
+            if [ "$r" = "failure" ] || [ "$r" = "cancelled" ]; then
+              echo "::error::An e2e platform job did not pass — blocking."
+              exit 1
+            fi
+          done
+          echo "All e2e platform jobs passed (or were skipped as not relevant)."
