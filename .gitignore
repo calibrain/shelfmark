@@ -166,6 +166,10 @@ ENV/
 env.bak/
 venv.bak/
 
+# ...but the e2e platform test profiles live in an env/ dir and must be tracked
+!tests/e2e/platform/env/
+!tests/e2e/platform/env/*.env
+
 # Spyder project settings
 .spyderproject
 .spyproject
