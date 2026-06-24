@@ -17,9 +17,15 @@ from __future__ import annotations
 import os
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 
 import pytest
 import requests
+
+# This conftest's pytest_collection_modifyitems hook receives the *whole*
+# session's items (not just ones under this dir), so scope our marking to the
+# suite to avoid tagging the entire repo's tests as platform/e2e.
+_SUITE_DIR = Path(__file__).resolve().parent
 
 BASE_URL = os.environ.get("E2E_BASE_URL", "http://localhost:8084")
 ACTIVE_PROFILE = os.environ.get("E2E_PROFILE", "baseline")
@@ -124,7 +130,10 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
     everywhere (this is the matrix: invariants x profiles).
     """
     for item in items:
+        if not item.path.is_relative_to(_SUITE_DIR):
+            continue
         item.add_marker(pytest.mark.platform)
+        item.add_marker(pytest.mark.e2e)
         marker = item.get_closest_marker("profiles")
         if marker and ACTIVE_PROFILE not in marker.args:
             item.add_marker(

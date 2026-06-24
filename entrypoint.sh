@@ -235,7 +235,11 @@ test_write() {
         return 1
     fi
 
-    if ! run_as_target_user sh -c 'echo 0123456789_TEST > "$1"' _ "$test_file"; then
+    # This is a probe: a failure here is expected (e.g. a fresh root-owned bind
+    # mount) and is recovered by the caller via change_ownership + re-probe. Hide
+    # the shell's "Permission denied"/"Read-only file system" stderr so a handled
+    # probe miss doesn't masquerade as a real boot failure in the logs.
+    if ! run_as_target_user sh -c 'echo 0123456789_TEST 2>/dev/null > "$1"' _ "$test_file"; then
         echo "Failed to write test file in $folder as $USERNAME"
         return 1
     fi
