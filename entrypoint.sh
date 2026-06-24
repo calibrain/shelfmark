@@ -452,6 +452,12 @@ else
     if [ $config_ok -ne 0 ]; then
         fail_unwritable_config_dir "$CONFIG_PATH"
     fi
+
+    # The ingest/destination library (default /books) is user data and may be a
+    # bind mount owned by another uid; downloads fail with "Destination not
+    # writable" if the runtime user can't write there. Fix the top-level dir only
+    # (root mode) so we don't recursively chown a potentially huge library.
+    make_writable "${INGEST_DIR:-/books}" root
 fi
 
 # Always run Gunicorn (even when DEBUG=true) to ensure Socket.IO WebSocket
