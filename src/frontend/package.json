@@ -20,7 +20,7 @@
     "@tailwindcss/vite": "^4.3.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
-    "react-router-dom": "^7.17.0",
+    "react-router-dom": "^7.18.0",
     "socket.io-client": "^4.7.5"
   },
   "devDependencies": {
@@ -28,9 +28,9 @@
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.2",
-    "knip": "^6.17.0",
-    "oxfmt": "^0.55.0",
-    "oxlint": "^1.70.0",
+    "knip": "^6.18.0",
+    "oxfmt": "^0.56.0",
+    "oxlint": "^1.71.0",
     "oxlint-tsgolint": "^0.23.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^6.0.3",
