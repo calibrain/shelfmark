@@ -407,6 +407,14 @@ if [ -x "${SYSCTL_SHIM_DIR}/sysctl" ]; then
     PATH="${SYSCTL_SHIM_DIR}:${PATH}"
 fi
 
+# Detect ip6tables usability independently (this script runs under supervisor in
+# its own environment and does not inherit the parent's IP6TABLES_OK).
+if ip6tables -L OUTPUT >/dev/null 2>&1; then
+    IP6TABLES_OK="true"
+else
+    IP6TABLES_OK="false"
+fi
+
 latest_handshake_epoch() {
     wg show "$WIREGUARD_INTERFACE" latest-handshakes 2>/dev/null \
         | awk '{print $2}' | sort -nr | head -n1
