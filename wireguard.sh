@@ -135,8 +135,13 @@ echo "[*] Bringing up WireGuard interface '$WIREGUARD_INTERFACE' from $WIREGUARD
 # docker --sysctl). Shim sysctl so that this single redundant write is a no-op
 # when the value is already correct; everything else falls through to the real
 # binary. This avoids needing --privileged or a writable /proc/sys.
-SYSCTL_SHIM_DIR="$(mktemp -d)"
+#
+# The shim is written to a PERSISTENT path (not a mktemp dir) so the supervised
+# healthcheck can reuse it when it bounces the tunnel on a stale handshake;
+# otherwise wg-quick would fail again on the same sysctl write and never recover.
+SYSCTL_SHIM_DIR="/app/wg-sysctl-shim"
 REAL_SYSCTL="$(command -v sysctl || echo /usr/sbin/sysctl)"
+mkdir -p "$SYSCTL_SHIM_DIR"
 cat > "${SYSCTL_SHIM_DIR}/sysctl" <<SHIM
 #!/bin/bash
 for arg in "\$@"; do
@@ -151,10 +156,15 @@ exec "${REAL_SYSCTL}" "\$@"
 SHIM
 chmod +x "${SYSCTL_SHIM_DIR}/sysctl"
 
+# Helper: run wg-quick with the sysctl shim on PATH. Used for both the initial
+# bring-up and the healthcheck's recovery bounce.
+wg_quick_shimmed() {
+    PATH="${SYSCTL_SHIM_DIR}:${PATH}" wg-quick "$@"
+}
+
 # wg-quick handles: interface creation, address, route for AllowedIPs, and a
 # fwmark-based default route when AllowedIPs=0.0.0.0/0.
-PATH="${SYSCTL_SHIM_DIR}:${PATH}" wg-quick up "$WIREGUARD_INTERFACE"
-rm -rf "${SYSCTL_SHIM_DIR}"
+wg_quick_shimmed up "$WIREGUARD_INTERFACE"
 
 echo "[*] WireGuard interface state:"
 wg show "$WIREGUARD_INTERFACE" || true
@@ -177,9 +187,6 @@ ip -o addr show "$WIREGUARD_INTERFACE" || true
 # endpoint is added to iptables or ip6tables depending on its address family.
 echo "[*] Installing kill-switch (iptables + ip6tables)..."
 
-# Resolved "host:port" endpoints from the live interface (one per peer).
-RESOLVED_ENDPOINTS="$(wg show "$WIREGUARD_INTERFACE" endpoints 2>/dev/null | awk '{print $2}' | grep -v '^$' || true)"
-
 # ip6tables may be unusable in some container kernels (missing tables). Detect
 # once so we can fail closed on IPv6 when possible and warn otherwise.
 IP6TABLES_OK="true"
@@ -190,22 +197,87 @@ if ! ip6tables -L OUTPUT >/dev/null 2>&1; then
     # entirely at the stack so non-tunnel v6 egress is impossible.
     sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1 || true
     sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null 2>&1 || true
-fi
 
-add_endpoint_rule() {
-    # $1 = host, $2 = port
-    local host="$1" port="$2"
-    [ -z "$host" ] || [ -z "$port" ] && return 0
-    if printf '%s' "$host" | grep -q ':'; then
-        # IPv6 endpoint
-        if [ "$IP6TABLES_OK" = "true" ]; then
-            ip6tables -A OUTPUT -p udp -d "$host" --dport "$port" -j ACCEPT 2>/dev/null \
-                || echo "[!] Could not add IPv6 endpoint allow rule for [$host]:$port"
+    # Verify IPv6 is actually off. If /proc/sys is read-only (common in
+    # containers) the sysctl write silently no-ops and IPv6 could still leak
+    # off-tunnel with no kill-switch. In that case fail closed: either the
+    # operator disables IPv6 for the container (sysctls/--sysctl or the host),
+    # or provides a kernel with a usable ip6tables. Allow an explicit override
+    # (WIREGUARD_ALLOW_IPV6_LEAK=true) for operators who have confirmed the
+    # container genuinely has no IPv6 connectivity.
+    V6_DISABLED="$(cat /proc/sys/net/ipv6/conf/all/disable_ipv6 2>/dev/null || echo unknown)"
+    # If the IPv6 stack is entirely absent, there is nothing to leak.
+    if [ ! -e /proc/sys/net/ipv6 ]; then
+        echo "[*] No IPv6 stack present in this namespace; nothing to fail closed on."
+    elif [ "$V6_DISABLED" != "1" ]; then
+        if is_truthy "${WIREGUARD_ALLOW_IPV6_LEAK:-false}"; then
+            echo "[!] WARNING: could not disable IPv6 and ip6tables is unavailable; WIREGUARD_ALLOW_IPV6_LEAK=true set, continuing WITHOUT an IPv6 kill-switch (v6 egress may bypass the tunnel)."
+        else
+            echo "[✗] Cannot enforce an IPv6 kill-switch: ip6tables is unavailable AND IPv6 could not be disabled" >&2
+            echo "    (net.ipv6.conf.all.disable_ipv6=$V6_DISABLED; /proc/sys likely read-only)." >&2
+            echo "    Refusing to run with a potential IPv6 leak. Fix by either:" >&2
+            echo "      - disabling IPv6 for the container (e.g. compose sysctls: net.ipv6.conf.all.disable_ipv6=1," >&2
+            echo "        or docker run --sysctl net.ipv6.conf.all.disable_ipv6=1), or" >&2
+            echo "      - running on a kernel with a usable ip6tables, or" >&2
+            echo "      - setting WIREGUARD_ALLOW_IPV6_LEAK=true if the container has no IPv6 connectivity." >&2
+            exit 1
         fi
     else
-        iptables -A OUTPUT -p udp -d "$host" --dport "$port" -j ACCEPT 2>/dev/null \
-            || echo "[!] Could not add IPv4 endpoint allow rule for $host:$port"
+        echo "[✓] IPv6 disabled at the kernel; no IPv6 leak path."
     fi
+fi
+
+# --- IPv4 kill-switch ---
+iptables -F OUTPUT
+iptables -A OUTPUT -o lo -j ACCEPT
+iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+iptables -A OUTPUT -o "$WIREGUARD_INTERFACE" -j ACCEPT
+
+# --- IPv6 kill-switch (fail closed) ---
+if [ "$IP6TABLES_OK" = "true" ]; then
+    ip6tables -F OUTPUT
+    ip6tables -A OUTPUT -o lo -j ACCEPT
+    ip6tables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+    ip6tables -A OUTPUT -o "$WIREGUARD_INTERFACE" -j ACCEPT
+fi
+
+# Allow the encrypted WireGuard handshake/data out to each peer endpoint.
+#
+# We allow by the endpoint's UDP *port* (not a pinned destination IP). The peer
+# endpoint IP can change at any time — provider IP rotation, NAT rebinding, or
+# roaming — and a rule pinned to the startup IP would then block the new
+# endpoint and prevent the tunnel from ever reconnecting (including during a
+# healthcheck bounce). Allowing the WireGuard UDP port is safe: everything else
+# is still forced through wg0 by the fwmark routing + the default-drop below, so
+# the only traffic this rule permits over the physical NIC is the encrypted
+# WireGuard transport itself. Ports are collected from the live interface and
+# de-duplicated. This function is idempotent and re-runnable after a bounce.
+apply_endpoint_rules() {
+    local endpoints ep ep_port seen_v4=" " seen_v6=" "
+    endpoints="$(wg show "$WIREGUARD_INTERFACE" endpoints 2>/dev/null | awk '{print $2}' | grep -v '^$' || true)"
+    for ep in $endpoints; do
+        # Split host:port from the right so IPv6 colons in the host are preserved.
+        ep_port="${ep##*:}"
+        local ep_host="${ep%:*}"
+        [ -z "$ep_port" ] && continue
+        if printf '%s' "$ep_host" | grep -q ':'; then
+            # IPv6 endpoint -> ip6tables (by port)
+            case "$seen_v6" in *" $ep_port "*) continue ;; esac
+            seen_v6="${seen_v6}${ep_port} "
+            if [ "$IP6TABLES_OK" = "true" ]; then
+                ip6tables -C OUTPUT -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
+                    || ip6tables -A OUTPUT -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
+                    || echo "[!] Could not add IPv6 endpoint allow rule for udp/$ep_port"
+            fi
+        else
+            # IPv4 endpoint -> iptables (by port)
+            case "$seen_v4" in *" $ep_port "*) continue ;; esac
+            seen_v4="${seen_v4}${ep_port} "
+            iptables -C OUTPUT -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
+                || iptables -A OUTPUT -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
+                || echo "[!] Could not add IPv4 endpoint allow rule for udp/$ep_port"
+        fi
+    done
 }
 
 # --- IPv4 kill-switch ---
@@ -222,16 +294,7 @@ if [ "$IP6TABLES_OK" = "true" ]; then
     ip6tables -A OUTPUT -o "$WIREGUARD_INTERFACE" -j ACCEPT
 fi
 
-# Allow the encrypted WireGuard handshake/data to each resolved endpoint.
-for ep in $RESOLVED_ENDPOINTS; do
-    # Split host:port from the right so IPv6 colons in the host are preserved.
-    ep_port="${ep##*:}"
-    ep_host="${ep%:*}"
-    # Strip IPv6 brackets if present ([2a02::10] -> 2a02::10)
-    ep_host="${ep_host#[}"
-    ep_host="${ep_host%]}"
-    add_endpoint_rule "$ep_host" "$ep_port"
-done
+apply_endpoint_rules
 
 # Keep LAN reachable (WebUI, Prowlarr, qBittorrent, DNS on the LAN) off-tunnel.
 DEFAULT_LAN="127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
@@ -265,12 +328,29 @@ if is_truthy "$WIREGUARD_ENFORCE_DNS_VALUE"; then
     DNS_TO_USE="$(echo "$DNS_TO_USE" | tr ',' ' ' | xargs || true)"
     if [ -n "$DNS_TO_USE" ]; then
         echo "[*] Enforcing resolver(s): $DNS_TO_USE"
-        : > /etc/resolv.conf
+        # Writing /etc/resolv.conf can fail if it is a read-only bind mount.
+        # If we cannot pin the resolver, the container would fall back to its
+        # inherited resolver (often Docker's 127.0.0.11), which the LAN
+        # allowlist permits and which can leak queries off-tunnel. Fail closed.
+        if ! { : > /etc/resolv.conf; } 2>/dev/null; then
+            echo "[✗] Could not write /etc/resolv.conf (read-only mount?)." >&2
+            echo "    Cannot pin the resolver, so DNS could leak off-tunnel via the inherited resolver." >&2
+            echo "    Provide a writable /etc/resolv.conf, or set WIREGUARD_ENFORCE_DNS=false only if" >&2
+            echo "    you have pinned the resolver another way." >&2
+            exit 1
+        fi
         for ns in $DNS_TO_USE; do
             echo "nameserver $ns" >> /etc/resolv.conf
         done
     else
-        echo "[*] WIREGUARD_ENFORCE_DNS=true but no resolver resolved (no WIREGUARD_DNS and no config DNS); leaving /etc/resolv.conf unchanged"
+        # No resolver to enforce. Leaving the inherited resolver in place would
+        # let DNS leak off-tunnel (Docker's 127.0.0.11 is inside the LAN
+        # allowlist). Fail closed rather than silently leak.
+        echo "[✗] WIREGUARD_ENFORCE_DNS=true but no resolver is defined (set WIREGUARD_DNS, or a DNS= line in the config)." >&2
+        echo "    Refusing to run, because the inherited resolver could leak DNS off-tunnel." >&2
+        echo "    Either set WIREGUARD_DNS to a resolver reachable via the tunnel (or an allowed LAN" >&2
+        echo "    resolver), or explicitly set WIREGUARD_ENFORCE_DNS=false to accept the inherited resolver." >&2
+        exit 1
     fi
 else
     echo "[*] Leaving /etc/resolv.conf unchanged (WIREGUARD_ENFORCE_DNS=$WIREGUARD_ENFORCE_DNS_VALUE)"
@@ -311,21 +391,53 @@ cat <<'HC' > /app/wireguard_healthcheck.sh
 # bounce the interface. The iptables kill-switch means non-LAN egress stays
 # blocked while the tunnel is down, so this is recovery, not leak-prevention.
 
-is_truthy() {
-    case "${1,,}" in
-        true|yes|1|y) return 0 ;;
-        *) return 1 ;;
-    esac
-}
-
 WIREGUARD_INTERFACE="${WIREGUARD_INTERFACE:-wg0}"
 # Max seconds since last handshake before we consider the tunnel stale.
 # WireGuard rehandshakes roughly every 2 minutes when there is traffic.
 STALE_AFTER="${WIREGUARD_STALE_AFTER:-180}"
 
+# Reuse the persistent sysctl shim the main script wrote. The recovery bounce
+# runs `wg-quick up`, which unconditionally writes
+# net.ipv4.conf.all.src_valid_mark=1; in a container /proc/sys is read-only so
+# that write fails and wg-quick would abort, never recovering. Putting the shim
+# ahead on PATH makes that one redundant write a no-op, mirroring the initial
+# bring-up.
+SYSCTL_SHIM_DIR="/app/wg-sysctl-shim"
+if [ -x "${SYSCTL_SHIM_DIR}/sysctl" ]; then
+    PATH="${SYSCTL_SHIM_DIR}:${PATH}"
+fi
+
 latest_handshake_epoch() {
     wg show "$WIREGUARD_INTERFACE" latest-handshakes 2>/dev/null \
         | awk '{print $2}' | sort -nr | head -n1
+}
+
+# Re-open the WireGuard endpoint(s) in the kill-switch from the LIVE interface.
+# The endpoint allow rules are first derived at startup, but a provider IP
+# rotation or NAT rebinding can change the peer endpoint later. We allow by the
+# WireGuard UDP *port* (not a pinned destination IP) so a changed endpoint IP is
+# still permitted; everything else stays forced through the tunnel by the
+# default-DROP. Rules are guarded with -C so duplicates never stack, and INSERTed
+# ahead of the DROP. IPv6 rules only run when ip6tables is usable.
+refresh_endpoint_rules() {
+    local eps ep ep_host ep_port seen_v4=" " seen_v6=" "
+    eps="$(wg show "$WIREGUARD_INTERFACE" endpoints 2>/dev/null | awk '{print $2}' | grep -v '^$' || true)"
+    for ep in $eps; do
+        ep_port="${ep##*:}"
+        ep_host="${ep%:*}"
+        [ -z "$ep_port" ] && continue
+        if printf '%s' "$ep_host" | grep -q ':'; then
+            case "$seen_v6" in *" $ep_port "*) continue ;; esac
+            seen_v6="${seen_v6}${ep_port} "
+            [ "$IP6TABLES_OK" = "true" ] && { ip6tables -C OUTPUT -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
+                || ip6tables -I OUTPUT 1 -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null || true; }
+        else
+            case "$seen_v4" in *" $ep_port "*) continue ;; esac
+            seen_v4="${seen_v4}${ep_port} "
+            iptables -C OUTPUT -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
+                || iptables -I OUTPUT 1 -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null || true
+        fi
+    done
 }
 
 FAIL_COUNT=0
@@ -352,9 +464,12 @@ while true; do
     if [ "$FAIL_COUNT" -ge 3 ]; then
         echo "$(date): restart trigger - bouncing $WIREGUARD_INTERFACE"
         wg-quick down "$WIREGUARD_INTERFACE" 2>/dev/null || true
-        # Re-add tunnel ACCEPT before bringing it up (flush is not done here;
-        # the DROP rule stays in place so we never leak during the bounce).
+        # Bring the tunnel back up via the sysctl shim (read-only /proc/sys).
+        # The DROP rule stays in place so we never leak during the bounce.
         wg-quick up "$WIREGUARD_INTERFACE" 2>/dev/null || echo "$(date): wg-quick up failed, will retry"
+        # The peer endpoint may have rotated; re-open it so the kill-switch
+        # does not strand the reconnect.
+        refresh_endpoint_rules
         FAIL_COUNT=0
         sleep 15
     fi
