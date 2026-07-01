@@ -371,6 +371,9 @@ def test_entrypoint_aborts_before_gunicorn_when_wireguard_fails(tmp_path):
 
     # Entrypoint must have aborted with the stub's non-zero status...
     assert result.returncode != 0
+    # ...the failure must actually come from wireguard.sh (not some unrelated
+    # earlier abort), proven by the stub's marker on stderr...
+    assert "stub wireguard.sh failing closed" in result.stderr
     # ...and gunicorn must NEVER have been invoked (args file never written).
     assert not runtime_args_file.exists(), (
         "gunicorn was started despite wireguard.sh failing — kill-switch bypass!"

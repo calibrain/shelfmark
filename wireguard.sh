@@ -296,7 +296,7 @@ iptables -A OUTPUT -o "$WIREGUARD_INTERFACE" -j ACCEPT
 # default route), leaking the real IP. Scoping to --sport <FLASK_PORT> permits
 # only server replies, never client-initiated egress. LAN client replies are
 # already covered by the LAN allowlist below.
-iptables -A OUTPUT -p tcp --sport "${FLASK_PORT:-8084}" -m conntrack --ctstate ESTABLISHED -j ACCEPT 2>/dev/null \
+iptables -A OUTPUT -p tcp --sport "${FLASK_PORT:-8084}" -m conntrack --ctstate ESTABLISHED --ctdir REPLY -j ACCEPT 2>/dev/null \
     || echo "[!] Could not add WebUI reply allow rule (conntrack unavailable?); non-LAN WebUI clients may be unreachable"
 
 # --- IPv6 kill-switch (fail closed) ---
@@ -305,7 +305,7 @@ if [ "$IP6TABLES_OK" = "true" ]; then
     ip6tables -F OUTPUT
     ip6tables -A OUTPUT -o lo -j ACCEPT
     ip6tables -A OUTPUT -o "$WIREGUARD_INTERFACE" -j ACCEPT
-    ip6tables -A OUTPUT -p tcp --sport "${FLASK_PORT:-8084}" -m conntrack --ctstate ESTABLISHED -j ACCEPT 2>/dev/null || true
+    ip6tables -A OUTPUT -p tcp --sport "${FLASK_PORT:-8084}" -m conntrack --ctstate ESTABLISHED --ctdir REPLY -j ACCEPT 2>/dev/null || true
 fi
 
 apply_endpoint_rules
@@ -496,6 +496,8 @@ while true; do
         FAIL_COUNT=0
     else
         FAIL_COUNT=$((FAIL_COUNT + 1))
+        # Clamp so the counter can't grow unbounded across a long outage.
+        [ "$FAIL_COUNT" -gt 3 ] && FAIL_COUNT=3
         echo "$(date): WireGuard handshake stale (age=${AGE}s, fail=${FAIL_COUNT})"
     fi
 
