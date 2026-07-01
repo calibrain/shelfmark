@@ -1,0 +1,32 @@
+# Routes all traffic through a WireGuard tunnel - requires root startup.
+#
+# Mount your wg-quick config at /config/wg0.conf (read-only is fine). All
+# non-LAN egress is forced through the tunnel by an iptables kill-switch, so if
+# the tunnel drops, external traffic fails closed. LAN ranges (WebUI + internal
+# download clients like Prowlarr / qBittorrent) stay reachable off-tunnel.
+services:
+  shelfmark-wireguard:
+    image: ghcr.io/calibrain/shelfmark:latest
+    environment:
+      FLASK_PORT: 8084
+      USING_WIREGUARD: true
+      # Path to the mounted wg-quick config (default shown).
+      WIREGUARD_CONFIG: /config/wg0.conf
+      # CIDRs kept OFF the tunnel so the WebUI and internal clients stay reachable.
+      LAN_NETWORK: 127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16
+      PUID: 1000
+      PGID: 1000
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    # WireGuard needs the module/kernel routing; NET_ADMIN covers wg-quick.
+    sysctls:
+      - net.ipv4.conf.all.src_valid_mark=1
+    ports:
+      - 8084:8084
+    restart: unless-stopped
+    volumes:
+      - /path/to/books:/books # Default destination for book downloads
+      - /path/to/config:/config # App configuration (put wg0.conf here)
+      # Required for torrent / usenet - path must match your download client's volume exactly
+      # - /path/to/downloads:/path/to/downloads

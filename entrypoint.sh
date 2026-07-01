@@ -90,6 +90,19 @@ if [ "$USING_TOR" = "true" ]; then
     ./tor.sh
 fi
 
+if [ "$USING_WIREGUARD" = "true" ]; then
+    if [ "$RUN_AS_NON_ROOT" = "true" ]; then
+        echo "USING_WIREGUARD=true requires the container to start as root." >&2
+        echo "Non-root mode skips the privileged network setup WireGuard depends on." >&2
+        exit 1
+    fi
+    if [ "$USING_TOR" = "true" ]; then
+        echo "USING_WIREGUARD and USING_TOR are mutually exclusive; pick one egress mode." >&2
+        exit 1
+    fi
+    ./wireguard.sh
+fi
+
 if [ "$FILE_LOGGING_ENABLED" = "true" ]; then
     start_file_logging "$LOG_FILE"
 fi
