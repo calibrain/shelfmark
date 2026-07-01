@@ -17,9 +17,25 @@
 #   LAN_NETWORK        comma-separated CIDRs kept off the tunnel so the WebUI /
 #                      internal download clients (Prowlarr, qBittorrent) stay
 #                      reachable, e.g. "172.16.0.0/12,10.0.0.0/8"
-#   WIREGUARD_ENFORCE_DNS  when true (default), force /etc/resolv.conf to the
-#                      DNS listed in the wg config so lookups also go via the
-#                      tunnel and cannot leak to the container's default resolver
+#   WIREGUARD_ENFORCE_DNS  when true (default), force /etc/resolv.conf so DNS
+#                      lookups use a defined resolver instead of the container's
+#                      inherited one. The resolver used is WIREGUARD_DNS if set,
+#                      otherwise the tunnel config's own DNS = line.
+#   WIREGUARD_DNS      optional explicit resolver(s) (comma/space separated) to
+#                      write into /etc/resolv.conf when WIREGUARD_ENFORCE_DNS is
+#                      true. Use this when the VPN provider's push DNS filters
+#                      domains you need (e.g. Proton NetShield NXDOMAINs
+#                      annas-archive.org). Point it at an on-LAN encrypted
+#                      resolver (kept reachable via LAN_NETWORK) so queries stay
+#                      private while book-source domains still resolve. When this
+#                      is a LAN resolver, the DNS query leaves over the LAN and
+#                      the resolver's own upstream encryption applies; the actual
+#                      download still egresses through the tunnel.
+#   WIREGUARD_DISABLE_IPV6  when true (default), strip IPv6 Address/AllowedIPs/DNS
+#                      from the config before wg-quick. Containers frequently lack
+#                      the ip6tables 'raw' table wg-quick needs, and IPv6 egress
+#                      would be an additional leak surface. Set false only if the
+#                      host exposes ip6tables and you explicitly want IPv6.
 
 is_truthy() {
     case "${1,,}" in
@@ -53,6 +69,7 @@ set -e
 WIREGUARD_CONFIG="${WIREGUARD_CONFIG:-/config/wg0.conf}"
 WIREGUARD_INTERFACE="${WIREGUARD_INTERFACE:-wg0}"
 WIREGUARD_ENFORCE_DNS_VALUE="${WIREGUARD_ENFORCE_DNS:-true}"
+WIREGUARD_DISABLE_IPV6_VALUE="${WIREGUARD_DISABLE_IPV6:-true}"
 
 echo "Build version: $BUILD_VERSION"
 echo "Release version: $RELEASE_VERSION"
@@ -84,10 +101,66 @@ WG_DNS="$(grep -iE '^\s*DNS\s*=' "$RUNTIME_CONFIG" | head -n1 | cut -d'=' -f2- |
 # aborting. Keep a copy for reference.
 sed -i -E '/^\s*DNS\s*=/d' "$RUNTIME_CONFIG"
 
+# Strip IPv6 to avoid wg-quick failing on the ip6tables 'raw' table that many
+# container kernels don't expose, and to eliminate IPv6 as a leak path. This
+# removes IPv6 CIDRs from Address= and AllowedIPs= and drops all-IPv6 lines.
+if is_truthy "$WIREGUARD_DISABLE_IPV6_VALUE"; then
+    echo "[*] Disabling IPv6 in tunnel config (WIREGUARD_DISABLE_IPV6=true)"
+    # Remove IPv6 CIDRs (those containing a colon) from comma-separated
+    # Address= and AllowedIPs= lines; drop the line entirely if nothing remains.
+    awk '
+        function trim(s){ sub(/^[ \t]+/,"",s); sub(/[ \t]+$/,"",s); return s }
+        /^[ \t]*(Address|AllowedIPs)[ \t]*=/{
+            eq=index($0,"="); key=substr($0,1,eq-1); val=substr($0,eq+1)
+            n=split(val, parts, ","); out=""; sep=""
+            for(i=1;i<=n;i++){ v=trim(parts[i]); if(v!="" && index(v,":")==0){ out=out sep v; sep=", " } }
+            if(out==""){ next }
+            print trim(key) " = " out; next
+        }
+        { print }
+    ' "$RUNTIME_CONFIG" > "${RUNTIME_CONFIG}.v4" && mv "${RUNTIME_CONFIG}.v4" "$RUNTIME_CONFIG"
+    chmod 600 "$RUNTIME_CONFIG"
+fi
+
+# Keep only IPv4 nameservers from the captured DNS list when IPv6 is disabled.
+if is_truthy "$WIREGUARD_DISABLE_IPV6_VALUE" && [ -n "$WG_DNS" ]; then
+    WG_DNS_V4=""
+    for ns in $WG_DNS; do
+        case "$ns" in
+            *:*) : ;;                 # drop IPv6 resolver
+            *) WG_DNS_V4="$WG_DNS_V4 $ns" ;;
+        esac
+    done
+    WG_DNS="$(echo "$WG_DNS_V4" | xargs || true)"
+fi
+
 echo "[*] Bringing up WireGuard interface '$WIREGUARD_INTERFACE' from $WIREGUARD_CONFIG..."
+# wg-quick unconditionally runs `sysctl -q net.ipv4.conf.all.src_valid_mark=1`,
+# but in a container /proc/sys is read-only, so that write fails even though the
+# value is already 1 (set at namespace creation via the compose `sysctls:` key /
+# docker --sysctl). Shim sysctl so that this single redundant write is a no-op
+# when the value is already correct; everything else falls through to the real
+# binary. This avoids needing --privileged or a writable /proc/sys.
+SYSCTL_SHIM_DIR="$(mktemp -d)"
+REAL_SYSCTL="$(command -v sysctl || echo /usr/sbin/sysctl)"
+cat > "${SYSCTL_SHIM_DIR}/sysctl" <<SHIM
+#!/bin/bash
+for arg in "\$@"; do
+    case "\$arg" in
+        net.ipv4.conf.all.src_valid_mark=1)
+            cur="\$(cat /proc/sys/net/ipv4/conf/all/src_valid_mark 2>/dev/null)"
+            if [ "\$cur" = "1" ]; then exit 0; fi
+            ;;
+    esac
+done
+exec "${REAL_SYSCTL}" "\$@"
+SHIM
+chmod +x "${SYSCTL_SHIM_DIR}/sysctl"
+
 # wg-quick handles: interface creation, address, route for AllowedIPs, and a
 # fwmark-based default route when AllowedIPs=0.0.0.0/0.
-wg-quick up "$WIREGUARD_INTERFACE"
+PATH="${SYSCTL_SHIM_DIR}:${PATH}" wg-quick up "$WIREGUARD_INTERFACE"
+rm -rf "${SYSCTL_SHIM_DIR}"
 
 echo "[*] WireGuard interface state:"
 wg show "$WIREGUARD_INTERFACE" || true
@@ -149,14 +222,22 @@ echo "[✓] Kill-switch active (default-drop; egress only via $WIREGUARD_INTERFA
 # ---------------------------------------------------------------------------
 # DNS enforcement (fail-closed): send resolver traffic through the tunnel.
 # ---------------------------------------------------------------------------
-if is_truthy "$WIREGUARD_ENFORCE_DNS_VALUE" && [ -n "$WG_DNS" ]; then
-    echo "[*] Enforcing tunnel DNS: $WG_DNS"
-    : > /etc/resolv.conf
-    for ns in $WG_DNS; do
-        echo "nameserver $ns" >> /etc/resolv.conf
-    done
+if is_truthy "$WIREGUARD_ENFORCE_DNS_VALUE"; then
+    # Prefer an explicit override; fall back to the tunnel config's DNS.
+    DNS_TO_USE="${WIREGUARD_DNS:-$WG_DNS}"
+    # Normalise separators (commas -> spaces).
+    DNS_TO_USE="$(echo "$DNS_TO_USE" | tr ',' ' ' | xargs || true)"
+    if [ -n "$DNS_TO_USE" ]; then
+        echo "[*] Enforcing resolver(s): $DNS_TO_USE"
+        : > /etc/resolv.conf
+        for ns in $DNS_TO_USE; do
+            echo "nameserver $ns" >> /etc/resolv.conf
+        done
+    else
+        echo "[*] WIREGUARD_ENFORCE_DNS=true but no resolver resolved (no WIREGUARD_DNS and no config DNS); leaving /etc/resolv.conf unchanged"
+    fi
 else
-    echo "[*] Leaving /etc/resolv.conf unchanged (WIREGUARD_ENFORCE_DNS=$WIREGUARD_ENFORCE_DNS_VALUE, config DNS='$WG_DNS')"
+    echo "[*] Leaving /etc/resolv.conf unchanged (WIREGUARD_ENFORCE_DNS=$WIREGUARD_ENFORCE_DNS_VALUE)"
 fi
 
 # ---------------------------------------------------------------------------

@@ -75,7 +75,9 @@ RUN apt-get update && \
     iptables \
     # --- WireGuard support (activated via USING_WIREGUARD=true) ---
     wireguard-tools \
-    iproute2 && \
+    iproute2 \
+    procps \
+    ca-certificates && \
     # Configure iptables alternatives for tor.sh compatibility
     update-alternatives --set iptables /usr/sbin/iptables-legacy && \
     update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy && \
