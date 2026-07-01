@@ -106,6 +106,15 @@ Environment variables work for initial setup and Docker deployments. They serve 
 | `PUID` / `PGID` | Runtime user/group for the default root-startup flow (also supports legacy `UID`/`GID`) | `1000` / `1000` |
 | `SEARCH_MODE` | `direct` or `universal` | `universal` |
 | `USING_TOR` | Enable Tor routing (requires root startup) | `false` |
+| `USING_WIREGUARD` | Enable WireGuard VPN egress with kill-switch (requires root startup) | `false` |
+| `WIREGUARD_CONFIG` | Path to the mounted wg-quick config | `/config/wg0.conf` |
+| `WIREGUARD_INTERFACE` | WireGuard interface name | `wg0` |
+| `LAN_NETWORK` | Comma-separated CIDRs kept off the tunnel so the WebUI / internal clients stay reachable | `127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16` |
+| `WIREGUARD_ENFORCE_DNS` | Force the resolver (via `WIREGUARD_DNS`, else the config's `DNS =`) so lookups go through the tunnel. Fails closed if no resolver is defined or `/etc/resolv.conf` is not writable. | `true` |
+| `WIREGUARD_DNS` | Explicit resolver(s) to pin (comma/space separated). Use when the VPN's pushed DNS filters domains you need; point at a resolver reachable via the tunnel or an allowed LAN resolver. | _(unset; uses config `DNS =`)_ |
+| `WIREGUARD_DISABLE_IPV6` | Strip IPv6 from the tunnel config (many container kernels lack the ip6tables `raw` table wg-quick needs) and remove IPv6 as a leak surface. | `true` |
+| `WIREGUARD_ALLOW_IPV6_LEAK` | Escape hatch: continue even when an IPv6 kill-switch can't be installed AND IPv6 can't be disabled. Only set if the container has no IPv6 connectivity. | `false` |
+| `WIREGUARD_STALE_AFTER` | Seconds since the last handshake before the healthcheck bounces the tunnel. | `180` |
 
 See the full [Environment Variables Reference](docs/environment-variables.md) for all available options.
 
@@ -140,6 +149,24 @@ docker compose -f docker-compose.tor.yml up -d
 - Requires `NET_ADMIN` and `NET_RAW` capabilities
 - Timezone is auto-detected from Tor exit node
 - Custom DNS/proxy settings are ignored when Tor is active
+
+#### WireGuard VPN Routing
+Optional WireGuard support to route all external egress through a VPN tunnel with a fail-closed kill-switch:
+```bash
+curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/docker-compose.wireguard.yml
+# place your wg-quick config where the compose mounts /config, as wg0.conf
+docker compose -f docker-compose.wireguard.yml up -d
+```
+
+**Notes:**
+- Requires root startup
+- Requires `NET_ADMIN` and `NET_RAW` capabilities
+- Mount a standard wg-quick config at `WIREGUARD_CONFIG` (default `/config/wg0.conf`)
+- All non-LAN egress is forced through the tunnel; if the tunnel drops, external traffic **fails closed** while LAN ranges (WebUI, Prowlarr, qBittorrent) stay reachable
+- IPv4 and IPv6 both fail closed. On kernels without a usable `ip6tables`, disable IPv6 for the container (`sysctls: net.ipv6.conf.all.disable_ipv6=1`, as in the compose example) or the container refuses to start rather than risk an IPv6 leak
+- A supervised healthcheck bounces the tunnel if the handshake goes stale, and refreshes the endpoint allow rules so a roaming/rotated peer endpoint can reconnect
+- Mutually exclusive with `USING_TOR`
+- **DNS trust:** `WIREGUARD_DNS` must be a resolver you trust on a trusted network segment. When it is a LAN resolver (kept reachable off-tunnel by `LAN_NETWORK`), the query to that resolver leaves as plaintext UDP/53 on the LAN — the resolver is responsible for encrypting upstream. Setting `WIREGUARD_ENFORCE_DNS=false` is a **foot-gun**: the container then uses its inherited resolver (typically Docker's `127.0.0.11`), which forwards to the Docker daemon's upstream **off-tunnel**, leaking your DNS. Leave enforcement on unless you have pinned the resolver another way.
 
 ### Lite
 A lighter image without the built-in browser automation. Ideal for:

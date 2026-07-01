@@ -257,3 +257,124 @@ def test_entrypoint_root_bootstrap_fails_closed_when_config_repair_fails(tmp_pat
     assert f"Configured runtime identity: {os.getuid()}:{os.getgid()}" in result.stdout
     assert f"chown -R {os.getuid()}:{os.getgid()} /path/to/config" in result.stdout
     assert "Startup mode: root" not in result.stdout
+
+
+def test_entrypoint_rejects_wireguard_in_non_root_mode(tmp_path):
+    result, _, _, _ = _run_entrypoint(tmp_path, extra_env={"USING_WIREGUARD": "true"})
+
+    assert result.returncode == 1
+    assert (
+        "USING_WIREGUARD=true requires the container to start as root." in result.stderr
+    )
+    assert (
+        "Non-root mode skips the privileged network setup WireGuard depends on."
+        in result.stderr
+    )
+
+
+def test_entrypoint_rejects_tor_and_wireguard_together(tmp_path):
+    result, _, _, _ = _run_entrypoint(
+        tmp_path,
+        extra_env={"USING_TOR": "true", "USING_WIREGUARD": "true"},
+    )
+
+    assert result.returncode == 1
+    assert (
+        "USING_TOR and USING_WIREGUARD are mutually exclusive; enable only one egress mode."
+        in result.stderr
+    )
+    # The mutual-exclusion check must fire before either egress script runs, so
+    # neither the Tor nor the WireGuard privileged-setup errors should appear.
+    assert "requires the container to start as root" not in result.stderr
+
+
+def test_entrypoint_mutual_exclusion_precedes_tor_startup(tmp_path):
+    # Even in root mode, enabling both must fail fast on mutual exclusion rather
+    # than starting tor.sh and then aborting.
+    result, _, _, _ = _run_entrypoint(
+        tmp_path,
+        simulate_root_startup=True,
+        extra_env={"USING_TOR": "true", "USING_WIREGUARD": "true"},
+    )
+
+    assert result.returncode == 1
+    assert (
+        "USING_TOR and USING_WIREGUARD are mutually exclusive; enable only one egress mode."
+        in result.stderr
+    )
+
+
+def test_entrypoint_aborts_before_gunicorn_when_wireguard_fails(tmp_path):
+    """Security invariant: if wireguard.sh exits non-zero (any fail-closed path),
+    entrypoint.sh must abort under `set -e` so gunicorn NEVER starts. A booting
+    app after a failed egress setup would be a kill-switch bypass / IP leak.
+    """
+    # Run the REAL entrypoint from a temp cwd that provides a stub `./wireguard.sh`
+    # which exits 1, plus a stub `./tor.sh` (unused here) for completeness.
+    work = tmp_path / "work"
+    work.mkdir()
+    real_entrypoint = ENTRYPOINT_PATH.read_text()
+    (work / "entrypoint.sh").write_text(real_entrypoint)
+    (work / "entrypoint.sh").chmod(0o755)
+    _write_executable(
+        work / "wireguard.sh",
+        "#!/bin/sh\necho 'stub wireguard.sh failing closed' >&2\nexit 1\n",
+    )
+    _write_executable(work / "tor.sh", "#!/bin/sh\nexit 0\n")
+
+    bin_dir, runtime_home_file, runtime_args_file = _build_stub_bin(tmp_path)
+    config_dir = tmp_path / "config"
+    config_dir.mkdir(exist_ok=True)
+
+    env = os.environ.copy()
+    env.update(
+        {
+            "BUILD_VERSION": "test-build",
+            "CONFIG_DIR": str(config_dir),
+            "DEBUG": "false",
+            "ENABLE_LOGGING": "false",
+            "ENTRYPOINT_GUNICORN_ARGS_FILE": str(runtime_args_file),
+            "ENTRYPOINT_GUNICORN_HOME_FILE": str(runtime_home_file),
+            "ENTRYPOINT_REAL_ID": ID_PATH,
+            "ENTRYPOINT_REAL_MKDIR": MKDIR_PATH,
+            "ENTRYPOINT_REAL_STAT": STAT_PATH,
+            "ENTRYPOINT_STUB_GID": str(os.getgid()),
+            "ENTRYPOINT_STUB_HOME": str(tmp_path / "runtime-home"),
+            "ENTRYPOINT_STUB_UID": str(os.getuid()),
+            # Root startup so the WireGuard branch runs ./wireguard.sh (our stub).
+            "ENTRYPOINT_STUB_CURRENT_GID": "0",
+            "ENTRYPOINT_STUB_CURRENT_UID": "0",
+            "ENTRYPOINT_STUB_STAT_OWNER": "0:0",
+            "FLASK_PORT": "8084",
+            "LOG_LEVEL": "info",
+            "LOG_ROOT": str(tmp_path / "logs"),
+            "PATH": f"{bin_dir}:{env.get('PATH', '')}",
+            "PGID": str(os.getgid()),
+            "PUID": str(os.getuid()),
+            "RELEASE_VERSION": "test-release",
+            "TMP_DIR": str(tmp_path / "tmp"),
+            "TZ": "",
+            "USING_EXTERNAL_BYPASSER": "true",
+            "USING_WIREGUARD": "true",
+        }
+    )
+
+    with _entrypoint_lock():
+        result = subprocess.run(
+            [BASH_PATH, str(work / "entrypoint.sh")],
+            capture_output=True,
+            cwd=work,
+            env=env,
+            text=True,
+            check=False,
+        )
+
+    # Entrypoint must have aborted with the stub's non-zero status...
+    assert result.returncode != 0
+    # ...the failure must actually come from wireguard.sh (not some unrelated
+    # earlier abort), proven by the stub's marker on stderr...
+    assert "stub wireguard.sh failing closed" in result.stderr
+    # ...and gunicorn must NEVER have been invoked (args file never written).
+    assert not runtime_args_file.exists(), (
+        "gunicorn was started despite wireguard.sh failing — kill-switch bypass!"
+    )

@@ -1,0 +1,22 @@
+# Local development - WireGuard variant
+services:
+  shelfmark-wireguard-dev:
+    extends:
+      file: ./compose/docker-compose.wireguard.yml
+      service: shelfmark-wireguard
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: shelfmark
+    environment:
+      DEBUG: true
+      USING_WIREGUARD: true
+      WIREGUARD_CONFIG: /config/wg0.conf
+    volumes:
+      - ./.local/config:/config
+      - ./.local/books:/books
+      - ./.local/log:/var/log/shelfmark
+      - ./.local/tmp:/tmp/shelfmark
+      # Place your wg-quick config at ./.local/config/wg0.conf
+      # Required for torrent / usenet - path must match your download client's volume exactly
+      # - /path/to/downloads:/path/to/downloads

@@ -72,7 +72,12 @@ RUN apt-get update && \
     # --- Tor support (activated via USING_TOR=true) ---
     tor \
     supervisor \
-    iptables && \
+    iptables \
+    # --- WireGuard support (activated via USING_WIREGUARD=true) ---
+    wireguard-tools \
+    iproute2 \
+    procps \
+    ca-certificates && \
     # Configure iptables alternatives for tor.sh compatibility
     update-alternatives --set iptables /usr/sbin/iptables-legacy && \
     update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy && \
@@ -131,7 +136,7 @@ RUN mkdir -p \
     ln -s /tmp/shelfmark/seleniumbase/archived_files /app/archived_files && \
     chown -R 1000:1000 /config /books /home/shelfmark /tmp/shelfmark /var/log/shelfmark && \
     chmod -R a+rX /app && \
-    chmod +x /app/entrypoint.sh /app/tor.sh /app/genDebug.sh
+    chmod +x /app/entrypoint.sh /app/tor.sh /app/wireguard.sh /app/genDebug.sh
 
 # Expose the application port
 EXPOSE ${FLASK_PORT}
