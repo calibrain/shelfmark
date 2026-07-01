@@ -22,6 +22,14 @@ services:
     # WireGuard needs the module/kernel routing; NET_ADMIN covers wg-quick.
     sysctls:
       - net.ipv4.conf.all.src_valid_mark=1
+      # Disable IPv6 in the container so the kill-switch can guarantee no IPv6
+      # leak path on kernels/containers without a usable ip6tables. wireguard.sh
+      # fails closed if IPv6 is neither kill-switched nor disabled. If your host
+      # DOES have a working ip6tables you may omit these (an ip6tables kill-switch
+      # is installed instead); or set WIREGUARD_ALLOW_IPV6_LEAK=true only if the
+      # container genuinely has no IPv6 connectivity.
+      - net.ipv6.conf.all.disable_ipv6=1
+      - net.ipv6.conf.default.disable_ipv6=1
     ports:
       - 8084:8084
     restart: unless-stopped

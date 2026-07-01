@@ -110,7 +110,11 @@ Environment variables work for initial setup and Docker deployments. They serve 
 | `WIREGUARD_CONFIG` | Path to the mounted wg-quick config | `/config/wg0.conf` |
 | `WIREGUARD_INTERFACE` | WireGuard interface name | `wg0` |
 | `LAN_NETWORK` | Comma-separated CIDRs kept off the tunnel so the WebUI / internal clients stay reachable | `127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16` |
-| `WIREGUARD_ENFORCE_DNS` | Force resolver to the config's `DNS =` so lookups also go via the tunnel | `true` |
+| `WIREGUARD_ENFORCE_DNS` | Force the resolver (via `WIREGUARD_DNS`, else the config's `DNS =`) so lookups go through the tunnel. Fails closed if no resolver is defined or `/etc/resolv.conf` is not writable. | `true` |
+| `WIREGUARD_DNS` | Explicit resolver(s) to pin (comma/space separated). Use when the VPN's pushed DNS filters domains you need; point at a resolver reachable via the tunnel or an allowed LAN resolver. | _(unset; uses config `DNS =`)_ |
+| `WIREGUARD_DISABLE_IPV6` | Strip IPv6 from the tunnel config (many container kernels lack the ip6tables `raw` table wg-quick needs) and remove IPv6 as a leak surface. | `true` |
+| `WIREGUARD_ALLOW_IPV6_LEAK` | Escape hatch: continue even when an IPv6 kill-switch can't be installed AND IPv6 can't be disabled. Only set if the container has no IPv6 connectivity. | `false` |
+| `WIREGUARD_STALE_AFTER` | Seconds since the last handshake before the healthcheck bounces the tunnel. | `180` |
 
 See the full [Environment Variables Reference](docs/environment-variables.md) for all available options.
 
@@ -159,7 +163,8 @@ docker compose -f docker-compose.wireguard.yml up -d
 - Requires `NET_ADMIN` and `NET_RAW` capabilities
 - Mount a standard wg-quick config at `WIREGUARD_CONFIG` (default `/config/wg0.conf`)
 - All non-LAN egress is forced through the tunnel; if the tunnel drops, external traffic **fails closed** while LAN ranges (WebUI, Prowlarr, qBittorrent) stay reachable
-- A supervised healthcheck bounces the tunnel if the handshake goes stale
+- IPv4 and IPv6 both fail closed. On kernels without a usable `ip6tables`, disable IPv6 for the container (`sysctls: net.ipv6.conf.all.disable_ipv6=1`, as in the compose example) or the container refuses to start rather than risk an IPv6 leak
+- A supervised healthcheck bounces the tunnel if the handshake goes stale, and refreshes the endpoint allow rules so a roaming/rotated peer endpoint can reconnect
 - Mutually exclusive with `USING_TOR`
 
 ### Lite
