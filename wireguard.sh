@@ -227,55 +227,49 @@ if ! ip6tables -L OUTPUT >/dev/null 2>&1; then
     fi
 fi
 
-# --- IPv4 kill-switch ---
-iptables -F OUTPUT
-iptables -A OUTPUT -o lo -j ACCEPT
-iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-iptables -A OUTPUT -o "$WIREGUARD_INTERFACE" -j ACCEPT
-
-# --- IPv6 kill-switch (fail closed) ---
-if [ "$IP6TABLES_OK" = "true" ]; then
-    ip6tables -F OUTPUT
-    ip6tables -A OUTPUT -o lo -j ACCEPT
-    ip6tables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-    ip6tables -A OUTPUT -o "$WIREGUARD_INTERFACE" -j ACCEPT
-fi
-
 # Allow the encrypted WireGuard handshake/data out to each peer endpoint.
 #
-# We allow by the endpoint's UDP *port* (not a pinned destination IP). The peer
-# endpoint IP can change at any time — provider IP rotation, NAT rebinding, or
-# roaming — and a rule pinned to the startup IP would then block the new
-# endpoint and prevent the tunnel from ever reconnecting (including during a
-# healthcheck bounce). Allowing the WireGuard UDP port is safe: everything else
-# is still forced through wg0 by the fwmark routing + the default-drop below, so
-# the only traffic this rule permits over the physical NIC is the encrypted
-# WireGuard transport itself. Ports are collected from the live interface and
-# de-duplicated. This function is idempotent and re-runnable after a bounce.
+# We pin the allow rule to the resolved endpoint destination IP *and* UDP port
+# (not the port alone). Allowing any UDP to that port would leave an off-tunnel
+# egress hole for arbitrary UDP to that destination port during tunnel
+# downtime/bounces (when the fwmark routes may be gone) — weakening the
+# fail-closed guarantee. Pinning the destination IP closes that hole: the only
+# off-NIC traffic this permits is the encrypted WireGuard transport to the peer
+# itself. Endpoints are read from the LIVE interface, so they are always
+# concrete resolved IPs. If the provider rotates the endpoint IP, the tunnel
+# goes stale and the healthcheck bounce re-derives the new live endpoint and
+# re-opens the corresponding IP+port rule (see refresh_endpoint_rules), so a
+# rotation self-heals on recovery without ever leaving a wildcard-port hole.
+# Rules are de-duplicated by IP+port; this function is idempotent and
+# re-runnable after a bounce.
 apply_endpoint_rules() {
-    local endpoints ep ep_port seen_v4=" " seen_v6=" "
+    local endpoints ep ep_port ep_host ep_ip seen_v4=" " seen_v6=" " key
     endpoints="$(wg show "$WIREGUARD_INTERFACE" endpoints 2>/dev/null | awk '{print $2}' | grep -v '^$' || true)"
     for ep in $endpoints; do
         # Split host:port from the right so IPv6 colons in the host are preserved.
         ep_port="${ep##*:}"
-        local ep_host="${ep%:*}"
+        ep_host="${ep%:*}"
         [ -z "$ep_port" ] && continue
         if printf '%s' "$ep_host" | grep -q ':'; then
-            # IPv6 endpoint -> ip6tables (by port)
-            case "$seen_v6" in *" $ep_port "*) continue ;; esac
-            seen_v6="${seen_v6}${ep_port} "
+            # IPv6 endpoint -> ip6tables. Strip the [] brackets for -d.
+            ep_ip="${ep_host#[}"; ep_ip="${ep_ip%]}"
+            key="${ep_ip}/${ep_port}"
+            case "$seen_v6" in *" $key "*) continue ;; esac
+            seen_v6="${seen_v6}${key} "
             if [ "$IP6TABLES_OK" = "true" ]; then
-                ip6tables -C OUTPUT -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
-                    || ip6tables -A OUTPUT -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
-                    || echo "[!] Could not add IPv6 endpoint allow rule for udp/$ep_port"
+                ip6tables -C OUTPUT -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
+                    || ip6tables -A OUTPUT -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
+                    || echo "[!] Could not add IPv6 endpoint allow rule for ${ep_ip} udp/$ep_port"
             fi
         else
-            # IPv4 endpoint -> iptables (by port)
-            case "$seen_v4" in *" $ep_port "*) continue ;; esac
-            seen_v4="${seen_v4}${ep_port} "
-            iptables -C OUTPUT -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
-                || iptables -A OUTPUT -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
-                || echo "[!] Could not add IPv4 endpoint allow rule for udp/$ep_port"
+            # IPv4 endpoint -> iptables.
+            ep_ip="$ep_host"
+            key="${ep_ip}/${ep_port}"
+            case "$seen_v4" in *" $key "*) continue ;; esac
+            seen_v4="${seen_v4}${key} "
+            iptables -C OUTPUT -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
+                || iptables -A OUTPUT -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
+                || echo "[!] Could not add IPv4 endpoint allow rule for ${ep_ip} udp/$ep_port"
         fi
     done
 }
@@ -422,28 +416,36 @@ latest_handshake_epoch() {
 
 # Re-open the WireGuard endpoint(s) in the kill-switch from the LIVE interface.
 # The endpoint allow rules are first derived at startup, but a provider IP
-# rotation or NAT rebinding can change the peer endpoint later. We allow by the
-# WireGuard UDP *port* (not a pinned destination IP) so a changed endpoint IP is
-# still permitted; everything else stays forced through the tunnel by the
-# default-DROP. Rules are guarded with -C so duplicates never stack, and INSERTed
-# ahead of the DROP. IPv6 rules only run when ip6tables is usable.
+# rotation or NAT rebinding can change the peer endpoint later. We pin each rule
+# to the resolved endpoint destination IP *and* UDP port (not the port alone):
+# a wildcard-port rule would leave an off-tunnel UDP hole to that port during/
+# after a bounce while the tunnel isn't fully up. Re-deriving from the live
+# interface means a rotated endpoint IP is re-permitted on recovery, while
+# everything else stays forced through the tunnel by the default-DROP. Rules are
+# guarded with -C so duplicates never stack, and INSERTed ahead of the DROP.
+# IPv6 hosts have their [] brackets stripped for -d; IPv6 rules only run when
+# ip6tables is usable.
 refresh_endpoint_rules() {
-    local eps ep ep_host ep_port seen_v4=" " seen_v6=" "
+    local eps ep ep_host ep_port ep_ip seen_v4=" " seen_v6=" " key
     eps="$(wg show "$WIREGUARD_INTERFACE" endpoints 2>/dev/null | awk '{print $2}' | grep -v '^$' || true)"
     for ep in $eps; do
         ep_port="${ep##*:}"
         ep_host="${ep%:*}"
         [ -z "$ep_port" ] && continue
         if printf '%s' "$ep_host" | grep -q ':'; then
-            case "$seen_v6" in *" $ep_port "*) continue ;; esac
-            seen_v6="${seen_v6}${ep_port} "
-            [ "$IP6TABLES_OK" = "true" ] && { ip6tables -C OUTPUT -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
-                || ip6tables -I OUTPUT 1 -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null || true; }
+            ep_ip="${ep_host#[}"; ep_ip="${ep_ip%]}"
+            key="${ep_ip}/${ep_port}"
+            case "$seen_v6" in *" $key "*) continue ;; esac
+            seen_v6="${seen_v6}${key} "
+            [ "$IP6TABLES_OK" = "true" ] && { ip6tables -C OUTPUT -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
+                || ip6tables -I OUTPUT 1 -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null || true; }
         else
-            case "$seen_v4" in *" $ep_port "*) continue ;; esac
-            seen_v4="${seen_v4}${ep_port} "
-            iptables -C OUTPUT -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
-                || iptables -I OUTPUT 1 -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null || true
+            ep_ip="$ep_host"
+            key="${ep_ip}/${ep_port}"
+            case "$seen_v4" in *" $key "*) continue ;; esac
+            seen_v4="${seen_v4}${key} "
+            iptables -C OUTPUT -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
+                || iptables -I OUTPUT 1 -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null || true
         fi
     done
 }
@@ -453,6 +455,12 @@ FAIL_COUNT=0
 sleep 20
 
 while true; do
+    # Proactively re-open the current live endpoint IP+port every cycle. If the
+    # provider rotates the endpoint IP while the tunnel is up, this adds the new
+    # allow rule before the DROP so the next handshake to the new endpoint is
+    # not blocked, minimising recovery delay (rather than waiting for a bounce).
+    refresh_endpoint_rules
+
     HS="$(latest_handshake_epoch)"
     NOW="$(date +%s)"
 
