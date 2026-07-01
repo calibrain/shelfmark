@@ -80,17 +80,11 @@ if [ ! -f "$WIREGUARD_CONFIG" ]; then
     exit 1
 fi
 
-# wg-quick wants the interface name to match the config basename.
-CONFIG_BASENAME="$(basename "$WIREGUARD_CONFIG" .conf)"
-if [ "$CONFIG_BASENAME" != "$WIREGUARD_INTERFACE" ]; then
-    RUNTIME_CONFIG="/etc/wireguard/${WIREGUARD_INTERFACE}.conf"
-    mkdir -p /etc/wireguard
-    cp "$WIREGUARD_CONFIG" "$RUNTIME_CONFIG"
-else
-    RUNTIME_CONFIG="/etc/wireguard/${WIREGUARD_INTERFACE}.conf"
-    mkdir -p /etc/wireguard
-    cp "$WIREGUARD_CONFIG" "$RUNTIME_CONFIG"
-fi
+# wg-quick derives the interface name from the config file's basename, so stage
+# the config as /etc/wireguard/<interface>.conf regardless of its mounted name.
+RUNTIME_CONFIG="/etc/wireguard/${WIREGUARD_INTERFACE}.conf"
+mkdir -p /etc/wireguard
+cp "$WIREGUARD_CONFIG" "$RUNTIME_CONFIG"
 chmod 600 "$RUNTIME_CONFIG"
 
 # Extract the DNS line (if any) before wg-quick, so we can enforce it ourselves.
@@ -167,7 +161,7 @@ wg show "$WIREGUARD_INTERFACE" || true
 ip -o addr show "$WIREGUARD_INTERFACE" || true
 
 # ---------------------------------------------------------------------------
-# Kill-switch
+# Kill-switch (fail-closed, IPv4 + IPv6)
 # ---------------------------------------------------------------------------
 # wg-quick (with AllowedIPs=0.0.0.0/0) already installs a fwmark + suppress
 # routing that sends everything except the encrypted tunnel packets through
@@ -175,34 +169,69 @@ ip -o addr show "$WIREGUARD_INTERFACE" || true
 # filter-table kill-switch as defence in depth: default DROP on OUTPUT, allow
 # only loopback, the tunnel device, the LAN ranges, and the handshake to the
 # WireGuard endpoint(s).
-echo "[*] Installing kill-switch (iptables)..."
+#
+# Endpoints are read from the LIVE interface (`wg show <iface> endpoints`), not
+# the config file: after wg-quick is up these are always concrete resolved
+# IP:port values, so the allow rule can never fail on a hostname (which would
+# otherwise drop the WireGuard encapsulation and break the tunnel). Each
+# endpoint is added to iptables or ip6tables depending on its address family.
+echo "[*] Installing kill-switch (iptables + ip6tables)..."
 
-# Endpoint host:port pairs from the config (to permit the encrypted handshake
-# out over the physical NIC).
-ENDPOINTS="$(grep -iE '^\s*Endpoint\s*=' "$RUNTIME_CONFIG" | cut -d'=' -f2- | xargs || true)"
+# Resolved "host:port" endpoints from the live interface (one per peer).
+RESOLVED_ENDPOINTS="$(wg show "$WIREGUARD_INTERFACE" endpoints 2>/dev/null | awk '{print $2}' | grep -v '^$' || true)"
 
+# ip6tables may be unusable in some container kernels (missing tables). Detect
+# once so we can fail closed on IPv6 when possible and warn otherwise.
+IP6TABLES_OK="true"
+if ! ip6tables -L OUTPUT >/dev/null 2>&1; then
+    IP6TABLES_OK="false"
+    echo "[!] ip6tables unavailable in this kernel; disabling IPv6 in the kernel instead so v6 egress cannot leak."
+    # Belt-and-braces: if we cannot program an IPv6 kill-switch, drop IPv6
+    # entirely at the stack so non-tunnel v6 egress is impossible.
+    sysctl -w net.ipv6.conf.all.disable_ipv6=1 >/dev/null 2>&1 || true
+    sysctl -w net.ipv6.conf.default.disable_ipv6=1 >/dev/null 2>&1 || true
+fi
+
+add_endpoint_rule() {
+    # $1 = host, $2 = port
+    local host="$1" port="$2"
+    [ -z "$host" ] || [ -z "$port" ] && return 0
+    if printf '%s' "$host" | grep -q ':'; then
+        # IPv6 endpoint
+        if [ "$IP6TABLES_OK" = "true" ]; then
+            ip6tables -A OUTPUT -p udp -d "$host" --dport "$port" -j ACCEPT 2>/dev/null \
+                || echo "[!] Could not add IPv6 endpoint allow rule for [$host]:$port"
+        fi
+    else
+        iptables -A OUTPUT -p udp -d "$host" --dport "$port" -j ACCEPT 2>/dev/null \
+            || echo "[!] Could not add IPv4 endpoint allow rule for $host:$port"
+    fi
+}
+
+# --- IPv4 kill-switch ---
 iptables -F OUTPUT
-# Allow loopback
 iptables -A OUTPUT -o lo -j ACCEPT
-# Allow established/related return traffic
 iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
-# Allow all traffic over the tunnel itself
 iptables -A OUTPUT -o "$WIREGUARD_INTERFACE" -j ACCEPT
 
-# Allow the encrypted WireGuard handshake/data to each endpoint over any NIC.
-if [ -n "$ENDPOINTS" ]; then
-    for ep in $ENDPOINTS; do
-        ep_host="${ep%:*}"
-        ep_port="${ep##*:}"
-        # Strip IPv6 brackets if present
-        ep_host="${ep_host#[}"
-        ep_host="${ep_host%]}"
-        if [ -n "$ep_host" ] && [ -n "$ep_port" ]; then
-            iptables -A OUTPUT -p udp -d "$ep_host" --dport "$ep_port" -j ACCEPT 2>/dev/null \
-                || echo "[!] Could not add endpoint allow rule for $ep (may be IPv6/hostname); tunnel route still applies"
-        fi
-    done
+# --- IPv6 kill-switch (fail closed) ---
+if [ "$IP6TABLES_OK" = "true" ]; then
+    ip6tables -F OUTPUT
+    ip6tables -A OUTPUT -o lo -j ACCEPT
+    ip6tables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+    ip6tables -A OUTPUT -o "$WIREGUARD_INTERFACE" -j ACCEPT
 fi
+
+# Allow the encrypted WireGuard handshake/data to each resolved endpoint.
+for ep in $RESOLVED_ENDPOINTS; do
+    # Split host:port from the right so IPv6 colons in the host are preserved.
+    ep_port="${ep##*:}"
+    ep_host="${ep%:*}"
+    # Strip IPv6 brackets if present ([2a02::10] -> 2a02::10)
+    ep_host="${ep_host#[}"
+    ep_host="${ep_host%]}"
+    add_endpoint_rule "$ep_host" "$ep_port"
+done
 
 # Keep LAN reachable (WebUI, Prowlarr, qBittorrent, DNS on the LAN) off-tunnel.
 DEFAULT_LAN="127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16"
@@ -211,13 +240,20 @@ IFS=',' read -ra LAN_CIDRS <<< "$LAN_LIST"
 for cidr in "${LAN_CIDRS[@]}"; do
     cidr="$(echo "$cidr" | xargs)"
     [ -z "$cidr" ] && continue
-    iptables -A OUTPUT -d "$cidr" -j ACCEPT
+    if printf '%s' "$cidr" | grep -q ':'; then
+        [ "$IP6TABLES_OK" = "true" ] && ip6tables -A OUTPUT -d "$cidr" -j ACCEPT 2>/dev/null
+    else
+        iptables -A OUTPUT -d "$cidr" -j ACCEPT
+    fi
     echo "[*] Kill-switch: LAN allowed off-tunnel -> $cidr"
 done
 
 # Everything else is dropped: if the tunnel drops, non-LAN egress fails closed.
 iptables -A OUTPUT -j DROP
-echo "[✓] Kill-switch active (default-drop; egress only via $WIREGUARD_INTERFACE or LAN)."
+if [ "$IP6TABLES_OK" = "true" ]; then
+    ip6tables -A OUTPUT -j DROP
+fi
+echo "[✓] Kill-switch active (default-drop; egress only via $WIREGUARD_INTERFACE or LAN, IPv4+IPv6)."
 
 # ---------------------------------------------------------------------------
 # DNS enforcement (fail-closed): send resolver traffic through the tunnel.
