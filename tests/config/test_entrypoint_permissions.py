@@ -257,3 +257,48 @@ def test_entrypoint_root_bootstrap_fails_closed_when_config_repair_fails(tmp_pat
     assert f"Configured runtime identity: {os.getuid()}:{os.getgid()}" in result.stdout
     assert f"chown -R {os.getuid()}:{os.getgid()} /path/to/config" in result.stdout
     assert "Startup mode: root" not in result.stdout
+
+
+def test_entrypoint_rejects_wireguard_in_non_root_mode(tmp_path):
+    result, _, _, _ = _run_entrypoint(tmp_path, extra_env={"USING_WIREGUARD": "true"})
+
+    assert result.returncode == 1
+    assert (
+        "USING_WIREGUARD=true requires the container to start as root." in result.stderr
+    )
+    assert (
+        "Non-root mode skips the privileged network setup WireGuard depends on."
+        in result.stderr
+    )
+
+
+def test_entrypoint_rejects_tor_and_wireguard_together(tmp_path):
+    result, _, _, _ = _run_entrypoint(
+        tmp_path,
+        extra_env={"USING_TOR": "true", "USING_WIREGUARD": "true"},
+    )
+
+    assert result.returncode == 1
+    assert (
+        "USING_TOR and USING_WIREGUARD are mutually exclusive; enable only one egress mode."
+        in result.stderr
+    )
+    # The mutual-exclusion check must fire before either egress script runs, so
+    # neither the Tor nor the WireGuard privileged-setup errors should appear.
+    assert "requires the container to start as root" not in result.stderr
+
+
+def test_entrypoint_mutual_exclusion_precedes_tor_startup(tmp_path):
+    # Even in root mode, enabling both must fail fast on mutual exclusion rather
+    # than starting tor.sh and then aborting.
+    result, _, _, _ = _run_entrypoint(
+        tmp_path,
+        simulate_root_startup=True,
+        extra_env={"USING_TOR": "true", "USING_WIREGUARD": "true"},
+    )
+
+    assert result.returncode == 1
+    assert (
+        "USING_TOR and USING_WIREGUARD are mutually exclusive; enable only one egress mode."
+        in result.stderr
+    )
