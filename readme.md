@@ -166,6 +166,7 @@ docker compose -f docker-compose.wireguard.yml up -d
 - IPv4 and IPv6 both fail closed. On kernels without a usable `ip6tables`, disable IPv6 for the container (`sysctls: net.ipv6.conf.all.disable_ipv6=1`, as in the compose example) or the container refuses to start rather than risk an IPv6 leak
 - A supervised healthcheck bounces the tunnel if the handshake goes stale, and refreshes the endpoint allow rules so a roaming/rotated peer endpoint can reconnect
 - Mutually exclusive with `USING_TOR`
+- **DNS trust:** `WIREGUARD_DNS` must be a resolver you trust on a trusted network segment. When it is a LAN resolver (kept reachable off-tunnel by `LAN_NETWORK`), the query to that resolver leaves as plaintext UDP/53 on the LAN — the resolver is responsible for encrypting upstream. Setting `WIREGUARD_ENFORCE_DNS=false` is a **foot-gun**: the container then uses its inherited resolver (typically Docker's `127.0.0.11`), which forwards to the Docker daemon's upstream **off-tunnel**, leaking your DNS. Leave enforcement on unless you have pinned the resolver another way.
 
 ### Lite
 A lighter image without the built-in browser automation. Ideal for:

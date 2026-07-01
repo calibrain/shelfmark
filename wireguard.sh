@@ -88,12 +88,12 @@ cp "$WIREGUARD_CONFIG" "$RUNTIME_CONFIG"
 chmod 600 "$RUNTIME_CONFIG"
 
 # Extract the DNS line (if any) before wg-quick, so we can enforce it ourselves.
-WG_DNS="$(grep -iE '^\s*DNS\s*=' "$RUNTIME_CONFIG" | head -n1 | cut -d'=' -f2- | tr ',' ' ' | xargs || true)"
+WG_DNS="$(grep -iE '^[[:space:]]*DNS[[:space:]]*=' "$RUNTIME_CONFIG" | head -n1 | cut -d'=' -f2- | tr ',' ' ' | xargs || true)"
 
 # wg-quick will try to manage DNS via resolvconf which is not present in this
 # image; strip the DNS line and enforce it ourselves below to avoid wg-quick
 # aborting. Keep a copy for reference.
-sed -i -E '/^\s*DNS\s*=/d' "$RUNTIME_CONFIG"
+sed -i -E '/^[[:space:]]*DNS[[:space:]]*=/d' "$RUNTIME_CONFIG"
 
 # Strip IPv6 to avoid wg-quick failing on the ip6tables 'raw' table that many
 # container kernels don't expose, and to eliminate IPv6 as a leak path. This
@@ -244,12 +244,17 @@ fi
 # re-runnable after a bounce.
 apply_endpoint_rules() {
     local endpoints ep ep_port ep_host ep_ip seen_v4=" " seen_v6=" " key
-    endpoints="$(wg show "$WIREGUARD_INTERFACE" endpoints 2>/dev/null | awk '{print $2}' | grep -v '^$' || true)"
+    # `wg show <if> endpoints` prints "<pubkey>\t<host:port>" per peer, or
+    # "<pubkey>\t(none)" for a peer with no endpoint yet. Keep only tokens that
+    # look like host:port (contain a colon and are not the literal "(none)").
+    endpoints="$(wg show "$WIREGUARD_INTERFACE" endpoints 2>/dev/null | awk '{print $2}' | grep -F ':' | grep -v '(none)' || true)"
     for ep in $endpoints; do
         # Split host:port from the right so IPv6 colons in the host are preserved.
         ep_port="${ep##*:}"
         ep_host="${ep%:*}"
-        [ -z "$ep_port" ] && continue
+        # Require a numeric port and a non-empty host; skip anything malformed.
+        case "$ep_port" in ''|*[!0-9]*) continue ;; esac
+        [ -z "$ep_host" ] && continue
         if printf '%s' "$ep_host" | grep -q ':'; then
             # IPv6 endpoint -> ip6tables. Strip the [] brackets for -d.
             ep_ip="${ep_host#[}"; ep_ip="${ep_ip%]}"
@@ -275,17 +280,32 @@ apply_endpoint_rules() {
 }
 
 # --- IPv4 kill-switch ---
+# Set the default policy CLOSED before touching rules, so the chain is fail-
+# closed at all times: during the (app-traffic-free) build window, and if any
+# `iptables -A` below fails under `set -e` leaving a partial chain. The trailing
+# `-j DROP` is then belt-and-braces on top of the DROP policy.
+iptables -P OUTPUT DROP
 iptables -F OUTPUT
 iptables -A OUTPUT -o lo -j ACCEPT
-iptables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
 iptables -A OUTPUT -o "$WIREGUARD_INTERFACE" -j ACCEPT
+# WebUI reply traffic ONLY: allow established replies FROM the app's server port
+# so non-LAN clients (e.g. a public reverse proxy) can reach the WebUI. This is
+# deliberately NOT a blanket `ESTABLISHED,RELATED` rule: a blanket rule would let
+# an app-INITIATED download that was established over the tunnel keep egressing
+# off the physical NIC during a tunnel bounce (when wg-quick tears down the wg0
+# default route), leaking the real IP. Scoping to --sport <FLASK_PORT> permits
+# only server replies, never client-initiated egress. LAN client replies are
+# already covered by the LAN allowlist below.
+iptables -A OUTPUT -p tcp --sport "${FLASK_PORT:-8084}" -m conntrack --ctstate ESTABLISHED -j ACCEPT 2>/dev/null \
+    || echo "[!] Could not add WebUI reply allow rule (conntrack unavailable?); non-LAN WebUI clients may be unreachable"
 
 # --- IPv6 kill-switch (fail closed) ---
 if [ "$IP6TABLES_OK" = "true" ]; then
+    ip6tables -P OUTPUT DROP
     ip6tables -F OUTPUT
     ip6tables -A OUTPUT -o lo -j ACCEPT
-    ip6tables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
     ip6tables -A OUTPUT -o "$WIREGUARD_INTERFACE" -j ACCEPT
+    ip6tables -A OUTPUT -p tcp --sport "${FLASK_PORT:-8084}" -m conntrack --ctstate ESTABLISHED -j ACCEPT 2>/dev/null || true
 fi
 
 apply_endpoint_rules
@@ -427,11 +447,13 @@ latest_handshake_epoch() {
 # ip6tables is usable.
 refresh_endpoint_rules() {
     local eps ep ep_host ep_port ep_ip seen_v4=" " seen_v6=" " key
-    eps="$(wg show "$WIREGUARD_INTERFACE" endpoints 2>/dev/null | awk '{print $2}' | grep -v '^$' || true)"
+    # Keep only host:port tokens; skip "(none)" and malformed entries.
+    eps="$(wg show "$WIREGUARD_INTERFACE" endpoints 2>/dev/null | awk '{print $2}' | grep -F ':' | grep -v '(none)' || true)"
     for ep in $eps; do
         ep_port="${ep##*:}"
         ep_host="${ep%:*}"
-        [ -z "$ep_port" ] && continue
+        case "$ep_port" in ''|*[!0-9]*) continue ;; esac
+        [ -z "$ep_host" ] && continue
         if printf '%s' "$ep_host" | grep -q ':'; then
             ep_ip="${ep_host#[}"; ep_ip="${ep_ip%]}"
             key="${ep_ip}/${ep_port}"
@@ -481,12 +503,20 @@ while true; do
         echo "$(date): restart trigger - bouncing $WIREGUARD_INTERFACE"
         wg-quick down "$WIREGUARD_INTERFACE" 2>/dev/null || true
         # Bring the tunnel back up via the sysctl shim (read-only /proc/sys).
-        # The DROP rule stays in place so we never leak during the bounce.
-        wg-quick up "$WIREGUARD_INTERFACE" 2>/dev/null || echo "$(date): wg-quick up failed, will retry"
-        # The peer endpoint may have rotated; re-open it so the kill-switch
-        # does not strand the reconnect.
-        refresh_endpoint_rules
-        FAIL_COUNT=0
+        # The DROP policy + rules stay in place so we never leak during the bounce.
+        if wg-quick up "$WIREGUARD_INTERFACE" 2>/dev/null; then
+            # The peer endpoint may have rotated; re-open it so the kill-switch
+            # does not strand the reconnect. Only reset the failure counter on a
+            # successful bring-up.
+            refresh_endpoint_rules
+            FAIL_COUNT=0
+        else
+            # Leave FAIL_COUNT at/above the threshold so the NEXT cycle retries
+            # the bounce immediately instead of waiting for 3 more stale cycles.
+            # Cap it so it can't overflow on a long outage.
+            echo "$(date): wg-quick up failed; will retry next cycle (still fail-closed)"
+            FAIL_COUNT=3
+        fi
         sleep 15
     fi
 
@@ -512,6 +542,14 @@ while true; do
     fi
     if [ $(($(date +%s) - HANDSHAKE_START)) -ge $HANDSHAKE_TIMEOUT ]; then
         echo "[✗] No WireGuard handshake after ${HANDSHAKE_TIMEOUT}s. Aborting (fail closed)."
+        # Tidy up before aborting so a still-running supervised healthcheck can't
+        # keep bouncing / wg-quick up a tunnel the operator has decided to
+        # abandon. The container exits when entrypoint sees this non-zero exit
+        # (kill-switch DROP stays in force throughout), so this is hygiene, not
+        # leak-prevention.
+        supervisorctl -c /etc/supervisor/supervisord.conf stop wireguard-healthcheck >/dev/null 2>&1 || true
+        supervisorctl -c /etc/supervisor/supervisord.conf shutdown >/dev/null 2>&1 || true
+        wg-quick down "$WIREGUARD_INTERFACE" >/dev/null 2>&1 || true
         exit 1
     fi
     sleep 2
