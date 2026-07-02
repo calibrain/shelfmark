@@ -162,6 +162,24 @@ wg_quick_shimmed() {
     PATH="${SYSCTL_SHIM_DIR}:${PATH}" wg-quick "$@"
 }
 
+# Capture the PRE-tunnel default route before wg-quick installs its fwmark
+# policy routing. wg-quick with AllowedIPs=0.0.0.0/0 leaves the main table's
+# default route intact but adds an `ip rule ... suppress_prefixlength 0` so the
+# main-table DEFAULT route is suppressed and traffic falls through to the wg
+# table. Crucially, suppress_prefixlength 0 only suppresses prefixlen-0 (default)
+# routes: any explicit route with prefixlen > 0 in the main table still wins.
+# A directly-connected LAN subnet therefore stays reachable (its connected
+# /NN route), but a LAN subnet on ANOTHER VLAN (e.g. a DNS resolver at
+# 10.127.222.2 when the container is only on 172.20.0.0/16) has no main-table
+# route, so it only matches the (suppressed) default and gets forced into the
+# tunnel — where a commercial VPN drops RFC1918 destinations. We record the
+# original gateway/dev here and add explicit per-CIDR LAN routes after the
+# kill-switch so off-subnet LAN (incl. the enforced resolver) stays off-tunnel.
+ORIG_DEFAULT="$(ip -4 route show default | head -n1)"
+ORIG_GW="$(printf '%s' "$ORIG_DEFAULT" | awk '{for(i=1;i<=NF;i++) if($i=="via"){print $(i+1); exit}}')"
+ORIG_DEV="$(printf '%s' "$ORIG_DEFAULT" | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')"
+[ -n "$ORIG_GW" ] && echo "[*] Pre-tunnel default gateway: $ORIG_GW dev ${ORIG_DEV:-?} (used to keep off-subnet LAN off the tunnel)"
+
 # wg-quick handles: interface creation, address, route for AllowedIPs, and a
 # fwmark-based default route when AllowedIPs=0.0.0.0/0.
 wg_quick_shimmed up "$WIREGUARD_INTERFACE"
@@ -321,6 +339,47 @@ for cidr in "${LAN_CIDRS[@]}"; do
         [ "$IP6TABLES_OK" = "true" ] && ip6tables -A OUTPUT -d "$cidr" -j ACCEPT 2>/dev/null
     else
         iptables -A OUTPUT -d "$cidr" -j ACCEPT
+        # Firewall ACCEPT alone is not enough: a LAN subnet on another VLAN has
+        # no route in the main table, so wg-quick's suppress-default rule pushes
+        # it into the tunnel (where the VPN drops RFC1918). Install an explicit
+        # route via the original gateway so it egresses over the LAN. Skip
+        # loopback (127/8) and any directly-connected subnet (add fails -> a
+        # more-specific connected route already exists and wins by longest
+        # prefix, so leaving it is correct).
+        case "$cidr" in
+            127.*) : ;;
+            *)
+                if [ -n "$ORIG_GW" ] && [ -n "$ORIG_DEV" ]; then
+                    # Distinguish EEXIST (route already present -> benign, a more-
+                    # specific connected route wins by longest prefix) from a REAL
+                    # failure (invalid gateway/onlink, EPERM, EINVAL). Swallowing
+                    # all errors as "already present" would silently drop the
+                    # resolver route and reintroduce the DNS-dead bug with no signal.
+                    add_rc=0
+                    add_err="$(ip route add "$cidr" via "$ORIG_GW" dev "$ORIG_DEV" 2>&1)" || add_rc=$?
+                    if [ "$add_rc" -eq 0 ]; then
+                        echo "[*] LAN route added: $cidr via $ORIG_GW dev $ORIG_DEV"
+                    elif printf '%s' "$add_err" | grep -qiE 'exists|File exists'; then
+                        echo "[*] LAN route for $cidr already present (connected/explicit); leaving existing route."
+                    else
+                        echo "[!] WARNING: could not add LAN route $cidr via $ORIG_GW dev $ORIG_DEV: ${add_err}" >&2
+                        echo "    Off-VLAN LAN (incl. the enforced resolver) in $cidr may be forced into the tunnel and dropped." >&2
+                        # Verify the resolver specifically still routes off-tunnel; warn loudly if it now points at the wg dev.
+                        if [ -n "${WIREGUARD_DNS:-}" ]; then
+                            for _r in $(echo "$WIREGUARD_DNS" | tr ',' ' '); do
+                                case "$_r" in *:*) continue ;; esac
+                                _rdev="$(ip -4 route get "$_r" 2>/dev/null | awk '{for(i=1;i<=NF;i++) if($i=="dev"){print $(i+1); exit}}')"
+                                if [ "$_rdev" = "$WIREGUARD_INTERFACE" ]; then
+                                    echo "[!] WARNING: resolver $_r currently routes via the tunnel ($WIREGUARD_INTERFACE); DNS will fail (VPN drops RFC1918)." >&2
+                                fi
+                            done
+                        fi
+                    fi
+                else
+                    echo "[!] WARNING: no pre-tunnel default gateway/dev captured (ORIG_GW='${ORIG_GW}' ORIG_DEV='${ORIG_DEV}'); cannot install an off-VLAN LAN route for $cidr. Off-subnet LAN (incl. the enforced resolver) may be unreachable." >&2
+                fi
+                ;;
+        esac
     fi
     echo "[*] Kill-switch: LAN allowed off-tunnel -> $cidr"
 done
@@ -340,12 +399,50 @@ if is_truthy "$WIREGUARD_ENFORCE_DNS_VALUE"; then
     DNS_TO_USE="${WIREGUARD_DNS:-$WG_DNS}"
     # Normalise separators (commas -> spaces).
     DNS_TO_USE="$(echo "$DNS_TO_USE" | tr ',' ' ' | xargs || true)"
-    if [ -n "$DNS_TO_USE" ]; then
+
+    # Is DNS managed by Docker's embedded resolver? When a container is created
+    # with a `dns:`/`--dns` list (or default bridge DNS), Docker writes
+    # /etc/resolv.conf as a single `nameserver 127.0.0.11` and runs an embedded
+    # resolver there that (a) answers container-name lookups locally (e.g.
+    # prowlarr, qbit) and (b) forwards everything else to the container's
+    # configured upstream resolvers. Blindly truncating this file (the previous
+    # behaviour) destroys container-name resolution, so app<->Prowlarr/qBittorrent
+    # by-name integration dies even though the tunnel is perfectly healthy.
+    #
+    # In that case we PRESERVE the embedded resolver instead of overwriting it.
+    # Fail-closed DNS is still satisfied because the embedded resolver's upstream
+    # is pinned by the container's `dns:` list, which MUST be a trusted resolver
+    # reachable off-tunnel over the LAN (the documented LAN-resolver model at the
+    # top of this script: the DNS query leaves over the LAN to a trusted resolver
+    # while the actual download still egresses through the tunnel). We cannot
+    # reconfigure the embedded resolver's upstream from inside the container, so
+    # we leave resolv.conf as Docker wrote it and rely on `dns:` for the upstream.
+    DOCKER_EMBEDDED_DNS=false
+    if grep -qE '^[[:space:]]*nameserver[[:space:]]+127\.0\.0\.11([[:space:]]|$)' /etc/resolv.conf 2>/dev/null; then
+        DOCKER_EMBEDDED_DNS=true
+    fi
+
+    if is_truthy "$DOCKER_EMBEDDED_DNS"; then
+        echo "[*] Docker embedded resolver (127.0.0.11) detected — preserving it so container-name"
+        echo "    resolution (prowlarr/qbit) keeps working. External queries are forwarded by the"
+        echo "    embedded resolver to the container's configured upstream (the compose 'dns:' list)."
+        if [ -n "$DNS_TO_USE" ]; then
+            echo "[!] WARNING: WIREGUARD_DNS='$DNS_TO_USE' cannot repoint the embedded resolver's upstream" >&2
+            echo "    from inside the container. External DNS is forwarded to the container's compose 'dns:'" >&2
+            echo "    list, NOT to WIREGUARD_DNS. If 'dns:' is unset or points at an untrusted/Proton-filtered" >&2
+            echo "    upstream, book-source domains may NXDOMAIN or leak. Set the container 'dns:' to that same" >&2
+            echo "    trusted off-tunnel LAN resolver ($DNS_TO_USE)." >&2
+        else
+            echo "[!] NOTE: no WIREGUARD_DNS set; the embedded resolver forwards to the container's"
+            echo "    configured upstream. Ensure the container's 'dns:' is a trusted LAN resolver."
+        fi
+        # Leave /etc/resolv.conf untouched (127.0.0.11 stays primary).
+    elif [ -n "$DNS_TO_USE" ]; then
         echo "[*] Enforcing resolver(s): $DNS_TO_USE"
         # Writing /etc/resolv.conf can fail if it is a read-only bind mount.
         # If we cannot pin the resolver, the container would fall back to its
-        # inherited resolver (often Docker's 127.0.0.11), which the LAN
-        # allowlist permits and which can leak queries off-tunnel. Fail closed.
+        # inherited resolver, which the LAN allowlist permits and which can leak
+        # queries off-tunnel. Fail closed.
         if ! { : > /etc/resolv.conf; } 2>/dev/null; then
             echo "[✗] Could not write /etc/resolv.conf (read-only mount?)." >&2
             echo "    Cannot pin the resolver, so DNS could leak off-tunnel via the inherited resolver." >&2
@@ -357,9 +454,8 @@ if is_truthy "$WIREGUARD_ENFORCE_DNS_VALUE"; then
             echo "nameserver $ns" >> /etc/resolv.conf
         done
     else
-        # No resolver to enforce. Leaving the inherited resolver in place would
-        # let DNS leak off-tunnel (Docker's 127.0.0.11 is inside the LAN
-        # allowlist). Fail closed rather than silently leak.
+        # No embedded resolver and no resolver to enforce. Leaving the inherited
+        # resolver in place would let DNS leak off-tunnel. Fail closed.
         echo "[✗] WIREGUARD_ENFORCE_DNS=true but no resolver is defined (set WIREGUARD_DNS, or a DNS= line in the config)." >&2
         echo "    Refusing to run, because the inherited resolver could leak DNS off-tunnel." >&2
         echo "    Either set WIREGUARD_DNS to a resolver reachable via the tunnel (or an allowed LAN" >&2
