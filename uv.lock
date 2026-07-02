@@ -44,14 +44,14 @@ wheels = [
 
 [[package]]
 name = "basedpyright"
-version = "1.39.8"
+version = "1.39.9"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "nodejs-wheel-binaries" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d2/62/8550c75850b2185df984d1de437b4805b039ba856cacbee2966236203133/basedpyright-1.39.8.tar.gz", hash = "sha256:bb1a86d4d71425d52d1501b317fe23d45527baed06bd5d5e1a07cd4b60d07b55", size = 25488230, upload-time = "2026-06-14T09:05:30.177Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7a/4b/c1f4e211e50389304d6af32b9280e026a7133e3ad59bbdf8f7a3250f8bee/basedpyright-1.39.9.tar.gz", hash = "sha256:32cbea5fc8273e89df3db20daea56cb7286e419ccdfdc479c64759d2dc071901", size = 24412216, upload-time = "2026-06-27T02:19:49.834Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f5/94/878454aefe94328ba7ad808ecd63da8311aae1198da46cfb29f5cfe130a8/basedpyright-1.39.8-py3-none-any.whl", hash = "sha256:a79d89928064bd9023d429b50c625d87d023bacc2fe3932ef6c7bd13b5426048", size = 13182726, upload-time = "2026-06-14T09:05:26.368Z" },
+    { url = "https://files.pythonhosted.org/packages/2a/d4/e1fa108710d0498a18c77b1e13897f31eab47c69aa8cfe2d2a4df746541e/basedpyright-1.39.9-py3-none-any.whl", hash = "sha256:6b0837b9eba972c71895167ab9b127e6afdbc17abc92312e3f8d15ca82a5611c", size = 13374276, upload-time = "2026-06-27T02:19:54.431Z" },
 ]
 
 [[package]]
@@ -1127,16 +1127,16 @@ wheels = [
 
 [[package]]
 name = "qbittorrent-api"
-version = "2026.6.0"
+version = "2026.6.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "packaging" },
     { name = "requests" },
     { name = "urllib3" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/07/cb/50d2483e5fe988b5cded54f76078ed448f021ea9f8c5ee457c1d502c644d/qbittorrent_api-2026.6.0.tar.gz", hash = "sha256:f2e25bf070960b906035917a10759042b0c288ac6adf191baf4f4848890b8213", size = 1428450, upload-time = "2026-06-06T01:15:27.12Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ed/a8/ea2ab39fdb5ef4408ac71a3329af9646c8a47d54c35a9138fa4d355f22dc/qbittorrent_api-2026.6.1.tar.gz", hash = "sha256:57d74ff2e710286973673e1268878826e9c7e5f471e632d7a8f059ef20f83fd4", size = 1428879, upload-time = "2026-06-27T00:03:19.996Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/02/3c/f94bab91cf6a4e48468c6521ca5d325b321a0e1b8df020661c009626973a/qbittorrent_api-2026.6.0-py3-none-any.whl", hash = "sha256:95b6b3dd34cfdbfbde0f745dc5f8af35491bc184af009efe139437239cdf9a30", size = 68113, upload-time = "2026-06-06T01:15:25.657Z" },
+    { url = "https://files.pythonhosted.org/packages/3a/2f/d330c335e2ef3974ac940ee38e6325af4bea7515688496ae8d2d5b6aa49a/qbittorrent_api-2026.6.1-py3-none-any.whl", hash = "sha256:9e9e4b64383c463e716825e7b447b759c2c047d23e1399ed7a66d37f4aa9b994", size = 69432, upload-time = "2026-06-27T00:03:18.565Z" },
 ]
 
 [[package]]
@@ -1256,7 +1256,7 @@ wheels = [
 
 [[package]]
 name = "seleniumbase"
-version = "4.50.2"
+version = "4.50.3"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
@@ -1320,9 +1320,9 @@ dependencies = [
     { name = "wheel" },
     { name = "wsproto" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/cf/7d/36e42dba5d84fbc64bf50ea71c0820415173d7a2627f4541fe8b02f1e142/seleniumbase-4.50.2.tar.gz", hash = "sha256:5b8e0ddb83b0049d905195c248e15431892c50d789d1035e398d4fc5438cfc5b", size = 666639, upload-time = "2026-06-24T19:35:39.732Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/87/aa/83fb3c3a88f55d113d3a3ecf638a2e51579bcd1f76f1e8b3e8607f2248d8/seleniumbase-4.50.3.tar.gz", hash = "sha256:f45affb12201335aa9f2bdef8c733d23ba5c633cb5709283cc5a15adbd5a18e7", size = 666719, upload-time = "2026-06-28T04:42:55.235Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/dd/34/e652471326cd0877daf7ba7260cd604623172624e3d7d2400a4180bf9ec4/seleniumbase-4.50.2-py3-none-any.whl", hash = "sha256:88c867e9c1739a1bbc857d5e794cfc1858865152aa865cd03da038a2c00c699d", size = 672449, upload-time = "2026-06-24T19:35:37.049Z" },
+    { url = "https://files.pythonhosted.org/packages/68/d0/7e8c96fed4f9ff52dfebff5273af9e002040f793653a717ff60d3ed019d9/seleniumbase-4.50.3-py3-none-any.whl", hash = "sha256:4e78eecd9bdc5a25477178d1416029f4e57a16386bb89690ccffa714cc55e922", size = 672598, upload-time = "2026-06-28T04:42:51.642Z" },
 ]
 
 [[package]]
@@ -1401,7 +1401,7 @@ requires-dist = [
     { name = "qbittorrent-api" },
     { name = "rarfile" },
     { name = "requests", extras = ["socks"] },
-    { name = "seleniumbase", marker = "extra == 'browser'", specifier = "==4.50.2" },
+    { name = "seleniumbase", marker = "extra == 'browser'", specifier = "==4.50.3" },
     { name = "tqdm" },
     { name = "transmission-rpc" },
 ]
@@ -1409,7 +1409,7 @@ provides-extras = ["browser"]
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "basedpyright", specifier = ">=1.39.8" },
+    { name = "basedpyright", specifier = ">=1.39.9" },
     { name = "prek" },
     { name = "pytest" },
     { name = "pytest-cov" },
