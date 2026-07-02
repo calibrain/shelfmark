@@ -7,6 +7,7 @@ This document lists all configuration options that can be set via environment va
 ## Table of Contents
 
 - [Bootstrap Configuration](#bootstrap-configuration)
+- [Egress / VPN Routing](#egress--vpn-routing)
 - [General](#general)
 - [Search Mode](#search-mode)
 - [Downloads](#downloads)
@@ -142,6 +143,90 @@ Show the onboarding wizard on first run. Set to false to skip (useful for epheme
 
 - **Type:** boolean
 - **Default:** `true`
+
+</details>
+
+## Egress / VPN Routing
+
+These startup-only variables are consumed by `entrypoint.sh` / `wireguard.sh` to select and configure the WireGuard transparent-egress kill-switch. `USING_WIREGUARD` and [`USING_TOR`](#using_tor) (documented under Network) are mutually exclusive; both require root startup.
+
+| Variable | Description | Type | Default |
+|----------|-------------|------|---------|
+| `USING_WIREGUARD` | Route all traffic through a WireGuard VPN tunnel with a fail-closed iptables kill-switch (non-tunnel egress is dropped). Requires root startup and NET_ADMIN (plus NET_RAW). Mutually exclusive with USING_TOR. | boolean | `false` |
+| `WIREGUARD_CONFIG` | Path to the mounted wg-quick configuration file. | string (path) | `/config/wg0.conf` |
+| `WIREGUARD_INTERFACE` | WireGuard interface name brought up by wg-quick. | string | `wg0` |
+| `LAN_NETWORK` | Comma-separated CIDRs kept off the tunnel so the WebUI and internal download clients (Prowlarr, qBittorrent) stay reachable. | string (comma-separated) | `127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16` |
+| `WIREGUARD_ENFORCE_DNS` | Force /etc/resolv.conf to a defined resolver (WIREGUARD_DNS, else the config's DNS = line) so lookups do not use the container's inherited resolver. Fails closed if no resolver is defined or /etc/resolv.conf is not writable. | boolean | `true` |
+| `WIREGUARD_DNS` | Explicit resolver(s) (comma/space separated) to pin into /etc/resolv.conf when WIREGUARD_ENFORCE_DNS is true. Use when the VPN's pushed DNS filters domains you need; point it at a resolver reachable via the tunnel or an allowed LAN resolver. | string (comma-separated) | `unset (uses config DNS = line)` |
+| `WIREGUARD_DISABLE_IPV6` | Strip IPv6 Address/AllowedIPs/DNS from the tunnel config before wg-quick (many container kernels lack the ip6tables raw table wg-quick needs) and remove IPv6 as a leak surface. | boolean | `true` |
+| `WIREGUARD_ALLOW_IPV6_LEAK` | Escape hatch: continue startup even when an IPv6 kill-switch cannot be installed AND IPv6 cannot be disabled. Only set when the container has no IPv6 connectivity, as IPv6 egress may otherwise bypass the tunnel. | boolean | `false` |
+| `WIREGUARD_STALE_AFTER` | Seconds since the last WireGuard handshake before the healthcheck bounces the tunnel. | number | `180` |
+
+<details>
+<summary>Detailed descriptions</summary>
+
+#### `USING_WIREGUARD`
+
+Route all traffic through a WireGuard VPN tunnel with a fail-closed iptables kill-switch (non-tunnel egress is dropped). Requires root startup and NET_ADMIN (plus NET_RAW). Mutually exclusive with USING_TOR.
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `WIREGUARD_CONFIG`
+
+Path to the mounted wg-quick configuration file.
+
+- **Type:** string (path)
+- **Default:** `/config/wg0.conf`
+
+#### `WIREGUARD_INTERFACE`
+
+WireGuard interface name brought up by wg-quick.
+
+- **Type:** string
+- **Default:** `wg0`
+
+#### `LAN_NETWORK`
+
+Comma-separated CIDRs kept off the tunnel so the WebUI and internal download clients (Prowlarr, qBittorrent) stay reachable.
+
+- **Type:** string (comma-separated)
+- **Default:** `127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16`
+
+#### `WIREGUARD_ENFORCE_DNS`
+
+Force /etc/resolv.conf to a defined resolver (WIREGUARD_DNS, else the config's DNS = line) so lookups do not use the container's inherited resolver. Fails closed if no resolver is defined or /etc/resolv.conf is not writable.
+
+- **Type:** boolean
+- **Default:** `true`
+
+#### `WIREGUARD_DNS`
+
+Explicit resolver(s) (comma/space separated) to pin into /etc/resolv.conf when WIREGUARD_ENFORCE_DNS is true. Use when the VPN's pushed DNS filters domains you need; point it at a resolver reachable via the tunnel or an allowed LAN resolver.
+
+- **Type:** string (comma-separated)
+- **Default:** `unset (uses config DNS = line)`
+
+#### `WIREGUARD_DISABLE_IPV6`
+
+Strip IPv6 Address/AllowedIPs/DNS from the tunnel config before wg-quick (many container kernels lack the ip6tables raw table wg-quick needs) and remove IPv6 as a leak surface.
+
+- **Type:** boolean
+- **Default:** `true`
+
+#### `WIREGUARD_ALLOW_IPV6_LEAK`
+
+Escape hatch: continue startup even when an IPv6 kill-switch cannot be installed AND IPv6 cannot be disabled. Only set when the container has no IPv6 connectivity, as IPv6 egress may otherwise bypass the tunnel.
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `WIREGUARD_STALE_AFTER`
+
+Seconds since the last WireGuard handshake before the healthcheck bounces the tunnel.
+
+- **Type:** number
+- **Default:** `180`
 
 </details>
 

@@ -263,13 +263,8 @@ def test_entrypoint_rejects_wireguard_in_non_root_mode(tmp_path):
     result, _, _, _ = _run_entrypoint(tmp_path, extra_env={"USING_WIREGUARD": "true"})
 
     assert result.returncode == 1
-    assert (
-        "USING_WIREGUARD=true requires the container to start as root." in result.stderr
-    )
-    assert (
-        "Non-root mode skips the privileged network setup WireGuard depends on."
-        in result.stderr
-    )
+    assert "USING_WIREGUARD=true requires the container to start as root." in result.stderr
+    assert "Non-root mode skips the privileged network setup WireGuard depends on." in result.stderr
 
 
 def test_entrypoint_rejects_tor_and_wireguard_together(tmp_path):

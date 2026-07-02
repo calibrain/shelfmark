@@ -238,6 +238,107 @@ def _generate_bootstrap_env_docs() -> list[str]:
     return lines
 
 
+def _generate_egress_env_docs() -> list[str]:
+    """Generate documentation for VPN/Tor egress environment variables.
+
+    These are startup-only variables consumed by entrypoint.sh / wireguard.sh
+    (before and outside the settings registry) to select and configure the
+    transparent-egress kill-switch. `USING_TOR` has a registry-backed entry
+    under Network and is cross-referenced rather than repeated here so the two
+    mutually exclusive egress modes are discoverable side by side without
+    emitting a duplicate `#### USING_TOR` anchor.
+    """
+    egress_vars = [
+        {
+            "name": "USING_WIREGUARD",
+            "description": "Route all traffic through a WireGuard VPN tunnel with a fail-closed iptables kill-switch (non-tunnel egress is dropped). Requires root startup and NET_ADMIN (plus NET_RAW). Mutually exclusive with USING_TOR.",
+            "type": "boolean",
+            "default": "false",
+        },
+        {
+            "name": "WIREGUARD_CONFIG",
+            "description": "Path to the mounted wg-quick configuration file.",
+            "type": "string (path)",
+            "default": "/config/wg0.conf",
+        },
+        {
+            "name": "WIREGUARD_INTERFACE",
+            "description": "WireGuard interface name brought up by wg-quick.",
+            "type": "string",
+            "default": "wg0",
+        },
+        {
+            "name": "LAN_NETWORK",
+            "description": "Comma-separated CIDRs kept off the tunnel so the WebUI and internal download clients (Prowlarr, qBittorrent) stay reachable.",
+            "type": "string (comma-separated)",
+            "default": "127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16",
+        },
+        {
+            "name": "WIREGUARD_ENFORCE_DNS",
+            "description": "Force /etc/resolv.conf to a defined resolver (WIREGUARD_DNS, else the config's DNS = line) so lookups do not use the container's inherited resolver. Fails closed if no resolver is defined or /etc/resolv.conf is not writable.",
+            "type": "boolean",
+            "default": "true",
+        },
+        {
+            "name": "WIREGUARD_DNS",
+            "description": "Explicit resolver(s) (comma/space separated) to pin into /etc/resolv.conf when WIREGUARD_ENFORCE_DNS is true. Use when the VPN's pushed DNS filters domains you need; point it at a resolver reachable via the tunnel or an allowed LAN resolver.",
+            "type": "string (comma-separated)",
+            "default": "unset (uses config DNS = line)",
+        },
+        {
+            "name": "WIREGUARD_DISABLE_IPV6",
+            "description": "Strip IPv6 Address/AllowedIPs/DNS from the tunnel config before wg-quick (many container kernels lack the ip6tables raw table wg-quick needs) and remove IPv6 as a leak surface.",
+            "type": "boolean",
+            "default": "true",
+        },
+        {
+            "name": "WIREGUARD_ALLOW_IPV6_LEAK",
+            "description": "Escape hatch: continue startup even when an IPv6 kill-switch cannot be installed AND IPv6 cannot be disabled. Only set when the container has no IPv6 connectivity, as IPv6 egress may otherwise bypass the tunnel.",
+            "type": "boolean",
+            "default": "false",
+        },
+        {
+            "name": "WIREGUARD_STALE_AFTER",
+            "description": "Seconds since the last WireGuard handshake before the healthcheck bounces the tunnel.",
+            "type": "number",
+            "default": "180",
+        },
+    ]
+
+    lines = [
+        "## Egress / VPN Routing",
+        "",
+        "These startup-only variables are consumed by `entrypoint.sh` / `wireguard.sh` to select and configure the WireGuard transparent-egress kill-switch. `USING_WIREGUARD` and [`USING_TOR`](#using_tor) (documented under Network) are mutually exclusive; both require root startup.",
+        "",
+        "| Variable | Description | Type | Default |",
+        "|----------|-------------|------|---------|",
+    ]
+
+    lines.extend(
+        f"| `{var['name']}` | {var['description']} | {var['type']} | `{var['default']}` |"
+        for var in egress_vars
+    )
+
+    lines.append("")
+    lines.append("<details>")
+    lines.append("<summary>Detailed descriptions</summary>")
+    lines.append("")
+
+    for var in egress_vars:
+        lines.append(f"#### `{var['name']}`")
+        lines.append("")
+        lines.append(var["description"])
+        lines.append("")
+        lines.append(f"- **Type:** {var['type']}")
+        lines.append(f"- **Default:** `{var['default']}`")
+        lines.append("")
+
+    lines.append("</details>")
+    lines.append("")
+
+    return lines
+
+
 def generate_env_docs() -> str:
     """Generate markdown documentation for all environment variables."""
     # Import settings modules to ensure all settings are registered
@@ -282,6 +383,7 @@ def generate_env_docs() -> str:
     # Generate TOC
     toc_entries = [
         "- [Bootstrap Configuration](#bootstrap-configuration)",
+        "- [Egress / VPN Routing](#egress--vpn-routing)",
     ]
 
     # Ungrouped tabs first
@@ -306,6 +408,9 @@ def generate_env_docs() -> str:
 
     # Add bootstrap environment variables documentation
     lines.extend(_generate_bootstrap_env_docs())
+
+    # Add egress / VPN routing (startup-only, shell-driven) documentation
+    lines.extend(_generate_egress_env_docs())
 
     # Generate documentation for ungrouped tabs
     for tab in grouped_tabs.get(None, []):
