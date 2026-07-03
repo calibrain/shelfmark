@@ -296,13 +296,26 @@ sync_endpoint_chain() {
     local endpoints ep ep_port ep_host ep_ip seen_v4=" " seen_v6=" " key
 
     # --- IPv4 chain: ensure exists, ensure OUTPUT jumps to it, then flush. ---
-    iptables -nL "$EP_CHAIN" >/dev/null 2>&1 || iptables -N "$EP_CHAIN" 2>/dev/null || true
-    iptables -C OUTPUT -j "$EP_CHAIN" 2>/dev/null || iptables -I OUTPUT 1 -j "$EP_CHAIN" 2>/dev/null || true
-    iptables -F "$EP_CHAIN" 2>/dev/null || true
+    # These are FATAL on genuine failure (not just warned): if the chain can't
+    # be created, the OUTPUT jump can't be installed, or the flush fails, the
+    # kill-switch has no path for the encrypted WireGuard UDP transport to reach
+    # the peer, so the tunnel could never handshake and we'd surface a confusing
+    # generic handshake timeout later instead of the real cause. The container
+    # exits fail-closed (OUTPUT default-DROP stays in force). The `-nL`/`-C`
+    # guards keep the idempotent "already exists" path non-fatal.
+    iptables -nL "$EP_CHAIN" >/dev/null 2>&1 || iptables -N "$EP_CHAIN" 2>/dev/null \
+        || { echo "[✗] Failed to create iptables chain $EP_CHAIN (missing NET_ADMIN / iptables error); refusing to continue." >&2; exit 1; }
+    iptables -C OUTPUT -j "$EP_CHAIN" 2>/dev/null || iptables -I OUTPUT 1 -j "$EP_CHAIN" 2>/dev/null \
+        || { echo "[✗] Failed to install OUTPUT jump to $EP_CHAIN; refusing to continue (tunnel transport would be blocked)." >&2; exit 1; }
+    iptables -F "$EP_CHAIN" 2>/dev/null \
+        || { echo "[✗] Failed to flush iptables chain $EP_CHAIN; refusing to continue." >&2; exit 1; }
     if [ "$IP6TABLES_OK" = "true" ]; then
-        ip6tables -nL "$EP_CHAIN" >/dev/null 2>&1 || ip6tables -N "$EP_CHAIN" 2>/dev/null || true
-        ip6tables -C OUTPUT -j "$EP_CHAIN" 2>/dev/null || ip6tables -I OUTPUT 1 -j "$EP_CHAIN" 2>/dev/null || true
-        ip6tables -F "$EP_CHAIN" 2>/dev/null || true
+        ip6tables -nL "$EP_CHAIN" >/dev/null 2>&1 || ip6tables -N "$EP_CHAIN" 2>/dev/null \
+            || { echo "[✗] Failed to create ip6tables chain $EP_CHAIN; refusing to continue." >&2; exit 1; }
+        ip6tables -C OUTPUT -j "$EP_CHAIN" 2>/dev/null || ip6tables -I OUTPUT 1 -j "$EP_CHAIN" 2>/dev/null \
+            || { echo "[✗] Failed to install ip6tables OUTPUT jump to $EP_CHAIN; refusing to continue." >&2; exit 1; }
+        ip6tables -F "$EP_CHAIN" 2>/dev/null \
+            || { echo "[✗] Failed to flush ip6tables chain $EP_CHAIN; refusing to continue." >&2; exit 1; }
     fi
 
     # `wg show <if> endpoints` prints "<pubkey>\t<host:port>" per peer, or
