@@ -297,8 +297,11 @@ sync_endpoint_chain() {
         case "$ep_port" in ''|*[!0-9]*) continue ;; esac
         [ -z "$ep_host" ] && continue
         if printf '%s' "$ep_host" | grep -q ':'; then
-            # IPv6 endpoint -> ip6tables. Strip the [] brackets for -d.
-            ep_ip="${ep_host#[}"; ep_ip="${ep_ip%]}"
+            # IPv6 endpoint -> ip6tables. Strip the surrounding [ ] brackets
+            # for -d. Backslash-escape the bracket in the pattern so it is an
+            # unambiguous literal '[' / ']' (not a glob character class) and
+            # doesn't trip shell linters.
+            ep_ip="${ep_host#\[}"; ep_ip="${ep_ip%\]}"
             key="${ep_ip}/${ep_port}"
             case "$seen_v6" in *" $key "*) continue ;; esac
             seen_v6="${seen_v6}${key} "
@@ -634,7 +637,10 @@ refresh_endpoint_rules() {
         case "$ep_port" in ''|*[!0-9]*) continue ;; esac
         [ -z "$ep_host" ] && continue
         if printf '%s' "$ep_host" | grep -q ':'; then
-            ep_ip="${ep_host#[}"; ep_ip="${ep_ip%]}"
+            # Strip the surrounding [ ] brackets from an IPv6 endpoint for -d;
+            # backslash-escape the bracket so the pattern is an unambiguous
+            # literal, not a glob character class (mirrors sync_endpoint_chain).
+            ep_ip="${ep_host#\[}"; ep_ip="${ep_ip%\]}"
             key="${ep_ip}/${ep_port}"
             case "$seen_v6" in *" $key "*) continue ;; esac
             seen_v6="${seen_v6}${key} "
