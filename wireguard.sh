@@ -56,6 +56,42 @@ is_truthy() {
     esac
 }
 
+# Validate that a token is a literal IPv4 address (four 0-255 octets). Used to
+# sanitise resolver entries before writing them to /etc/resolv.conf so a stray
+# comment/hostname/malformed token can't produce a bogus `nameserver` line that
+# silently breaks name resolution.
+is_ipv4() {
+    local ip="$1" o1 o2 o3 o4
+    case "$ip" in
+        *[!0-9.]*) return 1 ;;
+    esac
+    IFS='.' read -r o1 o2 o3 o4 _extra <<< "$ip" || true
+    [ -n "$o1" ] && [ -n "$o2" ] && [ -n "$o3" ] && [ -n "$o4" ] || return 1
+    [ -z "${_extra:-}" ] || return 1
+    for o in "$o1" "$o2" "$o3" "$o4"; do
+        # Reject empty, non-numeric already excluded above; enforce 0-255 and no
+        # leading-zero ambiguity beyond a single 0.
+        case "$o" in ''|*[!0-9]*) return 1 ;; esac
+        [ "$o" -ge 0 ] && [ "$o" -le 255 ] || return 1
+    done
+    return 0
+}
+
+# Validate that a token is a literal IPv6 address. Deliberately permissive (hex
+# groups and ':'), but requires at least one ':' and only hex/':' characters, so
+# it accepts real v6 resolvers while still rejecting hostnames/comments.
+is_ipv6() {
+    local ip="$1"
+    case "$ip" in
+        *:*) : ;;
+        *) return 1 ;;
+    esac
+    case "$ip" in
+        *[!0-9A-Fa-f:]*) return 1 ;;
+    esac
+    return 0
+}
+
 ENABLE_LOGGING_VALUE="${ENABLE_LOGGING:-true}"
 
 LOG_DIR=${LOG_ROOT:-/var/log/}/shelfmark
@@ -413,7 +449,8 @@ if [ "$IP6TABLES_OK" = "true" ]; then
     ip6tables -A OUTPUT -o "$WIREGUARD_INTERFACE" -j ACCEPT
     # Mirror the opt-in WebUI-reply exception on IPv6 (default OFF = fail-closed).
     if is_truthy "$WIREGUARD_ALLOW_WEBUI_OFFTUNNEL_VALUE"; then
-        ip6tables -A OUTPUT -p tcp --sport "${FLASK_PORT:-8084}" -m conntrack --ctstate ESTABLISHED --ctdir REPLY -j ACCEPT 2>/dev/null || true
+        ip6tables -A OUTPUT -p tcp --sport "${FLASK_PORT:-8084}" -m conntrack --ctstate ESTABLISHED --ctdir REPLY -j ACCEPT 2>/dev/null \
+            || echo "[!] Could not add IPv6 WebUI reply allow rule (conntrack unavailable?); non-LAN WebUI clients may be unreachable over IPv6"
     fi
 fi
 
@@ -550,7 +587,36 @@ if is_truthy "$WIREGUARD_ENFORCE_DNS_VALUE"; then
             echo "    you have pinned the resolver another way." >&2
             exit 1
         fi
+        # Validate each resolver token as a literal IP before writing it, so a
+        # stray comment/hostname/malformed token in WIREGUARD_DNS or the config
+        # DNS= line can't produce a bogus `nameserver` line (e.g. "nameserver #")
+        # that silently breaks resolution. Reject IPv6 resolvers when IPv6 is
+        # disabled (they'd be unusable). Fail closed if, after validation, no
+        # usable resolver remains — the whole point of enforcement is to avoid
+        # falling back to a leak-prone inherited resolver.
+        _valid_ns=""
         for ns in $DNS_TO_USE; do
+            if is_ipv4 "$ns"; then
+                _valid_ns="$_valid_ns $ns"
+            elif is_ipv6 "$ns"; then
+                if is_truthy "$WIREGUARD_DISABLE_IPV6_VALUE"; then
+                    echo "[!] Ignoring IPv6 resolver '$ns' because WIREGUARD_DISABLE_IPV6=true." >&2
+                else
+                    _valid_ns="$_valid_ns $ns"
+                fi
+            else
+                echo "[!] Ignoring invalid resolver token '$ns' (not a literal IP address)." >&2
+            fi
+        done
+        _valid_ns="$(echo "$_valid_ns" | xargs || true)"
+        if [ -z "$_valid_ns" ]; then
+            echo "[✗] WIREGUARD_ENFORCE_DNS=true but no VALID IP resolver remained after validation (from '$DNS_TO_USE')." >&2
+            echo "    Refusing to run, because an empty/invalid resolv.conf would leak DNS off-tunnel via the" >&2
+            echo "    inherited resolver. Set WIREGUARD_DNS to a literal resolver IP reachable via the tunnel" >&2
+            echo "    or an allowed LAN resolver (or set WIREGUARD_ENFORCE_DNS=false to accept the inherited one)." >&2
+            exit 1
+        fi
+        for ns in $_valid_ns; do
             echo "nameserver $ns" >> /etc/resolv.conf
         done
     else
