@@ -173,6 +173,21 @@ RUN apt-get update && \
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-default-groups --extra browser
 
+# Deterministically resolve the Xlib namespace collision.
+# pyautogui/mouseinfo pull the stale `python3-xlib` (0.15, 2014), while the
+# `--extra browser` set pulls `python-xlib` (0.33). Both packages install into
+# the same top-level `Xlib/` namespace, so whichever lands last wins. When the
+# 2014 build wins, `Xlib.X` is missing `FamilyServerInterpreted`, which the
+# SeleniumBase Pure-CDP driver requires at browser startup -> every bypass fails
+# with "module 'Xlib.X' has no attribute 'FamilyServerInterpreted'" and no
+# Cloudflare/DDoS-Guard protected download can complete. Drop the stale package
+# and force python-xlib 0.33 to own the namespace. pyautogui runs fine against
+# 0.33 (superset API).
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv pip uninstall --python /app/.venv/bin/python python3-xlib && \
+    uv pip install --python /app/.venv/bin/python --reinstall python-xlib==0.33 && \
+    /app/.venv/bin/python -c "import Xlib.X; assert hasattr(Xlib.X, 'FamilyServerInterpreted'), 'Xlib.X.FamilyServerInterpreted missing after fix'; print('Xlib namespace OK:', Xlib.__version__)"
+
 # uv is only needed while building the image.
 RUN rm -f /usr/bin/uv /usr/bin/uvx
 
