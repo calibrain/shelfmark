@@ -416,8 +416,17 @@ fi
 echo "[✓] Kill-switch active (default-drop; egress only via $WIREGUARD_INTERFACE or LAN, IPv4+IPv6)."
 
 # ---------------------------------------------------------------------------
-# DNS enforcement (fail-closed): send resolver traffic through the tunnel.
+# DNS enforcement (fail-closed): pin the resolver so DNS can't silently fall
+# back to an off-tunnel path.
 # ---------------------------------------------------------------------------
+# NOTE: this deliberately does NOT force resolver traffic through the tunnel.
+# The intended model is a trusted LAN resolver kept reachable off-tunnel via
+# LAN_NETWORK (the query leaves over the LAN; the resolver encrypts its own
+# upstream, and the actual download still egresses through the tunnel). It also
+# preserves Docker's embedded resolver (127.0.0.11) when present so container-
+# name resolution keeps working, pinning the embedded resolver's upstream via
+# the container's compose `dns:` list. "Fail-closed" here means: refuse to run
+# rather than leave an inherited resolver that could leak queries off-tunnel.
 if is_truthy "$WIREGUARD_ENFORCE_DNS_VALUE"; then
     # Prefer an explicit override; fall back to the tunnel config's DNS.
     DNS_TO_USE="${WIREGUARD_DNS:-$WG_DNS}"
