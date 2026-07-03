@@ -9,7 +9,10 @@ services:
     image: ghcr.io/calibrain/shelfmark:latest
     environment:
       FLASK_PORT: 8084
-      USING_WIREGUARD: true
+      # Quoted so it is passed as the literal string "true": entrypoint.sh compares
+      # $USING_WIREGUARD against "true", and some Compose implementations stringify
+      # a bare YAML boolean as "True", which would silently NOT enable WireGuard.
+      USING_WIREGUARD: "true"
       # Path to the mounted wg-quick config (default shown).
       WIREGUARD_CONFIG: /config/wg0.conf
       # CIDRs kept OFF the tunnel so the WebUI and internal clients stay reachable.

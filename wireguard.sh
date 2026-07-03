@@ -36,6 +36,18 @@
 #                      the ip6tables 'raw' table wg-quick needs, and IPv6 egress
 #                      would be an additional leak surface. Set false only if the
 #                      host exposes ip6tables and you explicitly want IPv6.
+#   WIREGUARD_ALLOW_WEBUI_OFFTUNNEL  when false (default), the kill-switch is
+#                      strictly fail-closed: the only off-tunnel egress is
+#                      loopback, the tunnel device and the LAN allowlist. Set true
+#                      ONLY if a NON-LAN client (e.g. a public reverse proxy on a
+#                      different segment) must reach the WebUI; it permits
+#                      app-server REPLY packets (--sport FLASK_PORT, conntrack
+#                      REPLY) to leave off-tunnel. This is server replies only,
+#                      never client-initiated egress, so it cannot leak outbound
+#                      browsing/downloads or the real IP for outbound requests —
+#                      but it is still an off-tunnel path while the tunnel is down,
+#                      hence opt-in. LAN WebUI clients never need it (covered by
+#                      LAN_NETWORK).
 
 is_truthy() {
     case "${1,,}" in
@@ -70,6 +82,14 @@ WIREGUARD_CONFIG="${WIREGUARD_CONFIG:-/config/wg0.conf}"
 WIREGUARD_INTERFACE="${WIREGUARD_INTERFACE:-wg0}"
 WIREGUARD_ENFORCE_DNS_VALUE="${WIREGUARD_ENFORCE_DNS:-true}"
 WIREGUARD_DISABLE_IPV6_VALUE="${WIREGUARD_DISABLE_IPV6:-true}"
+# Off-tunnel WebUI reachability is OPT-IN. When false (default), the kill-switch
+# is strictly fail-closed: the ONLY off-tunnel egress permitted is loopback, the
+# tunnel device, and the LAN allowlist. Set true only if you expose the WebUI to
+# a NON-LAN client (e.g. a public reverse proxy on a different segment) and
+# accept that server-reply packets on the app port may leave off-tunnel while
+# the tunnel is down. LAN clients never need this (they are covered by
+# LAN_NETWORK). See the WebUI-reply rule below.
+WIREGUARD_ALLOW_WEBUI_OFFTUNNEL_VALUE="${WIREGUARD_ALLOW_WEBUI_OFFTUNNEL:-false}"
 
 echo "Build version: $BUILD_VERSION"
 echo "Release version: $RELEASE_VERSION"
@@ -353,16 +373,24 @@ iptables -P OUTPUT DROP
 iptables -F OUTPUT
 iptables -A OUTPUT -o lo -j ACCEPT
 iptables -A OUTPUT -o "$WIREGUARD_INTERFACE" -j ACCEPT
-# WebUI reply traffic ONLY: allow established replies FROM the app's server port
-# so non-LAN clients (e.g. a public reverse proxy) can reach the WebUI. This is
-# deliberately NOT a blanket `ESTABLISHED,RELATED` rule: a blanket rule would let
-# an app-INITIATED download that was established over the tunnel keep egressing
-# off the physical NIC during a tunnel bounce (when wg-quick tears down the wg0
-# default route), leaking the real IP. Scoping to --sport <FLASK_PORT> permits
-# only server replies, never client-initiated egress. LAN client replies are
-# already covered by the LAN allowlist below.
-iptables -A OUTPUT -p tcp --sport "${FLASK_PORT:-8084}" -m conntrack --ctstate ESTABLISHED --ctdir REPLY -j ACCEPT 2>/dev/null \
-    || echo "[!] Could not add WebUI reply allow rule (conntrack unavailable?); non-LAN WebUI clients may be unreachable"
+# WebUI reply traffic (OPT-IN, default OFF): allow established replies FROM the
+# app's server port so a NON-LAN client (e.g. a public reverse proxy on another
+# segment) can reach the WebUI. This is an explicit exception to the strict
+# "all non-LAN egress must leave via the tunnel or be dropped" invariant: while
+# the tunnel is down these server-reply packets could egress off the physical
+# NIC. It can only ever be app-server REPLIES (scoped to --sport <FLASK_PORT> +
+# conntrack REPLY), never client-initiated egress, so it cannot leak browsing/
+# download activity or the real IP for outbound requests — but it is still an
+# off-tunnel path, so it is gated behind WIREGUARD_ALLOW_WEBUI_OFFTUNNEL. LAN
+# clients never need this (they are covered by the LAN allowlist below), so the
+# default (false) keeps the kill-switch strictly fail-closed for non-LAN egress.
+if is_truthy "$WIREGUARD_ALLOW_WEBUI_OFFTUNNEL_VALUE"; then
+    iptables -A OUTPUT -p tcp --sport "${FLASK_PORT:-8084}" -m conntrack --ctstate ESTABLISHED --ctdir REPLY -j ACCEPT 2>/dev/null \
+        || echo "[!] Could not add WebUI reply allow rule (conntrack unavailable?); non-LAN WebUI clients may be unreachable"
+    echo "[*] WIREGUARD_ALLOW_WEBUI_OFFTUNNEL=true: permitting off-tunnel WebUI server replies (--sport ${FLASK_PORT:-8084})."
+else
+    echo "[*] Off-tunnel WebUI replies disabled (default): non-LAN egress is strictly fail-closed. Set WIREGUARD_ALLOW_WEBUI_OFFTUNNEL=true if a non-LAN reverse proxy must reach the WebUI."
+fi
 
 # --- IPv6 kill-switch (fail closed) ---
 if [ "$IP6TABLES_OK" = "true" ]; then
@@ -370,7 +398,10 @@ if [ "$IP6TABLES_OK" = "true" ]; then
     ip6tables -F OUTPUT
     ip6tables -A OUTPUT -o lo -j ACCEPT
     ip6tables -A OUTPUT -o "$WIREGUARD_INTERFACE" -j ACCEPT
-    ip6tables -A OUTPUT -p tcp --sport "${FLASK_PORT:-8084}" -m conntrack --ctstate ESTABLISHED --ctdir REPLY -j ACCEPT 2>/dev/null || true
+    # Mirror the opt-in WebUI-reply exception on IPv6 (default OFF = fail-closed).
+    if is_truthy "$WIREGUARD_ALLOW_WEBUI_OFFTUNNEL_VALUE"; then
+        ip6tables -A OUTPUT -p tcp --sport "${FLASK_PORT:-8084}" -m conntrack --ctstate ESTABLISHED --ctdir REPLY -j ACCEPT 2>/dev/null || true
+    fi
 fi
 
 apply_endpoint_rules

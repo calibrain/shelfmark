@@ -9,8 +9,11 @@ services:
       dockerfile: Dockerfile
       target: shelfmark
     environment:
-      DEBUG: true
-      USING_WIREGUARD: true
+      # Quoted so they are passed as the literal string "true" (entrypoint.sh and
+      # the app compare against "true"); a bare YAML boolean can be stringified as
+      # "True" by some Compose variants, silently disabling the feature.
+      DEBUG: "true"
+      USING_WIREGUARD: "true"
       WIREGUARD_CONFIG: /config/wg0.conf
     volumes:
       - ./.local/config:/config

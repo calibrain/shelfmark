@@ -160,6 +160,7 @@ These startup-only variables are consumed by `entrypoint.sh` / `wireguard.sh` to
 | `WIREGUARD_DNS` | Explicit resolver(s) (comma/space separated) to pin when WIREGUARD_ENFORCE_DNS is true and Docker's embedded resolver is NOT in use. Use when the VPN's pushed DNS filters domains you need; point it at a resolver reachable via the tunnel or an allowed LAN resolver. NOTE: when the embedded resolver (127.0.0.11) is present it is preserved and this value cannot repoint its upstream from inside the container — set the container's compose dns: list to the trusted resolver instead. | string (comma-separated) | `unset (uses config DNS = line)` |
 | `WIREGUARD_DISABLE_IPV6` | Strip IPv6 Address/AllowedIPs/DNS from the tunnel config before wg-quick (many container kernels lack the ip6tables raw table wg-quick needs) and remove IPv6 as a leak surface. | boolean | `true` |
 | `WIREGUARD_ALLOW_IPV6_LEAK` | Escape hatch: continue startup even when an IPv6 kill-switch cannot be installed AND IPv6 cannot be disabled. Only set when the container has no IPv6 connectivity, as IPv6 egress may otherwise bypass the tunnel. | boolean | `false` |
+| `WIREGUARD_ALLOW_WEBUI_OFFTUNNEL` | When false (default) the kill-switch is strictly fail-closed: the only off-tunnel egress permitted is loopback, the tunnel device and the LAN allowlist. Set true only if a NON-LAN client (e.g. a public reverse proxy on a different segment) must reach the WebUI; it permits app-server REPLY packets (--sport FLASK_PORT, conntrack REPLY) to leave off-tunnel. Server replies only, never client-initiated egress, so it cannot leak outbound browsing/downloads or the real IP for outbound requests, but it is still an off-tunnel path while the tunnel is down, hence opt-in. LAN WebUI clients never need it (covered by LAN_NETWORK). | boolean | `false` |
 | `WIREGUARD_STALE_AFTER` | Seconds since the last WireGuard handshake before the healthcheck bounces the tunnel. | number | `180` |
 
 <details>
@@ -217,6 +218,13 @@ Strip IPv6 Address/AllowedIPs/DNS from the tunnel config before wg-quick (many c
 #### `WIREGUARD_ALLOW_IPV6_LEAK`
 
 Escape hatch: continue startup even when an IPv6 kill-switch cannot be installed AND IPv6 cannot be disabled. Only set when the container has no IPv6 connectivity, as IPv6 egress may otherwise bypass the tunnel.
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `WIREGUARD_ALLOW_WEBUI_OFFTUNNEL`
+
+When false (default) the kill-switch is strictly fail-closed: the only off-tunnel egress permitted is loopback, the tunnel device and the LAN allowlist. Set true only if a NON-LAN client (e.g. a public reverse proxy on a different segment) must reach the WebUI; it permits app-server REPLY packets (--sport FLASK_PORT, conntrack REPLY) to leave off-tunnel. Server replies only, never client-initiated egress, so it cannot leak outbound browsing/downloads or the real IP for outbound requests, but it is still an off-tunnel path while the tunnel is down, hence opt-in. LAN WebUI clients never need it (covered by LAN_NETWORK).
 
 - **Type:** boolean
 - **Default:** `false`

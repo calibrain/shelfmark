@@ -298,6 +298,12 @@ def _generate_egress_env_docs() -> list[str]:
             "default": "false",
         },
         {
+            "name": "WIREGUARD_ALLOW_WEBUI_OFFTUNNEL",
+            "description": "When false (default) the kill-switch is strictly fail-closed: the only off-tunnel egress permitted is loopback, the tunnel device and the LAN allowlist. Set true only if a NON-LAN client (e.g. a public reverse proxy on a different segment) must reach the WebUI; it permits app-server REPLY packets (--sport FLASK_PORT, conntrack REPLY) to leave off-tunnel. Server replies only, never client-initiated egress, so it cannot leak outbound browsing/downloads or the real IP for outbound requests, but it is still an off-tunnel path while the tunnel is down, hence opt-in. LAN WebUI clients never need it (covered by LAN_NETWORK).",
+            "type": "boolean",
+            "default": "false",
+        },
+        {
             "name": "WIREGUARD_STALE_AFTER",
             "description": "Seconds since the last WireGuard handshake before the healthcheck bounces the tunnel.",
             "type": "number",
