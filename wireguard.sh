@@ -671,7 +671,23 @@ echo "[*] Starting Supervisor..."
 echo "[*] Waiting for first WireGuard handshake (up to 60s)..."
 HANDSHAKE_TIMEOUT=60
 HANDSHAKE_START=$(date +%s)
+# WireGuard only performs a handshake when the kernel actually has a packet to
+# send over the tunnel (or every PersistentKeepalive interval). A config without
+# PersistentKeepalive and with no app traffic yet would never handshake, so this
+# passive poll could time out and abort a perfectly healthy tunnel. Emit a tiny
+# best-effort probe toward a public address routed INTO the tunnel (AllowedIPs=
+# 0.0.0.0/0 -> fwmark default; kill-switch already permits -o wg0), which gives
+# the kernel something to send and triggers the initial handshake. The probe
+# target need not reply; the outbound attempt alone initiates the handshake.
+wg_handshake_probe() {
+    # Prefer ping (cheapest, no DNS); fall back to a curl to a bare IP so we do
+    # not depend on DNS being up yet. Both are best-effort and fully silenced.
+    ping -c 1 -W 1 -I "$WIREGUARD_INTERFACE" 1.1.1.1 >/dev/null 2>&1 \
+        || curl -s --max-time 3 -o /dev/null "https://1.1.1.1" >/dev/null 2>&1 \
+        || true
+}
 while true; do
+    wg_handshake_probe
     HS="$(wg show "$WIREGUARD_INTERFACE" latest-handshakes 2>/dev/null | awk '{print $2}' | sort -nr | head -n1)"
     if [ -n "$HS" ] && [ "$HS" != "0" ]; then
         echo "[✓] WireGuard handshake established."
