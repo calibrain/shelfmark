@@ -303,8 +303,24 @@ sync_endpoint_chain() {
             case "$seen_v6" in *" $key "*) continue ;; esac
             seen_v6="${seen_v6}${key} "
             if [ "$IP6TABLES_OK" = "true" ]; then
+                # A failure to add the endpoint allow rule is FATAL at startup:
+                # without it the kill-switch (default-DROP) blocks the encrypted
+                # WireGuard transport to this peer, so the tunnel can never
+                # handshake. Fail fast with a clear cause instead of surfacing a
+                # generic handshake timeout later. Still fail-closed (no leak).
                 ip6tables -A "$EP_CHAIN" -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
-                    || echo "[!] Could not add IPv6 endpoint allow rule for ${ep_ip} udp/$ep_port"
+                    || { echo "[✗] Failed to add IPv6 endpoint allow rule for ${ep_ip} udp/$ep_port." >&2; \
+                         echo "    The kill-switch would block the WireGuard transport to this peer; refusing to continue." >&2; \
+                         exit 1; }
+            else
+                # IPv6 endpoint but no usable ip6tables: the IPv6 kill-switch
+                # cannot permit the encrypted transport to the peer, so the
+                # tunnel would never handshake. Fail fast with the real cause.
+                echo "[✗] WireGuard peer endpoint is IPv6 (${ep_ip}) but ip6tables is unavailable in this kernel." >&2
+                echo "    The IPv6 kill-switch cannot allow the encrypted transport to the peer, so the tunnel" >&2
+                echo "    would never establish. Fix by running on a kernel with a usable ip6tables, or by" >&2
+                echo "    using an IPv4 WireGuard endpoint." >&2
+                exit 1
             fi
         else
             # IPv4 endpoint -> iptables.
@@ -312,8 +328,12 @@ sync_endpoint_chain() {
             key="${ep_ip}/${ep_port}"
             case "$seen_v4" in *" $key "*) continue ;; esac
             seen_v4="${seen_v4}${key} "
+            # As above: a failed add would strand the tunnel behind the kill-
+            # switch. Fatal at startup, with the real cause.
             iptables -A "$EP_CHAIN" -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
-                || echo "[!] Could not add IPv4 endpoint allow rule for ${ep_ip} udp/$ep_port"
+                || { echo "[✗] Failed to add IPv4 endpoint allow rule for ${ep_ip} udp/$ep_port." >&2; \
+                     echo "    The kill-switch would block the WireGuard transport to this peer; refusing to continue." >&2; \
+                     exit 1; }
         fi
     done
 }
@@ -563,6 +583,19 @@ latest_handshake_epoch() {
         | awk '{print $2}' | sort -nr | head -n1
 }
 
+# Force a handshake by giving the kernel a packet to send over the tunnel. On an
+# IDLE tunnel without PersistentKeepalive, WireGuard does not rehandshake, so
+# latest-handshake legitimately ages out even though the tunnel is healthy.
+# Probing before judging staleness avoids bouncing a healthy-but-idle tunnel.
+# Best-effort and fully silenced: ping bound to the wg dev (encrypted into the
+# tunnel or dropped by the kill-switch — never leaks), curl fallback to a bare
+# IP so it needs no DNS; both cannot abort the loop.
+hc_handshake_probe() {
+    ping -c 1 -W 1 -I "$WIREGUARD_INTERFACE" 1.1.1.1 >/dev/null 2>&1 \
+        || curl -s --max-time 3 -o /dev/null "https://1.1.1.1" >/dev/null 2>&1 \
+        || true
+}
+
 # Re-open the WireGuard endpoint(s) in the kill-switch from the LIVE interface.
 # The endpoint allow rules are first derived at startup, but a provider IP
 # rotation or NAT rebinding can change the peer endpoint later. We pin each rule
@@ -639,10 +672,29 @@ while true; do
     if [ "$AGE" -le "$STALE_AFTER" ]; then
         FAIL_COUNT=0
     else
-        FAIL_COUNT=$((FAIL_COUNT + 1))
-        # Clamp so the counter can't grow unbounded across a long outage.
-        [ "$FAIL_COUNT" -gt 3 ] && FAIL_COUNT=3
-        echo "$(date): WireGuard handshake stale (age=${AGE}s, fail=${FAIL_COUNT})"
+        # Stale handshake — but on an idle tunnel without PersistentKeepalive the
+        # handshake ages out legitimately. Force a handshake with a probe and
+        # re-evaluate AGE before counting this as a failure, so a healthy-but-
+        # idle tunnel is not bounced every few minutes (needless churn + noisy
+        # logs). A genuinely dead tunnel won't handshake, so AGE stays stale and
+        # the failure still accrues -> real outages are still detected.
+        hc_handshake_probe
+        sleep 3
+        HS="$(latest_handshake_epoch)"
+        NOW="$(date +%s)"
+        if [ -z "$HS" ] || [ "$HS" = "0" ]; then
+            AGE=99999
+        else
+            AGE=$((NOW - HS))
+        fi
+        if [ "$AGE" -le "$STALE_AFTER" ]; then
+            FAIL_COUNT=0
+        else
+            FAIL_COUNT=$((FAIL_COUNT + 1))
+            # Clamp so the counter can't grow unbounded across a long outage.
+            [ "$FAIL_COUNT" -gt 3 ] && FAIL_COUNT=3
+            echo "$(date): WireGuard handshake stale after probe (age=${AGE}s, fail=${FAIL_COUNT})"
+        fi
     fi
 
     if [ "$FAIL_COUNT" -ge 3 ]; then
