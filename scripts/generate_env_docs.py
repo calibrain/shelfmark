@@ -275,13 +275,13 @@ def _generate_egress_env_docs() -> list[str]:
         },
         {
             "name": "WIREGUARD_ENFORCE_DNS",
-            "description": "Force /etc/resolv.conf to a defined resolver (WIREGUARD_DNS, else the config's DNS = line) so lookups do not use the container's inherited resolver. Fails closed if no resolver is defined or /etc/resolv.conf is not writable.",
+            "description": "Pin the container's resolver so DNS cannot silently fall back to an off-tunnel path. The resolver used is WIREGUARD_DNS if set, else the tunnel config's DNS = line. This does NOT force queries through the tunnel: it is designed for a trusted LAN resolver kept reachable off-tunnel via LAN_NETWORK (the query leaves over the LAN; the resolver encrypts upstream while the download still egresses via the tunnel). Special case: when Docker's embedded resolver (nameserver 127.0.0.11) is present, it is PRESERVED so container-name resolution (e.g. prowlarr, qbittorrent) keeps working, and the embedded resolver's upstream must be pinned via the container's compose dns: list. Fails closed (refuses to start) only when no embedded resolver is present AND no resolver is defined, or /etc/resolv.conf is not writable.",
             "type": "boolean",
             "default": "true",
         },
         {
             "name": "WIREGUARD_DNS",
-            "description": "Explicit resolver(s) (comma/space separated) to pin into /etc/resolv.conf when WIREGUARD_ENFORCE_DNS is true. Use when the VPN's pushed DNS filters domains you need; point it at a resolver reachable via the tunnel or an allowed LAN resolver.",
+            "description": "Explicit resolver(s) (comma/space separated) to pin when WIREGUARD_ENFORCE_DNS is true and Docker's embedded resolver is NOT in use. Use when the VPN's pushed DNS filters domains you need; point it at a resolver reachable via the tunnel or an allowed LAN resolver. NOTE: when the embedded resolver (127.0.0.11) is present it is preserved and this value cannot repoint its upstream from inside the container — set the container's compose dns: list to the trusted resolver instead.",
             "type": "string (comma-separated)",
             "default": "unset (uses config DNS = line)",
         },

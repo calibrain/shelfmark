@@ -260,8 +260,31 @@ fi
 # rotation self-heals on recovery without ever leaving a wildcard-port hole.
 # Rules are de-duplicated by IP+port; this function is idempotent and
 # re-runnable after a bounce.
-apply_endpoint_rules() {
+# Endpoint allow rules live in their OWN chain (SHELFMARK_WG_EP) that is
+# FLUSHED and repopulated from the live interface on every call. This is the
+# key difference from a plain `-A OUTPUT` approach: if the VPN provider rotates
+# the peer endpoint IP/port, the stale allow rule for the OLD endpoint would
+# otherwise persist forever (an off-tunnel UDP hole to a no-longer-used dest)
+# and the OUTPUT chain would grow unbounded across rotations. By flushing the
+# dedicated chain each sync, ONLY the current live endpoint(s) are ever
+# permitted, so the "only WireGuard transport to the current peer may leave
+# off-tunnel" guarantee holds and the ruleset stays bounded. The OUTPUT jump to
+# the chain is installed once (idempotent via -C) ahead of the trailing DROP.
+EP_CHAIN="SHELFMARK_WG_EP"
+
+sync_endpoint_chain() {
     local endpoints ep ep_port ep_host ep_ip seen_v4=" " seen_v6=" " key
+
+    # --- IPv4 chain: ensure exists, ensure OUTPUT jumps to it, then flush. ---
+    iptables -nL "$EP_CHAIN" >/dev/null 2>&1 || iptables -N "$EP_CHAIN" 2>/dev/null || true
+    iptables -C OUTPUT -j "$EP_CHAIN" 2>/dev/null || iptables -I OUTPUT 1 -j "$EP_CHAIN" 2>/dev/null || true
+    iptables -F "$EP_CHAIN" 2>/dev/null || true
+    if [ "$IP6TABLES_OK" = "true" ]; then
+        ip6tables -nL "$EP_CHAIN" >/dev/null 2>&1 || ip6tables -N "$EP_CHAIN" 2>/dev/null || true
+        ip6tables -C OUTPUT -j "$EP_CHAIN" 2>/dev/null || ip6tables -I OUTPUT 1 -j "$EP_CHAIN" 2>/dev/null || true
+        ip6tables -F "$EP_CHAIN" 2>/dev/null || true
+    fi
+
     # `wg show <if> endpoints` prints "<pubkey>\t<host:port>" per peer, or
     # "<pubkey>\t(none)" for a peer with no endpoint yet. Keep only tokens that
     # look like host:port (contain a colon and are not the literal "(none)").
@@ -280,8 +303,7 @@ apply_endpoint_rules() {
             case "$seen_v6" in *" $key "*) continue ;; esac
             seen_v6="${seen_v6}${key} "
             if [ "$IP6TABLES_OK" = "true" ]; then
-                ip6tables -C OUTPUT -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
-                    || ip6tables -A OUTPUT -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
+                ip6tables -A "$EP_CHAIN" -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
                     || echo "[!] Could not add IPv6 endpoint allow rule for ${ep_ip} udp/$ep_port"
             fi
         else
@@ -290,12 +312,14 @@ apply_endpoint_rules() {
             key="${ep_ip}/${ep_port}"
             case "$seen_v4" in *" $key "*) continue ;; esac
             seen_v4="${seen_v4}${key} "
-            iptables -C OUTPUT -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
-                || iptables -A OUTPUT -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
+            iptables -A "$EP_CHAIN" -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
                 || echo "[!] Could not add IPv4 endpoint allow rule for ${ep_ip} udp/$ep_port"
         fi
     done
 }
+
+# Back-compat alias: the startup path historically called apply_endpoint_rules.
+apply_endpoint_rules() { sync_endpoint_chain; }
 
 # --- IPv4 kill-switch ---
 # Set the default policy CLOSED before touching rules, so the chain is fail-
@@ -535,14 +559,31 @@ latest_handshake_epoch() {
 # rotation or NAT rebinding can change the peer endpoint later. We pin each rule
 # to the resolved endpoint destination IP *and* UDP port (not the port alone):
 # a wildcard-port rule would leave an off-tunnel UDP hole to that port during/
-# after a bounce while the tunnel isn't fully up. Re-deriving from the live
-# interface means a rotated endpoint IP is re-permitted on recovery, while
-# everything else stays forced through the tunnel by the default-DROP. Rules are
-# guarded with -C so duplicates never stack, and INSERTed ahead of the DROP.
-# IPv6 hosts have their [] brackets stripped for -d; IPv6 rules only run when
-# ip6tables is usable.
+# after a bounce while the tunnel isn't fully up.
+#
+# Endpoint rules live in a DEDICATED chain (SHELFMARK_WG_EP) that we FLUSH and
+# repopulate from the live interface every cycle. This is deliberately not an
+# additive `-I OUTPUT` scheme: appending/inserting-only would leave the OLD
+# endpoint's allow rule in place forever after a provider rotation (a permanent
+# off-tunnel UDP hole to a dest we no longer use) and grow the chain unbounded.
+# Flushing first means only the CURRENT live endpoint(s) are ever permitted, so
+# a rotated endpoint IP is re-permitted on recovery while the stale one is
+# removed in the same pass, and everything else stays forced through the tunnel
+# by the default-DROP. IPv6 hosts have their [] brackets stripped for -d; IPv6
+# rules only run when ip6tables is usable. Must mirror sync_endpoint_chain in the
+# parent script (this runs in the supervised healthcheck's own process).
+EP_CHAIN="${EP_CHAIN:-SHELFMARK_WG_EP}"
 refresh_endpoint_rules() {
     local eps ep ep_host ep_port ep_ip seen_v4=" " seen_v6=" " key
+    # Ensure the chain exists, OUTPUT jumps to it, then flush stale entries.
+    iptables -nL "$EP_CHAIN" >/dev/null 2>&1 || iptables -N "$EP_CHAIN" 2>/dev/null || true
+    iptables -C OUTPUT -j "$EP_CHAIN" 2>/dev/null || iptables -I OUTPUT 1 -j "$EP_CHAIN" 2>/dev/null || true
+    iptables -F "$EP_CHAIN" 2>/dev/null || true
+    if [ "$IP6TABLES_OK" = "true" ]; then
+        ip6tables -nL "$EP_CHAIN" >/dev/null 2>&1 || ip6tables -N "$EP_CHAIN" 2>/dev/null || true
+        ip6tables -C OUTPUT -j "$EP_CHAIN" 2>/dev/null || ip6tables -I OUTPUT 1 -j "$EP_CHAIN" 2>/dev/null || true
+        ip6tables -F "$EP_CHAIN" 2>/dev/null || true
+    fi
     # Keep only host:port tokens; skip "(none)" and malformed entries.
     eps="$(wg show "$WIREGUARD_INTERFACE" endpoints 2>/dev/null | awk '{print $2}' | grep -F ':' | grep -v '(none)' || true)"
     for ep in $eps; do
@@ -555,15 +596,13 @@ refresh_endpoint_rules() {
             key="${ep_ip}/${ep_port}"
             case "$seen_v6" in *" $key "*) continue ;; esac
             seen_v6="${seen_v6}${key} "
-            [ "$IP6TABLES_OK" = "true" ] && { ip6tables -C OUTPUT -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
-                || ip6tables -I OUTPUT 1 -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null || true; }
+            [ "$IP6TABLES_OK" = "true" ] && ip6tables -A "$EP_CHAIN" -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null || true
         else
             ep_ip="$ep_host"
             key="${ep_ip}/${ep_port}"
             case "$seen_v4" in *" $key "*) continue ;; esac
             seen_v4="${seen_v4}${key} "
-            iptables -C OUTPUT -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null \
-                || iptables -I OUTPUT 1 -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null || true
+            iptables -A "$EP_CHAIN" -d "$ep_ip" -p udp --dport "$ep_port" -j ACCEPT 2>/dev/null || true
         fi
     done
 }

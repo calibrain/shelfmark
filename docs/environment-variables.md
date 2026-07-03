@@ -156,8 +156,8 @@ These startup-only variables are consumed by `entrypoint.sh` / `wireguard.sh` to
 | `WIREGUARD_CONFIG` | Path to the mounted wg-quick configuration file. | string (path) | `/config/wg0.conf` |
 | `WIREGUARD_INTERFACE` | WireGuard interface name brought up by wg-quick. | string | `wg0` |
 | `LAN_NETWORK` | Comma-separated CIDRs kept off the tunnel so the WebUI and internal download clients (Prowlarr, qBittorrent) stay reachable. | string (comma-separated) | `127.0.0.0/8,10.0.0.0/8,172.16.0.0/12,192.168.0.0/16` |
-| `WIREGUARD_ENFORCE_DNS` | Force /etc/resolv.conf to a defined resolver (WIREGUARD_DNS, else the config's DNS = line) so lookups do not use the container's inherited resolver. Fails closed if no resolver is defined or /etc/resolv.conf is not writable. | boolean | `true` |
-| `WIREGUARD_DNS` | Explicit resolver(s) (comma/space separated) to pin into /etc/resolv.conf when WIREGUARD_ENFORCE_DNS is true. Use when the VPN's pushed DNS filters domains you need; point it at a resolver reachable via the tunnel or an allowed LAN resolver. | string (comma-separated) | `unset (uses config DNS = line)` |
+| `WIREGUARD_ENFORCE_DNS` | Pin the container's resolver so DNS cannot silently fall back to an off-tunnel path. The resolver used is WIREGUARD_DNS if set, else the tunnel config's DNS = line. This does NOT force queries through the tunnel: it is designed for a trusted LAN resolver kept reachable off-tunnel via LAN_NETWORK (the query leaves over the LAN; the resolver encrypts upstream while the download still egresses via the tunnel). Special case: when Docker's embedded resolver (nameserver 127.0.0.11) is present, it is PRESERVED so container-name resolution (e.g. prowlarr, qbittorrent) keeps working, and the embedded resolver's upstream must be pinned via the container's compose dns: list. Fails closed (refuses to start) only when no embedded resolver is present AND no resolver is defined, or /etc/resolv.conf is not writable. | boolean | `true` |
+| `WIREGUARD_DNS` | Explicit resolver(s) (comma/space separated) to pin when WIREGUARD_ENFORCE_DNS is true and Docker's embedded resolver is NOT in use. Use when the VPN's pushed DNS filters domains you need; point it at a resolver reachable via the tunnel or an allowed LAN resolver. NOTE: when the embedded resolver (127.0.0.11) is present it is preserved and this value cannot repoint its upstream from inside the container — set the container's compose dns: list to the trusted resolver instead. | string (comma-separated) | `unset (uses config DNS = line)` |
 | `WIREGUARD_DISABLE_IPV6` | Strip IPv6 Address/AllowedIPs/DNS from the tunnel config before wg-quick (many container kernels lack the ip6tables raw table wg-quick needs) and remove IPv6 as a leak surface. | boolean | `true` |
 | `WIREGUARD_ALLOW_IPV6_LEAK` | Escape hatch: continue startup even when an IPv6 kill-switch cannot be installed AND IPv6 cannot be disabled. Only set when the container has no IPv6 connectivity, as IPv6 egress may otherwise bypass the tunnel. | boolean | `false` |
 | `WIREGUARD_STALE_AFTER` | Seconds since the last WireGuard handshake before the healthcheck bounces the tunnel. | number | `180` |
@@ -195,14 +195,14 @@ Comma-separated CIDRs kept off the tunnel so the WebUI and internal download cli
 
 #### `WIREGUARD_ENFORCE_DNS`
 
-Force /etc/resolv.conf to a defined resolver (WIREGUARD_DNS, else the config's DNS = line) so lookups do not use the container's inherited resolver. Fails closed if no resolver is defined or /etc/resolv.conf is not writable.
+Pin the container's resolver so DNS cannot silently fall back to an off-tunnel path. The resolver used is WIREGUARD_DNS if set, else the tunnel config's DNS = line. This does NOT force queries through the tunnel: it is designed for a trusted LAN resolver kept reachable off-tunnel via LAN_NETWORK (the query leaves over the LAN; the resolver encrypts upstream while the download still egresses via the tunnel). Special case: when Docker's embedded resolver (nameserver 127.0.0.11) is present, it is PRESERVED so container-name resolution (e.g. prowlarr, qbittorrent) keeps working, and the embedded resolver's upstream must be pinned via the container's compose dns: list. Fails closed (refuses to start) only when no embedded resolver is present AND no resolver is defined, or /etc/resolv.conf is not writable.
 
 - **Type:** boolean
 - **Default:** `true`
 
 #### `WIREGUARD_DNS`
 
-Explicit resolver(s) (comma/space separated) to pin into /etc/resolv.conf when WIREGUARD_ENFORCE_DNS is true. Use when the VPN's pushed DNS filters domains you need; point it at a resolver reachable via the tunnel or an allowed LAN resolver.
+Explicit resolver(s) (comma/space separated) to pin when WIREGUARD_ENFORCE_DNS is true and Docker's embedded resolver is NOT in use. Use when the VPN's pushed DNS filters domains you need; point it at a resolver reachable via the tunnel or an allowed LAN resolver. NOTE: when the embedded resolver (127.0.0.11) is present it is preserved and this value cannot repoint its upstream from inside the container — set the container's compose dns: list to the trusted resolver instead.
 
 - **Type:** string (comma-separated)
 - **Default:** `unset (uses config DNS = line)`
