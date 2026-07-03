@@ -69,9 +69,12 @@ is_ipv4() {
     [ -n "$o1" ] && [ -n "$o2" ] && [ -n "$o3" ] && [ -n "$o4" ] || return 1
     [ -z "${_extra:-}" ] || return 1
     for o in "$o1" "$o2" "$o3" "$o4"; do
-        # Reject empty, non-numeric already excluded above; enforce 0-255 and no
-        # leading-zero ambiguity beyond a single 0.
+        # Reject empty / non-numeric, and reject leading zeros (e.g. 010): glibc
+        # inet_aton parses a leading-zero octet as OCTAL, so 010.0.0.1 != 10.0.0.1
+        # — refuse the ambiguous form rather than silently write a resolver the
+        # kernel would interpret differently. Then enforce the 0-255 range.
         case "$o" in ''|*[!0-9]*) return 1 ;; esac
+        case "$o" in 0[0-9]*) return 1 ;; esac
         [ "$o" -ge 0 ] && [ "$o" -le 255 ] || return 1
     done
     return 0
