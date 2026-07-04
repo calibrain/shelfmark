@@ -57,16 +57,13 @@ def _on_save_advanced(values: dict[str, Any]) -> dict[str, Any]:
             }
         try:
             timeout_seconds = int(raw_timeout)
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             return {
                 "error": True,
                 "message": "Completed Path Wait must be a number of seconds",
                 "values": values,
             }
-        if (
-            timeout_seconds < 0
-            or timeout_seconds > _DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT_MAX
-        ):
+        if timeout_seconds < 0 or timeout_seconds > _DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT_MAX:
             return {
                 "error": True,
                 "message": (
