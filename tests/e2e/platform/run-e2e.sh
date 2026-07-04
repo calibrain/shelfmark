@@ -25,6 +25,12 @@ fi
 # shellcheck disable=SC1090
 set -a; source "$ENV_FILE"; set +a   # export SM_*, COMPOSE_PROFILES, E2E_PROFILE
 PROFILE="${E2E_PROFILE:-baseline}"
+if [[ "$PROFILE" == "client-qbittorrent-delayed" ]]; then
+  E2E_RUN_ID="${E2E_RUN_ID:-$(date +%s)-$$}"
+  export SM_DOWNLOADS_HOST_DIR="${SM_DOWNLOADS_HOST_DIR:-./.state/$PROFILE/$E2E_RUN_ID/shelfmark-downloads}"
+  export SM_QBITTORRENT_DOWNLOADS_HOST_DIR="${SM_QBITTORRENT_DOWNLOADS_HOST_DIR:-./.state/$PROFILE/$E2E_RUN_ID/client-downloads}"
+  mkdir -p "$SM_DOWNLOADS_HOST_DIR" "$SM_QBITTORRENT_DOWNLOADS_HOST_DIR"
+fi
 COMPOSE=(docker compose --env-file "$ENV_FILE" -f docker-compose.e2e.yml)
 
 STATE_DIR="$PLATFORM_DIR/.state"

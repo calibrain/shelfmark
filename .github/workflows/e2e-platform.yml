@@ -54,7 +54,7 @@ jobs:
           if [ "${{ github.event_name }}" = "pull_request" ]; then
             echo 'profiles=["baseline","bypasser-external","dns-blocked"]' >> "$GITHUB_OUTPUT"
           else
-            echo 'profiles=["baseline","bypasser-external","bypasser-disabled","dns-manual","dns-blocked","dns-doh","proxy-http","proxy-socks","tor","client-transmission","client-deluge"]' >> "$GITHUB_OUTPUT"
+            echo 'profiles=["baseline","bypasser-external","bypasser-disabled","dns-manual","dns-blocked","dns-doh","proxy-http","proxy-socks","tor","client-transmission","client-deluge","client-qbittorrent-delayed"]' >> "$GITHUB_OUTPUT"
           fi
 
   e2e:
