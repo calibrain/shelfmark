@@ -507,6 +507,15 @@ class TestConcurrencyConfiguration:
         assert interval >= 1
         assert interval <= 10
 
+    def test_completed_path_timeout_default(self):
+        """Completed external-client path wait should default to the legacy grace period."""
+        from shelfmark.core.config import config
+
+        config.refresh()
+
+        timeout = config.get("DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT", 60)
+        assert timeout == 60
+
 
 # =============================================================================
 # Cache Configuration Tests
