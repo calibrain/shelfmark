@@ -55,9 +55,15 @@ def _on_save_advanced(values: dict[str, Any]) -> dict[str, Any]:
                 "message": "Completed Path Wait must be a number of seconds",
                 "values": values,
             }
+        if raw_timeout is None:
+            return {
+                "error": True,
+                "message": "Completed Path Wait must be a number of seconds",
+                "values": values,
+            }
         try:
             timeout_seconds = int(raw_timeout)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             return {
                 "error": True,
                 "message": "Completed Path Wait must be a number of seconds",
