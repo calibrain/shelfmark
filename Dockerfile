@@ -147,21 +147,39 @@ ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 FROM base AS shelfmark
 
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+# --- Chromium (PINNED to 149.0.7827.196) ---
+# Debian's chromium 150.0.7871.46-1~deb13u1 security update (trixie-security,
+# 2026-07-05) no longer opens the DevTools remote-debugging TCP port at all
+# (no listener, no DevToolsActivePort file, even with a custom --user-data-dir;
+# the RemoteDebuggingAllowed policy does not restore it). The SeleniumBase
+# Pure-CDP driver connects through that port (/json/version), so with 150 every
+# internal bypass dies with "Pure CDP browser startup failed" and all
+# CF-gated downloads fail. Install the last working version from
+# snapshot.debian.org until the bypasser can talk to Chromium >= 150 (e.g.
+# pipe-based DevTools / UC mode) or seleniumbase ships a fix.
+# Chrome 144+ requires --enable-unsafe-swiftshader for WebGL in Docker.
+# This flag is set in internal_bypasser.py _get_browser_args()
+ARG CHROMIUM_VERSION=149.0.7827.196-1~deb13u1
+ARG CHROMIUM_SNAPSHOT=20260704T000000Z
+
+RUN echo "deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/${CHROMIUM_SNAPSHOT}/ trixie-security main" \
+        > /etc/apt/sources.list.d/chromium-pin-snapshot.list && \
+    apt-get update -o Acquire::Retries=5 && \
+    apt-get install -y --no-install-recommends -o Acquire::Retries=5 \
     # For dumb display
     xvfb \
     # For screen recording
     ffmpeg \
-    # --- Chromium (unpinned - uses latest from Debian repos) ---
-    # Chrome 144+ requires --enable-unsafe-swiftshader for WebGL in Docker.
-    # This flag is set in internal_bypasser.py _get_browser_args()
-    chromium \
-    chromium-common \
+    chromium=${CHROMIUM_VERSION} \
+    chromium-common=${CHROMIUM_VERSION} \
     # For tkinter (pyautogui)
     python3-tk \
     # For RAR extraction
     unrar-free && \
+    # Keep apt from "upgrading" chromium past the pin inside derived images
+    printf 'Package: chromium chromium-common\nPin: version %s\nPin-Priority: 1001\n' "${CHROMIUM_VERSION}" \
+        > /etc/apt/preferences.d/chromium-pin && \
+    rm /etc/apt/sources.list.d/chromium-pin-snapshot.list && \
     # Create symlink so rarfile library can find unrar
     ln -sf /usr/bin/unrar-free /usr/bin/unrar && \
     # Cleanup APT cache
