@@ -14,12 +14,19 @@ client matrix.
 from __future__ import annotations
 
 import os
+import shutil
+import subprocess
 import time
 from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.profiles("full", "client-transmission", "client-deluge")
+pytestmark = pytest.mark.profiles(
+    "full",
+    "client-transmission",
+    "client-deluge",
+    "client-qbittorrent-delayed",
+)
 
 BOOK = "Moby Dick"
 
@@ -85,3 +92,26 @@ def test_prowlarr_to_real_torrent_client_download(client, active_profile) -> Non
         time.sleep(2)
     assert new_files, f"[{active_profile}] client completed but no file landed in /books"
     assert all(Path(n).suffix for n in new_files), f"file without extension: {new_files}"
+
+    if active_profile == "client-qbittorrent-delayed":
+        _assert_completed_path_wait_engaged()
+
+
+def _assert_completed_path_wait_engaged() -> None:
+    """Confirm the delayed-sync profile actually exercised the path wait loop."""
+    if shutil.which("docker") is None:
+        return
+    result = subprocess.run(
+        ["docker", "logs", "e2e-shelfmark"],
+        capture_output=True,
+        text=True,
+        timeout=20,
+        check=False,
+    )
+    blob = (result.stdout + result.stderr).lower()
+    if not blob.strip():
+        return
+    assert "completed files not available yet" in blob, (
+        "delayed qBittorrent profile completed, but Shelfmark logs did not show "
+        "the completed-path wait loop; the test may not have exercised #861"
+    )

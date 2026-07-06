@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import errno
+import math
 import shutil
 import time
 from abc import ABC, abstractmethod
@@ -55,6 +56,19 @@ SECONDS_PER_HOUR = 3600
 # How long to wait for completed files to appear (seconds)
 COMPLETED_PATH_RETRY_INTERVAL = 5
 COMPLETED_PATH_MAX_ATTEMPTS = 12  # 12 attempts * 5s = 60s grace period
+COMPLETED_PATH_TIMEOUT_SETTING = "DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT"
+COMPLETED_PATH_TIMEOUT_MAX_SECONDS = 3600
+_RETRYABLE_COMPLETED_PATH_ERRNOS = frozenset(
+    code
+    for code in (
+        errno.ENOENT,
+        getattr(errno, "ESTALE", None),
+        getattr(errno, "EAGAIN", None),
+        getattr(errno, "EBUSY", None),
+        getattr(errno, "ETIMEDOUT", None),
+    )
+    if code is not None
+)
 
 
 @dataclass(frozen=True)
@@ -67,6 +81,39 @@ class DownloadRequest:
     expected_hash: str | None
     seeding_time_limit: int | None = None  # minutes
     ratio_limit: float | None = None
+
+
+@dataclass(frozen=True)
+class _CompletedPathResolution:
+    path: Path | None
+    error: str | None
+    retryable: bool
+
+
+def _coerce_completed_path_timeout_seconds(value: object, default: float) -> float:
+    if isinstance(value, bool) or value is None:
+        return default
+    if isinstance(value, (int, float)):
+        parsed = float(value)
+    elif isinstance(value, str):
+        try:
+            parsed = float(value.strip())
+        except ValueError:
+            return default
+    else:
+        return default
+
+    if not math.isfinite(parsed) or parsed < 0:
+        return default
+    return min(parsed, float(COMPLETED_PATH_TIMEOUT_MAX_SECONDS))
+
+
+def _is_retryable_completed_path_probe(error: OSError | None) -> bool:
+    return error is not None and error.errno in _RETRYABLE_COMPLETED_PATH_ERRNOS
+
+
+def _path_needs_mapping(path: str) -> bool:
+    return (len(path) >= WINDOWS_DRIVE_PREFIX_LENGTH and path[1] == ":") or "\\" in path
 
 
 def _diagnose_path_issue(path: str) -> str:
@@ -166,6 +213,12 @@ class ExternalClientHandler(DownloadHandler, ABC):
     def _completed_path_max_attempts(self) -> int:
         """Maximum attempts when waiting for completed files."""
         return COMPLETED_PATH_MAX_ATTEMPTS
+
+    def _completed_path_timeout_seconds(self) -> float:
+        """Total time to wait for completed files to appear on disk."""
+        fallback = self._completed_path_retry_interval() * self._completed_path_max_attempts()
+        configured = config.get(COMPLETED_PATH_TIMEOUT_SETTING, fallback)
+        return _coerce_completed_path_timeout_seconds(configured, fallback)
 
     def _get_category_for_task(self, client: DownloadClient, task: DownloadTask) -> str | None:
         """Get audiobook category if configured and applicable, else None for default."""
@@ -387,6 +440,21 @@ class ExternalClientHandler(DownloadHandler, ABC):
         log_details: bool,
     ) -> tuple[Path | None, str | None]:
         """Resolve and validate the completed download path once."""
+        result = self._resolve_download_path_once_detailed(
+            client,
+            download_id,
+            log_details=log_details,
+        )
+        return result.path, result.error
+
+    def _resolve_download_path_once_detailed(
+        self,
+        client: DownloadClient,
+        download_id: str,
+        *,
+        log_details: bool,
+    ) -> _CompletedPathResolution:
+        """Resolve and validate a completed path, including retryability."""
         try:
             raw_path = client.get_download_path(download_id)
         except Exception as e:
@@ -402,7 +470,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 logger.debug(
                     "Failed to resolve download path for %s %s: %s", client.name, download_id, e
                 )
-            return None, message
+            return _CompletedPathResolution(None, message, retryable=False)
 
         if not raw_path:
             message = (
@@ -417,7 +485,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 logger.debug(
                     "Download client returned empty path for %s %s", client.name, download_id
                 )
-            return None, message
+            return _CompletedPathResolution(None, message, retryable=False)
 
         from shelfmark.core.path_mappings import (
             get_client_host_identifier,
@@ -457,7 +525,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
                     logger.error(failure_log, *failure_args)
                 else:
                     logger.debug(failure_log, *failure_args)
-                return None, message
+                return _CompletedPathResolution(None, message, retryable=False)
 
             remapped_exists, remapped_error = _probe_completed_path(remapped)
 
@@ -480,7 +548,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
                     source_path_obj,
                     remapped,
                 )
-                return remapped, None
+                return _CompletedPathResolution(remapped, None, retryable=False)
 
             message = (
                 f"Remapped path '{remapped}' does not exist. "
@@ -499,7 +567,11 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 logger.error(failure_log, *failure_args)
             else:
                 logger.debug(failure_log, *failure_args)
-            return None, message
+            return _CompletedPathResolution(
+                None,
+                message,
+                retryable=_is_retryable_completed_path_probe(remapped_error),
+            )
 
         source_exists, source_error = _probe_completed_path(source_path_obj)
 
@@ -522,7 +594,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
                     download_id,
                     source_path_obj,
                 )
-            return source_path_obj, None
+            return _CompletedPathResolution(source_path_obj, None, retryable=False)
 
         hint = _diagnose_path_issue(raw_path)
         if mappings:
@@ -555,7 +627,12 @@ class ExternalClientHandler(DownloadHandler, ABC):
             logger.error(failure_log, *failure_args)
         else:
             logger.debug(failure_log, *failure_args)
-        return None, message
+        return _CompletedPathResolution(
+            None,
+            message,
+            retryable=not _path_needs_mapping(raw_path)
+            and _is_retryable_completed_path_probe(source_error),
+        )
 
     def _wait_for_completed_path(
         self,
@@ -567,23 +644,37 @@ class ExternalClientHandler(DownloadHandler, ABC):
     ) -> tuple[Path | None, str | None]:
         """Wait briefly for completed files to appear on disk."""
         last_error: str | None = None
-        max_attempts = self._completed_path_max_attempts()
         retry_interval = self._completed_path_retry_interval()
+        timeout_seconds = self._completed_path_timeout_seconds()
+        if retry_interval <= 0 or timeout_seconds <= 0:
+            max_attempts = 1
+        else:
+            max_attempts = int(math.ceil(timeout_seconds / retry_interval)) + 1
 
         for attempt in range(1, max_attempts + 1):
             if cancel_flag and cancel_flag.is_set():
                 return None, last_error
 
             log_details = attempt == max_attempts
-            resolved_path, error = self._resolve_download_path_once(
+            result = self._resolve_download_path_once_detailed(
                 client,
                 download_id,
                 log_details=log_details,
             )
-            if resolved_path:
-                return resolved_path, None
+            if result.path:
+                return result.path, None
 
-            last_error = error
+            last_error = result.error
+
+            if not result.retryable:
+                if not log_details:
+                    logger.error(
+                        "Completed path resolution is not retryable for %s (%s): %s",
+                        client.name,
+                        download_id,
+                        last_error,
+                    )
+                return None, last_error
 
             if attempt < max_attempts:
                 status_callback("locating", "Waiting for completed files...")

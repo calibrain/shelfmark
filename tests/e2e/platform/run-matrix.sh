@@ -12,7 +12,8 @@ if [[ $# -gt 0 ]]; then
   PROFILES=("$@")
 else
   PROFILES=(baseline bypasser-external bypasser-disabled dns-manual dns-blocked dns-doh \
-            proxy-http proxy-socks tor client-transmission client-deluge)
+            proxy-http proxy-socks tor client-transmission client-deluge \
+            client-qbittorrent-delayed)
 fi
 
 # Build the (heavy) images once, then reuse them across every profile so the

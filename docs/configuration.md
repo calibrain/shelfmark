@@ -91,6 +91,10 @@ Example:
 - Shelfmark can see the same files at `/downloads/books/...`
 - Add a mapping from Remote Path `/data/torrents` to Local Path `/downloads`
 
+If the files are copied or synced into Shelfmark on a delay, increase **Completed Path Wait (seconds)**
+in Settings -> Advanced. The default is 60 seconds; seedbox or remote-sync setups may need a value
+longer than the sync interval.
+
 ## File Processing Options
 
 ### Transfer Method (Torrent / Usenet Only)

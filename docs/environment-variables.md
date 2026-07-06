@@ -1051,6 +1051,7 @@ Comma-separated hosts to bypass proxy (e.g., localhost,127.0.0.1,10.*,*.local)
 | `CUSTOM_SCRIPT` | Path to a script to run after each successful download. Must be executable. | string | _none_ |
 | `CUSTOM_SCRIPT_PATH_MODE` | Pass the path to the custom script as an absolute path or relative to the destination folder. | string (choice) | `absolute` |
 | `CUSTOM_SCRIPT_JSON_PAYLOAD` | Send a JSON payload to the script via stdin. Useful for multi-file imports (audiobooks) or richer metadata without relying on path parsing. | boolean | `false` |
+| `DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT` | How long to wait after a torrent or usenet client reports completion for the completed file path to become visible to Shelfmark. Increase this for seedbox or remote-sync workflows. | number | `60` |
 | `COVERS_CACHE_ENABLED` | Cache book covers on the server for faster loading. | boolean | `true` |
 | `COVERS_CACHE_TTL` | How long to keep cached covers. Set to 0 to keep forever (recommended for static artwork). | number | `0` |
 | `COVERS_CACHE_MAX_SIZE_MB` | Maximum disk space for cached covers. Oldest images are removed when limit is reached. | number | `500` |
@@ -1130,6 +1131,16 @@ Send a JSON payload to the script via stdin. Useful for multi-file imports (audi
 
 - **Type:** boolean
 - **Default:** `false`
+
+#### `DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT`
+
+**Completed Path Wait (seconds)**
+
+How long to wait after a torrent or usenet client reports completion for the completed file path to become visible to Shelfmark. Increase this for seedbox or remote-sync workflows.
+
+- **Type:** number
+- **Default:** `60`
+- **Constraints:** min: 0, max: 3600
 
 #### `COVERS_CACHE_ENABLED`
 

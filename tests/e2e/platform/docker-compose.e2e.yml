@@ -62,6 +62,7 @@ services:
       QBITTORRENT_USERNAME: "${SM_QBITTORRENT_USERNAME:-}"
       QBITTORRENT_PASSWORD: "${SM_QBITTORRENT_PASSWORD:-}"
       QBITTORRENT_CATEGORY: "${SM_QBITTORRENT_CATEGORY:-}"
+      DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT: "${SM_DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT:-60}"
       # transmission / deluge / rtorrent (client-* profiles)
       TRANSMISSION_URL: "${SM_TRANSMISSION_URL:-}"
       TRANSMISSION_USERNAME: "${SM_TRANSMISSION_USERNAME:-}"
@@ -90,7 +91,7 @@ services:
     volumes:
       - ./.state/config:/config
       - ./.state/books:/books
-      - ./.state/downloads:/downloads
+      - ${SM_DOWNLOADS_HOST_DIR:-./.state/downloads}:/downloads
       - ./.state/tmp:/tmp/shelfmark
     networks:
       - e2e
@@ -211,7 +212,7 @@ services:
   mock-prowlarr:
     <<: *mock-build
     container_name: e2e-mock-prowlarr
-    profiles: ["full", "client-transmission", "client-deluge"]
+    profiles: ["full", "client-transmission", "client-deluge", "client-qbittorrent-delayed"]
     environment:
       MOCK_ROLE: prowlarr
       AA_INTERNAL_URL: http://mock-aa
@@ -221,13 +222,13 @@ services:
         aliases:
           - prowlarr.mock.test
 
-  # ----- Real qBittorrent download client (profile: full) ----------------- #
+  # ----- Real qBittorrent download client (profiles: full, delayed path) --- #
   # Auth is bypassed for the e2e subnet (qBittorrent.conf) so shelfmark connects
   # without juggling the image's random temp password.
   qbittorrent:
     image: lscr.io/linuxserver/qbittorrent:latest
     container_name: e2e-qbittorrent
-    profiles: ["full"]
+    profiles: ["full", "client-qbittorrent-delayed"]
     environment:
       PUID: "1000"
       PGID: "1000"
@@ -235,8 +236,45 @@ services:
       WEBUI_PORT: "8080"
     volumes:
       - ./qbittorrent/qBittorrent.conf:/config/qBittorrent/qBittorrent.conf
-      # Shared with shelfmark so completed files are visible for the move step.
-      - ./.state/downloads:/downloads
+      # Normally shared with Shelfmark. In the delayed profile this points at a
+      # client-only directory and the sync sidecar makes it visible later.
+      - ${SM_QBITTORRENT_DOWNLOADS_HOST_DIR:-./.state/downloads}:/downloads
+    networks:
+      - e2e
+
+  # ----- Delayed file visibility sidecar (profile: client-qbittorrent-delayed) #
+  # Simulates a seedbox/remote-sync workflow: qBittorrent writes into one host
+  # directory while Shelfmark sees a separate /downloads directory that is synced
+  # only after a delay. This exercises DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT.
+  delayed-download-sync:
+    image: alpine:3.20
+    container_name: e2e-delayed-download-sync
+    profiles: ["client-qbittorrent-delayed"]
+    environment:
+      SYNC_DELAY_SECONDS: "${SM_DELAYED_DOWNLOAD_SYNC_SECONDS:-20}"
+    command:
+      - /bin/sh
+      - -c
+      - |
+        mkdir -p /synced
+        while true; do
+          found=0
+          for path in /remote/*; do
+            [ -e "$${path}" ] || continue
+            found=1
+            before="$$(du -sk /remote 2>/dev/null | awk '{print $$1}')"
+            sleep "$${SYNC_DELAY_SECONDS}"
+            after="$$(du -sk /remote 2>/dev/null | awk '{print $$1}')"
+            if [ -n "$${before}" ] && [ "$${before}" = "$${after}" ]; then
+              cp -a /remote/. /synced/ 2>/dev/null || true
+            fi
+            break
+          done
+          [ "$${found}" = "1" ] || sleep 1
+        done
+    volumes:
+      - ${SM_QBITTORRENT_DOWNLOADS_HOST_DIR:-./.state/downloads}:/remote:ro
+      - ${SM_DOWNLOADS_HOST_DIR:-./.state/downloads}:/synced
     networks:
       - e2e
 

@@ -36,12 +36,49 @@ from shelfmark.core.settings_registry import (
     register_settings,
 )
 
+_DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT_DEFAULT = 60
+_DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT_MAX = 3600
+
 
 def _on_save_advanced(values: dict[str, Any]) -> dict[str, Any]:
     """Validate advanced settings before persisting."""
     from shelfmark.core.logger import setup_logger
 
     logger = setup_logger(__name__)
+
+    timeout_key = "DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT"
+    if timeout_key in values:
+        raw_timeout = values.get(timeout_key)
+        if isinstance(raw_timeout, bool):
+            return {
+                "error": True,
+                "message": "Completed Path Wait must be a number of seconds",
+                "values": values,
+            }
+        if raw_timeout is None:
+            return {
+                "error": True,
+                "message": "Completed Path Wait must be a number of seconds",
+                "values": values,
+            }
+        try:
+            timeout_seconds = int(raw_timeout)
+        except TypeError, ValueError:
+            return {
+                "error": True,
+                "message": "Completed Path Wait must be a number of seconds",
+                "values": values,
+            }
+        if timeout_seconds < 0 or timeout_seconds > _DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT_MAX:
+            return {
+                "error": True,
+                "message": (
+                    "Completed Path Wait must be between 0 and "
+                    f"{_DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT_MAX} seconds"
+                ),
+                "values": values,
+            }
+        values[timeout_key] = timeout_seconds
 
     mappings = values.get("PROWLARR_REMOTE_PATH_MAPPINGS")
     if mappings is None:
@@ -1779,6 +1816,18 @@ def advanced_settings() -> list[SettingsField]:
             key="remote_path_mappings_heading",
             title="Remote Path Mappings",
             description="Map download client paths to paths inside Shelfmark. Needed when volume mounts differ between containers.",
+        ),
+        NumberField(
+            key="DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT",
+            label="Completed Path Wait (seconds)",
+            description=(
+                "How long to wait after a torrent or usenet client reports completion "
+                "for the completed file path to become visible to Shelfmark. Increase "
+                "this for seedbox or remote-sync workflows."
+            ),
+            default=_DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT_DEFAULT,
+            min_value=0,
+            max_value=_DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT_MAX,
         ),
         TableField(
             key="PROWLARR_REMOTE_PATH_MAPPINGS",
