@@ -29,7 +29,7 @@ dependencies = [
 browser = [
     "pyvirtualdisplay",
     "pyautogui",
-    "seleniumbase==4.50.4",
+    "seleniumbase==4.50.5",
     "python-xlib",
 ]
 
