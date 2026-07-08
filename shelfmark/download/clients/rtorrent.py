@@ -4,6 +4,7 @@ Uses xmlrpc to communicate with rTorrent's RPC interface.
 """
 
 import ssl
+import time
 import xmlrpc.client as stdlib_xmlrpc_client
 from typing import Any, NoReturn, Protocol, cast
 from urllib.parse import urlparse
@@ -160,6 +161,10 @@ class RTorrentClient(DownloadClient):
         try:
             torrent_info = extract_torrent_info(url, expected_hash=expected_hash)
 
+            known_hashes: set[str] | None = None
+            if not (torrent_info.info_hash or expected_hash):
+                known_hashes = self._list_torrent_hashes()
+
             commands = []
 
             is_audiobook = kwargs.get("content_type") == "audiobook"
@@ -195,6 +200,11 @@ class RTorrentClient(DownloadClient):
                 self._rpc.load.start("", add_url, ";".join(commands))
 
             torrent_hash = torrent_info.info_hash or expected_hash
+            if not torrent_hash:
+                # rTorrent fetches .torrent URLs itself, so the add can succeed
+                # even when no hash could be extracted up front. Recover it by
+                # watching for the new download to appear.
+                torrent_hash = self._discover_added_torrent_hash(name, label, known_hashes)
             if not torrent_hash:
                 _raise_runtime_error("Could not determine torrent hash from URL")
 
@@ -386,6 +396,56 @@ class RTorrentClient(DownloadClient):
             return self._rpc.directory.default()
         except _RTORRENT_CLIENT_ERRORS:
             return "/downloads"
+
+    def _list_torrent_hashes(self) -> set[str] | None:
+        """Snapshot the hashes rTorrent currently reports."""
+        try:
+            all_torrents = self._rpc.d.multicall2("", "", "d.hash=")
+        except _RTORRENT_CLIENT_ERRORS as e:
+            logger.debug("Could not snapshot rTorrent downloads: %s", e)
+            return None
+        return {str(row[0]).lower() for row in all_torrents if row and row[0]}
+
+    def _discover_added_torrent_hash(
+        self,
+        name: str,
+        label: str,
+        known_hashes: set[str] | None,
+    ) -> str | None:
+        """Recover the hash of a torrent that was added without a known info_hash.
+
+        rTorrent fetches .torrent URLs itself, so the add can succeed even when
+        no hash could be extracted up front. A `known_hashes` of None means the
+        pre-add snapshot failed, so only an exact name match can identify the
+        new arrival.
+        """
+        for _ in range(20):
+            try:
+                all_torrents = self._rpc.d.multicall2("", "", "d.hash=", "d.name=", "d.custom1=")
+            except _RTORRENT_CLIENT_ERRORS as e:
+                logger.debug("rTorrent hash discovery: %s", e)
+            else:
+                new_torrents = [
+                    row
+                    for row in all_torrents
+                    if row
+                    and row[0]
+                    and (known_hashes is None or str(row[0]).lower() not in known_hashes)
+                ]
+                # The label set at add time distinguishes concurrent arrivals,
+                # but rTorrent may not have applied it yet, so it only ever
+                # narrows a non-empty candidate list.
+                if label:
+                    labeled = [row for row in new_torrents if len(row) > 2 and row[2] == label]
+                    if labeled:
+                        new_torrents = labeled
+                for row in new_torrents:
+                    if len(row) > 1 and row[1] == name:
+                        return str(row[0]).lower()
+                if known_hashes is not None and len(new_torrents) == 1:
+                    return str(new_torrents[0][0]).lower()
+            time.sleep(0.5)
+        return None
 
     def _get_torrent_path(self, download_id: str) -> str | None:
         """Get the file path of a torrent by hash.
