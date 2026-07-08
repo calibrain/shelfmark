@@ -15,6 +15,8 @@ from shelfmark.download.clients import (
     DownloadState,
     DownloadStatus,
 )
+from shelfmark.release_sources import Release, ReleaseProtocol
+from shelfmark.release_sources.prowlarr.cache import cache_release, remove_release
 from shelfmark.release_sources.prowlarr.handler import ProwlarrHandler
 from shelfmark.release_sources.prowlarr.utils import get_protocol
 
@@ -103,13 +105,16 @@ class TestProwlarrHandlerDownloadErrors:
             assert result is None
             assert recorder.last_status == "error"
             assert recorder.last_message is not None
-            assert "cache" in recorder.last_message.lower()
+            assert "could not be refreshed" in recorder.last_message
 
-    def test_resolve_download_uses_task_retry_fields_when_cache_is_missing(self):
-        """Generic retry fields should let restarts recover without the in-memory cache."""
+    def test_download_fails_clearly_when_cache_miss_cannot_refresh(self):
+        """Prowlarr retry URLs are not durable; cache misses must refresh by identity."""
         with patch(
             "shelfmark.release_sources.prowlarr.handler.get_release",
             return_value=None,
+        ), patch(
+            "shelfmark.release_sources.prowlarr.handler.ProwlarrSource.search",
+            return_value=[],
         ):
             handler = ProwlarrHandler()
             task = DownloadTask(
@@ -122,14 +127,245 @@ class TestProwlarrHandlerDownloadErrors:
                 retry_seeding_time_limit_minutes=60,
                 retry_ratio_limit=1.5,
             )
+            recorder = ProgressRecorder()
 
-            request = handler._resolve_download(task, lambda *_: None)
+            request = handler._resolve_download(task, recorder.status_callback)
 
-            assert request is not None
-            assert request.url == "magnet:?xt=urn:btih:abc123"
-            assert request.protocol == "torrent"
-            assert request.seeding_time_limit == 60
-            assert request.ratio_limit == 1.5
+            assert request is None
+            assert recorder.last_status == "error"
+            assert recorder.last_message is not None
+            assert "could not be refreshed" in recorder.last_message
+
+    def test_cache_miss_re_resolves_and_uses_fresh_download_url(self):
+        """Cache miss should re-query Prowlarr and use a fresh exact-match URL."""
+        task_id = "fresh-guid-1"
+        fresh_url = "https://prowlarr.example.com/download/fresh-token"
+
+        def mock_search(*_args, **_kwargs):
+            cache_release(
+                task_id,
+                {
+                    "guid": task_id,
+                    "protocol": "torrent",
+                    "downloadUrl": fresh_url,
+                    "title": "Fresh Release",
+                },
+            )
+            return [
+                Release(
+                    source="prowlarr",
+                    source_id=task_id,
+                    title="Fresh Release",
+                    info_url="https://tracker.example.com/release/1",
+                    protocol=ReleaseProtocol.TORRENT,
+                )
+            ]
+
+        mock_client = MagicMock()
+        mock_client.name = "qbittorrent"
+        mock_client.find_existing.return_value = None
+        mock_client.add_download.return_value = "download_id"
+
+        remove_release(task_id)
+        try:
+            with (
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.ProwlarrSource.search",
+                    side_effect=mock_search,
+                ) as mock_search_method,
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.get_client",
+                    return_value=mock_client,
+                ),
+                patch.object(ProwlarrHandler, "_poll_and_complete", return_value=None),
+            ):
+                handler = ProwlarrHandler()
+                task = DownloadTask(
+                    task_id=task_id,
+                    source="prowlarr",
+                    title="Fresh Book",
+                    retry_source_context={"indexer": "MyIndexer"},
+                )
+                recorder = ProgressRecorder()
+
+                handler.download(
+                    task=task,
+                    cancel_flag=Event(),
+                    progress_callback=recorder.progress_callback,
+                    status_callback=recorder.status_callback,
+                )
+
+                mock_search_method.assert_called_once()
+                assert mock_client.add_download.call_args.kwargs["url"] == fresh_url
+        finally:
+            remove_release(task_id)
+
+    def test_stale_cached_url_add_failure_re_resolves_once_and_succeeds(self):
+        """Expired cached proxy URL should be refreshed once after qBittorrent hash failure."""
+        task_id = "stale-guid-1"
+        stale_url = "https://prowlarr.example.com/download/stale-token"
+        fresh_url = "https://prowlarr.example.com/download/fresh-token"
+
+        def mock_search(*_args, **_kwargs):
+            cache_release(
+                task_id,
+                {
+                    "guid": task_id,
+                    "protocol": "torrent",
+                    "downloadUrl": fresh_url,
+                    "title": "Fresh Release",
+                },
+            )
+            return [
+                Release(
+                    source="prowlarr",
+                    source_id=task_id,
+                    title="Fresh Release",
+                    protocol=ReleaseProtocol.TORRENT,
+                )
+            ]
+
+        mock_client = MagicMock()
+        mock_client.name = "qbittorrent"
+        mock_client.find_existing.return_value = None
+        mock_client.add_download.side_effect = [
+            RuntimeError("Could not determine torrent hash from URL"),
+            "download_id",
+        ]
+
+        cache_release(
+            task_id,
+            {
+                "guid": task_id,
+                "protocol": "torrent",
+                "downloadUrl": stale_url,
+                "title": "Stale Release",
+            },
+        )
+        try:
+            with (
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.ProwlarrSource.search",
+                    side_effect=mock_search,
+                ) as mock_search_method,
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.get_client",
+                    return_value=mock_client,
+                ),
+                patch.object(ProwlarrHandler, "_poll_and_complete", return_value=None),
+            ):
+                handler = ProwlarrHandler()
+                task = DownloadTask(task_id=task_id, source="prowlarr", title="Stale Book")
+                recorder = ProgressRecorder()
+
+                handler.download(
+                    task=task,
+                    cancel_flag=Event(),
+                    progress_callback=recorder.progress_callback,
+                    status_callback=recorder.status_callback,
+                )
+
+                assert mock_client.add_download.call_count == 2
+                assert mock_client.add_download.call_args_list[0].kwargs["url"] == stale_url
+                assert mock_client.add_download.call_args_list[1].kwargs["url"] == fresh_url
+                mock_search_method.assert_called_once()
+        finally:
+            remove_release(task_id)
+
+    def test_refresh_without_exact_match_fails_clearly(self):
+        """Refresh must not pick a different Prowlarr result when identity differs."""
+        task_id = "missing-guid-1"
+        other_id = "other-guid-1"
+
+        def mock_search(*_args, **_kwargs):
+            cache_release(
+                other_id,
+                {
+                    "guid": other_id,
+                    "protocol": "torrent",
+                    "downloadUrl": "https://prowlarr.example.com/download/other",
+                    "title": "Other Release",
+                },
+            )
+            return [
+                Release(
+                    source="prowlarr",
+                    source_id=other_id,
+                    title="Other Release",
+                    protocol=ReleaseProtocol.TORRENT,
+                )
+            ]
+
+        remove_release(task_id)
+        remove_release(other_id)
+        try:
+            with patch(
+                "shelfmark.release_sources.prowlarr.handler.ProwlarrSource.search",
+                side_effect=mock_search,
+            ):
+                handler = ProwlarrHandler()
+                task = DownloadTask(task_id=task_id, source="prowlarr", title="Missing Book")
+                recorder = ProgressRecorder()
+
+                request = handler._resolve_download(task, recorder.status_callback)
+
+                assert request is None
+                assert recorder.last_status == "error"
+                assert recorder.last_message is not None
+                assert "could not be refreshed" in recorder.last_message
+        finally:
+            remove_release(task_id)
+            remove_release(other_id)
+
+    def test_magnet_result_does_not_trigger_prowlarr_url_refresh(self):
+        """Magnet failures should not be treated as expired Prowlarr proxy URLs."""
+        task_id = "magnet-guid-1"
+        magnet = "magnet:?xt=urn:btih:abc123&dn=test"
+        mock_client = MagicMock()
+        mock_client.name = "qbittorrent"
+        mock_client.find_existing.return_value = None
+        mock_client.add_download.side_effect = RuntimeError(
+            "Could not determine torrent hash from URL"
+        )
+
+        cache_release(
+            task_id,
+            {
+                "guid": task_id,
+                "protocol": "torrent",
+                "downloadUrl": "https://prowlarr.example.com/download/stale-token",
+                "magnetUrl": magnet,
+                "title": "Magnet Release",
+            },
+        )
+        try:
+            with (
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.ProwlarrSource.search",
+                    return_value=[],
+                ) as mock_search_method,
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.get_client",
+                    return_value=mock_client,
+                ),
+            ):
+                handler = ProwlarrHandler()
+                task = DownloadTask(task_id=task_id, source="prowlarr", title="Magnet Book")
+                recorder = ProgressRecorder()
+
+                result = handler.download(
+                    task=task,
+                    cancel_flag=Event(),
+                    progress_callback=recorder.progress_callback,
+                    status_callback=recorder.status_callback,
+                )
+
+                assert result is None
+                assert mock_client.add_download.call_count == 1
+                assert mock_client.add_download.call_args.kwargs["url"] == magnet
+                mock_search_method.assert_not_called()
+        finally:
+            remove_release(task_id)
 
     def test_download_fails_without_download_url(self):
         """Test that download fails when release has no download URL."""

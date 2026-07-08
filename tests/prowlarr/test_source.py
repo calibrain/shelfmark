@@ -517,8 +517,12 @@ class TestProwlarrLocalizedQueries:
 
         assert success is True
         assert error is None
-        assert captured_tasks[0].retry_download_url == secret_download_url
-        assert captured_tasks[0].retry_download_protocol == "usenet"
+        assert captured_tasks[0].retry_download_url is None
+        assert captured_tasks[0].retry_download_protocol is None
+        assert captured_tasks[0].retry_source_context == {
+            "source_id": "secret-prowlarr-release",
+            "info_url": "secret-prowlarr-release",
+        }
         assert "retry_download_url" not in orchestrator._task_to_dict(captured_tasks[0])
 
     def test_search_uses_localized_titles_when_available(self, monkeypatch):

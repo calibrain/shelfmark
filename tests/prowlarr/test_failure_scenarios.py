@@ -520,7 +520,7 @@ class TestCacheFailures:
 
         assert result is None
         assert recorder.had_error
-        assert "not found in cache" in recorder.last_message.lower()
+        assert "could not be refreshed" in recorder.last_message
 
     def test_release_missing_download_url(self, handler, recorder, cancel_flag, sample_task):
         """Handler should error when release has no download URL."""

@@ -220,6 +220,17 @@ class ExternalClientHandler(DownloadHandler, ABC):
         configured = config.get(COMPLETED_PATH_TIMEOUT_SETTING, fallback)
         return _coerce_completed_path_timeout_seconds(configured, fallback)
 
+    def _refresh_download_request_after_add_failure(
+        self,
+        *,
+        task: DownloadTask,
+        request: DownloadRequest,
+        error: Exception,
+        status_callback: Callable[[str, str | None], None],
+    ) -> DownloadRequest | None:
+        """Give source handlers one chance to refresh stale resolved download data."""
+        return None
+
     def _get_category_for_task(self, client: DownloadClient, task: DownloadTask) -> str | None:
         """Get audiobook category if configured and applicable, else None for default."""
         if not is_audiobook(task.content_type):
@@ -791,20 +802,38 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 status_callback("downloading", "Resuming existing download")
             else:
                 # No existing download - add new
-                status_callback("resolving", f"Sending to {client.name}")
-                try:
-                    download_id = client.add_download(
-                        url=request.url,
-                        name=request.release_name,
-                        category=category,
-                        expected_hash=request.expected_hash,
-                        seeding_time_limit=request.seeding_time_limit,
-                        ratio_limit=request.ratio_limit,
-                    )
-                except Exception as e:
-                    logger.exception("Failed to add to %s", client.name)
-                    status_callback("error", f"Failed to add to {client.name}: {e}")
-                    return None
+                refresh_attempted = False
+                while True:
+                    status_callback("resolving", f"Sending to {client.name}")
+                    try:
+                        download_id = client.add_download(
+                            url=request.url,
+                            name=request.release_name,
+                            category=category,
+                            expected_hash=request.expected_hash,
+                            seeding_time_limit=request.seeding_time_limit,
+                            ratio_limit=request.ratio_limit,
+                        )
+                    except Exception as e:
+                        if not refresh_attempted:
+                            refresh_attempted = True
+                            refreshed_request = self._refresh_download_request_after_add_failure(
+                                task=task,
+                                request=request,
+                                error=e,
+                                status_callback=status_callback,
+                            )
+                            if (
+                                refreshed_request is not None
+                                and refreshed_request.protocol == request.protocol
+                            ):
+                                request = refreshed_request
+                                continue
+
+                        logger.exception("Failed to add to %s", client.name)
+                        status_callback("error", f"Failed to add to {client.name}: {e}")
+                        return None
+                    break
 
                 logger.info(
                     "Added to %s: %s for '%s'", client.name, download_id, request.release_name

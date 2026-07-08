@@ -108,6 +108,9 @@ class DownloadTask:
     retry_expected_hash: str | None = None  # Optional torrent hash used to match client downloads
     retry_ratio_limit: float | None = None  # Optional post-download seeding ratio
     retry_seeding_time_limit_minutes: int | None = None  # Optional post-download seeding time limit
+    retry_source_context: dict[str, Any] = field(
+        default_factory=dict
+    )  # Source-private context for retry/re-resolution
     can_retry_without_staged_source: bool = (
         True  # Whether the source can restart without a preserved staged file
     )

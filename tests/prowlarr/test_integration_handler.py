@@ -126,7 +126,7 @@ class TestHandlerCacheOperations:
 
         assert result is None
         assert recorder.last_status == "error"
-        assert "cache" in recorder.last_message.lower()
+        assert "could not be refreshed" in recorder.last_message
 
     def test_download_fails_without_download_url(self):
         """Test that download fails when release has no download URL."""

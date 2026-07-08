@@ -170,16 +170,19 @@ def _build_retry_resolution_fields(
     retry_download_url = normalize_optional_text(release_data.get("download_url"))
     protocol = normalize_optional_text(release_data.get("protocol"))
     source = normalize_optional_text(release_data.get("source"))
+    retry_source_context: dict[str, Any] = {}
     if source is not None:
         handler = get_handler(source)
         source_retry_fields = handler.build_retry_resolution_fields(release_data)
-        retry_download_url = (
-            normalize_optional_text(source_retry_fields.get("retry_download_url"))
-            or retry_download_url
-        )
-        protocol = (
-            normalize_optional_text(source_retry_fields.get("retry_download_protocol")) or protocol
-        )
+        if "retry_download_url" in source_retry_fields:
+            retry_download_url = normalize_optional_text(
+                source_retry_fields.get("retry_download_url")
+            )
+        if "retry_download_protocol" in source_retry_fields:
+            protocol = normalize_optional_text(source_retry_fields.get("retry_download_protocol"))
+        raw_retry_source_context = source_retry_fields.get("retry_source_context")
+        if isinstance(raw_retry_source_context, dict):
+            retry_source_context = dict(raw_retry_source_context)
 
     ratio_limit = _optional_number(release_data.get("ratio_limit"))
     if ratio_limit is None and config.get("PROWLARR_USE_SEED_PREFERENCES", False):
@@ -202,6 +205,7 @@ def _build_retry_resolution_fields(
         ),
         "retry_ratio_limit": ratio_limit,
         "retry_seeding_time_limit_minutes": seeding_time_limit_minutes,
+        "retry_source_context": retry_source_context,
         "can_retry_without_staged_source": True,
     }
 
@@ -400,6 +404,7 @@ def serialize_task_for_retry(task: DownloadTask) -> dict[str, Any]:
         search_mode = normalized_search_mode or None
 
     raw_output_args = getattr(task, "output_args", None)
+    raw_retry_source_context = getattr(task, "retry_source_context", None)
 
     return {
         "task_id": getattr(task, "task_id", None),
@@ -428,6 +433,9 @@ def serialize_task_for_retry(task: DownloadTask) -> dict[str, Any]:
         "retry_expected_hash": getattr(task, "retry_expected_hash", None),
         "retry_ratio_limit": getattr(task, "retry_ratio_limit", None),
         "retry_seeding_time_limit_minutes": getattr(task, "retry_seeding_time_limit_minutes", None),
+        "retry_source_context": (
+            dict(raw_retry_source_context) if isinstance(raw_retry_source_context, dict) else {}
+        ),
         "can_retry_without_staged_source": bool(
             getattr(task, "can_retry_without_staged_source", True)
         ),
@@ -453,6 +461,7 @@ def _restore_task_from_retry_payload(payload: object) -> DownloadTask | None:
             search_mode = None
 
     output_args = payload.get("output_args")
+    retry_source_context = payload.get("retry_source_context")
 
     return DownloadTask(
         task_id=task_id,
@@ -482,6 +491,9 @@ def _restore_task_from_retry_payload(payload: object) -> DownloadTask | None:
         retry_ratio_limit=_optional_number(payload.get("retry_ratio_limit")),
         retry_seeding_time_limit_minutes=_optional_positive_int(
             payload.get("retry_seeding_time_limit_minutes")
+        ),
+        retry_source_context=(
+            dict(retry_source_context) if isinstance(retry_source_context, dict) else {}
         ),
         can_retry_without_staged_source=bool(payload.get("can_retry_without_staged_source", True)),
     )

@@ -1,10 +1,12 @@
 """Prowlarr download handler - resolves releases and delegates lifecycle to shared clients."""
 
 from typing import TYPE_CHECKING, Any
+from urllib.parse import urlparse
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import normalize_optional_text
+from shelfmark.core.search_plan import build_release_search_plan
 from shelfmark.download.clients import (
     DownloadClient,
     get_client,
@@ -23,8 +25,10 @@ from shelfmark.download.clients.base_handler import (
     DownloadRequest,
     ExternalClientHandler,
 )
+from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources import register_handler
-from shelfmark.release_sources.prowlarr.cache import get_release, remove_release
+from shelfmark.release_sources.prowlarr.cache import cache_release, get_release, remove_release
+from shelfmark.release_sources.prowlarr.source import ProwlarrSource
 from shelfmark.release_sources.prowlarr.utils import (
     coerce_int_like,
     get_preferred_download_url,
@@ -49,6 +53,11 @@ __all__ = [
 POLL_INTERVAL = _DEFAULT_POLL_INTERVAL
 COMPLETED_PATH_RETRY_INTERVAL = _DEFAULT_COMPLETED_PATH_RETRY_INTERVAL
 COMPLETED_PATH_MAX_ATTEMPTS = _DEFAULT_COMPLETED_PATH_MAX_ATTEMPTS
+EXPIRED_LINK_REFRESH_ERROR = (
+    "The indexer download link expired and the release could not be refreshed. "
+    "Search again for a fresh result."
+)
+HASH_DETECTION_ERROR = "Could not determine torrent hash from URL"
 
 
 def _coerce_positive_minutes(raw_minutes: object) -> int | None:
@@ -81,18 +90,30 @@ class ProwlarrHandler(ExternalClientHandler):
 
     def build_retry_resolution_fields(self, release_data: dict[str, Any]) -> dict[str, Any]:
         source_id = normalize_optional_text(release_data.get("source_id"))
-        if source_id is None:
-            return {}
+        extra = release_data.get("extra")
+        if not isinstance(extra, dict):
+            extra = {}
 
-        prowlarr_result = get_release(source_id)
-        if prowlarr_result is None:
-            return {}
+        retry_source_context: dict[str, Any] = {}
+        indexer_id = release_data.get("indexer_id") or extra.get("indexer_id")
+        if indexer_id is not None:
+            retry_source_context["indexer_id"] = indexer_id
+
+        indexer = normalize_optional_text(release_data.get("indexer") or extra.get("indexer"))
+        if indexer is not None and indexer.lower() != "unknown":
+            retry_source_context["indexer"] = indexer
+
+        info_url = normalize_optional_text(release_data.get("info_url") or extra.get("info_url"))
+        if info_url is not None:
+            retry_source_context["info_url"] = info_url
+
+        if source_id is not None:
+            retry_source_context["source_id"] = source_id
 
         return {
-            "retry_download_url": normalize_optional_text(
-                get_preferred_download_url(prowlarr_result)
-            ),
-            "retry_download_protocol": normalize_optional_text(get_protocol(prowlarr_result)),
+            "retry_download_url": None,
+            "retry_download_protocol": None,
+            "retry_source_context": retry_source_context,
         }
 
     @classmethod
@@ -139,13 +160,12 @@ class ProwlarrHandler(ExternalClientHandler):
         # Look up the cached release
         prowlarr_result = get_release(task.task_id)
         if not prowlarr_result:
-            restored_request = self._restore_download_request_from_task(task)
-            if restored_request is None:
-                logger.warning("Release cache miss: %s", task.task_id)
-                status_callback("error", "Release not found in cache (may have expired)")
+            logger.info("Prowlarr release cache miss, refreshing: %s", task.task_id)
+            prowlarr_result = self._refresh_release(task)
+            if prowlarr_result is None:
+                logger.warning("Prowlarr release refresh failed: %s", task.task_id)
+                status_callback("error", EXPIRED_LINK_REFRESH_ERROR)
                 return None
-            logger.info("Restored Prowlarr download request for retry: %s", task.task_id)
-            return restored_request
 
         # Extract download URL
         download_url = get_preferred_download_url(prowlarr_result)
@@ -179,6 +199,78 @@ class ProwlarrHandler(ExternalClientHandler):
             seeding_time_limit=seeding_time_limit,
             ratio_limit=ratio_limit,
         )
+
+    def _refresh_release(self, task: DownloadTask) -> dict[str, Any] | None:
+        """Re-query Prowlarr and cache the exact original release if it still exists."""
+        title = normalize_optional_text(task.title)
+        if title is None:
+            return None
+
+        context = getattr(task, "retry_source_context", None)
+        if not isinstance(context, dict):
+            context = {}
+
+        indexer = normalize_optional_text(context.get("indexer"))
+        book = BookMetadata(
+            provider="shelfmark",
+            provider_id=task.task_id,
+            title=title,
+            authors=[task.author] if task.author else [],
+            search_title=title,
+            search_author=task.author,
+        )
+        plan = build_release_search_plan(
+            book,
+            indexers=[indexer] if indexer is not None else None,
+        )
+
+        source = ProwlarrSource()
+        results = source.search(book, plan, content_type=task.content_type or "ebook")
+        for release in results:
+            raw_release = get_release(release.source_id)
+            if raw_release is None:
+                continue
+            if not self._raw_release_matches_task(raw_release, task.task_id):
+                continue
+
+            cache_release(task.task_id, raw_release)
+            logger.info("Refreshed Prowlarr release: %s", task.task_id)
+            return raw_release
+
+        return None
+
+    @staticmethod
+    def _raw_release_matches_task(raw_release: dict[str, Any], task_id: str) -> bool:
+        identities = (
+            normalize_optional_text(raw_release.get("guid")),
+            normalize_optional_text(raw_release.get("infoUrl")),
+        )
+        return any(identity == task_id for identity in identities)
+
+    def _refresh_download_request_after_add_failure(
+        self,
+        *,
+        task: DownloadTask,
+        request: DownloadRequest,
+        error: Exception,
+        status_callback: Callable[[str, str | None], None],
+    ) -> DownloadRequest | None:
+        """Refresh once when a cached Prowlarr torrent proxy URL has expired."""
+        if request.protocol != "torrent":
+            return None
+        if HASH_DETECTION_ERROR not in str(error):
+            return None
+
+        parsed = urlparse(request.url)
+        if parsed.scheme.lower() not in {"http", "https"}:
+            return None
+
+        logger.info("Refreshing stale Prowlarr torrent URL for %s", task.task_id)
+        remove_release(task.task_id)
+        refreshed_request = self._resolve_download(task, status_callback)
+        if refreshed_request is None:
+            raise RuntimeError(EXPIRED_LINK_REFRESH_ERROR) from error
+        return refreshed_request
 
     def _on_download_complete(self, task: DownloadTask) -> None:
         """Remove completed release from the Prowlarr cache."""
