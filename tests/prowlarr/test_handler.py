@@ -552,6 +552,124 @@ class TestProwlarrHandlerSeedCriteria:
             assert request.seeding_time_limit is None
             assert request.ratio_limit is None
 
+    def test_resolve_download_falls_back_to_prowlarr_when_enrichment_missing(self):
+        """Regression test for #795: when search-time enrichment is missing,
+        share limits are re-resolved from Prowlarr at grab time."""
+        mock_client = MagicMock()
+        mock_client.get_indexer_seed_settings.return_value = {
+            5: {"seeding_time_limit_minutes": 4320, "ratio_limit": 1.0}
+        }
+
+        def config_get(key, default=None):
+            return True if key == "PROWLARR_USE_SEED_PREFERENCES" else default
+
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value={
+                    "protocol": "torrent",
+                    "title": "Test Release",
+                    "magnetUrl": "magnet:?xt=urn:btih:abc123",
+                    "indexerId": 5,
+                },
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.config.get",
+                side_effect=config_get,
+            ),
+            patch.object(
+                ProwlarrHandler,
+                "_build_prowlarr_client",
+                return_value=mock_client,
+            ),
+        ):
+            handler = ProwlarrHandler()
+            task = DownloadTask(
+                task_id="seed-time-fallback",
+                source="prowlarr",
+                title="Test Book",
+            )
+
+            request = handler._resolve_download(task, lambda *_: None)
+
+            assert request is not None
+            assert request.seeding_time_limit == 4320
+            assert request.ratio_limit == 1.0
+            mock_client.get_indexer_seed_settings.assert_called_once_with(restrict_to=[5])
+
+    def test_resolve_download_fallback_failure_leaves_limits_unset(self):
+        mock_client = MagicMock()
+        mock_client.get_indexer_seed_settings.side_effect = RuntimeError("prowlarr down")
+
+        def config_get(key, default=None):
+            return True if key == "PROWLARR_USE_SEED_PREFERENCES" else default
+
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value={
+                    "protocol": "torrent",
+                    "title": "Test Release",
+                    "magnetUrl": "magnet:?xt=urn:btih:abc123",
+                    "indexerId": 5,
+                },
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.config.get",
+                side_effect=config_get,
+            ),
+            patch.object(
+                ProwlarrHandler,
+                "_build_prowlarr_client",
+                return_value=mock_client,
+            ),
+        ):
+            handler = ProwlarrHandler()
+            task = DownloadTask(
+                task_id="seed-time-fallback-failure",
+                source="prowlarr",
+                title="Test Book",
+            )
+
+            request = handler._resolve_download(task, lambda *_: None)
+
+            assert request is not None
+            assert request.seeding_time_limit is None
+            assert request.ratio_limit is None
+
+    def test_resolve_download_skips_fallback_when_enrichment_present(self):
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value={
+                    "protocol": "torrent",
+                    "title": "Test Release",
+                    "magnetUrl": "magnet:?xt=urn:btih:abc123",
+                    "indexerId": 5,
+                    "configuredSeedTimeMinutes": 7200,
+                },
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.config.get",
+                side_effect=lambda key, default=None: (
+                    True if key == "PROWLARR_USE_SEED_PREFERENCES" else default
+                ),
+            ),
+            patch.object(ProwlarrHandler, "_build_prowlarr_client") as mock_builder,
+        ):
+            handler = ProwlarrHandler()
+            task = DownloadTask(
+                task_id="seed-time-no-fallback",
+                source="prowlarr",
+                title="Test Book",
+            )
+
+            request = handler._resolve_download(task, lambda *_: None)
+
+            assert request is not None
+            assert request.seeding_time_limit == 7200
+            mock_builder.assert_not_called()
+
     def test_download_passes_seed_limits_to_client(self):
         mock_client = MagicMock()
         mock_client.name = "qbittorrent"

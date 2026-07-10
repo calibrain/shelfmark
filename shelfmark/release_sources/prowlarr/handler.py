@@ -3,10 +3,13 @@
 from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
+import requests
+
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import normalize_optional_text
 from shelfmark.core.search_plan import build_release_search_plan
+from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.clients import (
     DownloadClient,
     get_client,
@@ -27,6 +30,7 @@ from shelfmark.download.clients.base_handler import (
 )
 from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources import register_handler
+from shelfmark.release_sources.prowlarr.api import IndexerSeedSettings, ProwlarrClient
 from shelfmark.release_sources.prowlarr.cache import cache_release, get_release, remove_release
 from shelfmark.release_sources.prowlarr.source import ProwlarrSource
 from shelfmark.release_sources.prowlarr.utils import (
@@ -41,6 +45,16 @@ if TYPE_CHECKING:
     from shelfmark.core.models import DownloadTask
 
 logger = setup_logger(__name__)
+
+# Errors that ProwlarrClient can raise when fetching indexer settings.
+_SEED_SETTINGS_FALLBACK_ERRORS = (
+    requests.exceptions.RequestException,
+    OSError,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
+
 __all__ = [
     "ProwlarrHandler",
     "POLL_INTERVAL",
@@ -70,6 +84,47 @@ def _coerce_positive_minutes(raw_minutes: object) -> int | None:
 @register_handler("prowlarr")
 class ProwlarrHandler(ExternalClientHandler):
     """Handler for Prowlarr downloads via configured torrent or usenet client."""
+
+    @staticmethod
+    def _build_prowlarr_client() -> ProwlarrClient | None:
+        """Build a ProwlarrClient from config, or None if not configured."""
+        raw_url = config.get("PROWLARR_URL", "")
+        raw_api_key = config.get("PROWLARR_API_KEY", "")
+        url = normalize_optional_text(raw_url) if isinstance(raw_url, str) else None
+        api_key = normalize_optional_text(raw_api_key) if isinstance(raw_api_key, str) else None
+        if not url or not api_key:
+            return None
+        normalized_url = normalize_http_url(url)
+        if not normalized_url:
+            return None
+        return ProwlarrClient(normalized_url, api_key)
+
+    def _fetch_seed_settings_fallback(self, raw_indexer_id: object) -> IndexerSeedSettings | None:
+        """Fetch share limits for one indexer directly from Prowlarr.
+
+        Used when the cached release is missing its search-time seed-limit
+        enrichment so that transient failures during search cannot cause a
+        torrent to be added without its configured share limits.
+        """
+        indexer_id = coerce_int_like(raw_indexer_id)
+        if indexer_id is None:
+            return None
+
+        client = self._build_prowlarr_client()
+        if client is None:
+            return None
+
+        try:
+            settings = client.get_indexer_seed_settings(restrict_to=[indexer_id])
+        except _SEED_SETTINGS_FALLBACK_ERRORS:
+            logger.warning(
+                "Grab-time seed settings fallback failed for indexerId=%s",
+                indexer_id,
+                exc_info=True,
+            )
+            return None
+
+        return settings.get(indexer_id)
 
     def _get_client(self, protocol: str) -> DownloadClient | None:
         """Compatibility shim so module-level patching still works in tests."""
@@ -190,6 +245,28 @@ class ProwlarrHandler(ExternalClientHandler):
 
             seeding_time_limit = _coerce_positive_minutes(raw_configured_seed_time)
             ratio_limit = float(raw_configured_ratio) if raw_configured_ratio is not None else None
+
+            # Fallback: search-time enrichment can be missing when the indexer
+            # settings fetch transiently failed during the search (#795).
+            # Re-resolve the limits from Prowlarr at grab time so torrents are
+            # never sent to the client without their configured share limits.
+            if seeding_time_limit is None and ratio_limit is None and protocol == "torrent":
+                fallback = self._fetch_seed_settings_fallback(prowlarr_result.get("indexerId"))
+                if fallback:
+                    seeding_time_limit = _coerce_positive_minutes(
+                        fallback.get("seeding_time_limit_minutes")
+                    )
+                    raw_ratio = fallback.get("ratio_limit")
+                    ratio_limit = float(raw_ratio) if raw_ratio is not None else None
+
+            if seeding_time_limit is None and ratio_limit is None and protocol == "torrent":
+                logger.warning(
+                    "Prowlarr seed preferences are enabled but no share limits "
+                    "could be resolved for release '%s' (indexerId=%s); the "
+                    "torrent will use the client's global limits",
+                    release_name,
+                    prowlarr_result.get("indexerId"),
+                )
 
         return DownloadRequest(
             url=download_url,

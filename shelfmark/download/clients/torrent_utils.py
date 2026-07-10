@@ -19,6 +19,7 @@ from shelfmark.download.network import get_ssl_verify
 logger = setup_logger(__name__)
 
 _MAGNET_RESPONSE_MAX_BYTES = 2000
+_TORRENT_FETCH_MAX_REDIRECTS = 5
 _BASE32_BTMH_TAG_BYTES = 34
 _BTIH_INFO_BYTE_HEX = 0x20
 _BTIH_PREFIX_BYTE = 0x12
@@ -98,19 +99,18 @@ def extract_torrent_info(
 
     # A release source can legitimately hand us a download URL on a different
     # origin than the configured Prowlarr/Newznab endpoint (e.g. a direct
-    # tracker link, or Prowlarr reached through a separate proxy). We still need
-    # to fetch the .torrent to recover the info_hash when the source did not
-    # provide one, so the prefetch runs regardless of origin. The Prowlarr API
-    # key, however, is only ever sent to a trusted origin so it can never leak
-    # to an arbitrary indexer/tracker host.
-    trusted_origin = _is_trusted_torrent_fetch_url(url)
-
+    # tracker link, or Prowlarr reached through a separate proxy), and a trusted
+    # Prowlarr download URL commonly redirects to the indexer's own download
+    # link. We still need to fetch the .torrent to recover the info_hash when
+    # the source did not provide one, so the prefetch runs regardless of origin
+    # and follows cross-origin redirects. The Prowlarr API key, however, is
+    # re-evaluated per hop and only ever sent to a trusted origin so it can
+    # never leak to an arbitrary indexer/tracker host.
     headers: dict[str, str] = {"Accept": "application/x-bittorrent"}
-    if trusted_origin:
-        # TODO(shelfmark): Move this source-specific Prowlarr auth handling into a source hook.
-        api_key = str(config.get("PROWLARR_API_KEY", "") or "").strip()
-        if api_key:
-            headers["X-Api-Key"] = api_key
+    # TODO(shelfmark): Move this source-specific Prowlarr auth handling into a source hook.
+    api_key = str(config.get("PROWLARR_API_KEY", "") or "").strip()
+    if api_key:
+        headers["X-Api-Key"] = api_key
 
     def resolve_url(current: str, location: str) -> str:
         if not location:
@@ -121,19 +121,28 @@ def extract_torrent_info(
     try:
         logger.debug("Fetching torrent file from: %s...", url[:80])
 
-        # Use allow_redirects=False to handle magnet link redirects manually
-        # Some indexers redirect download URLs to magnet links
-        resp = requests.get(
-            url,
-            timeout=30,
-            allow_redirects=False,
-            headers=headers,
-            verify=get_ssl_verify(url),
-        )
+        # Redirects are followed manually: some indexers redirect download URLs
+        # to magnet links, and each hop must decide anew whether it may see the
+        # API key.
+        current_url = url
+        redirects_remaining = _TORRENT_FETCH_MAX_REDIRECTS
+        while True:
+            request_headers = dict(headers)
+            if not _is_trusted_torrent_fetch_url(current_url):
+                request_headers.pop("X-Api-Key", None)
 
-        # Check if this is a redirect to a magnet link
-        if resp.status_code in (301, 302, 303, 307, 308):
-            redirect_url = resolve_url(url, resp.headers.get("Location", ""))
+            resp = requests.get(
+                current_url,
+                timeout=30,
+                allow_redirects=False,
+                headers=request_headers,
+                verify=get_ssl_verify(current_url),
+            )
+
+            if resp.status_code not in (301, 302, 303, 307, 308):
+                break
+
+            redirect_url = resolve_url(current_url, resp.headers.get("Location", ""))
             if redirect_url.startswith("magnet:"):
                 logger.debug("Download URL redirected to magnet link")
                 info_hash = extract_hash_from_magnet(redirect_url)
@@ -145,20 +154,12 @@ def extract_torrent_info(
                     is_magnet=True,
                     magnet_url=redirect_url,
                 )
-            if not _is_trusted_torrent_fetch_url(redirect_url):
-                logger.debug(
-                    "Skipping torrent prefetch redirect to untrusted URL: %s...",
-                    redirect_url[:80],
-                )
+            if redirects_remaining <= 0:
+                logger.debug("Too many redirects fetching torrent file: %s...", url[:80])
                 return TorrentInfo(info_hash=expected_hash, torrent_data=None, is_magnet=False)
-            # Not a magnet redirect, follow it manually
+            redirects_remaining -= 1
             logger.debug("Following redirect to: %s...", redirect_url[:80])
-            resp = requests.get(
-                redirect_url,
-                timeout=30,
-                headers=headers,
-                verify=get_ssl_verify(redirect_url),
-            )
+            current_url = redirect_url
 
         resp.raise_for_status()
         torrent_data = resp.content

@@ -258,7 +258,7 @@ class QBittorrentClient(DownloadClient):
         self._tags = _normalize_tags(config.get("QBITTORRENT_TAG", []))
 
     def _get_torrents_info(
-        self, torrent_hash: str | None = None
+        self, torrent_hash: str | None = None, category: str | None = None
     ) -> tuple[list[SimpleNamespace], str | None]:
         """Get torrent info using GET.
 
@@ -267,6 +267,7 @@ class QBittorrentClient(DownloadClient):
         - Keep "API/auth/connect" errors distinct from "torrent missing".
         - If a hash-specific query returns empty, fall back to listing by category
           and matching locally.
+        - Without a hash, `category` narrows the listing to that category.
 
         Returns:
             (torrents, error_message)
@@ -301,6 +302,8 @@ class QBittorrentClient(DownloadClient):
             primary_params: dict[str, str] = {}
             if torrent_hash:
                 primary_params["hashes"] = torrent_hash
+            elif category:
+                primary_params["category"] = category
 
             response = do_request(primary_params)
             torrents, error = parse_response(response, request_params=primary_params)
@@ -357,6 +360,44 @@ class QBittorrentClient(DownloadClient):
             return [], f"qBittorrent API error: {type(e).__name__}: {e}"
         else:
             return torrents, None
+
+    def _list_category_hashes(self, category: str | None) -> set[str] | None:
+        """Snapshot the hashes qBittorrent currently reports for a category."""
+        torrents, error = self._get_torrents_info(category=category)
+        if error:
+            logger.debug("Could not snapshot qBittorrent torrents: %s", error)
+            return None
+        return {str(torrent.hash).lower() for torrent in torrents if getattr(torrent, "hash", None)}
+
+    def _discover_added_torrent_hash(
+        self,
+        name: str,
+        category: str | None,
+        known_hashes: set[str] | None,
+    ) -> str | None:
+        """Recover the hash of a torrent that was added without a known info_hash.
+
+        A `known_hashes` of None means the pre-add snapshot failed, so only a
+        torrent matching the requested rename can identify the new arrival.
+        """
+        for _ in range(20):
+            torrents, error = self._get_torrents_info(category=category)
+            if error:
+                logger.debug("qBittorrent hash discovery: %s", error)
+            else:
+                new_torrents = [
+                    torrent
+                    for torrent in torrents
+                    if getattr(torrent, "hash", None)
+                    and (known_hashes is None or str(torrent.hash).lower() not in known_hashes)
+                ]
+                for torrent in new_torrents:
+                    if getattr(torrent, "name", None) == name:
+                        return str(torrent.hash).lower()
+                if known_hashes is not None and len(new_torrents) == 1:
+                    return str(new_torrents[0].hash).lower()
+            time.sleep(0.5)
+        return None
 
     @staticmethod
     def is_configured() -> bool:
@@ -425,6 +466,10 @@ class QBittorrentClient(DownloadClient):
             expected_hash = torrent_info.info_hash
             torrent_data = torrent_info.torrent_data
 
+            known_hashes: set[str] | None = None
+            if not expected_hash:
+                known_hashes = self._list_category_hashes(category)
+
             # Per-torrent seeding limits from indexer
             seeding_time_limit_value = kwargs.get("seeding_time_limit")
             seeding_time_limit = coerce_optional_int(seeding_time_limit_value)
@@ -459,11 +504,16 @@ class QBittorrentClient(DownloadClient):
             result_text = _normalize_add_result(result)
             logger.debug("qBittorrent add result: %s", result_text)
 
-            if not expected_hash:
-                _raise_runtime_error("Could not determine torrent hash from URL")
-
             if _is_explicit_add_failure(result):
                 _raise_runtime_error(f"Failed to add torrent: {result_text}")
+
+            if not expected_hash:
+                # qBittorrent fetches .torrent URLs itself, so the add can succeed
+                # even when no hash could be extracted up front. Recover it by
+                # watching for the new torrent to appear.
+                expected_hash = self._discover_added_torrent_hash(name, category, known_hashes)
+            if not expected_hash:
+                _raise_runtime_error("Could not determine torrent hash from URL")
 
             # Some qBittorrent-compatible clients return HTTP 200 with an empty body
             # instead of qBittorrent's literal "Ok." response. Prefer verifying that
