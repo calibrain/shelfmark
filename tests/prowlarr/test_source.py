@@ -13,6 +13,8 @@ from shelfmark.release_sources.prowlarr.source import (
     ProwlarrSource,
     _detect_content_type_from_categories,
     _extract_format,
+    _fetch_indexer_seed_settings,
+    _last_known_seed_settings,
     _parse_size,
 )
 from shelfmark.release_sources.prowlarr.utils import get_protocol_display, sanitize_download_url
@@ -234,7 +236,7 @@ class FakeTorznabClient:
         self.search_results = search_results or []
         self.seed_settings = seed_settings or {}
 
-    def get_enabled_indexers_detailed(self):
+    def get_enabled_indexers_detailed(self, *, raise_on_error=False):
         return [
             {
                 "id": 1,
@@ -278,7 +280,7 @@ class TestProwlarrIndexerSeedSettings:
         monkeypatch.setattr(
             client,
             "get_enabled_indexers_detailed",
-            lambda: [
+            lambda *, raise_on_error=False: [
                 {
                     "id": 13,
                     "protocol": "torrent",
@@ -640,7 +642,7 @@ class TestProwlarrLocalizedQueries:
         source = ProwlarrSource()
 
         class FailingClient:
-            def get_enabled_indexers_detailed(self):
+            def get_enabled_indexers_detailed(self, *, raise_on_error=False):
                 raise RuntimeError("indexers unavailable")
 
         monkeypatch.setattr(source, "_get_client", lambda: FailingClient())
@@ -655,7 +657,7 @@ class TestProwlarrLocalizedQueries:
         source = ProwlarrSource()
 
         class FailingClient:
-            def get_enabled_indexers_detailed(self):
+            def get_enabled_indexers_detailed(self, *, raise_on_error=False):
                 raise RuntimeError("indexers unavailable")
 
         assert source._resolve_indexer_ids_from_names(FailingClient(), ["Alpha"]) is None
@@ -664,7 +666,52 @@ class TestProwlarrLocalizedQueries:
         source = ProwlarrSource()
 
         class FailingClient:
-            def get_enabled_indexers_detailed(self):
+            def get_enabled_indexers_detailed(self, *, raise_on_error=False):
                 raise RuntimeError("indexers unavailable")
 
         assert source._get_search_indexer_ids(FailingClient(), None, [7000]) == []
+
+
+class TestFetchIndexerSeedSettingsFallback:
+    """Regression tests for #795: transient Prowlarr API failures must not
+    silently strip per-indexer share limits from search results."""
+
+    @pytest.fixture(autouse=True)
+    def _clear_last_known_seed_settings(self):
+        _last_known_seed_settings.clear()
+        yield
+        _last_known_seed_settings.clear()
+
+    def test_success_updates_last_known_good(self):
+        class Client:
+            def get_indexer_seed_settings(self, restrict_to=None):
+                del restrict_to
+                return {13: {"seeding_time_limit_minutes": 4320, "ratio_limit": 1.0}}
+
+        fetched = _fetch_indexer_seed_settings(Client(), None)
+
+        assert fetched == {13: {"seeding_time_limit_minutes": 4320, "ratio_limit": 1.0}}
+        assert _last_known_seed_settings == fetched
+
+    def test_failure_falls_back_to_last_known_good(self):
+        _last_known_seed_settings[13] = {"seeding_time_limit_minutes": 4320}
+
+        class FailingClient:
+            def get_indexer_seed_settings(self, restrict_to=None):
+                del restrict_to
+                raise RuntimeError("indexers unavailable")
+
+        fetched = _fetch_indexer_seed_settings(FailingClient(), None)
+
+        assert fetched == {13: {"seeding_time_limit_minutes": 4320}}
+        # The fallback must be a copy so callers cannot mutate the cache.
+        fetched[99] = {"ratio_limit": 2.0}
+        assert 99 not in _last_known_seed_settings
+
+    def test_failure_with_no_history_returns_empty(self):
+        class FailingClient:
+            def get_indexer_seed_settings(self, restrict_to=None):
+                del restrict_to
+                raise RuntimeError("indexers unavailable")
+
+        assert _fetch_indexer_seed_settings(FailingClient(), None) == {}

@@ -2,7 +2,10 @@
 
 import re
 import time
+from threading import Lock
 from typing import TYPE_CHECKING, ClassVar, NoReturn
+
+import requests
 
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
@@ -40,6 +43,11 @@ logger = setup_logger(__name__)
 _SIZE_UNIT_BASE = 1024
 _TWO_FORMATS = 2
 _PROWLARR_SOURCE_ERRORS = (AttributeError, OSError, RuntimeError, TypeError, ValueError)
+
+# Errors that can surface from ProwlarrClient.get_indexer_seed_settings(). The
+# client raises requests exceptions (subclasses of OSError via IOError lineage
+# is not guaranteed), so include RequestException explicitly.
+_PROWLARR_SEED_SETTINGS_ERRORS = (*_PROWLARR_SOURCE_ERRORS, requests.exceptions.RequestException)
 
 
 def _raise_timeout_error(message: str) -> NoReturn:
@@ -443,6 +451,36 @@ def _prowlarr_result_to_release(
     )
 
 
+# Last successfully fetched per-indexer share limits. Used as a fallback when
+# a transient Prowlarr API failure prevents fetching fresh settings during a
+# search, so results are never silently cached without seed limits (#795).
+_seed_settings_lock = Lock()
+_last_known_seed_settings: dict[int, IndexerSeedSettings] = {}
+
+
+def _fetch_indexer_seed_settings(
+    client: ProwlarrClient,
+    indexer_ids: list[int] | None,
+) -> dict[int, IndexerSeedSettings]:
+    """Fetch per-indexer share limits, falling back to last-known-good on failure."""
+    try:
+        fetched = client.get_indexer_seed_settings(restrict_to=indexer_ids)
+    except _PROWLARR_SEED_SETTINGS_ERRORS:
+        with _seed_settings_lock:
+            fallback = dict(_last_known_seed_settings)
+        logger.warning(
+            "Failed to fetch Prowlarr indexer seed settings; "
+            "falling back to last known settings for %s indexer(s)",
+            len(fallback),
+            exc_info=True,
+        )
+        return fallback
+
+    with _seed_settings_lock:
+        _last_known_seed_settings.update(fetched)
+    return fetched
+
+
 def _apply_indexer_seed_settings(
     result: dict,
     indexer_seed_settings: dict[int, IndexerSeedSettings],
@@ -783,7 +821,7 @@ class ProwlarrSource(ReleaseSource):
             enriched_indexer_ids = client.get_enriched_indexer_ids(restrict_to=indexer_ids)
             enriched_indexer_ids_set = set(enriched_indexer_ids)
             indexer_seed_settings = (
-                client.get_indexer_seed_settings(restrict_to=indexer_ids)
+                _fetch_indexer_seed_settings(client, indexer_ids)
                 if config.get("PROWLARR_USE_SEED_PREFERENCES", False)
                 else {}
             )

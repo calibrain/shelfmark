@@ -158,24 +158,35 @@ class ProwlarrClient:
             logger.info("Prowlarr connection successful: version %s", version)
             return True, f"Connected to Prowlarr {version}"
 
-    def get_indexers(self) -> list[dict[str, Any]]:
-        """Get all configured indexers."""
+    def get_indexers(self, *, raise_on_error: bool = False) -> list[dict[str, Any]]:
+        """Get all configured indexers.
+
+        Args:
+            raise_on_error: When True, propagate API failures instead of
+                returning an empty list. Callers that must distinguish
+                "no indexers" from "the request failed" should set this.
+
+        """
         try:
             return _normalize_json_object_list(
                 self._request("GET", "/api/v1/indexer"),
                 context="Prowlarr indexer list",
             )
         except _PROWLARR_CLIENT_ERRORS:
+            if raise_on_error:
+                raise
             logger.exception("Failed to get indexers")
             return []
 
-    def get_enabled_indexers_detailed(self) -> list[dict[str, Any]]:
+    def get_enabled_indexers_detailed(
+        self, *, raise_on_error: bool = False
+    ) -> list[dict[str, Any]]:
         """Get enabled indexers, including implementation metadata.
 
         Note: Prowlarr indexer "name" is user-configurable; prefer
         "implementation"/"implementationName" for stable identification.
         """
-        indexers = self.get_indexers()
+        indexers = self.get_indexers(raise_on_error=raise_on_error)
         return [idx for idx in indexers if idx.get("enable", False)]
 
     def get_enriched_indexer_ids(self, *, restrict_to: list[int] | None = None) -> list[int]:
@@ -214,10 +225,17 @@ class ProwlarrClient:
 
         Prowlarr exposes seedTime in minutes, which is also the unit expected by
         torrent clients.
+
+        Raises:
+            requests.exceptions.RequestException (and other client errors) when
+            the indexer list cannot be fetched. An empty dict strictly means
+            "no share limits are configured", never "the request failed" -
+            callers rely on this to avoid silently dropping seed limits.
+
         """
         settings_by_indexer: dict[int, IndexerSeedSettings] = {}
 
-        for idx in self.get_enabled_indexers_detailed():
+        for idx in self.get_enabled_indexers_detailed(raise_on_error=True):
             idx_id_int = coerce_int_like(idx.get("id"))
             if idx_id_int is None:
                 continue
