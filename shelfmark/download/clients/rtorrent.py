@@ -206,7 +206,10 @@ class RTorrentClient(DownloadClient):
                 # watching for the new download to appear.
                 torrent_hash = self._discover_added_torrent_hash(name, label, known_hashes)
             if not torrent_hash:
-                _raise_runtime_error("Could not determine torrent hash from URL")
+                message = "Could not determine torrent hash from URL"
+                if torrent_info.fetch_error:
+                    message = f"{message} (torrent file fetch failed: {torrent_info.fetch_error})"
+                _raise_runtime_error(message)
 
             logger.debug("Added torrent to rTorrent: %s", torrent_hash)
 
