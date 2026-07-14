@@ -668,3 +668,133 @@ class TestExtractHashFromMagnet:
         magnet = f"magnet:?xt=urn:btmh:{b32}&dn=test"
         result = extract_hash_from_magnet(magnet)
         assert result == digest.hex()
+
+
+class TestTorrentFetchCache:
+    """Tests for reusing a fetched .torrent across find_existing/add_download (#1111)."""
+
+    @staticmethod
+    def _valid_torrent():
+        info_dict = {
+            b"name": b"book.txt",
+            b"length": 100,
+            b"piece length": 16384,
+            b"pieces": b"\x00" * 20,
+        }
+        torrent_data = bencode_encode({b"info": info_dict})
+        info_hash = hashlib.sha1(bencode_encode(info_dict)).hexdigest().lower()
+        return torrent_data, info_hash
+
+    def test_repeated_url_reuses_fetched_torrent_data(self, monkeypatch):
+        """The same download URL is fetched once per add attempt, not once per caller.
+
+        find_existing() and add_download() both resolve the request URL; private
+        tracker links behind Prowlarr's proxy can be rate-limited or single-use,
+        so the second fetch must be served from the cache.
+        """
+        torrent_data, info_hash = self._valid_torrent()
+        response = MagicMock(status_code=200, content=torrent_data)
+        response.raise_for_status = MagicMock()
+        mock_get = MagicMock(return_value=response)
+        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+
+        url = "https://prowlarr.example/26/download?apikey=secret&link=token"
+        first = extract_torrent_info(url, fetch_torrent=True)
+        second = extract_torrent_info(url, fetch_torrent=True)
+
+        mock_get.assert_called_once()
+        assert first.info_hash == info_hash
+        assert second.info_hash == info_hash
+        assert second.torrent_data == torrent_data
+
+    def test_failed_fetch_is_not_cached_and_records_reason(self, monkeypatch):
+        """Fetch failures are retried on the next call and expose the reason."""
+        import requests as requests_module
+
+        mock_get = MagicMock(
+            side_effect=requests_module.exceptions.HTTPError(
+                "500 Server Error: Internal Server Error for url: https://prowlarr.example/26/download"
+            )
+        )
+        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+
+        url = "https://prowlarr.example/26/download?apikey=secret&link=token"
+        first = extract_torrent_info(url, fetch_torrent=True)
+        second = extract_torrent_info(url, fetch_torrent=True)
+
+        assert mock_get.call_count == 2
+        assert first.fetch_error is not None
+        assert "500 Server Error" in first.fetch_error
+        assert first.info_hash is None
+        assert second.fetch_error is not None
+
+    def test_fetch_failure_still_falls_back_to_expected_hash(self, monkeypatch):
+        """A known infohash keeps working when the prefetch fails."""
+        import requests as requests_module
+
+        mock_get = MagicMock(side_effect=requests_module.exceptions.ConnectionError("boom"))
+        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+
+        known_hash = "3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0"
+        result = extract_torrent_info(
+            "https://tracker.example/download/book.torrent",
+            fetch_torrent=True,
+            expected_hash=known_hash,
+        )
+
+        assert result.info_hash == known_hash
+        assert result.fetch_error is not None
+        assert "boom" in result.fetch_error
+
+    def test_expected_hash_applies_to_cached_hashless_result(self, monkeypatch):
+        """A cached fetch without a hash still honors a caller's expected_hash."""
+        response = MagicMock(status_code=200, content=b"<html>not a torrent</html>")
+        response.raise_for_status = MagicMock()
+        mock_get = MagicMock(return_value=response)
+        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+
+        url = "https://tracker.example/download/book.torrent"
+        known_hash = "3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0"
+        first = extract_torrent_info(url, fetch_torrent=True)
+        second = extract_torrent_info(url, fetch_torrent=True, expected_hash=known_hash)
+
+        mock_get.assert_called_once()
+        assert first.info_hash is None
+        assert second.info_hash == known_hash
+
+    def test_cache_expires_after_ttl(self, monkeypatch):
+        """Stale cache entries are refetched instead of reused."""
+        torrent_data, _ = self._valid_torrent()
+        response = MagicMock(status_code=200, content=torrent_data)
+        response.raise_for_status = MagicMock()
+        mock_get = MagicMock(return_value=response)
+        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+
+        clock = {"now": 1000.0}
+        monkeypatch.setattr(
+            "shelfmark.download.clients.torrent_utils.time.monotonic",
+            lambda: clock["now"],
+        )
+
+        url = "https://tracker.example/download/book.torrent"
+        extract_torrent_info(url, fetch_torrent=True)
+        clock["now"] += 121.0
+        extract_torrent_info(url, fetch_torrent=True)
+
+        assert mock_get.call_count == 2
+
+    def test_magnet_redirect_result_is_reused(self, monkeypatch):
+        """A URL that redirects to a magnet link is also only resolved once."""
+        magnet = "magnet:?xt=urn:btih:3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0&dn=test"
+        response = MagicMock(status_code=302, headers={"Location": magnet})
+        mock_get = MagicMock(return_value=response)
+        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+
+        url = "https://tracker.example/download/book.torrent"
+        first = extract_torrent_info(url, fetch_torrent=True)
+        second = extract_torrent_info(url, fetch_torrent=True)
+
+        mock_get.assert_called_once()
+        assert first.is_magnet is True
+        assert second.magnet_url == magnet
+        assert second.info_hash == "3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0"

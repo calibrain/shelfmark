@@ -903,6 +903,61 @@ class TestQBittorrentClientAddDownload:
                         "http://tracker.example/download/book.torrent", "Test Download"
                     )
 
+    def test_add_download_error_includes_fetch_failure_reason(self, monkeypatch):
+        """Surface why the .torrent prefetch failed instead of only the hash error.
+
+        Regression for #1111: a Prowlarr proxy fetch that fails (e.g. HTTP 500
+        because the tracker rejected the request) was reported as a bare
+        "Could not determine torrent hash from URL", hiding the actual cause.
+        """
+        config_values = {
+            "QBITTORRENT_URL": "http://localhost:8080",
+            "QBITTORRENT_USERNAME": "admin",
+            "QBITTORRENT_PASSWORD": "password",
+            "QBITTORRENT_CATEGORY": "books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.qbittorrent.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+        monkeypatch.setattr(
+            "shelfmark.download.clients.qbittorrent.time.sleep", lambda _seconds: None
+        )
+
+        mock_client_instance = MagicMock()
+        mock_client_instance.torrents_add.return_value = "Ok."
+        mock_client_instance._session.get.return_value = create_mock_session_response([])
+        mock_client_class = MagicMock(return_value=mock_client_instance)
+
+        with patch.dict("sys.modules", {"qbittorrentapi": MagicMock(Client=mock_client_class)}):
+            import importlib
+
+            import shelfmark.download.clients.qbittorrent as qb_module
+
+            importlib.reload(qb_module)
+
+            with patch(
+                "shelfmark.download.clients.qbittorrent.extract_torrent_info",
+                autospec=True,
+            ) as mock_extract:
+                mock_extract.return_value = TorrentInfo(
+                    info_hash=None,
+                    torrent_data=None,
+                    is_magnet=False,
+                    magnet_url=None,
+                    fetch_error="500 Server Error: Internal Server Error for url: http://prowlarr:9696/26/download",
+                )
+
+                client = qb_module.QBittorrentClient()
+                with pytest.raises(RuntimeError) as exc_info:
+                    client.add_download(
+                        "http://prowlarr:9696/26/download?apikey=key&link=token",
+                        "Test Download",
+                    )
+
+                assert "Could not determine torrent hash from URL" in str(exc_info.value)
+                assert "500 Server Error" in str(exc_info.value)
+
     def test_add_download_creates_category(self, monkeypatch):
         """Test that add_download creates category if needed."""
         config_values = {

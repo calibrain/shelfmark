@@ -513,7 +513,10 @@ class QBittorrentClient(DownloadClient):
                 # watching for the new torrent to appear.
                 expected_hash = self._discover_added_torrent_hash(name, category, known_hashes)
             if not expected_hash:
-                _raise_runtime_error("Could not determine torrent hash from URL")
+                message = "Could not determine torrent hash from URL"
+                if torrent_info.fetch_error:
+                    message = f"{message} (torrent file fetch failed: {torrent_info.fetch_error})"
+                _raise_runtime_error(message)
 
             # Some qBittorrent-compatible clients return HTTP 200 with an empty body
             # instead of qBittorrent's literal "Ok." response. Prefer verifying that

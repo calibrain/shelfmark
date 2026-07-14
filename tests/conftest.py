@@ -29,6 +29,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import pytest
 
 
+@pytest.fixture(autouse=True)
+def _clear_torrent_fetch_cache():
+    """Keep the shared torrent fetch cache from leaking between tests."""
+    from shelfmark.download.clients.torrent_utils import clear_torrent_fetch_cache
+
+    clear_torrent_fetch_cache()
+    yield
+    clear_torrent_fetch_cache()
+
+
 @pytest.fixture
 def sample_prowlarr_result():
     """Sample Prowlarr API search result."""

@@ -109,12 +109,15 @@ class TestProwlarrHandlerDownloadErrors:
 
     def test_download_fails_clearly_when_cache_miss_cannot_refresh(self):
         """Prowlarr retry URLs are not durable; cache misses must refresh by identity."""
-        with patch(
-            "shelfmark.release_sources.prowlarr.handler.get_release",
-            return_value=None,
-        ), patch(
-            "shelfmark.release_sources.prowlarr.handler.ProwlarrSource.search",
-            return_value=[],
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value=None,
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.ProwlarrSource.search",
+                return_value=[],
+            ),
         ):
             handler = ProwlarrHandler()
             task = DownloadTask(
