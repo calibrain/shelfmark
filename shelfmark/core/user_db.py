@@ -96,6 +96,11 @@ ON download_history (user_id, final_status, terminal_at DESC);
 CREATE INDEX IF NOT EXISTS idx_download_history_recent
 ON download_history (user_id, terminal_at DESC, id DESC);
 
+-- download_history.book_id and idx_download_history_book_id are added by
+-- _migrate_download_history_book_id() so the column exists before the index
+-- is created on upgraded pre-library databases. Fresh databases get both via
+-- the CREATE TABLE / CREATE INDEX calls inside that migration.
+
 CREATE TABLE IF NOT EXISTS activity_view_state (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     viewer_scope TEXT NOT NULL,
@@ -113,6 +118,48 @@ WHERE dismissed_at IS NOT NULL AND cleared_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_activity_view_state_hidden
 ON activity_view_state (viewer_scope, item_type, item_key)
 WHERE dismissed_at IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS books (
+    id                 INTEGER PRIMARY KEY AUTOINCREMENT,
+    metadata_provider  TEXT    NOT NULL,
+    provider_book_id   TEXT    NOT NULL,
+    title              TEXT    NOT NULL,
+    author             TEXT,
+    subtitle           TEXT,
+    publish_year       INTEGER,
+    isbn_13            TEXT,
+    cover_url          TEXT,
+    series_name        TEXT,
+    series_position    REAL,
+    language           TEXT,
+    metadata_json      TEXT    NOT NULL DEFAULT '{}',
+    created_at         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at         TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (metadata_provider, provider_book_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_books_provider
+ON books (metadata_provider, provider_book_id);
+
+CREATE TABLE IF NOT EXISTS user_library (
+    user_id    INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    book_id    INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
+    added_at   TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, book_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_library_book_id_added_at
+ON user_library (book_id, added_at DESC);
+
+CREATE TABLE IF NOT EXISTS user_downloads (
+    user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    history_id  INTEGER NOT NULL REFERENCES download_history(id) ON DELETE CASCADE,
+    added_at    TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (user_id, history_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_downloads_history
+ON user_downloads (history_id);
 """
 
 
@@ -203,6 +250,7 @@ class UserDB:
                 self._migrate_request_delivery_columns(conn)
                 self._migrate_download_history_queued_at(conn)
                 self._migrate_download_history_retry_payload(conn)
+                self._migrate_download_history_book_id(conn)
                 conn.commit()
                 # WAL mode must be changed outside an open transaction.
                 conn.execute("PRAGMA journal_mode=WAL")
@@ -269,6 +317,27 @@ class UserDB:
         column_names = {str(col["name"]) for col in columns}
         if "retry_payload" not in column_names:
             conn.execute("ALTER TABLE download_history ADD COLUMN retry_payload TEXT")
+
+    def _migrate_download_history_book_id(self, conn: sqlite3.Connection) -> None:
+        """Ensure download_history.book_id exists to link Files to Books.
+
+        Fresh databases get the column via ``_CREATE_TABLES_SQL``; this migration
+        covers upgrades of pre-library ``users.db`` files. The library always
+        starts from a fresh database (no legacy ``download_history`` rows to
+        backfill), so this only adds the nullable column — book rows are minted
+        on Add-to-Library going forward and legacy rows keep ``book_id IS NULL``.
+        """
+        columns = conn.execute("PRAGMA table_info(download_history)").fetchall()
+        column_names = {str(col["name"]) for col in columns}
+        if "book_id" not in column_names:
+            conn.execute(
+                "ALTER TABLE download_history ADD COLUMN book_id "
+                "INTEGER REFERENCES books(id) ON DELETE SET NULL"
+            )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_download_history_book_id "
+            "ON download_history (book_id, final_status)"
+        )
 
     def create_user(
         self,

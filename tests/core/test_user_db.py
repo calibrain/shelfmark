@@ -68,6 +68,149 @@ class TestUserDBInitialization:
         assert cursor.fetchone() is not None
         conn.close()
 
+    def test_initialize_creates_books_table(self, user_db, db_path):
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='books'")
+        assert cursor.fetchone() is not None
+        conn.close()
+
+    def test_initialize_creates_user_library_table(self, user_db, db_path):
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='user_library'"
+        )
+        assert cursor.fetchone() is not None
+        conn.close()
+
+    def test_initialize_creates_user_downloads_table(self, user_db, db_path):
+        conn = sqlite3.connect(db_path)
+        cursor = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table' AND name='user_downloads'"
+        )
+        assert cursor.fetchone() is not None
+        conn.close()
+
+    def test_initialize_creates_books_provider_unique_index(self, user_db, db_path):
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='books'"
+        ).fetchall()
+        index_names = {row[0] for row in rows}
+        # SQLite implements the UNIQUE(metadata_provider, provider_book_id)
+        # constraint as an autoindex named sqlite_autoindex_books_N; the explicit
+        # covering index added alongside is the one we assert on.
+        assert "idx_books_provider" in index_names
+        conn.close()
+
+    def test_initialize_creates_user_library_indexes(self, user_db, db_path):
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='user_library'"
+        ).fetchall()
+        index_names = {row[0] for row in rows}
+        assert "idx_user_library_book_id_added_at" in index_names
+        conn.close()
+
+    def test_initialize_creates_user_downloads_history_index(self, user_db, db_path):
+        conn = sqlite3.connect(db_path)
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='user_downloads'"
+        ).fetchall()
+        index_names = {row[0] for row in rows}
+        assert "idx_user_downloads_history" in index_names
+        conn.close()
+
+    def test_initialize_creates_download_history_book_id_column_and_index(self, user_db, db_path):
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        columns = conn.execute("PRAGMA table_info(download_history)").fetchall()
+        column_names = {str(col["name"]) for col in columns}
+        assert "book_id" in column_names
+
+        rows = conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='download_history'"
+        ).fetchall()
+        index_names = {row[0] for row in rows}
+        assert "idx_download_history_book_id" in index_names
+        conn.close()
+
+    def test_initialize_books_unique_pair_rejects_duplicate_provider_book_id(
+        self, user_db, db_path
+    ):
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "INSERT INTO books (metadata_provider, provider_book_id, title) "
+            "VALUES ('openlibrary', 'OL123M', 'First')"
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO books (metadata_provider, provider_book_id, title) "
+                "VALUES ('openlibrary', 'OL123M', 'Dup')"
+            )
+        # Same provider_book_id under a different provider is allowed.
+        conn.execute(
+            "INSERT INTO books (metadata_provider, provider_book_id, title) "
+            "VALUES ('hardcover', 'OL123M', 'Cross-Provider OK')"
+        )
+        conn.close()
+
+    def test_initialize_books_rejects_null_provider_pair(self, user_db, db_path):
+        conn = sqlite3.connect(db_path)
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO books (metadata_provider, provider_book_id, title) "
+                "VALUES (NULL, 'OL1M', 'No Provider')"
+            )
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO books (metadata_provider, provider_book_id, title) "
+                "VALUES ('openlibrary', NULL, 'No Provider Book Id')"
+            )
+        conn.close()
+
+    def test_initialize_user_library_composite_primary_key(self, user_db, db_path):
+        conn = sqlite3.connect(db_path)
+        conn.execute("INSERT INTO users (username, role) VALUES ('u1', 'user')")
+        user_id = conn.execute("SELECT id FROM users WHERE username = 'u1'").fetchone()[0]
+        conn.execute(
+            "INSERT INTO books (metadata_provider, provider_book_id, title) "
+            "VALUES ('openlibrary', 'OL1M', 'Book')"
+        )
+        book_id = conn.execute("SELECT id FROM books WHERE provider_book_id = 'OL1M'").fetchone()[0]
+        conn.execute(
+            "INSERT INTO user_library (user_id, book_id) VALUES (?, ?)",
+            (user_id, book_id),
+        )
+        # Duplicate (user_id, book_id) is rejected by the composite PK.
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO user_library (user_id, book_id) VALUES (?, ?)",
+                (user_id, book_id),
+            )
+        conn.close()
+
+    def test_initialize_user_downloads_composite_primary_key(self, user_db, db_path):
+        conn = sqlite3.connect(db_path)
+        conn.execute("INSERT INTO users (username, role) VALUES ('u1', 'user')")
+        user_id = conn.execute("SELECT id FROM users WHERE username = 'u1'").fetchone()[0]
+        conn.execute(
+            "INSERT INTO download_history (task_id, source, title, final_status) "
+            "VALUES ('t1', 'irc', 'Book', 'complete')"
+        )
+        history_id = conn.execute(
+            "SELECT id FROM download_history WHERE task_id = 't1'"
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO user_downloads (user_id, history_id) VALUES (?, ?)",
+            (user_id, history_id),
+        )
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute(
+                "INSERT INTO user_downloads (user_id, history_id) VALUES (?, ?)",
+                (user_id, history_id),
+            )
+        conn.close()
+
     def test_initialize_creates_activity_view_state_table(self, user_db, db_path):
         conn = sqlite3.connect(db_path)
         cursor = conn.execute(
@@ -494,6 +637,152 @@ class TestUserDBInitialization:
         ).fetchone()["count"]
         assert legacy_activity_rows == 1
         assert legacy_dismissal_rows == 1
+        conn.close()
+
+    def test_initialize_adds_book_id_and_library_tables_to_legacy_install(self, db_path):
+        """Upgrade path: pre-library databases gain ``download_history.book_id``
+        plus the ``books`` / ``user_library`` / ``user_downloads`` tables on
+        ``initialize()``. Legacy ``download_history`` rows are preserved with
+        ``book_id IS NULL`` — no backfill, the library starts fresh."""
+        conn = sqlite3.connect(db_path)
+        conn.executescript(
+            """
+            CREATE TABLE users (
+                id            INTEGER PRIMARY KEY AUTOINCREMENT,
+                username      TEXT UNIQUE NOT NULL,
+                email         TEXT,
+                display_name  TEXT,
+                password_hash TEXT,
+                oidc_subject  TEXT UNIQUE,
+                auth_source   TEXT NOT NULL DEFAULT 'builtin',
+                role          TEXT NOT NULL DEFAULT 'user',
+                created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE TABLE user_settings (
+                user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+                settings_json TEXT NOT NULL DEFAULT '{}'
+            );
+
+            CREATE TABLE download_requests (
+                id             INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                status         TEXT NOT NULL DEFAULT 'pending',
+                delivery_state TEXT NOT NULL DEFAULT 'none',
+                source_hint    TEXT,
+                content_type   TEXT NOT NULL,
+                request_level  TEXT NOT NULL,
+                policy_mode    TEXT NOT NULL,
+                book_data      TEXT NOT NULL,
+                release_data   TEXT,
+                note           TEXT,
+                admin_note     TEXT,
+                reviewed_by    INTEGER REFERENCES users(id),
+                created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                reviewed_at    TIMESTAMP,
+                delivery_updated_at TIMESTAMP
+            );
+
+            CREATE TABLE download_history (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id TEXT UNIQUE NOT NULL,
+                user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+                username TEXT,
+                request_id INTEGER,
+                source TEXT NOT NULL,
+                source_display_name TEXT,
+                title TEXT NOT NULL,
+                author TEXT,
+                format TEXT,
+                size TEXT,
+                preview TEXT,
+                content_type TEXT,
+                origin TEXT NOT NULL DEFAULT 'direct',
+                final_status TEXT NOT NULL,
+                status_message TEXT,
+                download_path TEXT,
+                retry_payload TEXT,
+                queued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                terminal_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_download_history_user_status
+            ON download_history (user_id, final_status, terminal_at DESC);
+
+            CREATE INDEX IF NOT EXISTS idx_download_history_recent
+            ON download_history (user_id, terminal_at DESC, id DESC);
+
+            CREATE TABLE activity_view_state (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                viewer_scope TEXT NOT NULL,
+                item_type TEXT NOT NULL,
+                item_key TEXT NOT NULL,
+                dismissed_at TIMESTAMP,
+                cleared_at TIMESTAMP,
+                UNIQUE(viewer_scope, item_type, item_key)
+            );
+            """
+        )
+        conn.execute(
+            "INSERT INTO users (id, username, role) VALUES (?, ?, ?)",
+            (1, "legacy-user", "user"),
+        )
+        conn.execute(
+            "INSERT INTO download_history (task_id, user_id, source, title, final_status) "
+            "VALUES (?, ?, ?, ?, ?)",
+            ("legacy-task", 1, "irc", "Legacy Book", "complete"),
+        )
+        conn.commit()
+        conn.close()
+
+        from shelfmark.core.user_db import UserDB
+
+        db = UserDB(db_path)
+        db.initialize()
+
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+
+        # Legacy download_history row preserved, with the new book_id column NULL.
+        legacy_row = conn.execute(
+            "SELECT task_id, book_id FROM download_history WHERE task_id = 'legacy-task'"
+        ).fetchone()
+        assert legacy_row is not None
+        assert legacy_row["book_id"] is None
+
+        history_columns = {
+            str(col["name"])
+            for col in conn.execute("PRAGMA table_info(download_history)").fetchall()
+        }
+        assert "book_id" in history_columns
+
+        library_tables = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='table' "
+                "AND name IN ('books', 'user_library', 'user_downloads')"
+            )
+        }
+        assert library_tables == {"books", "user_library", "user_downloads"}
+
+        history_indexes = {
+            row[0]
+            for row in conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='download_history'"
+            )
+        }
+        assert "idx_download_history_book_id" in history_indexes
+
+        # Re-running initialize() is idempotent on the upgrade path.
+        conn.close()
+        db.initialize()
+        conn = sqlite3.connect(db_path)
+        conn.row_factory = sqlite3.Row
+        legacy_again = conn.execute(
+            "SELECT task_id, book_id FROM download_history WHERE task_id = 'legacy-task'"
+        ).fetchone()
+        assert legacy_again is not None
+        assert legacy_again["book_id"] is None
         conn.close()
 
 
