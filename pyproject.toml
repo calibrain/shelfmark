@@ -29,7 +29,7 @@ dependencies = [
 browser = [
     "pyvirtualdisplay",
     "pyautogui",
-    "seleniumbase==4.51.0",
+    "seleniumbase==4.51.2",
     "python-xlib",
 ]
 
@@ -40,7 +40,7 @@ dev = [
     "pytest",
     "pytest-cov",
     "pytest-xdist>=3.8.0",
-    "ruff==0.15.21",
+    "ruff==0.15.22",
     "vulture>=2.14",
 ]
 
