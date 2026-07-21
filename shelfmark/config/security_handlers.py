@@ -115,12 +115,30 @@ def check_oidc_connection(
         response.raise_for_status()
         document = response.json()
 
-        required_fields = ["issuer", "authorization_endpoint", "token_endpoint"]
+        required_fields = ["issuer", "authorization_endpoint", "token_endpoint", "jwks_uri"]
         missing_fields = [field for field in required_fields if field not in document]
         if missing_fields:
             return {
                 "success": False,
                 "message": f"Discovery document missing fields: {', '.join(missing_fields)}",
+            }
+
+        # Logins verify the ID token against the provider's JWKS, so an empty key
+        # set (e.g. an Authentik provider with no Signing Key selected) means every
+        # login will fail even though discovery looks healthy.
+        jwks_uri = str(document["jwks_uri"])
+        jwks_response = requests.get(jwks_uri, timeout=10, verify=get_ssl_verify(jwks_uri))
+        jwks_response.raise_for_status()
+        jwks_document = jwks_response.json()
+        jwks_keys = jwks_document.get("keys") if isinstance(jwks_document, dict) else None
+        if not jwks_keys:
+            return {
+                "success": False,
+                "message": (
+                    "Discovery document is valid, but the provider returned no token "
+                    "signing keys (empty JWKS), so logins will fail. If you use "
+                    "Authentik, select a Signing Key in the provider settings."
+                ),
             }
 
         return {"success": True, "message": f"Connected to {document['issuer']}"}

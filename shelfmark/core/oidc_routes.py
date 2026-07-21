@@ -33,6 +33,11 @@ logger = setup_logger(__name__)
 oauth = OAuth()
 _RETURN_TO_SESSION_KEY = "oidc_return_to"
 _OIDC_CLIENT_ERRORS = (OAuthError, OSError, RuntimeError, TypeError, ValueError)
+_EMPTY_JWKS_MESSAGE = (
+    "Authentication failed: the identity provider returned no token signing keys "
+    "(empty JWKS). If you use Authentik, select a Signing Key in the provider "
+    "settings and try again."
+)
 
 
 class _ClaimsMappingLike(Protocol):
@@ -119,6 +124,17 @@ def _normalize_return_to(raw_return_to: object) -> str | None:
         return None
 
     return urlunsplit(("", "", path, parsed.query, parsed.fragment))
+
+
+def _idp_jwks_has_no_keys(client: Any) -> bool:
+    """Return True when the IdP's JWKS document verifiably contains no signing keys."""
+    try:
+        jwk_set = client.fetch_jwk_set(force=True)
+    except (*_OIDC_CLIENT_ERRORS, KeyError):
+        return False
+    if not isinstance(jwk_set, Mapping):
+        return False
+    return not jwk_set.get("keys")
 
 
 def _get_pending_return_to(*, clear: bool = False) -> str | None:
@@ -274,6 +290,17 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
                 return redirect(
                     _login_error_url(f"OIDC token claim validation failed: {claim_name}")
                 )
+            except KeyError, ValueError:
+                # An IdP serving an empty JWKS document (e.g. an Authentik provider
+                # with no Signing Key selected) surfaces as KeyError('keys') while
+                # importing the key set. Test Connection only validates discovery,
+                # so this is the first place the misconfiguration becomes visible.
+                if _idp_jwks_has_no_keys(client):
+                    logger.exception(
+                        "OIDC callback failed: the IdP JWKS document contains no signing keys"
+                    )
+                    return redirect(_login_error_url(_EMPTY_JWKS_MESSAGE))
+                raise
             claims = _normalize_claims(token.get("userinfo"))
 
             # If userinfo is missing or claims are too sparse, request it explicitly.
@@ -306,6 +333,12 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
                 is_admin = admin_group in groups
 
             allow_email_link = bool(user_info.get("email")) and _is_email_verified(claims)
+            if user_info.get("email") and not allow_email_link:
+                logger.debug(
+                    "OIDC email %s is not marked verified by the IdP; skipping "
+                    "email-based account linking",
+                    user_info["email"],
+                )
             user = provision_oidc_user(
                 user_db,
                 user_info,

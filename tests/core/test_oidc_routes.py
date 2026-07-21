@@ -414,6 +414,43 @@ class TestOIDCCallbackEndpoint:
         assert "issuer validation failed" in error
 
     @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_redirects_with_signing_key_guidance_on_empty_jwks(
+        self, mock_get_client, client
+    ):
+        fake_client = Mock()
+        fake_client.authorize_access_token.side_effect = KeyError("keys")
+        fake_client.fetch_jwk_set.return_value = {}
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+        error = _get_oidc_error(resp)
+        assert error is not None
+        assert "no token signing keys" in error
+        assert "Signing Key" in error
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_uses_generic_error_when_jwks_has_keys(self, mock_get_client, client):
+        fake_client = Mock()
+        fake_client.authorize_access_token.side_effect = KeyError("keys")
+        fake_client.fetch_jwk_set.return_value = {"keys": [{"kty": "RSA", "kid": "abc"}]}
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+        error = _get_oidc_error(resp)
+        assert error == "Authentication failed"
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_uses_generic_error_when_jwks_diagnosis_fails(self, mock_get_client, client):
+        fake_client = Mock()
+        fake_client.authorize_access_token.side_effect = KeyError("keys")
+        fake_client.fetch_jwk_set.side_effect = RuntimeError("jwks fetch failed")
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+        error = _get_oidc_error(resp)
+        assert error == "Authentication failed"
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
     def test_callback_redirects_when_auto_provision_disabled_and_no_email_match(
         self, mock_get_client, client
     ):
