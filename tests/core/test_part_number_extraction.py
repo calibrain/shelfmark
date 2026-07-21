@@ -43,10 +43,10 @@ class TestNaturalSortKey:
             "file10.mp3",
         ]
 
-    def test_uses_filename_only(self):
+    def test_uses_full_path(self):
         files = [Path("/z/dir/file1.mp3"), Path("/a/dir/file2.mp3")]
         sorted_files = sorted(files, key=natural_sort_key)
-        assert sorted_files[0].name == "file1.mp3"
+        assert sorted_files == [Path("/a/dir/file2.mp3"), Path("/z/dir/file1.mp3")]
 
 
 class TestAssignPartNumbers:
@@ -70,6 +70,23 @@ class TestAssignPartNumbers:
             (Path("Chapter 1.mp3"), "01"),
             (Path("Chapter 2.mp3"), "02"),
             (Path("Chapter 10.mp3"), "03"),
+        ]
+
+    def test_nested_folders_are_numbered_in_folder_order(self):
+        files = [
+            Path("06_Side 6/002.mp3"),
+            Path("01_Side 1/001.mp3"),
+            Path("00_Introduction/001_About.mp3"),
+            Path("06_Side 6/001.mp3"),
+            Path("01_Side 1/002.mp3"),
+        ]
+
+        assert assign_part_numbers(files) == [
+            (Path("00_Introduction/001_About.mp3"), "01"),
+            (Path("01_Side 1/001.mp3"), "02"),
+            (Path("01_Side 1/002.mp3"), "03"),
+            (Path("06_Side 6/001.mp3"), "04"),
+            (Path("06_Side 6/002.mp3"), "05"),
         ]
 
     def test_custom_zero_padding(self):
@@ -190,7 +207,10 @@ class TestEdgeCases:
     def test_identical_filenames_different_dirs(self):
         files = [Path("/dir2/track.mp3"), Path("/dir1/track.mp3")]
         result = assign_part_numbers(files)
-        assert len(result) == 2
+        assert result == [
+            (Path("/dir1/track.mp3"), "01"),
+            (Path("/dir2/track.mp3"), "02"),
+        ]
 
     def test_unicode_filenames(self):
         files = [Path("日本語タイトル 02.mp3"), Path("日本語タイトル 01.mp3")]

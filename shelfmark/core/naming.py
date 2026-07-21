@@ -91,8 +91,7 @@ PAD_NUMBERS_PATTERN = re.compile(r"\d+")
 
 def natural_sort_key(path: str | Path) -> str:
     """Generate a sort key with padded numbers for natural sorting."""
-    filename = Path(path).name.lower()
-    return PAD_NUMBERS_PATTERN.sub(lambda m: m.group().zfill(9), filename)
+    return PAD_NUMBERS_PATTERN.sub(lambda m: m.group().zfill(9), str(path).lower())
 
 
 def assign_part_numbers(
