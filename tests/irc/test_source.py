@@ -161,6 +161,145 @@ def test_search_no_dcc_offer_releases_connection_and_caches_empty_result(monkeyp
     ]
 
 
+def test_audiobook_search_routes_to_configured_audiobook_channel_and_bot(monkeypatch):
+    """An audiobook request uses the audiobook channel/bot when configured."""
+    import shelfmark.release_sources.irc.source as irc_source
+
+    source = IRCReleaseSource()
+    connection_kwargs: dict[str, object] = {}
+    cache_calls: list[dict[str, object]] = []
+
+    class FakeClient:
+        online_servers: set[str] = set()
+
+        def send_message(self, channel: str, message: str) -> None:
+            self.channel = channel
+            self.message = message
+
+        def wait_for_dcc(
+            self, *, timeout: float, result_type: bool, expected_senders: object = None
+        ) -> None:
+            return None
+
+    client = FakeClient()
+
+    monkeypatch.setattr(
+        irc_source,
+        "_config_text",
+        lambda key: {
+            "IRC_SERVER": "irc.example.net",
+            "IRC_CHANNEL": "ebooks",
+            "IRC_NICK": "tester",
+            "IRC_SEARCH_BOT": "search",
+            "IRC_AUDIOBOOK_CHANNEL": "bookz",
+            "IRC_AUDIOBOOK_SEARCH_BOT": "audiosearch",
+        }.get(key, ""),
+    )
+    irc_source._recent_message_sends.clear()
+
+    monkeypatch.setattr(source, "is_available", lambda: True)
+    monkeypatch.setattr(irc_source, "_enforce_rate_limit", lambda: None)
+    monkeypatch.setattr(irc_source, "_emit_status", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        "shelfmark.release_sources.irc.cache.get_cached_results",
+        lambda cache_key, *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "shelfmark.release_sources.irc.cache.cache_results",
+        lambda cache_key, title, releases, *, online_servers=None: cache_calls.append(
+            {"cache_key": cache_key}
+        ),
+    )
+
+    def fake_get_connection(**kwargs: object) -> FakeClient:
+        connection_kwargs.update(kwargs)
+        return client
+
+    monkeypatch.setattr(
+        "shelfmark.release_sources.irc.connection_manager.connection_manager.get_connection",
+        fake_get_connection,
+    )
+    monkeypatch.setattr(
+        "shelfmark.release_sources.irc.connection_manager.connection_manager.release_connection",
+        lambda _client: None,
+    )
+
+    book = BookMetadata(provider="hardcover", provider_id="ab", title="Audio Book")
+    plan = SimpleNamespace(primary_query="Audio Book")
+
+    source.search(book, plan, content_type="audiobook")
+
+    # Joined the audiobook channel, addressed the audiobook search bot, and the cache
+    # key is namespaced to the audiobook channel (so it won't collide with the ebook one).
+    assert connection_kwargs["channel"] == "bookz"
+    assert client.channel == "#bookz"
+    assert client.message == "@audiosearch Audio Book"
+    assert cache_calls == [{"cache_key": "irc.example.net:bookz:audio book"}]
+
+
+def test_audiobook_search_reuses_main_bot_when_only_channel_configured(monkeypatch):
+    """With an audiobook channel but no audiobook bot, reuse the main search bot."""
+    import shelfmark.release_sources.irc.source as irc_source
+
+    source = IRCReleaseSource()
+
+    class FakeClient:
+        online_servers: set[str] = set()
+
+        def send_message(self, channel: str, message: str) -> None:
+            self.channel = channel
+            self.message = message
+
+        def wait_for_dcc(
+            self, *, timeout: float, result_type: bool, expected_senders: object = None
+        ) -> None:
+            return None
+
+    client = FakeClient()
+
+    monkeypatch.setattr(
+        irc_source,
+        "_config_text",
+        lambda key: {
+            "IRC_SERVER": "irc.example.net",
+            "IRC_CHANNEL": "ebooks",
+            "IRC_NICK": "tester",
+            "IRC_SEARCH_BOT": "search",
+            "IRC_AUDIOBOOK_CHANNEL": "bookz",
+            "IRC_AUDIOBOOK_SEARCH_BOT": "",
+        }.get(key, ""),
+    )
+    irc_source._recent_message_sends.clear()
+
+    monkeypatch.setattr(source, "is_available", lambda: True)
+    monkeypatch.setattr(irc_source, "_enforce_rate_limit", lambda: None)
+    monkeypatch.setattr(irc_source, "_emit_status", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        "shelfmark.release_sources.irc.cache.get_cached_results",
+        lambda cache_key, *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "shelfmark.release_sources.irc.cache.cache_results",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "shelfmark.release_sources.irc.connection_manager.connection_manager.get_connection",
+        lambda **_kwargs: client,
+    )
+    monkeypatch.setattr(
+        "shelfmark.release_sources.irc.connection_manager.connection_manager.release_connection",
+        lambda _client: None,
+    )
+
+    book = BookMetadata(provider="hardcover", provider_id="ab2", title="Audio Book")
+    plan = SimpleNamespace(primary_query="Audio Book")
+
+    source.search(book, plan, content_type="audiobook")
+
+    assert client.channel == "#bookz"
+    assert client.message == "@search Audio Book"
+
+
 def test_search_without_search_bot_never_posts_to_channel(monkeypatch):
     """A bare (unaddressed) query must never reach the channel; refuse to connect."""
     import shelfmark.release_sources.irc.source as irc_source

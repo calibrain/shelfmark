@@ -72,7 +72,10 @@ def irc_settings() -> list[SettingsField]:
             key="IRC_CHANNEL",
             label="Channel",
             placeholder="e.g. ebooks",
-            description="Channel name without the # prefix",
+            description=(
+                "Channel name without the # prefix. Used for all searches unless a "
+                "separate audiobook channel is configured below."
+            ),
             required=True,
             env_supported=True,
         ),
@@ -93,6 +96,38 @@ def irc_settings() -> list[SettingsField]:
                 '"@<bot> <query>".'
             ),
             required=True,
+            env_supported=True,
+        ),
+        HeadingField(
+            key="audiobook_heading",
+            title="Audiobooks",
+            description=(
+                "Some networks index audiobooks in a separate channel from ebooks "
+                "(for example #ebooks for ebooks and #bookz for audiobooks). "
+                "Configure that channel here to search it for audiobook requests. "
+                "Leave these blank to search the main channel above for both."
+            ),
+        ),
+        TextField(
+            key="IRC_AUDIOBOOK_CHANNEL",
+            label="Audiobook channel",
+            placeholder="e.g. bookz",
+            description=(
+                "Optional. Channel name (without the # prefix) to use for audiobook "
+                "searches. Leave blank to use the main channel above for audiobooks too."
+            ),
+            required=False,
+            env_supported=True,
+        ),
+        TextField(
+            key="IRC_AUDIOBOOK_SEARCH_BOT",
+            label="Audiobook search bot",
+            placeholder="e.g. search",
+            description=(
+                "Optional. Search bot for the audiobook channel. Leave blank to reuse "
+                "the main search bot above. Only used when an audiobook channel is set."
+            ),
+            required=False,
             env_supported=True,
         ),
         HeadingField(

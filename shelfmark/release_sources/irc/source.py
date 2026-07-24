@@ -240,6 +240,19 @@ class IRCReleaseSource(ReleaseSource):
         nick = _config_text("IRC_NICK")
         search_bot = _config_text("IRC_SEARCH_BOT")
 
+        # Audiobooks may be indexed in a separate channel from ebooks on some networks
+        # (e.g. #ebooks for ebooks, #bookz for audiobooks). When an audiobook channel is
+        # configured and an audiobook was requested, route the search there (with its own
+        # search bot if set). Otherwise fall back to the main channel/bot, which keeps the
+        # single-channel networks that index both formats working unchanged.
+        if is_audiobook(content_type):
+            audiobook_channel = _config_text("IRC_AUDIOBOOK_CHANNEL")
+            if audiobook_channel:
+                channel = audiobook_channel
+                audiobook_search_bot = _config_text("IRC_AUDIOBOOK_SEARCH_BOT")
+                if audiobook_search_bot:
+                    search_bot = audiobook_search_bot
+
         # Never post an unaddressed query to the channel. A bare book title looks like
         # spam to everyone else in the channel and gets the nick banned. Searches must
         # be addressed to a search bot ("@<bot> <query>").

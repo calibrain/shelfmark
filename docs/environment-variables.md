@@ -1395,9 +1395,11 @@ Delay between requests in seconds to avoid rate limiting (0-10).
 | `IRC_SERVER` | IRC server hostname | string | _none_ |
 | `IRC_PORT` | IRC server port (usually 6697 for TLS, 6667 for plain) | number | `6697` |
 | `IRC_USE_TLS` | Enable TLS/SSL encryption for the IRC connection. Disable for servers that don't support TLS. | boolean | `true` |
-| `IRC_CHANNEL` | Channel name without the # prefix | string | _none_ |
+| `IRC_CHANNEL` | Channel name without the # prefix. Used for all searches unless a separate audiobook channel is configured below. | string | _none_ |
 | `IRC_NICK` | Your IRC nickname (required). Must be unique on the IRC network. | string | _none_ |
 | `IRC_SEARCH_BOT` | The search bot to address queries to (required). | string | _none_ |
+| `IRC_AUDIOBOOK_CHANNEL` | Optional. Channel name (without the # prefix) to use for audiobook searches. Leave blank to use the main channel above for audiobooks too. | string | _none_ |
+| `IRC_AUDIOBOOK_SEARCH_BOT` | Optional. Search bot for the audiobook channel. Leave blank to reuse the main search bot above. Only used when an audiobook channel is set. | string | _none_ |
 | `IRC_CACHE_TTL` | How long to keep cached search results before they expire. | string (choice) | `2592000` |
 
 <details>
@@ -1435,7 +1437,7 @@ Enable TLS/SSL encryption for the IRC connection. Disable for servers that don't
 
 **Channel**
 
-Channel name without the # prefix
+Channel name without the # prefix. Used for all searches unless a separate audiobook channel is configured below.
 
 - **Type:** string
 - **Default:** _none_
@@ -1460,6 +1462,24 @@ The search bot to address queries to (required). Searches are sent as "@<bot> <q
 - **Type:** string
 - **Default:** _none_
 - **Required:** Yes
+
+#### `IRC_AUDIOBOOK_CHANNEL`
+
+**Audiobook channel**
+
+Optional. Channel name (without the # prefix) to use for audiobook searches. Leave blank to use the main channel above for audiobooks too.
+
+- **Type:** string
+- **Default:** _none_
+
+#### `IRC_AUDIOBOOK_SEARCH_BOT`
+
+**Audiobook search bot**
+
+Optional. Search bot for the audiobook channel. Leave blank to reuse the main search bot above. Only used when an audiobook channel is set.
+
+- **Type:** string
+- **Default:** _none_
 
 #### `IRC_CACHE_TTL`
 
