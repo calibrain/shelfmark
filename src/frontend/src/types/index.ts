@@ -325,6 +325,12 @@ export interface AuthResponse {
   oidc_auto_redirect?: boolean;
 }
 
+export type LibraryCapability = 'download-capable' | 'request-only';
+
+export interface AuthCheckResponse extends AuthResponse {
+  library_capability: LibraryCapability | null;
+}
+
 export interface ActingAsUserSelection {
   id: number;
   username: string;

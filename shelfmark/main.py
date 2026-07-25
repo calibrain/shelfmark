@@ -2281,6 +2281,7 @@ def api_auth_check() -> Response | tuple[Response, int]:
                     "auth_required": False,
                     "auth_mode": "none",
                     "is_admin": True,
+                    "library_capability": None,
                 }
             )
 
@@ -2290,11 +2291,13 @@ def api_auth_check() -> Response | tuple[Response, int]:
         is_admin = get_auth_check_admin_status(auth_mode, {}, session)
 
         display_name = None
+        library_capability = None
         if is_authenticated and session.get("db_user_id") and user_db is not None:
             try:
                 db_user = user_db.get_user(user_id=session["db_user_id"])
                 if db_user:
                     display_name = db_user.get("display_name") or None
+                    library_capability = db_user["library_capability"]
             except (sqlite3.Error, TypeError, ValueError) as exc:
                 logger.debug("Could not load display name for session user: %s", exc)
 
@@ -2305,6 +2308,7 @@ def api_auth_check() -> Response | tuple[Response, int]:
             "is_admin": is_admin if is_authenticated else False,
             "username": session.get("user_id") if is_authenticated else None,
             "display_name": display_name,
+            "library_capability": library_capability,
         }
 
         # Add logout URL for proxy auth if configured
@@ -2335,6 +2339,7 @@ def api_auth_check() -> Response | tuple[Response, int]:
                 "auth_required": True,
                 "auth_mode": "unknown",
                 "is_admin": False,
+                "library_capability": None,
             }
         )
 

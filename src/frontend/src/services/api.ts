@@ -4,6 +4,7 @@ import type {
   StatusData,
   AppConfig,
   LoginCredentials,
+  AuthCheckResponse,
   AuthResponse,
   ReleaseSource,
   ReleasesResponse,
@@ -716,8 +717,8 @@ export const logout = async (): Promise<AuthResponse> => {
   });
 };
 
-export const checkAuth = async (): Promise<AuthResponse> => {
-  return fetchJSON<AuthResponse>(API.authCheck);
+export const checkAuth = async (): Promise<AuthCheckResponse> => {
+  return fetchJSON<AuthCheckResponse>(API.authCheck);
 };
 
 // Settings API functions
