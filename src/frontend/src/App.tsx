@@ -37,7 +37,9 @@ import { primeSettingsCache } from './hooks/useSettings';
 import { useToast } from './hooks/useToast';
 import { useUrlSearch } from './hooks/useUrlSearch';
 import { primeUsersCache } from './hooks/useUsersFetch';
+import { BookAddModal } from './library/BookAddModal';
 import { BookDetailPage } from './library/BookDetailPage';
+import { LibraryNavigation } from './library/LibraryNavigation';
 import { LibraryPage } from './library/LibraryPage';
 import { LoginPage } from './pages/LoginPage';
 import {
@@ -649,6 +651,8 @@ function App() {
   >(null);
   const [activeQueryTarget, setActiveQueryTarget] = useState('general');
   const [downloadsSidebarOpen, setDownloadsSidebarOpen] = useState(false);
+  const [libraryNavigationOpen, setLibraryNavigationOpen] = useState(false);
+  const [bookAddOpen, setBookAddOpen] = useState(false);
   const [sidebarPinnedOpen, setSidebarPinnedOpen] = useState<boolean>(() =>
     getInitialPinnedPreference(),
   );
@@ -2474,8 +2478,38 @@ function App() {
         />
       </div>
 
+      <button
+        type="button"
+        className="fixed top-4 left-4 z-45 rounded-full bg-(--bg) p-2 shadow-sm lg:hidden"
+        onClick={() => setLibraryNavigationOpen(true)}
+        aria-label="Open navigation"
+      >
+        <svg
+          className="h-5 w-5"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          aria-hidden="true"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+      <LibraryNavigation
+        isOpen={libraryNavigationOpen}
+        onClose={() => setLibraryNavigationOpen(false)}
+        onAddNew={() => {
+          setLibraryNavigationOpen(false);
+          setBookAddOpen(true);
+        }}
+        onSettings={() => {
+          setLibraryNavigationOpen(false);
+          handleSettingsClick();
+        }}
+      />
+
       <div
-        className={`flex flex-col${
+        className={`flex flex-col lg:pl-64${
           usePinnedMainScrollContainer ? ' min-h-0 overflow-y-auto overscroll-y-contain' : ' flex-1'
         }`}
         style={
@@ -2524,8 +2558,9 @@ function App() {
           }
         >
           <Routes>
+            <Route path="/" element={<Navigate to="/library" replace />} />
             <Route
-              path="/"
+              path="/search"
               element={
                 <>
                   <SearchSection
@@ -2620,7 +2655,7 @@ function App() {
                 />
               }
             />
-            <Route path="*" element={<Navigate to="/" replace />} />
+            <Route path="*" element={<Navigate to="/library" replace />} />
           </Routes>
 
           {selectedBook && (
@@ -2765,6 +2800,12 @@ function App() {
       />
 
       <ToastContainer toasts={toasts} />
+
+      <BookAddModal
+        isOpen={bookAddOpen}
+        onClose={() => setBookAddOpen(false)}
+        onAdd={handleAddToLibrary}
+      />
 
       <SettingsModal
         isOpen={settingsOpen}
