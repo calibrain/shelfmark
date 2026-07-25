@@ -28,13 +28,17 @@ CREATE TABLE IF NOT EXISTS users (
     oidc_subject  TEXT UNIQUE,
     auth_source   TEXT NOT NULL DEFAULT 'builtin',
     role          TEXT NOT NULL DEFAULT 'user',
+    is_active     INTEGER NOT NULL DEFAULT 1,
     library_capability TEXT NOT NULL DEFAULT 'download-capable',
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS user_settings (
-    user_id       INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-    settings_json TEXT NOT NULL DEFAULT '{}'
+CREATE TABLE IF NOT EXISTS user_preferences (
+    user_id                  INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+    kindle_address           TEXT,
+    notifications_enabled    INTEGER NOT NULL DEFAULT 0,
+    notification_transport   TEXT,
+    notification_destination TEXT
 );
 
 CREATE TABLE IF NOT EXISTS download_requests (
@@ -501,22 +505,26 @@ class UserDB:
 
     _ALLOWED_UPDATE_COLUMNS: ClassVar[frozenset[str]] = frozenset(
         {
+            "username",
             "email",
             "display_name",
             "password_hash",
             "oidc_subject",
             "auth_source",
             "role",
+            "is_active",
             "library_capability",
         }
     )
     _USER_UPDATE_STATEMENTS: ClassVar[dict[str, str]] = {
+        "username": "UPDATE users SET username = ? WHERE id = ?",
         "email": "UPDATE users SET email = ? WHERE id = ?",
         "display_name": "UPDATE users SET display_name = ? WHERE id = ?",
         "password_hash": "UPDATE users SET password_hash = ? WHERE id = ?",
         "oidc_subject": "UPDATE users SET oidc_subject = ? WHERE id = ?",
         "auth_source": "UPDATE users SET auth_source = ? WHERE id = ?",
         "role": "UPDATE users SET role = ? WHERE id = ?",
+        "is_active": "UPDATE users SET is_active = ? WHERE id = ?",
         "library_capability": "UPDATE users SET library_capability = ? WHERE id = ?",
     }
 
@@ -600,40 +608,64 @@ class UserDB:
         finally:
             conn.close()
 
-    def get_user_settings(self, user_id: int) -> dict[str, Any]:
-        """Get per-user settings. Returns empty dict if none set."""
+    def get_personal_preferences(self, user_id: int) -> dict[str, Any]:
+        """Return the explicit personal preferences for one user."""
         conn = self._connect()
         try:
             row = conn.execute(
-                "SELECT settings_json FROM user_settings WHERE user_id = ?", (user_id,)
+                "SELECT kindle_address, notifications_enabled, notification_transport, "
+                "notification_destination FROM user_preferences WHERE user_id = ?",
+                (user_id,),
             ).fetchone()
             if row:
-                return json.loads(row["settings_json"])
-            return {}
+                return dict(row)
+            return {
+                "kindle_address": None,
+                "notifications_enabled": False,
+                "notification_transport": None,
+                "notification_destination": None,
+            }
         finally:
             conn.close()
 
-    def set_user_settings(self, user_id: int, settings: dict[str, Any]) -> None:
-        """Merge settings into user's existing settings."""
+    def update_personal_preferences(self, user_id: int, **preferences: object) -> None:
+        """Update only the supported personal preference fields."""
+        allowed = {
+            "kindle_address",
+            "notifications_enabled",
+            "notification_transport",
+            "notification_destination",
+        }
+        if not set(preferences).issubset(allowed):
+            msg = "Invalid personal preference"
+            raise ValueError(msg)
+        if not preferences:
+            return
         with self._lock:
             conn = self._connect()
             try:
-                existing = {}
-                row = conn.execute(
-                    "SELECT settings_json FROM user_settings WHERE user_id = ?", (user_id,)
-                ).fetchone()
-                if row:
-                    existing = json.loads(row["settings_json"])
-
-                existing.update(settings)
-                # Remove keys set to None (meaning "clear this override")
-                existing = {k: v for k, v in existing.items() if v is not None}
-                settings_json = json.dumps(existing)
-
+                if not self._get_user_by_id(conn, user_id):
+                    msg = f"User {user_id} not found"
+                    raise ValueError(msg)
+                existing = self.get_personal_preferences(user_id)
+                existing.update(preferences)
                 conn.execute(
-                    """INSERT INTO user_settings (user_id, settings_json) VALUES (?, ?)
-                       ON CONFLICT(user_id) DO UPDATE SET settings_json = ?""",
-                    (user_id, settings_json, settings_json),
+                    """INSERT INTO user_preferences (
+                        user_id, kindle_address, notifications_enabled,
+                        notification_transport, notification_destination
+                    ) VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT(user_id) DO UPDATE SET
+                        kindle_address = excluded.kindle_address,
+                        notifications_enabled = excluded.notifications_enabled,
+                        notification_transport = excluded.notification_transport,
+                        notification_destination = excluded.notification_destination""",
+                    (
+                        user_id,
+                        existing["kindle_address"],
+                        bool(existing["notifications_enabled"]),
+                        existing["notification_transport"],
+                        existing["notification_destination"],
+                    ),
                 )
                 conn.commit()
             finally:

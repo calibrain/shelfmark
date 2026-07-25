@@ -9,7 +9,7 @@ import type {
 } from '../../../types/settings';
 import { DropdownList } from '../../DropdownList';
 import { Tooltip } from '../../shared/Tooltip';
-import { PasswordField, SelectField, TextField } from '../fields';
+import { CheckboxField, PasswordField, SelectField, TextField } from '../fields';
 import { FieldWrapper } from '../shared';
 import type { CreateUserFormState } from './types';
 import { UserAuthSourceBadge } from './UserAuthSourceBadge';
@@ -29,6 +29,11 @@ const CREATE_ROLE_OPTIONS: SelectOption[] = [
 const EDIT_ROLE_OPTIONS: SelectOption[] = [
   { value: 'admin', label: 'Admin' },
   { value: 'user', label: 'User' },
+];
+
+const LIBRARY_CAPABILITY_OPTIONS: SelectOption[] = [
+  { value: 'download-capable', label: 'Download capable' },
+  { value: 'request-only', label: 'Request only' },
 ];
 
 const createTextField = (
@@ -472,6 +477,7 @@ const UserEditFields = ({
 }: UserEditFieldsProps) => {
   const capabilities = user.edit_capabilities;
   const { authSource, canSetPassword, canEditEmail, canEditDisplayName } = capabilities;
+  const usernameField = createTextField('username', 'Username', user.username, 'username', true);
 
   const displayNameField = createTextField(
     'display_name',
@@ -480,6 +486,19 @@ const UserEditFields = ({
     'Display name',
   );
   const emailField = createTextField('email', 'Email', user.email || '', 'user@example.com');
+  const capabilityField: SelectFieldConfig = {
+    type: 'SelectField',
+    key: 'library_capability',
+    label: 'Library Capability',
+    value: user.library_capability,
+    options: LIBRARY_CAPABILITY_OPTIONS,
+  };
+  const activeField = {
+    type: 'CheckboxField' as const,
+    key: 'is_active',
+    label: 'Active account',
+    value: user.is_active,
+  };
   const newPasswordField = createPasswordField(
     'new_password',
     'New Password',
@@ -509,6 +528,9 @@ const UserEditFields = ({
   return (
     <>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        {renderTextField(usernameField, user.username, (value) =>
+          onUserChange({ ...user, username: value }),
+        )}
         {renderTextField(
           displayNameField,
           user.display_name || '',
@@ -524,6 +546,19 @@ const UserEditFields = ({
           !canEditEmail,
           emailDisabledReason,
         )}
+        {renderSelectField(capabilityField, user.library_capability, (value) =>
+          onUserChange({
+            ...user,
+            library_capability: value === 'request-only' ? 'request-only' : 'download-capable',
+          }),
+        )}
+        <FieldWrapper field={activeField}>
+          <CheckboxField
+            field={activeField}
+            value={user.is_active}
+            onChange={(value) => onUserChange({ ...user, is_active: value })}
+          />
+        </FieldWrapper>
       </div>
 
       {canSetPassword && (

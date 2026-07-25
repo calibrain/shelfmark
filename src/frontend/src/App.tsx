@@ -55,7 +55,6 @@ import {
   getMetadataSearchConfig,
   createRequests,
   isApiResponseError,
-  updateSelfUser,
   setBookTargetState,
   addLibraryBook,
   type DownloadReleasePayload,
@@ -2134,11 +2133,8 @@ function App() {
       if (nextMode !== 'universal') {
         setCombinedMode(false);
       }
-      updateSelfUser({ settings: { SEARCH_MODE: nextMode } })
-        .then(() => loadConfig('settings-saved'))
-        .catch((err) => console.error('Failed to save search mode:', err));
     },
-    [loadConfig, resetSearchResultsState, setCombinedMode],
+    [resetSearchResultsState, setCombinedMode],
   );
 
   const handleMetadataProviderChange = useCallback(
@@ -2150,17 +2146,8 @@ function App() {
       } else {
         setConfiguredMetadataProvider(provider);
       }
-      let key = 'METADATA_PROVIDER';
-      if (effectiveCombinedMode) {
-        key = 'METADATA_PROVIDER_COMBINED';
-      } else if (effectiveContentType === 'audiobook') {
-        key = 'METADATA_PROVIDER_AUDIOBOOK';
-      }
-      updateSelfUser({ settings: { [key]: provider } })
-        .then(() => loadConfig('settings-saved'))
-        .catch((err) => console.error('Failed to save metadata provider:', err));
     },
-    [effectiveCombinedMode, effectiveContentType, loadConfig],
+    [effectiveCombinedMode, effectiveContentType],
   );
 
   const buildCurrentSearchRequest = useCallback(

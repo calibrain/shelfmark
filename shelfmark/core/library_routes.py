@@ -520,12 +520,8 @@ def register_library_routes(
                 book_id=book_id,
             )
 
-        # Now check the per-user KINDLE_EMAIL setting (sub-decision 14).
-        # Config lookups use the user_overridable framework end-to-end.
-        from shelfmark.core.config import config as app_config
-
         kindle_email = normalize_optional_text(
-            app_config.get("KINDLE_EMAIL", "", user_id=actor.db_user_id)
+            user_db.get_personal_preferences(actor.db_user_id).get("kindle_address")
         )
         if not kindle_email:
             return _error_response(

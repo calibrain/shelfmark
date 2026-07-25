@@ -1,29 +1,17 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useState } from 'react';
 
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useMountEffect } from '../../hooks/useMountEffect';
-import type { AdminUser, DeliveryPreferencesResponse } from '../../services/api';
-import {
-  getSelfUserEditContext,
-  testSelfNotificationPreferences,
-  updateSelfUser,
-} from '../../services/api';
+import { getSelfSettings, updateSelfSettings } from '../../services/api';
+import type { CheckboxFieldConfig, SelectFieldConfig, TextFieldConfig } from '../../types/settings';
 import {
   getStoredThemePreference,
   setThemePreference,
   THEME_FIELD,
 } from '../../utils/themePreference';
-import { SelectField } from './fields';
+import { CheckboxField, SelectField, TextField } from './fields';
 import { FieldWrapper } from './shared';
-import {
-  DEFAULT_SELF_USER_OVERRIDE_SECTIONS,
-  normalizeUserOverrideSections,
-  UserOverridesSections,
-} from './users';
-import type { PerUserSettings } from './users/types';
-import { UserAccountCardContent, UserEditActions, UserIdentityHeader } from './users/UserCard';
-import { useUserOverridesState } from './users/useUserOverridesState';
 
 interface SelfSettingsModalProps {
   isOpen: boolean;
@@ -32,26 +20,54 @@ interface SelfSettingsModalProps {
   onSettingsSaved?: () => void;
 }
 
-const MIN_PASSWORD_LENGTH = 4;
+interface SelfSettingsForm {
+  username: string;
+  email: string;
+  display_name: string;
+  kindle_address: string;
+  notifications_enabled: boolean;
+  notification_transport: 'email' | 'apprise';
+  notification_destination: string;
+}
 
-const getPasswordError = (password: string, passwordConfirm: string): string | null => {
-  if (!password && !passwordConfirm) {
-    return null;
-  }
-  if (!password) {
-    return 'Password is required';
-  }
-  if (password.length < MIN_PASSWORD_LENGTH) {
-    return `Password must be at least ${MIN_PASSWORD_LENGTH} characters`;
-  }
-  return password === passwordConfirm ? null : 'Passwords do not match';
+const readOnlyField = (key: string, label: string, value: string): TextFieldConfig => ({
+  type: 'TextField',
+  key,
+  label,
+  value,
+  disabled: true,
+});
+
+const textField = (
+  key: string,
+  label: string,
+  value: string,
+  description?: string,
+): TextFieldConfig => ({
+  type: 'TextField',
+  key,
+  label,
+  value,
+  description,
+});
+
+const notificationEnabledField: CheckboxFieldConfig = {
+  type: 'CheckboxField',
+  key: 'notifications_enabled',
+  label: 'Enable personal notifications',
+  description: 'Notifications are delivered only to your selected personal destination.',
+  value: false,
 };
 
-const getErrorMessage = (error: unknown, fallback: string): string => {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-  return fallback;
+const notificationTransportField: SelectFieldConfig = {
+  type: 'SelectField',
+  key: 'notification_transport',
+  label: 'Notification transport',
+  options: [
+    { value: 'email', label: 'Email' },
+    { value: 'apprise', label: 'Apprise' },
+  ],
+  value: 'email',
 };
 
 export const SelfSettingsModal = ({
@@ -60,347 +76,233 @@ export const SelfSettingsModal = ({
   onShowToast,
   onSettingsSaved,
 }: SelfSettingsModalProps) => {
-  const [isClosing, setIsClosing] = useState(false);
-  const [sessionVersion, setSessionVersion] = useState(0);
-
-  const handleRequestClose = useCallback(() => {
-    setIsClosing(true);
-    setTimeout(() => {
-      onClose();
-      setIsClosing(false);
-      setSessionVersion((current) => current + 1);
-    }, 150);
-  }, [onClose]);
-
-  useBodyScrollLock(isOpen);
-
-  if (!isOpen && !isClosing) {
-    return null;
-  }
-
-  return (
-    <SelfSettingsModalSession
-      key={sessionVersion}
-      isOpen={isOpen}
-      isClosing={isClosing}
-      onRequestClose={handleRequestClose}
-      onShowToast={onShowToast}
-      onSettingsSaved={onSettingsSaved}
-    />
-  );
-};
-
-interface SelfSettingsModalSessionProps {
-  isOpen: boolean;
-  isClosing: boolean;
-  onRequestClose: () => void;
-  onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
-  onSettingsSaved?: () => void;
-}
-
-const SelfSettingsModalSession = ({
-  isOpen,
-  isClosing,
-  onRequestClose,
-  onShowToast,
-  onSettingsSaved,
-}: SelfSettingsModalSessionProps) => {
   const [isLoading, setIsLoading] = useState(false);
-  const [loadError, setLoadError] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
-
-  const [editingUser, setEditingUser] = useState<AdminUser | null>(null);
-  const [originalUser, setOriginalUser] = useState<AdminUser | null>(null);
-  const [deliveryPreferences, setDeliveryPreferences] =
-    useState<DeliveryPreferencesResponse | null>(null);
-  const [searchPreferences, setSearchPreferences] = useState<DeliveryPreferencesResponse | null>(
-    null,
-  );
-  const [notificationPreferences, setNotificationPreferences] =
-    useState<DeliveryPreferencesResponse | null>(null);
-  const [visibleSections, setVisibleSections] = useState(DEFAULT_SELF_USER_OVERRIDE_SECTIONS);
-
-  const [editPassword, setEditPassword] = useState('');
-  const [editPasswordConfirm, setEditPasswordConfirm] = useState('');
-
+  const [error, setError] = useState<string | null>(null);
+  const [values, setValues] = useState<SelfSettingsForm>({
+    username: '',
+    email: '',
+    display_name: '',
+    kindle_address: '',
+    notifications_enabled: false,
+    notification_transport: 'email',
+    notification_destination: '',
+  });
+  const [originalValues, setOriginalValues] = useState<SelfSettingsForm>(values);
   const [themeValue, setThemeValue] = useState(getStoredThemePreference());
 
-  const preferenceGroups = useMemo(
-    () => [deliveryPreferences, searchPreferences, notificationPreferences],
-    [deliveryPreferences, searchPreferences, notificationPreferences],
-  );
-  const {
-    userSettings,
-    setUserSettings,
-    isUserOverridable,
-    currentSettingsPayload,
-    hasUserSettingsChanges: hasSettingsChanges,
-    applyUserOverridesContext,
-  } = useUserOverridesState({ preferenceGroups });
-
-  const loadEditContext = useCallback(async () => {
+  const load = useCallback(async () => {
     setIsLoading(true);
-    setLoadError(null);
+    setError(null);
     try {
-      const context = await getSelfUserEditContext();
-
-      setEditingUser(context.user);
-      setOriginalUser(context.user);
-      setDeliveryPreferences(context.deliveryPreferences || null);
-      setSearchPreferences(context.searchPreferences || null);
-      setNotificationPreferences(context.notificationPreferences || null);
-      setVisibleSections(
-        normalizeUserOverrideSections(context.visibleUserSettingsSections, 'self'),
-      );
-      applyUserOverridesContext({
-        settings: (context.user.settings || {}) as PerUserSettings,
-        userOverridableKeys: context.userOverridableKeys || [],
-      });
-      setEditPassword('');
-      setEditPasswordConfirm('');
-    } catch (error) {
-      setLoadError(getErrorMessage(error, 'Failed to load account settings'));
+      const settings = await getSelfSettings();
+      const next: SelfSettingsForm = {
+        username: settings.username,
+        email: settings.email || '',
+        display_name: settings.display_name || '',
+        kindle_address: settings.kindle_address || '',
+        notifications_enabled: settings.notifications_enabled,
+        notification_transport: settings.notification_transport === 'apprise' ? 'apprise' : 'email',
+        notification_destination: settings.notification_destination || '',
+      };
+      setValues(next);
+      setOriginalValues(next);
+    } catch (loadError) {
+      setError(loadError instanceof Error ? loadError.message : 'Failed to load settings');
     } finally {
       setIsLoading(false);
     }
-  }, [applyUserOverridesContext]);
-
-  useMountEffect(() => {
-    void loadEditContext();
-  });
-
-  const handleClose = useCallback(() => {
-    if (isSaving) {
-      return;
-    }
-    onRequestClose();
-  }, [isSaving, onRequestClose]);
-
-  useEscapeKey(isOpen, handleClose);
-
-  const hasProfileChanges = Boolean(
-    editingUser &&
-    originalUser &&
-    (editingUser.email !== originalUser.email ||
-      editingUser.display_name !== originalUser.display_name),
-  );
-
-  const hasPasswordChanges = editPassword.length > 0 || editPasswordConfirm.length > 0;
-  const passwordError = getPasswordError(editPassword, editPasswordConfirm);
-  const hasChanges = hasSettingsChanges || hasProfileChanges || hasPasswordChanges;
-
-  const handleTestNotificationRoutes = useCallback((routes: Array<Record<string, unknown>>) => {
-    return testSelfNotificationPreferences(routes);
   }, []);
 
-  const handleSave = useCallback(async () => {
-    if (!editingUser || !originalUser) {
-      return;
-    }
-    if (passwordError) {
-      onShowToast?.(passwordError, 'error');
-      return;
-    }
+  useMountEffect(() => {
+    void load();
+  });
+  useBodyScrollLock(isOpen);
+  useEscapeKey(isOpen, () => {
+    if (!isSaving) onClose();
+  });
 
-    const payload: {
-      email?: string | null;
-      display_name?: string | null;
-      password?: string;
-      settings?: Record<string, unknown>;
-    } = {};
-
-    if (editingUser.edit_capabilities.canEditEmail && editingUser.email !== originalUser.email) {
-      payload.email = editingUser.email;
-    }
-    if (
-      editingUser.edit_capabilities.canEditDisplayName &&
-      editingUser.display_name !== originalUser.display_name
-    ) {
-      payload.display_name = editingUser.display_name;
-    }
-    if (editingUser.edit_capabilities.canSetPassword && editPassword) {
-      payload.password = editPassword;
-    }
-    if (hasSettingsChanges) {
-      payload.settings = currentSettingsPayload;
-    }
-
-    if (Object.keys(payload).length === 0) {
-      return;
-    }
-
+  if (!isOpen) return null;
+  const hasChanges = JSON.stringify(values) !== JSON.stringify(originalValues);
+  const update = (field: keyof typeof values, value: string | boolean) =>
+    setValues((current) => ({ ...current, [field]: value }));
+  const save = async () => {
+    if (!hasChanges) return;
     setIsSaving(true);
     try {
-      await updateSelfUser(payload);
-      onShowToast?.('Account updated', 'success');
+      const saved = await updateSelfSettings({
+        display_name: values.display_name || null,
+        kindle_address: values.kindle_address || null,
+        notifications_enabled: values.notifications_enabled,
+        notification_transport: values.notification_transport,
+        notification_destination: values.notification_destination || null,
+      });
+      setOriginalValues({
+        ...values,
+        display_name: saved.display_name || '',
+        kindle_address: saved.kindle_address || '',
+      });
+      onShowToast?.('Settings updated', 'success');
       onSettingsSaved?.();
-      await loadEditContext();
-    } catch (error) {
-      onShowToast?.(getErrorMessage(error, 'Failed to update account'), 'error');
+    } catch (saveError) {
+      onShowToast?.(
+        saveError instanceof Error ? saveError.message : 'Failed to update settings',
+        'error',
+      );
     } finally {
       setIsSaving(false);
     }
-  }, [
-    currentSettingsPayload,
-    editingUser,
-    hasSettingsChanges,
-    loadEditContext,
-    onSettingsSaved,
-    onShowToast,
-    originalUser,
-    passwordError,
-    editPassword,
-  ]);
-
-  if (!isOpen && !isClosing) {
-    return null;
-  }
-
-  const titleId = 'self-settings-modal-title';
-  const hasCachedEditContext = Boolean(editingUser);
-  const showInitialLoadingState = isLoading && !hasCachedEditContext;
-  const showInitialLoadErrorState = Boolean(loadError) && !hasCachedEditContext;
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
       <button
         type="button"
-        className={`absolute inset-0 bg-black/60 transition-opacity duration-150 ${isClosing ? 'opacity-0' : 'opacity-100'}`}
-        onClick={handleClose}
+        className="absolute inset-0 bg-black/60"
+        onClick={onClose}
         tabIndex={-1}
-        aria-label="Close account settings"
+        aria-label="Close settings"
       />
-
       <div
-        className={`relative flex h-[85vh] max-h-[750px] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-(--border-muted) shadow-2xl ${isClosing ? 'settings-modal-exit' : 'settings-modal-enter'}`}
-        style={{ background: 'var(--bg)' }}
+        className="relative flex h-[85vh] max-h-[750px] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-(--border-muted) bg-(--bg) shadow-2xl"
         role="dialog"
         aria-modal="true"
-        aria-labelledby={titleId}
+        aria-label="My settings"
       >
         <header className="flex items-center justify-between border-b border-(--border-muted) px-6 py-4">
-          <h3 id={titleId} className="sr-only">
-            My Account
-          </h3>
-          {editingUser ? (
-            <UserIdentityHeader user={editingUser} showAuthSource showInactiveState={false} />
-          ) : (
-            <div className="text-sm font-medium">My Account</div>
-          )}
-          <div className="flex items-center">
-            <button
-              type="button"
-              onClick={handleClose}
-              className="hover-action rounded-full p-2 text-gray-500 transition-colors hover:text-gray-900 disabled:cursor-not-allowed disabled:opacity-50 dark:text-gray-400 dark:hover:text-gray-100"
-              aria-label="Close account settings"
-              disabled={isSaving}
-            >
-              <svg
-                className="h-5 w-5"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                strokeWidth={1.5}
-              >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-          </div>
+          <h3 className="text-sm font-medium">My Settings</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSaving}
+            className="text-sm opacity-60 hover:opacity-100"
+          >
+            Close
+          </button>
         </header>
-
-        <div className="flex-1 overflow-y-auto px-6 py-5">
-          {(() => {
-            if (showInitialLoadingState) {
-              return (
-                <div className="flex h-full items-center justify-center text-sm opacity-60">
-                  Loading account settings...
-                </div>
-              );
-            }
-
-            if (showInitialLoadErrorState) {
-              return (
-                <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
-                  <p className="text-sm opacity-70">{loadError}</p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      void loadEditContext();
-                    }}
-                    className="rounded-lg border border-(--border-muted) bg-(--bg-soft) px-4 py-2 text-sm font-medium transition-colors hover:bg-(--hover-surface)"
-                  >
-                    Retry
-                  </button>
-                </div>
-              );
-            }
-
-            if (editingUser) {
-              return (
-                <div className="space-y-5">
-                  <FieldWrapper field={THEME_FIELD}>
-                    <SelectField
-                      field={THEME_FIELD}
-                      value={themeValue}
-                      onChange={(value) => {
-                        setThemeValue(value);
-                        setThemePreference(value);
-                      }}
-                    />
-                  </FieldWrapper>
-
-                  <UserAccountCardContent
-                    user={editingUser}
-                    onUserChange={setEditingUser}
-                    onSave={() => undefined}
-                    saving={isSaving}
-                    onCancel={handleClose}
-                    hideEditActions
-                    editPassword={editPassword}
-                    onEditPasswordChange={setEditPassword}
-                    editPasswordConfirm={editPasswordConfirm}
-                    onEditPasswordConfirmChange={setEditPasswordConfirm}
-                    preferencesPlacement="after"
-                    preferencesPanel={{
-                      hideTitle: true,
-                      children: (
-                        <UserOverridesSections
-                          scope="self"
-                          sections={visibleSections}
-                          deliveryPreferences={deliveryPreferences}
-                          searchPreferences={searchPreferences}
-                          notificationPreferences={notificationPreferences}
-                          isUserOverridable={isUserOverridable}
-                          userSettings={userSettings}
-                          setUserSettings={setUserSettings}
-                          onTestNotificationRoutes={handleTestNotificationRoutes}
-                        />
-                      ),
+        <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
+          {isLoading && <p className="text-sm opacity-60">Loading settings...</p>}
+          {!isLoading && error && (
+            <div className="space-y-3">
+              <p className="text-sm text-red-600">{error}</p>
+              <button type="button" onClick={() => void load()} className="text-sm underline">
+                Retry
+              </button>
+            </div>
+          )}
+          {!isLoading && !error && (
+            <>
+              <section className="space-y-4">
+                <h4 className="text-sm font-medium">Account</h4>
+                <FieldWrapper field={readOnlyField('username', 'Username', values.username)}>
+                  <TextField
+                    field={readOnlyField('username', 'Username', values.username)}
+                    value={values.username}
+                    onChange={() => undefined}
+                    disabled
+                  />
+                </FieldWrapper>
+                <FieldWrapper field={readOnlyField('email', 'Account email', values.email)}>
+                  <TextField
+                    field={readOnlyField('email', 'Account email', values.email)}
+                    value={values.email}
+                    onChange={() => undefined}
+                    disabled
+                  />
+                </FieldWrapper>
+                <FieldWrapper
+                  field={textField('display_name', 'Display name', values.display_name)}
+                >
+                  <TextField
+                    field={textField('display_name', 'Display name', values.display_name)}
+                    value={values.display_name}
+                    onChange={(value) => update('display_name', value)}
+                  />
+                </FieldWrapper>
+              </section>
+              <section className="space-y-4 border-t border-(--border-muted) pt-5">
+                <h4 className="text-sm font-medium">Delivery</h4>
+                <FieldWrapper
+                  field={textField(
+                    'kindle_address',
+                    'Kindle address',
+                    values.kindle_address,
+                    'Used only for Send to Kindle.',
+                  )}
+                >
+                  <TextField
+                    field={textField('kindle_address', 'Kindle address', values.kindle_address)}
+                    value={values.kindle_address}
+                    onChange={(value) => update('kindle_address', value)}
+                  />
+                </FieldWrapper>
+              </section>
+              <section className="space-y-4 border-t border-(--border-muted) pt-5">
+                <h4 className="text-sm font-medium">Personal Notifications</h4>
+                <FieldWrapper field={notificationEnabledField}>
+                  <CheckboxField
+                    field={notificationEnabledField}
+                    value={values.notifications_enabled}
+                    onChange={(value) => update('notifications_enabled', value)}
+                  />
+                </FieldWrapper>
+                <FieldWrapper field={notificationTransportField}>
+                  <SelectField
+                    field={notificationTransportField}
+                    value={values.notification_transport}
+                    onChange={(value) => update('notification_transport', value)}
+                  />
+                </FieldWrapper>
+                <FieldWrapper
+                  field={textField(
+                    'notification_destination',
+                    values.notification_transport === 'email' ? 'Email address' : 'Apprise URL',
+                    values.notification_destination,
+                  )}
+                >
+                  <TextField
+                    field={textField(
+                      'notification_destination',
+                      values.notification_transport === 'email' ? 'Email address' : 'Apprise URL',
+                      values.notification_destination,
+                    )}
+                    value={values.notification_destination}
+                    onChange={(value) => update('notification_destination', value)}
+                  />
+                </FieldWrapper>
+              </section>
+              <section className="border-t border-(--border-muted) pt-5">
+                <FieldWrapper field={THEME_FIELD}>
+                  <SelectField
+                    field={THEME_FIELD}
+                    value={themeValue}
+                    onChange={(value) => {
+                      setThemeValue(value);
+                      setThemePreference(value);
                     }}
                   />
-                </div>
-              );
-            }
-
-            return (
-              <div className="flex h-full items-center justify-center text-sm opacity-60">
-                Unable to load account details.
-              </div>
-            );
-          })()}
+                </FieldWrapper>
+              </section>
+            </>
+          )}
         </div>
-
-        <footer className="flex items-center justify-end gap-3 border-t border-(--border-muted) px-6 py-4">
-          <UserEditActions
-            variant="modalFooter"
-            onSave={() => {
-              void handleSave();
-            }}
-            saving={isSaving}
-            saveDisabled={!hasChanges || isSaving || isLoading}
-            onCancel={handleClose}
-            cancelDisabled={isSaving}
-          />
+        <footer className="flex justify-end gap-3 border-t border-(--border-muted) px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={isSaving}
+            className="rounded-lg border border-(--border-muted) px-4 py-2 text-sm"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={() => void save()}
+            disabled={!hasChanges || isSaving || isLoading}
+            className="rounded-lg bg-sky-600 px-4 py-2 text-sm text-white disabled:opacity-60"
+          >
+            {isSaving ? 'Saving...' : 'Save Changes'}
+          </button>
         </footer>
       </div>
     </div>

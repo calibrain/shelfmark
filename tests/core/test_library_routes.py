@@ -392,7 +392,7 @@ def test_send_to_kindle_400_when_kindle_email_unset(app, user_db, library_servic
 
 def test_send_to_kindle_success_path(app, user_db, library_service, tmp_path):
     alice = user_db.create_user(username="alice")
-    alice_db_id = alice["id"]
+    user_db.update_personal_preferences(alice["id"], kindle_address="alice@kindle.com")
     book_id = client_post_book(app, alice, "hardcover", "1")
     epub_path = tmp_path / "enders.epub"
     epub_path.write_bytes(b"epub-bytes")
@@ -409,19 +409,12 @@ def test_send_to_kindle_success_path(app, user_db, library_service, tmp_path):
         user_id=alice["id"], book_id=book_id, history_id=history_id
     )
 
-    # Stub config.get to return a kindle email for the alice user_id only.
-    def _fake_get(key: str, default: object = None, user_id: int | None = None):
-        if key == "KINDLE_EMAIL" and user_id == alice_db_id:
-            return "alice@kindle.com"
-        return default
-
     # Also patch send_file_to_email so no real SMTP network call is made.
-    with patch("shelfmark.core.config.config.get", side_effect=_fake_get):
-        with patch(
-            "shelfmark.download.outputs.email.send_file_to_email",
-            return_value="a***@kindle.com",
-        ) as fake_send:
-            resp = _authed_client(app, alice).post(f"/api/library/books/{book_id}/send-to-kindle")
+    with patch(
+        "shelfmark.download.outputs.email.send_file_to_email",
+        return_value="a***@kindle.com",
+    ) as fake_send:
+        resp = _authed_client(app, alice).post(f"/api/library/books/{book_id}/send-to-kindle")
 
     assert resp.status_code == 200
     assert resp.json["status"] == "sent"

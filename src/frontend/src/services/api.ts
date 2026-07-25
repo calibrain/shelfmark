@@ -875,17 +875,18 @@ export interface AdminUser {
   is_active: boolean;
   oidc_subject: string | null;
   created_at: string;
+  library_capability: 'download-capable' | 'request-only';
   edit_capabilities: AdminUserEditCapabilities;
-  settings?: Record<string, unknown>;
 }
 
-interface SelfUserEditContext {
-  user: AdminUser;
-  deliveryPreferences: DeliveryPreferencesResponse | null;
-  searchPreferences: DeliveryPreferencesResponse | null;
-  notificationPreferences: DeliveryPreferencesResponse | null;
-  userOverridableKeys: string[];
-  visibleUserSettingsSections?: string[];
+export interface SelfSettings {
+  username: string;
+  email: string | null;
+  display_name: string | null;
+  kindle_address: string | null;
+  notifications_enabled: boolean;
+  notification_transport: 'email' | 'apprise' | null;
+  notification_destination: string | null;
 }
 
 export const getAdminUsers = async (): Promise<AdminUser[]> => {
@@ -911,9 +912,13 @@ export const createAdminUser = async (data: {
 
 export const updateAdminUser = async (
   userId: number,
-  data: Partial<Pick<AdminUser, 'role' | 'email' | 'display_name'>> & {
+  data: Partial<
+    Pick<
+      AdminUser,
+      'username' | 'role' | 'email' | 'display_name' | 'library_capability' | 'is_active'
+    >
+  > & {
     password?: string;
-    settings?: Record<string, unknown>;
   },
 ): Promise<AdminUser> => {
   return fetchJSON<AdminUser>(`${API_BASE}/admin/users/${userId}`, {
@@ -942,128 +947,14 @@ export const syncAdminCwaUsers = async (): Promise<CwaUserSyncResult> => {
   });
 };
 
-export interface DownloadDefaults {
-  BOOKS_OUTPUT_MODE: string;
-  DESTINATION: string;
-  DESTINATION_AUDIOBOOK: string;
-  BOOKLORE_LIBRARY_ID: string;
-  BOOKLORE_PATH_ID: string;
-  EMAIL_RECIPIENT: string;
-  OIDC_ADMIN_GROUP: string;
-  OIDC_USE_ADMIN_GROUP: boolean;
-  OIDC_AUTO_PROVISION: boolean;
-}
-
-export const getDownloadDefaults = async (): Promise<DownloadDefaults> => {
-  return fetchJSON<DownloadDefaults>(`${API_BASE}/admin/download-defaults`);
+export const getSelfSettings = async (): Promise<SelfSettings> => {
+  return fetchJSON<SelfSettings>(`${API_BASE}/users/me`);
 };
 
-export interface DeliveryPreferencesResponse {
-  tab: string;
-  keys: string[];
-  fields: SettingsField[];
-  globalValues: Record<string, unknown>;
-  userOverrides: Record<string, unknown>;
-  effective: Record<string, { value: unknown; source: string }>;
-}
-
-export const getAdminDeliveryPreferences = async (
-  userId: number,
-): Promise<DeliveryPreferencesResponse> => {
-  return fetchJSON<DeliveryPreferencesResponse>(
-    `${API_BASE}/admin/users/${userId}/delivery-preferences`,
-  );
-};
-
-export const getAdminSearchPreferences = async (
-  userId: number,
-): Promise<DeliveryPreferencesResponse> => {
-  return fetchJSON<DeliveryPreferencesResponse>(
-    `${API_BASE}/admin/users/${userId}/search-preferences`,
-  );
-};
-
-export const getAdminNotificationPreferences = async (
-  userId: number,
-): Promise<DeliveryPreferencesResponse> => {
-  return fetchJSON<DeliveryPreferencesResponse>(
-    `${API_BASE}/admin/users/${userId}/notification-preferences`,
-  );
-};
-
-export const testAdminUserNotificationPreferences = async (
-  userId: number,
-  routes: Array<Record<string, unknown>>,
-): Promise<ActionResult> => {
-  try {
-    return await fetchJSON<ActionResult>(
-      `${API_BASE}/admin/users/${userId}/notification-preferences/test`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ USER_NOTIFICATION_ROUTES: routes }),
-      },
-    );
-  } catch (error) {
-    const mapped = mapApiErrorToActionResult(error);
-    if (mapped) {
-      return mapped;
-    }
-    throw error;
-  }
-};
-
-export const testSelfNotificationPreferences = async (
-  routes: Array<Record<string, unknown>>,
-): Promise<ActionResult> => {
-  try {
-    return await fetchJSON<ActionResult>(`${API_BASE}/users/me/notification-preferences/test`, {
-      method: 'POST',
-      body: JSON.stringify({ USER_NOTIFICATION_ROUTES: routes }),
-    });
-  } catch (error) {
-    const mapped = mapApiErrorToActionResult(error);
-    if (mapped) {
-      return mapped;
-    }
-    throw error;
-  }
-};
-
-interface SettingsOverrideUserDetail {
-  userId: number;
-  username: string;
-  value: unknown;
-}
-
-interface SettingsOverrideKeySummary {
-  count: number;
-  users: SettingsOverrideUserDetail[];
-}
-
-interface SettingsOverridesSummaryResponse {
-  tab: string;
-  keys: Record<string, SettingsOverrideKeySummary>;
-}
-
-export const getAdminSettingsOverridesSummary = async (
-  tabName: string,
-): Promise<SettingsOverridesSummaryResponse> => {
-  return fetchJSON<SettingsOverridesSummaryResponse>(
-    `${API_BASE}/admin/settings/overrides-summary?tab=${encodeURIComponent(tabName)}`,
-  );
-};
-
-export const getSelfUserEditContext = async (): Promise<SelfUserEditContext> => {
-  return fetchJSON<SelfUserEditContext>(`${API_BASE}/users/me/edit-context`);
-};
-
-export const updateSelfUser = async (
-  data: Partial<Pick<AdminUser, 'email' | 'display_name'>> & {
-    password?: string;
-    settings?: Record<string, unknown>;
-  },
-): Promise<AdminUser> => {
-  return fetchJSON<AdminUser>(`${API_BASE}/users/me`, {
+export const updateSelfSettings = async (
+  data: Partial<Omit<SelfSettings, 'username' | 'email'>>,
+): Promise<SelfSettings> => {
+  return fetchJSON<SelfSettings>(`${API_BASE}/users/me`, {
     method: 'PUT',
     body: JSON.stringify(data),
   });

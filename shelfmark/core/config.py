@@ -1,22 +1,16 @@
 """Configuration singleton with ENV > config file > default resolution."""
 
-import os
-import sqlite3
 import time
 from importlib import import_module
-from pathlib import Path
 from threading import Lock
 from typing import TYPE_CHECKING, Any, Self
 
 if TYPE_CHECKING:
     from types import ModuleType
 
-    from shelfmark.core.user_db import UserDB
-
 # Import lazily to avoid circular imports
 _registry_module = None
 _env_module = None
-_user_db_module = None
 
 _SETTINGS_REFRESH_COOLDOWN_SECONDS = 0.05
 
@@ -39,16 +33,6 @@ def _get_env() -> ModuleType:
 
         _env_module = env
     return _env_module
-
-
-def _get_user_db_module() -> type[UserDB]:
-    """Lazy import of user DB module to avoid optional dependency loops."""
-    global _user_db_module
-    if _user_db_module is None:
-        from shelfmark.core.user_db import UserDB
-
-        _user_db_module = UserDB
-    return _user_db_module
 
 
 class Config:
@@ -81,10 +65,6 @@ class Config:
         self._cache: dict[str, Any] = {}
         self._field_map: dict[str, tuple] = {}  # key -> (field, tab_name)
         self._cache_lock = Lock()
-        self._user_settings_cache: dict[int, dict[str, Any]] = {}
-        self._user_settings_cache_lock = Lock()
-        self._user_db = None
-        self._user_db_load_attempted = False
         self._initialized = True
         self._loaded = False
         self._last_refresh_time: float = 0.0
@@ -148,58 +128,7 @@ class Config:
         with self._cache_lock:
             self._loaded = False
             self._load_settings()
-        with self._user_settings_cache_lock:
-            self._user_settings_cache.clear()
-        self._user_db = None
-        self._user_db_load_attempted = False
         self._last_refresh_time = time.monotonic()
-
-    def _get_user_db(self) -> UserDB | None:
-        """Get or initialize a UserDB handle if available."""
-        if self._user_db is not None:
-            return self._user_db
-        if self._user_db_load_attempted:
-            return None
-
-        self._user_db_load_attempted = True
-        try:
-            user_db_cls = _get_user_db_module()
-            db_path = str(Path(os.environ.get("CONFIG_DIR", "/config")) / "users.db")
-            user_db = user_db_cls(db_path)
-            user_db.initialize()
-        except ImportError, OSError, sqlite3.Error:
-            # Multi-user support is optional; fall back to global config when unavailable.
-            return None
-        else:
-            self._user_db = user_db
-            return self._user_db
-
-    def _get_user_settings(self, user_id: int) -> dict[str, Any]:
-        """Get cached per-user settings from user DB."""
-        with self._user_settings_cache_lock:
-            if user_id in self._user_settings_cache:
-                return self._user_settings_cache[user_id]
-
-        user_db = self._get_user_db()
-        if user_db is None:
-            return {}
-
-        try:
-            settings = user_db.get_user_settings(user_id)
-        except sqlite3.OperationalError, OSError, ValueError, TypeError:
-            return {}
-
-        if not isinstance(settings, dict):
-            settings = {}
-
-        with self._user_settings_cache_lock:
-            self._user_settings_cache[user_id] = settings
-        return settings
-
-    def _get_user_override(self, user_id: int, key: str) -> object:
-        """Get a user override for a specific key."""
-        user_settings = self._get_user_settings(user_id)
-        return user_settings.get(key)
 
     def get(self, key: str, default: object = None, user_id: int | None = None) -> object:
         """Get a setting value by key.
@@ -222,12 +151,6 @@ class Config:
             # Deployment-level ENV values always win.
             if field.env_supported and registry.is_value_from_env(field):
                 return self._cache.get(key, default)
-
-            # User overrides are only available for explicitly overridable fields.
-            if user_id is not None and getattr(field, "user_overridable", False):
-                user_value = self._get_user_override(user_id, key)
-                if user_value is not None:
-                    return user_value
 
         return self._cache.get(key, default)
 

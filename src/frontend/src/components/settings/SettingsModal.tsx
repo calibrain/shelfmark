@@ -6,7 +6,7 @@ import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useMountEffect } from '../../hooks/useMountEffect';
 import { useSettings } from '../../hooks/useSettings';
-import { getAdminSettingsOverridesSummary, getSettingsTab } from '../../services/api';
+import { getSettingsTab } from '../../services/api';
 import { SettingsContent } from './SettingsContent';
 import { SettingsHeader } from './SettingsHeader';
 import { SettingsSidebar } from './SettingsSidebar';
@@ -111,19 +111,15 @@ interface SettingsModalSessionProps {
 
 interface SettingsModalTabSyncProps {
   selectedTab: string;
-  refreshOverrideSummaryForTab: (tabName: string) => Promise<void>;
   setSecurityAccessError: (message: string | null) => void;
 }
 
 const SettingsModalTabSync = ({
   selectedTab,
-  refreshOverrideSummaryForTab,
   setSecurityAccessError,
 }: SettingsModalTabSyncProps) => {
   useMountEffect(() => {
     let cancelled = false;
-
-    void refreshOverrideSummaryForTab(selectedTab);
 
     if (selectedTab !== 'security') {
       setSecurityAccessError(null);
@@ -187,44 +183,12 @@ const SettingsModalSession = ({
 
   const [showMobileDetail, setShowMobileDetail] = useState(false);
   const [securityAccessError, setSecurityAccessError] = useState<string | null>(null);
-  const [tabOverrideSummaries, setTabOverrideSummaries] = useState<
-    Record<
-      string,
-      Record<
-        string,
-        { count: number; users: Array<{ userId: number; username: string; value: unknown }> }
-      >
-    >
-  >({});
-  const overrideSummaryRequestIdRef = useRef(0);
 
   const handleClose = useCallback(() => {
     setShowMobileDetail(false);
     onMobileDetailChange(false, null);
     onClose();
   }, [onClose, onMobileDetailChange]);
-
-  const refreshOverrideSummaryForTab = useCallback(async (tabName: string) => {
-    const requestId = ++overrideSummaryRequestIdRef.current;
-    try {
-      const data = await getAdminSettingsOverridesSummary(tabName);
-      if (overrideSummaryRequestIdRef.current !== requestId) {
-        return;
-      }
-      setTabOverrideSummaries((prev) => ({
-        ...prev,
-        [tabName]: data.keys || {},
-      }));
-    } catch {
-      if (overrideSummaryRequestIdRef.current !== requestId) {
-        return;
-      }
-      setTabOverrideSummaries((prev) => ({
-        ...prev,
-        [tabName]: {},
-      }));
-    }
-  }, []);
 
   const handleBack = useCallback(() => {
     setShowMobileDetail(false);
@@ -242,18 +206,10 @@ const SettingsModalSession = ({
     [handleBack, isMobile, onMobileDetailChange, setSelectedTab],
   );
 
-  const handleRefreshCurrentTabOverrideSummary = useCallback(() => {
-    if (!selectedTab) {
-      return;
-    }
-    void refreshOverrideSummaryForTab(selectedTab);
-  }, [selectedTab, refreshOverrideSummaryForTab]);
-
   const handleSave = useCallback(async () => {
     if (!selectedTab) return;
     const result = await saveTab(selectedTab);
     if (result.success) {
-      void refreshOverrideSummaryForTab(selectedTab);
       onShowToast?.(result.message, 'success');
       onSettingsSaved?.();
       if (result.requiresRestart) {
@@ -264,7 +220,7 @@ const SettingsModalSession = ({
     } else {
       onShowToast?.(result.message, 'error');
     }
-  }, [selectedTab, saveTab, onShowToast, onSettingsSaved, refreshOverrideSummaryForTab]);
+  }, [selectedTab, saveTab, onShowToast, onSettingsSaved]);
 
   const handleAction = useCallback(
     async (actionKey: string) => {
@@ -280,21 +236,9 @@ const SettingsModalSession = ({
         }
         return { success: true, message: 'Opening Users tab...' };
       }
-      const result = await executeAction(selectedTab, actionKey);
-      if (result.success) {
-        void refreshOverrideSummaryForTab(selectedTab);
-      }
-      return result;
+      return executeAction(selectedTab, actionKey);
     },
-    [
-      handleBack,
-      isMobile,
-      onMobileDetailChange,
-      refreshOverrideSummaryForTab,
-      executeAction,
-      selectedTab,
-      setSelectedTab,
-    ],
+    [handleBack, isMobile, onMobileDetailChange, executeAction, selectedTab, setSelectedTab],
   );
 
   const handleFieldChange = useCallback(
@@ -349,7 +293,6 @@ const SettingsModalSession = ({
     <SettingsModalTabSync
       key={selectedTabSyncKey}
       selectedTab={selectedTabSyncKey}
-      refreshOverrideSummaryForTab={refreshOverrideSummaryForTab}
       setSecurityAccessError={setSecurityAccessError}
     />
   ) : null;
@@ -370,11 +313,9 @@ const SettingsModalSession = ({
         isSaving={isSaving}
         hasChanges={currentTabHasChanges}
         isUniversalMode={isUniversalMode}
-        overrideSummary={tabOverrideSummaries[currentTab.name]}
         customFieldContext={{
           authMode: usersAuthMode,
           onShowToast,
-          onRefreshOverrideSummary: handleRefreshCurrentTabOverrideSummary,
           onRefreshAuth,
           onSettingsSaved,
         }}
