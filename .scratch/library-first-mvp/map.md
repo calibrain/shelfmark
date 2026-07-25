@@ -15,7 +15,7 @@ A build-ready MVP specification for a library-first Shelfmark: persistent respon
 - **Skills every session should consult**: `/domain-modeling` for capability, request, and settings terminology; `/grilling` for all product decisions. Work later UI decisions against the existing UI or through discussion; do not build standalone in-app prototypes that duplicate the shell.
 - **Tracker**: local markdown under `.scratch/library-first-mvp/`. Map = this file. Tickets = `.scratch/library-first-mvp/issues/NN-<slug>.md`.
 - **Delivery recovery (2026-07-25)**: ticket 10's draft implementation PR, [#6](https://github.com/muneebabbas/shelfmark/pull/6), established the canonical server contract but removed client-facing legacy routes before their replacement clients existed. Do not merge it to `main` yet. Treat its branch, `library-capability-request-lifecycle`, as the shared integration branch. First expand the authenticated client contract (ticket 17), then migrate settings (12), release discovery (13), and Activity (15). Ticket 18 performs the final legacy-client cutover and end-to-end role verification. A ticket may not remove a live client contract unless its replacement is delivered in that same ticket or ticket 18.
-- **Next-session recovery entry point**: ticket 11 remains independently available for app-shell work. For recovery work on draft PR #6, claim ticket 17 first; it is the recovery frontier and includes the branch, PR, known failures, constraints, and verification required to resume without conversation context.
+- **Recovery delivery (2026-07-25)**: [Expose Library Capability to authenticated clients](issues/17-expose-library-capability-to-authenticated-clients.md) is resolved and committed directly to the shared `library-capability-request-lifecycle` branch, which remains the branch behind draft PR #6. [Implement the simplified settings surface](issues/12-implement-simplified-settings-surface.md) is the next dependent recovery ticket; ticket 11 remains independently available for app-shell work.
 
 ## Decisions so far
 
@@ -29,6 +29,7 @@ A build-ready MVP specification for a library-first Shelfmark: persistent respon
 - [Design Activity as the request fulfilment experience](issues/05-design-activity-request-fulfilment-experience.md) — Keep Activity as the stateful drawer: grouped Book work drives admin fulfilment, while request-only users see only their own request history.
 - [Define legacy search and output retirement boundaries](issues/06-define-legacy-search-and-output-retirement-boundaries.md) — Remove direct search and generic per-user outputs; retain Book-scoped release selection, with custom-query override restricted to admins.
 - [Specify the user notification contract](issues/07-specify-user-notification-contract.md) — Separate role-relevant events from a single selected email or Apprise transport, with SMTP shared across all system email delivery.
+- [Expose Library Capability to authenticated clients](issues/17-expose-library-capability-to-authenticated-clients.md) — The authenticated bootstrap contract and typed client state retain the canonical capability separately from administrator status.
 
 ## Not yet specified
 

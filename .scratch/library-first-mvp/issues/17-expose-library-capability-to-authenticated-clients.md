@@ -1,5 +1,5 @@
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by:
 
 # Expose Library Capability to authenticated clients
@@ -39,3 +39,9 @@ Use the existing authenticated user/bootstrap contract that initializes the appl
 - [Request lifecycle decision](08-define-request-lifecycle-and-ownership.md)
 - [Capability and Request foundation](10-implement-library-capability-and-request-lifecycle.md)
 - [Recovery order](../map.md)
+
+## Answer
+
+`/api/auth/check` now returns the canonical persisted `library_capability` alongside authenticated identity and administrator status. The field is `null` when there is no persisted user (including no-auth mode), so the client never invents download-capable access. `useAuth` retains the typed capability independently from `isAdmin` for the settings, release-discovery, and Activity migrations.
+
+Focused backend contract tests cover both capability values and confirm administrator status remains independent. Frontend contract tests, type checking, and formatting pass. Frontend-wide `npm run lint:warn` remains blocked by five existing unnecessary-assertion errors in `useUsersFetch.ts` and `SelfSettingsModal.tsx`, neither touched by this ticket.
