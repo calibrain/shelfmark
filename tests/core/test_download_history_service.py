@@ -94,6 +94,72 @@ def test_finalize_download_files_preserves_library_book_id():
         assert _fetch_rows(db_path, "task-library-book")[0]["book_id"] == book_id
 
 
+def test_finalize_download_files_fulfils_pending_book_requests_and_links_each_file():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "users.db")
+        user_db = UserDB(db_path)
+        user_db.initialize()
+        alice = user_db.create_user(username="alice", password_hash="x")
+        bob = user_db.create_user(username="bob", password_hash="x")
+        service = DownloadHistoryService(db_path)
+
+        conn = user_db._connect()
+        try:
+            cursor = conn.execute(
+                "INSERT INTO books (metadata_provider, provider_book_id, title, metadata_json) "
+                "VALUES (?, ?, ?, ?)",
+                ("hardcover", "42", "Example", "{}"),
+            )
+            conn.commit()
+            book_id = int(cursor.lastrowid)
+        finally:
+            conn.close()
+        conn = user_db._connect()
+        try:
+            conn.executemany(
+                "INSERT INTO user_library (user_id, book_id) VALUES (?, ?)",
+                [(alice["id"], book_id), (bob["id"], book_id)],
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        alice_request = user_db.create_library_request(user_id=alice["id"], book_id=book_id)
+        bob_request = user_db.create_library_request(user_id=bob["id"], book_id=book_id)
+        user_db.update_request(bob_request["id"], status="cancelled")
+
+        service.record_download(
+            task_id="shared-book",
+            user_id=None,
+            username=None,
+            request_id=None,
+            source="direct_download",
+            source_display_name="Direct Download",
+            title="Example",
+            author=None,
+            file_format=None,
+            size=None,
+            preview=None,
+            content_type="ebook",
+            origin="direct",
+            book_id=book_id,
+        )
+        service.finalize_download_files(
+            task_id="shared-book",
+            final_status="complete",
+            file_rows=[
+                {"download_path": "/tmp/example.epub", "format": "epub", "size": "1"},
+                {"download_path": "/tmp/example.pdf", "format": "pdf", "size": "2"},
+            ],
+        )
+
+        assert user_db.get_request(alice_request["id"])["status"] == "fulfilled"
+        assert user_db.get_request(bob_request["id"])["status"] == "cancelled"
+        links = _fetch_links(db_path)
+        assert {(link["user_id"], link["history_id"]) for link in links} == {
+            (alice["id"], row["id"]) for row in _fetch_rows(db_path, "shared-book")
+        }
+
+
 def _setup_service(tmpdir: str) -> tuple[str, UserDB, DownloadHistoryService, int]:
     """Shared fixture: initialized db + service + one user id."""
     db_path = os.path.join(tmpdir, "users.db")

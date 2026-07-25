@@ -17,7 +17,6 @@ import type {
   ReleaseColumnConfig,
   LeadingCellConfig,
   ContentType,
-  RequestPolicyMode,
 } from '../types';
 import { isMetadataBook } from '../types';
 import { bookSupportsTargets } from '../utils/bookTargetLoader';
@@ -56,8 +55,8 @@ import { ReleaseCell } from './ReleaseCell';
 interface CombinedModeConfig {
   phase: 'ebook' | 'audiobook';
   stepLabel: string;
-  ebookMode: RequestPolicyMode;
-  audiobookMode: RequestPolicyMode;
+  ebookMode: 'download' | 'request_release' | 'request_book' | 'blocked';
+  audiobookMode: 'download' | 'request_release' | 'request_book' | 'blocked';
   stagedEbookRelease: Release | null;
   stagedAudiobookRelease: Release | null;
   onNext?: (release: Release | null) => void;
@@ -68,8 +67,8 @@ interface CombinedModeConfig {
 
 // Determine the combined download button label based on action modes
 function getCombinedDownloadLabel(
-  ebookMode: RequestPolicyMode | null | undefined,
-  audiobookMode: RequestPolicyMode | null | undefined,
+  ebookMode: 'download' | 'request_release' | 'request_book' | 'blocked' | null | undefined,
+  audiobookMode: 'download' | 'request_release' | 'request_book' | 'blocked' | null | undefined,
   hasEbookAction = true,
   hasAudiobookAction = true,
 ): string {
@@ -80,21 +79,15 @@ function getCombinedDownloadLabel(
     return getSingleCombinedActionLabel('audiobook', audiobookMode);
   }
 
-  const ebookIsRequest = ebookMode === 'request_release' || ebookMode === 'request_book';
-  const audiobookIsRequest =
-    audiobookMode === 'request_release' || audiobookMode === 'request_book';
-  if (ebookIsRequest && audiobookIsRequest) return 'Request Both';
-  if (ebookIsRequest || audiobookIsRequest) return 'Download & Request';
   return 'Download Both';
 }
 
 function getSingleCombinedActionLabel(
   contentType: ContentType,
-  mode: RequestPolicyMode | null | undefined,
+  _mode: 'download' | 'request_release' | 'request_book' | 'blocked' | null | undefined,
 ): string {
   const noun = contentType === 'ebook' ? 'Book' : 'Audiobook';
-  const isRequest = mode === 'request_release' || mode === 'request_book';
-  return `${isRequest ? 'Request' : 'Download'} ${noun}`;
+  return `Download ${noun}`;
 }
 
 // Default column configuration (fallback when backend doesn't provide one)
@@ -143,7 +136,10 @@ interface ReleaseModalProps {
   onDownload: (book: Book, release: Release, contentType: ContentType) => Promise<void>;
   onRequestRelease?: (book: Book, release: Release, contentType: ContentType) => Promise<void>;
   onRequestBook?: (book: Book, contentType: ContentType) => Promise<void>;
-  getPolicyModeForSource?: (source: string, contentType: ContentType) => RequestPolicyMode;
+  getPolicyModeForSource?: (
+    source: string,
+    contentType: ContentType,
+  ) => 'download' | 'request_release' | 'request_book' | 'blocked';
   supportedFormats: string[];
   supportedAudiobookFormats?: string[]; // Audiobook formats (m4b, mp3)
   contentType: ContentType; // 'ebook' or 'audiobook'
@@ -756,9 +752,7 @@ const ReleaseModalSession = ({
   book,
   onClose,
   onDownload,
-  onRequestRelease,
   onRequestBook,
-  getPolicyModeForSource,
   supportedFormats,
   supportedAudiobookFormats = EMPTY_SUPPORTED_AUDIOBOOK_FORMATS,
   contentType,
@@ -1138,29 +1132,14 @@ const ReleaseModalSession = ({
     return { starField, ratingsField, usersField, pagesField, lengthField, narratorField };
   }, [book?.display_fields]);
 
-  const getReleaseActionMode = useCallback(
-    (release: Release): RequestPolicyMode => {
-      if (!getPolicyModeForSource) {
-        return 'download';
-      }
-      return getPolicyModeForSource(release.source, contentType);
-    },
-    [getPolicyModeForSource, contentType],
-  );
+  const getReleaseActionMode = useCallback((_release: Release) => 'download' as const, []);
 
-  // Get button state for a release row (queue state + policy mode).
+  // Get button state for a release row.
   const getButtonState = useCallback(
     (release: Release): ButtonStateInfo => {
       const releaseId = release.source_id;
-      const mode = getReleaseActionMode(release);
       // Check error first
       if (currentStatus.error && currentStatus.error[releaseId]) {
-        if (mode === 'request_release') {
-          return { text: 'Request', state: 'download' };
-        }
-        if (mode === 'blocked' || mode === 'request_book') {
-          return { text: 'Unavailable', state: 'blocked' };
-        }
         return currentStatus.error[releaseId].retry_available === true
           ? { text: 'Retry', state: 'download' }
           : { text: 'Failed', state: 'error' };
@@ -1187,18 +1166,12 @@ const ReleaseModalSession = ({
       if (currentStatus.queued && currentStatus.queued[releaseId]) {
         return { text: 'Queued', state: 'queued' };
       }
-      if (mode === 'request_release') {
-        return { text: 'Request', state: 'download' };
-      }
-      if (mode === 'blocked' || mode === 'request_book') {
-        return { text: 'Unavailable', state: 'blocked' };
-      }
       return { text: 'Download', state: 'download' };
     },
-    [currentStatus, getReleaseActionMode],
+    [currentStatus],
   );
 
-  // Handle row action based on resolved policy mode.
+  // Handle a release-row download action.
   const handleReleaseAction = useCallback(
     async (release: Release): Promise<void> => {
       if (!book) {
@@ -1207,36 +1180,14 @@ const ReleaseModalSession = ({
 
       // In combined mode, clicking a row selects it (don't download)
       if (isCombinedMode) {
-        const mode = getReleaseActionMode(release);
-        if (mode === 'blocked' || mode === 'request_book') {
-          return;
-        }
         setSelectedRelease(release);
         return;
       }
 
-      const mode = getReleaseActionMode(release);
-      if (mode === 'download') {
-        await onDownload(book, release, contentType);
-        handleClose();
-        return;
-      }
-      if (mode === 'request_release') {
-        if (onRequestRelease) {
-          await onRequestRelease(book, release, contentType);
-          handleClose();
-        }
-      }
+      await onDownload(book, release, contentType);
+      handleClose();
     },
-    [
-      book,
-      isCombinedMode,
-      getReleaseActionMode,
-      onDownload,
-      onRequestRelease,
-      contentType,
-      handleClose,
-    ],
+    [book, isCombinedMode, onDownload, contentType, handleClose],
   );
 
   const titleId = `release-modal-title-${book.id}`;

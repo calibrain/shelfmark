@@ -103,37 +103,6 @@ def _hidden_item_keys(main_module, *, viewer_scope: str) -> set[str]:
 
 
 class TestActivityRoutes:
-    def test_snapshot_returns_status_requests_and_dismissed(self, main_module, client):
-        user = _create_user(main_module, prefix="reader")
-        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
-
-        main_module.user_db.create_request(
-            user_id=user["id"],
-            content_type="ebook",
-            request_level="book",
-            policy_mode="request_book",
-            book_data={
-                "title": "Snapshot Book",
-                "author": "Snapshot Author",
-                "provider": "openlibrary",
-                "provider_id": "snap-1",
-            },
-            status="pending",
-        )
-
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(
-                main_module.backend, "queue_status", return_value=_sample_status_payload()
-            ):
-                response = client.get("/api/activity/snapshot")
-
-        assert response.status_code == 200
-        assert "status" in response.json
-        assert "requests" in response.json
-        assert "dismissed" in response.json
-        assert response.json["dismissed"] == []
-        assert any(item["user_id"] == user["id"] for item in response.json["requests"])
-
     def test_dismiss_and_history_flow(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
@@ -214,58 +183,6 @@ class TestActivityRoutes:
         assert snapshot_download["author"] == "Recorded Author"
         assert snapshot_download["status_message"] is None
 
-    def test_clear_history_hides_dismissed_requests_without_deleting_them(
-        self, main_module, client
-    ):
-        user = _create_user(main_module, prefix="reader")
-        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
-
-        request_row = main_module.user_db.create_request(
-            user_id=user["id"],
-            content_type="ebook",
-            request_level="book",
-            policy_mode="request_book",
-            book_data={
-                "title": "Dismissed Request",
-                "author": "Request Author",
-                "provider": "openlibrary",
-                "provider_id": "dismissed-request",
-            },
-            status="rejected",
-        )
-        request_key = f"request:{request_row['id']}"
-
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            dismiss_response = client.post(
-                "/api/activity/dismiss",
-                json={"item_type": "request", "item_key": request_key},
-            )
-            history_before_clear = client.get("/api/activity/history?limit=10&offset=0")
-            clear_history_response = client.delete("/api/activity/history")
-            history_after_clear = client.get("/api/activity/history?limit=10&offset=0")
-            with patch.object(
-                main_module.backend, "queue_status", return_value=_sample_status_payload()
-            ):
-                snapshot_after_clear = client.get("/api/activity/snapshot")
-
-        assert dismiss_response.status_code == 200
-        assert history_before_clear.status_code == 200
-        assert any(row["item_key"] == request_key for row in history_before_clear.json)
-
-        assert clear_history_response.status_code == 200
-        assert clear_history_response.json["status"] == "cleared"
-        assert clear_history_response.json["cleared_count"] == 1
-
-        assert history_after_clear.status_code == 200
-        assert history_after_clear.json == []
-
-        assert snapshot_after_clear.status_code == 200
-        assert all(row["id"] != request_row["id"] for row in snapshot_after_clear.json["requests"])
-        assert {"item_type": "request", "item_key": request_key} in snapshot_after_clear.json[
-            "dismissed"
-        ]
-        assert main_module.user_db.get_request(request_row["id"]) is not None
-
     def test_admin_snapshot_includes_admin_viewer_dismissals(self, main_module, client):
         admin = _create_user(main_module, prefix="admin", role="admin")
         _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
@@ -319,48 +236,6 @@ class TestActivityRoutes:
         assert response.status_code == 200
         assert response.data == file_bytes
         assert "attachment" in response.headers.get("Content-Disposition", "").lower()
-
-    def test_dismiss_legacy_fulfilled_request_creates_minimal_history_snapshot(
-        self, main_module, client
-    ):
-        user = _create_user(main_module, prefix="reader")
-        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
-
-        request_row = main_module.user_db.create_request(
-            user_id=user["id"],
-            content_type="ebook",
-            request_level="book",
-            policy_mode="request_book",
-            book_data={
-                "title": "Legacy Fulfilled Request",
-                "author": "Legacy Author",
-                "provider": "openlibrary",
-                "provider_id": "legacy-fulfilled-1",
-            },
-            status="fulfilled",
-            delivery_state="none",
-        )
-
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            dismiss_response = client.post(
-                "/api/activity/dismiss",
-                json={"item_type": "request", "item_key": f"request:{request_row['id']}"},
-            )
-            history_response = client.get("/api/activity/history?limit=10&offset=0")
-
-        assert dismiss_response.status_code == 200
-        assert history_response.status_code == 200
-        assert len(history_response.json) == 1
-
-        history_entry = history_response.json[0]
-        assert history_entry["item_type"] == "request"
-        assert history_entry["item_key"] == f"request:{request_row['id']}"
-        assert history_entry["final_status"] == "complete"
-        assert history_entry["snapshot"]["kind"] == "request"
-        assert history_entry["snapshot"]["request"]["id"] == request_row["id"]
-        assert (
-            history_entry["snapshot"]["request"]["book_data"]["title"] == "Legacy Fulfilled Request"
-        )
 
     def test_dismiss_requires_db_identity(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -436,33 +311,6 @@ class TestActivityRoutes:
 
         assert response.status_code == 409
         assert response.json["error"] == "Only terminal downloads can be dismissed"
-
-    def test_dismiss_rejects_pending_request(self, main_module, client):
-        user = _create_user(main_module, prefix="reader")
-        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
-
-        request_row = main_module.user_db.create_request(
-            user_id=user["id"],
-            content_type="ebook",
-            request_level="book",
-            policy_mode="request_book",
-            book_data={
-                "title": "Pending Request",
-                "author": "Pending Author",
-                "provider": "openlibrary",
-                "provider_id": "pending-dismiss-1",
-            },
-            status="pending",
-        )
-
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            response = client.post(
-                "/api/activity/dismiss",
-                json={"item_type": "request", "item_key": f"request:{request_row['id']}"},
-            )
-
-        assert response.status_code == 409
-        assert response.json["error"] == "Only terminal requests can be dismissed"
 
     def test_dismiss_emits_activity_update_to_user_room(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -1101,82 +949,6 @@ class TestActivityRoutes:
             response.json["status"]["error"]["retryable-terminal-task"]["retry_available"] is True
         )
 
-    def test_snapshot_reopens_request_when_error_retry_is_no_longer_available(
-        self, main_module, client
-    ):
-        user = _create_user(main_module, prefix="reader")
-        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
-
-        request_row = main_module.user_db.create_request(
-            user_id=user["id"],
-            content_type="ebook",
-            request_level="release",
-            policy_mode="request_release",
-            book_data={
-                "title": "Retry Gone Request",
-                "author": "Retry Author",
-                "provider": "openlibrary",
-                "provider_id": "retry-gone-1",
-            },
-            release_data={
-                "source": "prowlarr",
-                "source_id": "retry-gone-task",
-                "title": "Retry Gone.epub",
-            },
-            status="fulfilled",
-            delivery_state="queued",
-        )
-        retry_payload = {
-            "task_id": "retry-gone-task",
-            "source": "prowlarr",
-            "title": "Retry Gone Request",
-            "user_id": user["id"],
-            "username": user["username"],
-            "request_id": request_row["id"],
-            "search_mode": "universal",
-            "retry_download_url": "magnet:?xt=urn:btih:abc123",
-            "retry_download_protocol": "torrent",
-            "retry_release_name": "Retry Gone Request",
-            "can_retry_without_staged_source": True,
-        }
-        main_module.download_history_service.record_download(
-            task_id="retry-gone-task",
-            user_id=user["id"],
-            username=user["username"],
-            request_id=request_row["id"],
-            source="prowlarr",
-            source_display_name="Prowlarr",
-            title="Retry Gone Request",
-            author="Retry Author",
-            file_format="epub",
-            size="1 MB",
-            preview=None,
-            content_type="ebook",
-            origin="requested",
-            retry_payload=retry_payload,
-        )
-        main_module.download_history_service.finalize_download(
-            task_id="retry-gone-task",
-            final_status="error",
-            status_message="Output routing failed",
-            retry_payload=retry_payload,
-        )
-
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(
-                main_module.backend, "queue_status", return_value=_sample_status_payload()
-            ):
-                response = client.get("/api/activity/snapshot")
-
-        assert response.status_code == 200
-        refreshed_request = main_module.user_db.get_request(request_row["id"])
-        assert refreshed_request["status"] == "pending"
-        assert refreshed_request["last_failure_reason"] == "Output routing failed"
-        assert any(
-            row["id"] == request_row["id"] and row["status"] == "pending"
-            for row in response.json["requests"]
-        )
-
     def test_snapshot_active_download_with_queue_entry_shows_in_correct_bucket(
         self, main_module, client
     ):
@@ -1388,89 +1160,6 @@ class TestActivityRoutes:
         } not in owner_snapshot_after_admin_clear.json["dismissed"]
         assert owner_history.status_code == 200
         assert owner_history.json == []
-
-    def test_admin_request_dismissal_is_shared_across_admin_users(self, main_module, client):
-        admin_one = _create_user(main_module, prefix="admin-one", role="admin")
-        admin_two = _create_user(main_module, prefix="admin-two", role="admin")
-        request_owner = _create_user(main_module, prefix="request-owner")
-        request_row = main_module.user_db.create_request(
-            user_id=request_owner["id"],
-            content_type="ebook",
-            request_level="book",
-            policy_mode="request_book",
-            book_data={
-                "title": "Dismiss Me Request",
-                "author": "Request Author",
-                "provider": "openlibrary",
-                "provider_id": "dismiss-request-1",
-            },
-            status="rejected",
-        )
-
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            _set_session(
-                client, user_id=admin_one["username"], db_user_id=admin_one["id"], is_admin=True
-            )
-            dismiss_response = client.post(
-                "/api/activity/dismiss",
-                json={"item_type": "request", "item_key": f"request:{request_row['id']}"},
-            )
-            assert dismiss_response.status_code == 200
-
-            _set_session(
-                client, user_id=admin_two["username"], db_user_id=admin_two["id"], is_admin=True
-            )
-            with patch.object(
-                main_module.backend, "queue_status", return_value=_sample_status_payload()
-            ):
-                snapshot_response = client.get("/api/activity/snapshot")
-            history_response = client.get("/api/activity/history?limit=50&offset=0")
-
-        assert snapshot_response.status_code == 200
-        assert {
-            "item_type": "request",
-            "item_key": f"request:{request_row['id']}",
-        } in snapshot_response.json["dismissed"]
-
-        assert history_response.status_code == 200
-        assert any(
-            row["item_key"] == f"request:{request_row['id']}" for row in history_response.json
-        )
-
-    def test_admin_request_history_includes_requester_username(self, main_module, client):
-        admin = _create_user(main_module, prefix="admin", role="admin")
-        owner = _create_user(main_module, prefix="request-owner")
-        request_row = main_module.user_db.create_request(
-            user_id=owner["id"],
-            content_type="ebook",
-            request_level="book",
-            policy_mode="request_book",
-            book_data={
-                "title": "History Username Request",
-                "author": "History Username Author",
-                "provider": "openlibrary",
-                "provider_id": "history-username-request-1",
-            },
-            status="rejected",
-        )
-
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
-            dismiss_response = client.post(
-                "/api/activity/dismiss",
-                json={"item_type": "request", "item_key": f"request:{request_row['id']}"},
-            )
-            history_response = client.get("/api/activity/history?limit=10&offset=0")
-
-        assert dismiss_response.status_code == 200
-        assert history_response.status_code == 200
-        matching_rows = [
-            row
-            for row in history_response.json
-            if row["item_key"] == f"request:{request_row['id']}"
-        ]
-        assert len(matching_rows) == 1
-        assert matching_rows[0]["snapshot"]["request"]["username"] == owner["username"]
 
     def test_history_paging_is_stable_and_non_overlapping(self, main_module, client):
         user = _create_user(main_module, prefix="history-user")

@@ -62,25 +62,12 @@ from shelfmark.core.notifications import (
 )
 from shelfmark.core.prefix_middleware import PrefixMiddleware
 from shelfmark.core.request_helpers import (
-    coerce_bool,
     emit_ws_event,
     get_session_db_user_id,
-    load_users_request_policy_settings,
     normalize_optional_text,
     normalize_positive_int,
 )
-from shelfmark.core.request_policy import (
-    PolicyMode,
-    get_source_content_type_capabilities,
-    merge_request_policy_settings,
-    normalize_content_type,
-    normalize_source,
-    resolve_policy_mode,
-)
-from shelfmark.core.requests_service import (
-    reopen_failed_request,
-    sync_delivery_states_from_queue_status,
-)
+from shelfmark.core.requests_service import sync_delivery_states_from_queue_status
 from shelfmark.core.user_db import UserDB
 from shelfmark.core.utils import normalize_base_path
 from shelfmark.download import orchestrator as backend
@@ -351,6 +338,16 @@ def _contains_audiobook_format_hint(value: Any) -> bool:
     return any(token in _AUDIOBOOK_FORMAT_HINTS for token in tokens)
 
 
+def normalize_content_type(value: Any) -> str:
+    """Normalize queue metadata without request-policy semantics."""
+    return "audiobook" if str(value or "").strip().lower() == "audiobook" else "ebook"
+
+
+def normalize_source(value: Any) -> str:
+    """Normalize a release-source identifier."""
+    return str(value or "").strip().lower()
+
+
 def _resolve_release_content_type(data: dict[str, Any], source: Any) -> tuple[str, bool]:
     """Resolve release content type for policy checks and queue payload normalization."""
     extra = data.get("extra")
@@ -389,83 +386,24 @@ def _resolve_release_content_type(data: dict[str, Any], source: Any) -> tuple[st
     if any(_contains_audiobook_format_hint(candidate) for candidate in candidates):
         return "audiobook", True
 
-    capabilities = get_source_content_type_capabilities()
-    supported = capabilities.get(normalize_source(source))
-    if supported and len(supported) == 1:
-        return normalize_content_type(next(iter(supported))), True
-
     return "ebook", False
 
 
-def _resolve_policy_mode_for_current_user(*, source: Any, content_type: Any) -> PolicyMode | None:
-    """Resolve policy mode for current session, or None when policy guard is bypassed."""
-    auth_mode = get_auth_mode()
-    if auth_mode == "none":
-        return None
-    if session.get("is_admin", True):
+def _require_download_capability() -> tuple[Response, int] | None:
+    """Require Library Capability for non-admin release queueing."""
+    if get_auth_mode() == "none" or session.get("is_admin", False):
         return None
     if user_db is None:
-        return None
-
-    global_settings = load_users_request_policy_settings()
-    db_user_id = session.get("db_user_id")
-    user_settings: dict[str, Any] | None = None
-    if db_user_id is not None:
-        try:
-            user_settings = user_db.get_user_settings(int(db_user_id))
-        except TypeError, ValueError:
-            user_settings = None
-
-    effective = merge_request_policy_settings(global_settings, user_settings)
-    if not coerce_bool(effective.get("REQUESTS_ENABLED"), default=False):
-        return None
-
-    resolved_mode = resolve_policy_mode(
-        source=source,
-        content_type=content_type,
-        global_settings=global_settings,
-        user_settings=user_settings,
-    )
-    logger.debug(
-        "download policy resolve user=%s db_user_id=%s is_admin=%s source=%s content_type=%s mode=%s",
-        session.get("user_id"),
-        db_user_id,
-        bool(session.get("is_admin", False)),
-        source,
-        content_type,
-        resolved_mode.value,
-    )
-    return resolved_mode
-
-
-def _policy_block_response(mode: PolicyMode) -> tuple[Response, int]:
-    logger.debug(
-        "download policy guard user=%s db_user_id=%s mode=%s",
-        session.get("user_id"),
-        session.get("db_user_id"),
-        mode.value,
-    )
-    if mode == PolicyMode.BLOCKED:
-        return (
-            jsonify(
-                {
-                    "error": "Download not allowed by policy",
-                    "code": "policy_blocked",
-                    "required_mode": PolicyMode.BLOCKED.value,
-                }
-            ),
-            403,
-        )
-    return (
-        jsonify(
-            {
-                "error": "Download not allowed by policy",
-                "code": "policy_requires_request",
-                "required_mode": mode.value,
-            }
-        ),
-        403,
-    )
+        return jsonify({"error": "User database unavailable"}), 503
+    db_user_id = normalize_positive_int(session.get("db_user_id"))
+    if db_user_id is None:
+        return jsonify({"error": "User identity is unavailable"}), 403
+    user = user_db.get_user(user_id=db_user_id)
+    if user is None:
+        return jsonify({"error": "User identity is unavailable"}), 403
+    if user.get("library_capability") != "download-capable":
+        return jsonify({"error": "Download capability required"}), 403
+    return None
 
 
 def _resolve_download_user_context(
@@ -1110,14 +1048,12 @@ def api_download_release() -> Response | tuple[Response, int]:
         if "source" not in data:
             return jsonify({"error": "source is required"}), 400
 
+        capability_gate = _require_download_capability()
+        if capability_gate is not None:
+            return capability_gate
+
         source = data["source"]
         resolved_content_type, inferred_content_type = _resolve_release_content_type(data, source)
-        policy_mode = _resolve_policy_mode_for_current_user(
-            source=source,
-            content_type=resolved_content_type,
-        )
-        if policy_mode is not None and policy_mode != PolicyMode.DOWNLOAD:
-            return _policy_block_response(policy_mode)
 
         release_payload = data
         if inferred_content_type and data.get("content_type") is None:
@@ -1139,6 +1075,12 @@ def api_download_release() -> Response | tuple[Response, int]:
         library_book_id = normalize_positive_int(raw_library_book_id)
         if raw_library_book_id is not None and library_book_id is None:
             return jsonify({"error": "library_book_id must be a positive integer"}), 400
+        if (
+            get_auth_mode() != "none"
+            and not session.get("is_admin", False)
+            and library_book_id is None
+        ):
+            return jsonify({"error": "library_book_id is required"}), 400
         if library_book_id is not None:
             if (
                 library_service is None
@@ -1523,42 +1465,6 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
                 "task_id": task_id,
                 "status": final_status,
             },
-        )
-
-    if user_db is None or status != QueueStatus.ERROR:
-        return
-
-    request_id = normalize_positive_int(getattr(task, "request_id", None))
-    if request_id is None:
-        return
-    if backend.can_retry_download_task(task, status):
-        return
-
-    raw_error_message = getattr(task, "status_message", None)
-    fallback_reason = (
-        raw_error_message.strip()
-        if isinstance(raw_error_message, str) and raw_error_message.strip()
-        else "Download failed"
-    )
-    try:
-        reopened_request = reopen_failed_request(
-            user_db,
-            request_id=request_id,
-            failure_reason=fallback_reason,
-        )
-        if reopened_request is not None:
-            if activity_view_state_service is not None:
-                activity_view_state_service.clear_item_for_all_viewers(
-                    item_type="request",
-                    item_key=f"request:{request_id}",
-                )
-            _emit_request_update_events([reopened_request])
-    except _OPERATIONAL_ERRORS as exc:
-        logger.warning(
-            "Failed to reopen request %s after terminal download error %s: %s",
-            request_id,
-            task_id,
-            exc,
         )
 
 

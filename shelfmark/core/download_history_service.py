@@ -545,6 +545,44 @@ class DownloadHistoryService:
                         ],
                     )
 
+                book_id = sentinel["book_id"]
+                if (
+                    normalized_final_status == "complete"
+                    and book_id is not None
+                    and inserted_history_ids
+                ):
+                    # A shared release becomes available atomically: every
+                    # requester still pending for this exact Book gains every
+                    # File and transitions to fulfilled. Cancelled requests
+                    # are deliberately excluded.
+                    pending_requests = conn.execute(
+                        """
+                        SELECT id, user_id FROM download_requests
+                        WHERE book_id = ? AND status = 'pending'
+                        """,
+                        (book_id,),
+                    ).fetchall()
+                    if pending_requests:
+                        conn.executemany(
+                            """
+                            INSERT OR IGNORE INTO user_downloads (user_id, history_id, added_at)
+                            VALUES (?, ?, ?)
+                            """,
+                            [
+                                (int(request["user_id"]), history_id, effective_terminal_at)
+                                for request in pending_requests
+                                for history_id in inserted_history_ids
+                            ],
+                        )
+                        conn.execute(
+                            """
+                            UPDATE download_requests
+                            SET status = 'fulfilled', reviewed_at = ?
+                            WHERE book_id = ? AND status = 'pending'
+                            """,
+                            (effective_terminal_at, book_id),
+                        )
+
                 if not inserted_history_ids:
                     logger.info(
                         "finalize_download_files: task_id=%s finalized as %s with no file rows "

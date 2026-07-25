@@ -29,8 +29,6 @@ export const UserOverridesView = ({
   isUserOverridable,
   userSettings,
   setUserSettings,
-  usersTab,
-  globalUsersSettingsValues,
   onTestNotificationRoutes,
 }: UserOverridesViewProps) => {
   const content = (
@@ -63,8 +61,6 @@ export const UserOverridesView = ({
         isUserOverridable={isUserOverridable}
         userSettings={userSettings}
         setUserSettings={setUserSettings}
-        usersTab={usersTab}
-        globalUsersSettingsValues={globalUsersSettingsValues}
         onTestNotificationRoutes={onTestNotificationRoutes}
       />
     </div>

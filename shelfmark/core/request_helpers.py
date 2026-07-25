@@ -5,7 +5,6 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, Protocol, SupportsIndex, SupportsInt, TypeGuard
 
-from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 
 _logger = setup_logger(__name__)
@@ -72,13 +71,6 @@ def emit_ws_event(
             room,
             exc,
         )
-
-
-def load_users_request_policy_settings() -> dict[str, Any]:
-    """Load global request-policy settings from the users config file."""
-    from shelfmark.core.request_policy import REQUEST_POLICY_KEYS
-
-    return {key: app_config.get(key) for key in REQUEST_POLICY_KEYS}
 
 
 def coerce_bool(value: object, *, default: bool = False) -> bool:

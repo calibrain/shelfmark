@@ -2,16 +2,15 @@ import type { ReactElement } from 'react';
 import { Fragment } from 'react';
 
 import type { DeliveryPreferencesResponse } from '../../../services/api';
-import type { ActionResult, SettingsTab } from '../../../types/settings';
+import type { ActionResult } from '../../../types/settings';
 import { toTrimmedTextValue } from './fieldHelpers';
 import type { PerUserSettings } from './types';
 import { UserNotificationOverridesSection } from './UserNotificationOverridesSection';
 import { UserOverridesSection } from './UserOverridesSection';
-import { UserRequestPolicyOverridesSection } from './UserRequestPolicyOverridesSection';
 import { UserSearchPreferencesSection } from './UserSearchPreferencesSection';
 
 type UserOverrideScope = 'admin' | 'self';
-type UserOverrideSectionId = 'delivery' | 'search' | 'notifications' | 'requestPolicy';
+type UserOverrideSectionId = 'delivery' | 'search' | 'notifications';
 
 interface UserOverridesSectionsProps {
   scope: UserOverrideScope;
@@ -22,8 +21,6 @@ interface UserOverridesSectionsProps {
   isUserOverridable: (key: keyof PerUserSettings) => boolean;
   userSettings: PerUserSettings;
   setUserSettings: (updater: (prev: PerUserSettings) => PerUserSettings) => void;
-  usersTab?: SettingsTab;
-  globalUsersSettingsValues?: Record<string, unknown>;
   onTestNotificationRoutes?: (routes: Array<Record<string, unknown>>) => Promise<ActionResult>;
 }
 
@@ -41,7 +38,6 @@ const USER_OVERRIDE_SECTION_DEFINITIONS: UserOverrideSectionDefinition[] = [
   { id: 'delivery', adminOnly: false },
   { id: 'search', adminOnly: false },
   { id: 'notifications', adminOnly: false },
-  { id: 'requestPolicy', adminOnly: true },
 ];
 
 const USER_OVERRIDE_SECTION_ORDER: UserOverrideSectionId[] = USER_OVERRIDE_SECTION_DEFINITIONS.map(
@@ -53,7 +49,6 @@ const USER_OVERRIDE_SECTION_META: Record<UserOverrideSectionId, UserOverrideSect
   delivery: { id: 'delivery', adminOnly: false },
   search: { id: 'search', adminOnly: false },
   notifications: { id: 'notifications', adminOnly: false },
-  requestPolicy: { id: 'requestPolicy', adminOnly: true },
 };
 
 export const DEFAULT_SELF_USER_OVERRIDE_SECTIONS: UserOverrideSectionId[] =
@@ -112,8 +107,6 @@ export const UserOverridesSections = ({
   isUserOverridable,
   userSettings,
   setUserSettings,
-  usersTab,
-  globalUsersSettingsValues,
   onTestNotificationRoutes,
 }: UserOverridesSectionsProps) => {
   const activeSections = normalizeUserOverrideSections(sections, scope);
@@ -136,7 +129,6 @@ export const UserOverridesSections = ({
           />
         ),
       });
-      return;
     }
 
     if (sectionId === 'notifications') {
@@ -155,7 +147,6 @@ export const UserOverridesSections = ({
           />
         ),
       });
-      return;
     }
 
     if (sectionId === 'search') {
@@ -173,25 +164,7 @@ export const UserOverridesSections = ({
           />
         ),
       });
-      return;
     }
-
-    if (!usersTab || !globalUsersSettingsValues) {
-      return;
-    }
-
-    sectionNodes.push({
-      id: sectionId,
-      node: (
-        <UserRequestPolicyOverridesSection
-          usersTab={usersTab}
-          globalUsersSettingsValues={globalUsersSettingsValues}
-          isUserOverridable={isUserOverridable}
-          userSettings={userSettings}
-          setUserSettings={setUserSettings}
-        />
-      ),
-    });
   });
 
   if (sectionNodes.length === 0) {

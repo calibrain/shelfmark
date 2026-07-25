@@ -4,21 +4,15 @@ import json
 import os
 import sqlite3
 import threading
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, ClassVar
 
 from shelfmark.core.activity_view_state_service import user_viewer_scope
 from shelfmark.core.auth_modes import AUTH_SOURCE_BUILTIN, AUTH_SOURCE_SET
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import QueueStatus
 from shelfmark.core.request_validation import (
-    DELIVERY_STATE_NONE,
-    RequestStatus,
-    normalize_delivery_state,
-    normalize_policy_mode,
-    normalize_request_level,
     normalize_request_status,
-    validate_request_level_payload,
     validate_status_transition,
 )
 
@@ -34,6 +28,7 @@ CREATE TABLE IF NOT EXISTS users (
     oidc_subject  TEXT UNIQUE,
     auth_source   TEXT NOT NULL DEFAULT 'builtin',
     role          TEXT NOT NULL DEFAULT 'user',
+    library_capability TEXT NOT NULL DEFAULT 'download-capable',
     created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -45,20 +40,13 @@ CREATE TABLE IF NOT EXISTS user_settings (
 CREATE TABLE IF NOT EXISTS download_requests (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    book_id        INTEGER NOT NULL REFERENCES books(id) ON DELETE CASCADE,
     status         TEXT NOT NULL DEFAULT 'pending',
-    delivery_state TEXT NOT NULL DEFAULT 'none',
-    source_hint    TEXT,
-    content_type   TEXT NOT NULL,
-    request_level  TEXT NOT NULL,
-    policy_mode    TEXT NOT NULL,
-    book_data      TEXT NOT NULL,
-    release_data   TEXT,
     note           TEXT,
     admin_note     TEXT,
     reviewed_by    INTEGER REFERENCES users(id),
     created_at     TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    reviewed_at    TIMESTAMP,
-    delivery_updated_at TIMESTAMP
+    reviewed_at    TIMESTAMP
 );
 
 CREATE INDEX IF NOT EXISTS idx_download_requests_user_status_created_at
@@ -235,6 +223,9 @@ class UserDB:
     """Thread-safe SQLite user database."""
 
     _VALID_AUTH_SOURCES: ClassVar[frozenset[str]] = frozenset(AUTH_SOURCE_SET)
+    _VALID_LIBRARY_CAPABILITIES: ClassVar[frozenset[str]] = frozenset(
+        {"download-capable", "request-only"}
+    )
 
     def __init__(self, db_path: str) -> None:
         """Initialize the user database wrapper for the given SQLite path."""
@@ -252,9 +243,10 @@ class UserDB:
         with self._lock:
             conn = self._connect()
             try:
+                self._reset_legacy_requests(conn)
                 conn.executescript(_CREATE_TABLES_SQL)
                 self._migrate_auth_source_column(conn)
-                self._migrate_request_delivery_columns(conn)
+                self._migrate_library_capability_column(conn)
                 self._migrate_download_history_queued_at(conn)
                 self._migrate_download_history_retry_payload(conn)
                 self._migrate_download_history_book_id(conn)
@@ -280,34 +272,43 @@ class UserDB:
             "UPDATE users SET auth_source = 'builtin' WHERE auth_source IS NULL OR auth_source = ''"
         )
 
-    def _migrate_request_delivery_columns(self, conn: sqlite3.Connection) -> None:
-        """Ensure request delivery-state columns exist and backfill historical rows."""
-        columns = conn.execute("PRAGMA table_info(download_requests)").fetchall()
+    def _migrate_library_capability_column(self, conn: sqlite3.Connection) -> None:
+        """Ensure each user has one explicit Library Capability."""
+        columns = conn.execute("PRAGMA table_info(users)").fetchall()
         column_names = {str(col["name"]) for col in columns}
-
-        if "delivery_state" not in column_names:
+        if "library_capability" not in column_names:
             conn.execute(
-                "ALTER TABLE download_requests ADD COLUMN delivery_state TEXT NOT NULL DEFAULT 'none'"
+                "ALTER TABLE users ADD COLUMN library_capability TEXT "
+                "NOT NULL DEFAULT 'download-capable'"
             )
-        if "delivery_updated_at" not in column_names:
-            conn.execute("ALTER TABLE download_requests ADD COLUMN delivery_updated_at TIMESTAMP")
-        if "last_failure_reason" not in column_names:
-            conn.execute("ALTER TABLE download_requests ADD COLUMN last_failure_reason TEXT")
+        conn.execute(
+            "UPDATE users SET library_capability = 'download-capable' "
+            "WHERE library_capability NOT IN ('download-capable', 'request-only') "
+            "OR library_capability IS NULL"
+        )
 
-        conn.execute(
-            """
-            UPDATE download_requests
-            SET delivery_state = 'none'
-            WHERE delivery_state IS NULL OR TRIM(delivery_state) = '' OR delivery_state IN ('unknown', 'available', 'done')
-            """
-        )
-        conn.execute(
-            """
-            UPDATE download_requests
-            SET delivery_updated_at = COALESCE(delivery_updated_at, reviewed_at, created_at)
-            WHERE delivery_state != 'none' AND delivery_updated_at IS NULL
-            """
-        )
+    def _reset_legacy_requests(self, conn: sqlite3.Connection) -> None:
+        """Replace legacy request storage without migrating its incompatible rows."""
+        table = conn.execute(
+            "SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'download_requests'"
+        ).fetchone()
+        if table is None:
+            return
+        columns = conn.execute("PRAGMA table_info(download_requests)").fetchall()
+        expected = {
+            "id",
+            "user_id",
+            "book_id",
+            "status",
+            "note",
+            "admin_note",
+            "reviewed_by",
+            "created_at",
+            "reviewed_at",
+        }
+        if {str(column["name"]) for column in columns} == expected:
+            return
+        conn.execute("DROP TABLE download_requests")
 
     def _migrate_download_history_queued_at(self, conn: sqlite3.Connection) -> None:
         """Ensure download_history.queued_at exists for queue-time recording."""
@@ -429,19 +430,24 @@ class UserDB:
         oidc_subject: str | None = None,
         auth_source: str = "builtin",
         role: str = "user",
+        library_capability: str = "download-capable",
     ) -> dict[str, Any]:
         """Create a new user. Raises ValueError if username or oidc_subject already exists."""
         if auth_source not in self._VALID_AUTH_SOURCES:
             msg = f"Invalid auth_source: {auth_source}"
+            raise ValueError(msg)
+        if library_capability not in self._VALID_LIBRARY_CAPABILITIES:
+            msg = f"Invalid library_capability: {library_capability}"
             raise ValueError(msg)
         with self._lock:
             conn = self._connect()
             try:
                 cursor = conn.execute(
                     """INSERT INTO users (
-                           username, email, display_name, password_hash, oidc_subject, auth_source, role
-                       )
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                           username, email, display_name, password_hash, oidc_subject, auth_source, role,
+                           library_capability
+                        )
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         username,
                         email,
@@ -450,6 +456,7 @@ class UserDB:
                         oidc_subject,
                         auth_source,
                         role,
+                        library_capability,
                     ),
                 )
                 conn.commit()
@@ -500,6 +507,7 @@ class UserDB:
             "oidc_subject",
             "auth_source",
             "role",
+            "library_capability",
         }
     )
     _USER_UPDATE_STATEMENTS: ClassVar[dict[str, str]] = {
@@ -509,6 +517,7 @@ class UserDB:
         "oidc_subject": "UPDATE users SET oidc_subject = ? WHERE id = ?",
         "auth_source": "UPDATE users SET auth_source = ? WHERE id = ?",
         "role": "UPDATE users SET role = ? WHERE id = ?",
+        "library_capability": "UPDATE users SET library_capability = ? WHERE id = ?",
     }
 
     def update_user(self, user_id: int, **kwargs: object) -> None:
@@ -521,6 +530,12 @@ class UserDB:
                 raise ValueError(msg)
         if "auth_source" in kwargs and kwargs["auth_source"] not in self._VALID_AUTH_SOURCES:
             msg = f"Invalid auth_source: {kwargs['auth_source']}"
+            raise ValueError(msg)
+        if (
+            "library_capability" in kwargs
+            and kwargs["library_capability"] not in self._VALID_LIBRARY_CAPABILITIES
+        ):
+            msg = f"Invalid library_capability: {kwargs['library_capability']}"
             raise ValueError(msg)
         with self._lock:
             conn = self._connect()
@@ -624,169 +639,126 @@ class UserDB:
             finally:
                 conn.close()
 
-    @staticmethod
-    def _serialize_json(value: Any, field: str) -> str | None:
-        if value is None:
-            return None
-        try:
-            return json.dumps(value)
-        except TypeError as exc:
-            msg = f"{field} must be JSON-serializable"
-            raise ValueError(msg) from exc
-
-    @staticmethod
-    def _parse_request_row(row: sqlite3.Row | None) -> dict[str, Any] | None:
-        if row is None:
-            return None
-
-        payload = dict(row)
-        for key in ("book_data", "release_data"):
-            raw_value = payload.get(key)
-            if raw_value is None:
-                payload[key] = None
-                continue
-            try:
-                payload[key] = json.loads(raw_value)
-            except ValueError, TypeError:
-                payload[key] = None
-        return payload
-
-    def _insert_request(
-        self,
-        conn: sqlite3.Connection,
-        *,
-        user_id: int,
-        content_type: str,
-        request_level: str,
-        policy_mode: str,
-        book_data: dict[str, Any],
-        release_data: dict[str, Any] | None = None,
-        status: str = RequestStatus.PENDING,
-        source_hint: str | None = None,
-        note: str | None = None,
-        admin_note: str | None = None,
-        reviewed_by: int | None = None,
-        reviewed_at: str | None = None,
-        delivery_state: str = DELIVERY_STATE_NONE,
-        delivery_updated_at: str | None = None,
+    def create_library_request(
+        self, *, user_id: int, book_id: int, note: str | None = None
     ) -> dict[str, Any]:
-        cursor = conn.execute(
-            """
-            INSERT INTO download_requests (
-                user_id,
-                status,
-                delivery_state,
-                source_hint,
-                content_type,
-                request_level,
-                policy_mode,
-                book_data,
-                release_data,
-                note,
-                admin_note,
-                reviewed_by,
-                reviewed_at,
-                delivery_updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                user_id,
-                status,
-                delivery_state,
-                source_hint,
-                content_type,
-                request_level,
-                policy_mode,
-                self._serialize_json(book_data, "book_data"),
-                self._serialize_json(release_data, "release_data"),
-                note,
-                admin_note,
-                reviewed_by,
-                reviewed_at,
-                delivery_updated_at,
-            ),
-        )
-        request_id = cursor.lastrowid
-        row = conn.execute(
-            "SELECT * FROM download_requests WHERE id = ?",
-            (request_id,),
-        ).fetchone()
-        parsed = self._parse_request_row(row)
-        if parsed is None:
-            msg = f"Request {request_id} not found after creation"
-            raise ValueError(msg)
-        return parsed
+        """Create one pending request for a member's Book without title matching.
 
-    def create_request(
-        self,
-        *,
-        user_id: int,
-        content_type: str,
-        request_level: str,
-        policy_mode: str,
-        book_data: dict[str, Any],
-        release_data: dict[str, Any] | None = None,
-        status: str = RequestStatus.PENDING,
-        source_hint: str | None = None,
-        note: str | None = None,
-        admin_note: str | None = None,
-        reviewed_by: int | None = None,
-        reviewed_at: str | None = None,
-        delivery_state: str = DELIVERY_STATE_NONE,
-        delivery_updated_at: str | None = None,
-    ) -> dict[str, Any]:
-        """Create a download request row and return the created record."""
-        if not isinstance(book_data, dict):
-            msg = "book_data must be an object"
-            raise TypeError(msg)
-        if release_data is not None and not isinstance(release_data, dict):
-            msg = "release_data must be an object when provided"
-            raise TypeError(msg)
-        if not content_type:
-            msg = "content_type is required"
-            raise ValueError(msg)
-
-        normalized_status = normalize_request_status(status)
-        normalized_delivery_state = normalize_delivery_state(delivery_state)
-        normalized_policy_mode = normalize_policy_mode(policy_mode)
-        normalized_request_level = validate_request_level_payload(request_level, release_data)
-
+        Membership, global File availability, and duplicate detection share the
+        insert transaction so a Request cannot race a completed File into
+        existence.
+        """
         with self._lock:
             conn = self._connect()
             try:
-                created = self._insert_request(
-                    conn,
-                    user_id=user_id,
-                    content_type=content_type,
-                    request_level=normalized_request_level,
-                    policy_mode=normalized_policy_mode,
-                    book_data=book_data,
-                    release_data=release_data,
-                    status=normalized_status,
-                    source_hint=source_hint,
-                    note=note,
-                    admin_note=admin_note,
-                    reviewed_by=reviewed_by,
-                    reviewed_at=reviewed_at,
-                    delivery_state=normalized_delivery_state,
-                    delivery_updated_at=delivery_updated_at,
+                book = conn.execute(
+                    "SELECT id, title, author FROM books WHERE id = ?", (book_id,)
+                ).fetchone()
+                if book is None:
+                    raise ValueError("Book not found")
+                member = conn.execute(
+                    "SELECT 1 FROM user_library WHERE user_id = ? AND book_id = ?",
+                    (user_id, book_id),
+                ).fetchone()
+                if member is None:
+                    raise ValueError("Book is not in the user's library")
+                has_files = conn.execute(
+                    """
+                    SELECT 1 FROM download_history
+                    WHERE book_id = ? AND final_status = 'complete' AND download_path IS NOT NULL
+                    LIMIT 1
+                    """,
+                    (book_id,),
+                ).fetchone()
+                if has_files is not None:
+                    raise ValueError("Book already has completed Files")
+                duplicate = conn.execute(
+                    """
+                    SELECT 1 FROM download_requests
+                    WHERE user_id = ? AND book_id = ? AND status = 'pending'
+                    LIMIT 1
+                    """,
+                    (user_id, book_id),
+                ).fetchone()
+                if duplicate is not None:
+                    raise ValueError("Duplicate pending Request exists for this Book")
+                cursor = conn.execute(
+                    "INSERT INTO download_requests (user_id, book_id, note) VALUES (?, ?, ?)",
+                    (user_id, book_id, note),
+                )
+                created = dict(
+                    conn.execute(
+                        "SELECT * FROM download_requests WHERE id = ?", (cursor.lastrowid,)
+                    ).fetchone()
                 )
                 conn.commit()
                 return created
             finally:
                 conn.close()
 
-    def create_requests(self, requests: list[dict[str, Any]]) -> list[dict[str, Any]]:
-        """Create multiple request rows atomically and return them in input order."""
+    def fulfil_pending_book_requests(
+        self, *, book_id: int, reviewed_by: int | None = None
+    ) -> list[dict[str, Any]]:
+        """Fulfil and link every pending Request for a Book with its Files."""
         with self._lock:
             conn = self._connect()
             try:
-                created = [self._insert_request(conn, **request) for request in requests]
+                pending = conn.execute(
+                    "SELECT * FROM download_requests WHERE book_id = ? AND status = 'pending'",
+                    (book_id,),
+                ).fetchall()
+                file_rows = conn.execute(
+                    """
+                    SELECT id FROM download_history
+                    WHERE book_id = ? AND final_status = 'complete' AND download_path IS NOT NULL
+                    """,
+                    (book_id,),
+                ).fetchall()
+                if not pending or not file_rows:
+                    return []
+                now = datetime.now(UTC).isoformat(timespec="seconds")
+                conn.executemany(
+                    "INSERT OR IGNORE INTO user_downloads (user_id, history_id, added_at) VALUES (?, ?, ?)",
+                    [
+                        (int(request["user_id"]), int(file_row["id"]), now)
+                        for request in pending
+                        for file_row in file_rows
+                    ],
+                )
+                request_ids = [int(request["id"]) for request in pending]
+                conn.execute(
+                    """
+                    UPDATE download_requests
+                    SET status = 'fulfilled', reviewed_by = COALESCE(?, reviewed_by),
+                        reviewed_at = ?
+                    WHERE book_id = ? AND status = 'pending'
+                    """,
+                    (reviewed_by, now, book_id),
+                )
+                rows = conn.execute(
+                    "SELECT * FROM download_requests WHERE id IN (SELECT value FROM json_each(?))",
+                    (json.dumps(request_ids),),
+                ).fetchall()
                 conn.commit()
-                return created
+                return [dict(row) for row in rows]
             finally:
                 conn.close()
+
+    def list_pending_book_requests(self, book_id: int) -> list[dict[str, Any]]:
+        """Return pending Requests identified by one canonical Book."""
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT * FROM download_requests
+                WHERE book_id = ? AND status = 'pending'
+                ORDER BY created_at ASC, id ASC
+                """,
+                (book_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            conn.close()
 
     def get_request(self, request_id: int) -> dict[str, Any] | None:
         """Get a request row by ID."""
@@ -796,7 +768,7 @@ class UserDB:
                 "SELECT * FROM download_requests WHERE id = ?",
                 (request_id,),
             ).fetchone()
-            return self._parse_request_row(row)
+            return dict(row) if row else None
         finally:
             conn.close()
 
@@ -838,48 +810,25 @@ class UserDB:
         conn = self._connect()
         try:
             rows = conn.execute(query, params).fetchall()
-            results: list[dict[str, Any]] = []
-            for row in rows:
-                parsed = self._parse_request_row(row)
-                if parsed is not None:
-                    results.append(parsed)
-            return results
+            return [dict(row) for row in rows]
         finally:
             conn.close()
 
     _ALLOWED_REQUEST_UPDATE_COLUMNS: ClassVar[frozenset[str]] = frozenset(
         {
             "status",
-            "source_hint",
-            "content_type",
-            "request_level",
-            "policy_mode",
-            "book_data",
-            "release_data",
             "note",
             "admin_note",
             "reviewed_by",
             "reviewed_at",
-            "delivery_state",
-            "delivery_updated_at",
-            "last_failure_reason",
         }
     )
     _REQUEST_UPDATE_STATEMENTS: ClassVar[dict[str, str]] = {
         "status": "UPDATE download_requests SET status = ? WHERE id = ?",
-        "source_hint": "UPDATE download_requests SET source_hint = ? WHERE id = ?",
-        "content_type": "UPDATE download_requests SET content_type = ? WHERE id = ?",
-        "request_level": "UPDATE download_requests SET request_level = ? WHERE id = ?",
-        "policy_mode": "UPDATE download_requests SET policy_mode = ? WHERE id = ?",
-        "book_data": "UPDATE download_requests SET book_data = ? WHERE id = ?",
-        "release_data": "UPDATE download_requests SET release_data = ? WHERE id = ?",
         "note": "UPDATE download_requests SET note = ? WHERE id = ?",
         "admin_note": "UPDATE download_requests SET admin_note = ? WHERE id = ?",
         "reviewed_by": "UPDATE download_requests SET reviewed_by = ? WHERE id = ?",
         "reviewed_at": "UPDATE download_requests SET reviewed_at = ? WHERE id = ?",
-        "delivery_state": "UPDATE download_requests SET delivery_state = ? WHERE id = ?",
-        "delivery_updated_at": "UPDATE download_requests SET delivery_updated_at = ? WHERE id = ?",
-        "last_failure_reason": "UPDATE download_requests SET last_failure_reason = ? WHERE id = ?",
     }
 
     def update_request(
@@ -913,7 +862,7 @@ class UserDB:
                     "SELECT * FROM download_requests WHERE id = ?",
                     (request_id,),
                 ).fetchone()
-                current = self._parse_request_row(row)
+                current = dict(row) if row else None
                 if current is None:
                     msg = f"Request {request_id} not found"
                     raise ValueError(msg)
@@ -933,42 +882,6 @@ class UserDB:
                     )
                     updates["status"] = normalized_status
 
-                if "policy_mode" in updates:
-                    updates["policy_mode"] = normalize_policy_mode(updates["policy_mode"])
-
-                if "delivery_state" in updates:
-                    updates["delivery_state"] = normalize_delivery_state(updates["delivery_state"])
-
-                if "delivery_updated_at" in updates:
-                    delivery_updated_at = updates["delivery_updated_at"]
-                    if delivery_updated_at is not None and not isinstance(delivery_updated_at, str):
-                        msg = "delivery_updated_at must be a string when provided"
-                        raise TypeError(msg)
-
-                if "content_type" in updates and not updates["content_type"]:
-                    msg = "content_type is required"
-                    raise ValueError(msg)
-
-                if "request_level" in updates:
-                    updates["request_level"] = normalize_request_level(updates["request_level"])
-
-                if "book_data" in updates:
-                    if not isinstance(updates["book_data"], dict):
-                        msg = "book_data must be an object"
-                        raise TypeError(msg)
-                    updates["book_data"] = self._serialize_json(updates["book_data"], "book_data")
-
-                if "release_data" in updates:
-                    if updates["release_data"] is not None and not isinstance(
-                        updates["release_data"], dict
-                    ):
-                        msg = "release_data must be an object when provided"
-                        raise TypeError(msg)
-                    updates["release_data"] = self._serialize_json(
-                        updates["release_data"],
-                        "release_data",
-                    )
-
                 for column, value in updates.items():
                     conn.execute(self._REQUEST_UPDATE_STATEMENTS[column], (value, request_id))
                 conn.commit()
@@ -977,145 +890,10 @@ class UserDB:
                     "SELECT * FROM download_requests WHERE id = ?",
                     (request_id,),
                 ).fetchone()
-                parsed = self._parse_request_row(updated_row)
+                parsed = dict(updated_row) if updated_row else None
                 if parsed is None:
                     msg = f"Request {request_id} not found after update"
                     raise ValueError(msg)
                 return parsed
             finally:
                 conn.close()
-
-    def reopen_failed_request(
-        self,
-        request_id: int,
-        *,
-        failure_reason: str | None = None,
-    ) -> dict[str, Any] | None:
-        """Reopen a failed fulfilled request so admins can re-approve it."""
-        normalized_failure_reason = None
-        if isinstance(failure_reason, str):
-            normalized_failure_reason = failure_reason.strip() or None
-
-        with self._lock:
-            conn = self._connect()
-            try:
-                current_row = conn.execute(
-                    "SELECT * FROM download_requests WHERE id = ?",
-                    (request_id,),
-                ).fetchone()
-                current_request = self._parse_request_row(current_row)
-                if current_request is None:
-                    return None
-
-                if current_request.get("status") != RequestStatus.FULFILLED:
-                    return None
-
-                current_delivery_state = current_request.get("delivery_state", DELIVERY_STATE_NONE)
-
-                # Terminal hook callbacks can run before delivery-state sync persists "error".
-                # Allow reopening fulfilled requests unless they are already complete.
-                if current_delivery_state == QueueStatus.COMPLETE:
-                    return None
-                if (
-                    current_delivery_state not in {QueueStatus.ERROR, QueueStatus.CANCELLED}
-                    and normalized_failure_reason is None
-                ):
-                    return None
-
-                conn.execute(
-                    """
-                    UPDATE download_requests
-                    SET status = 'pending',
-                        delivery_state = 'none',
-                        delivery_updated_at = NULL,
-                        release_data = NULL,
-                        last_failure_reason = ?,
-                        reviewed_by = NULL,
-                        reviewed_at = NULL
-                    WHERE id = ?
-                    """,
-                    (normalized_failure_reason, request_id),
-                )
-                updated_row = conn.execute(
-                    "SELECT * FROM download_requests WHERE id = ?",
-                    (request_id,),
-                ).fetchone()
-                conn.commit()
-                return self._parse_request_row(updated_row)
-            finally:
-                conn.close()
-
-    def rollback_request_fulfilment(
-        self,
-        request_id: int,
-        *,
-        release_data: dict[str, Any] | None,
-        last_failure_reason: str | None = None,
-    ) -> dict[str, Any]:
-        """Restore a request to pending after fulfilment claimed it but queueing failed."""
-        with self._lock:
-            conn = self._connect()
-            try:
-                row = conn.execute(
-                    "SELECT * FROM download_requests WHERE id = ?",
-                    (request_id,),
-                ).fetchone()
-                current = self._parse_request_row(row)
-                if current is None:
-                    msg = f"Request {request_id} not found"
-                    raise ValueError(msg)
-
-                conn.execute(
-                    """
-                    UPDATE download_requests
-                    SET status = 'pending',
-                        release_data = ?,
-                        admin_note = NULL,
-                        reviewed_by = NULL,
-                        reviewed_at = NULL,
-                        delivery_state = 'none',
-                        delivery_updated_at = NULL,
-                        last_failure_reason = ?
-                    WHERE id = ?
-                    """,
-                    (
-                        self._serialize_json(release_data, "release_data"),
-                        last_failure_reason,
-                        request_id,
-                    ),
-                )
-                updated_row = conn.execute(
-                    "SELECT * FROM download_requests WHERE id = ?",
-                    (request_id,),
-                ).fetchone()
-                conn.commit()
-                parsed = self._parse_request_row(updated_row)
-                if parsed is None:
-                    msg = f"Request {request_id} not found after rollback"
-                    raise ValueError(msg)
-                return parsed
-            finally:
-                conn.close()
-
-    def count_pending_requests(self) -> int:
-        """Count all pending requests."""
-        conn = self._connect()
-        try:
-            row = conn.execute(
-                "SELECT COUNT(*) AS count FROM download_requests WHERE status = 'pending'"
-            ).fetchone()
-            return int(row["count"]) if row else 0
-        finally:
-            conn.close()
-
-    def count_user_pending_requests(self, user_id: int) -> int:
-        """Count pending requests for a specific user."""
-        conn = self._connect()
-        try:
-            row = conn.execute(
-                "SELECT COUNT(*) AS count FROM download_requests WHERE user_id = ? AND status = 'pending'",
-                (user_id,),
-            ).fetchone()
-            return int(row["count"]) if row else 0
-        finally:
-            conn.close()

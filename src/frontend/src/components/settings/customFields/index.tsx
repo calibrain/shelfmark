@@ -3,7 +3,6 @@ import type { ComponentType, ReactNode } from 'react';
 import { NamingTemplateField } from './NamingTemplateField';
 import { OidcAdminHint } from './OidcAdminHint';
 import { OidcEnvInfo } from './OidcEnvInfo';
-import { RequestPolicyGridField } from './RequestPolicyGridField';
 import { SettingsLabel } from './SettingsLabel';
 import type {
   CustomSettingsFieldLayout,
@@ -44,9 +43,6 @@ const CUSTOM_FIELD_DEFINITIONS: Record<string, CustomFieldDefinition> = {
           : undefined,
       };
     },
-  },
-  request_policy_grid: {
-    renderer: RequestPolicyGridField,
   },
   naming_template: {
     renderer: NamingTemplateField,

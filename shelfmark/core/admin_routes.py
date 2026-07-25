@@ -192,6 +192,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         email = (data.get("email") or "").strip() or None
         display_name = (data.get("display_name") or "").strip() or None
         role = data.get("role", "user")
+        library_capability = data.get("library_capability", "download-capable")
 
         if auth_mode in {AUTH_SOURCE_PROXY, AUTH_SOURCE_CWA}:
             return jsonify(
@@ -212,6 +213,8 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             ), 400
         if role not in ("admin", "user"):
             return jsonify({"error": "Role must be 'admin' or 'user'"}), 400
+        if library_capability not in ("download-capable", "request-only"):
+            return jsonify({"error": "Invalid library_capability"}), 400
 
         # First user is always admin
         existing_users = user_db.list_users()
@@ -231,6 +234,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
                 display_name=display_name,
                 auth_source=AUTH_SOURCE_BUILTIN,
                 role=role,
+                library_capability=library_capability,
             )
         except ValueError:
             return jsonify({"error": "Username already exists"}), 409
@@ -296,12 +300,17 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
         # Update user fields
         user_fields = {}
-        for field in ("role", "email", "display_name"):
+        for field in ("role", "email", "display_name", "library_capability"):
             if field in data:
                 user_fields[field] = data[field]
 
         if "role" in user_fields and user_fields["role"] not in ("admin", "user"):
             return jsonify({"error": "Role must be 'admin' or 'user'"}), 400
+        if "library_capability" in user_fields and user_fields["library_capability"] not in (
+            "download-capable",
+            "request-only",
+        ):
+            return jsonify({"error": "Invalid library_capability"}), 400
 
         role_changed = "role" in user_fields and user_fields["role"] != user.get("role")
         email_changed = "email" in user_fields and user_fields["email"] != user.get("email")
@@ -354,7 +363,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         # local password admin remains.
 
         # Avoid unnecessary writes for no-op field updates.
-        for field in ("role", "email", "display_name"):
+        for field in ("role", "email", "display_name", "library_capability"):
             if field in user_fields and user_fields[field] == user.get(field):
                 user_fields.pop(field)
 

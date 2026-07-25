@@ -15,10 +15,6 @@ export interface PerUserSettings {
   DEFAULT_RELEASE_SOURCE?: string;
   DEFAULT_RELEASE_SOURCE_AUDIOBOOK?: string;
   USER_NOTIFICATION_ROUTES?: Array<Record<string, unknown>>;
-  REQUESTS_ENABLED?: boolean;
-  REQUEST_POLICY_DEFAULT_EBOOK?: string;
-  REQUEST_POLICY_DEFAULT_AUDIOBOOK?: string;
-  REQUEST_POLICY_RULES?: Array<Record<string, unknown>>;
   MAX_PENDING_REQUESTS_PER_USER?: number;
   REQUESTS_ALLOW_NOTES?: boolean;
 }

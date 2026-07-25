@@ -25,17 +25,12 @@ import { useBookTargetDeselectSync } from './hooks/app/useBookTargetDeselectSync
 import { useContentTypePreferences } from './hooks/app/useContentTypePreferences';
 import { useShowOnboardingDebug } from './hooks/app/useShowOnboardingDebug';
 import { useStatusChangeNotifications } from './hooks/app/useStatusChangeNotifications';
-import {
-  resolveDefaultModeFromPolicy,
-  resolveSourceModeFromPolicy,
-} from './hooks/requestPolicyCore';
 import { useActivity } from './hooks/useActivity';
 import { useAuth } from './hooks/useAuth';
 import { useDownloadTracking } from './hooks/useDownloadTracking';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { useMountEffect } from './hooks/useMountEffect';
 import { useRealtimeStatus } from './hooks/useRealtimeStatus';
-import { useRequestPolicy } from './hooks/useRequestPolicy';
 import { useRequests } from './hooks/useRequests';
 import { useSearch } from './hooks/useSearch';
 import { primeSettingsCache } from './hooks/useSettings';
@@ -72,7 +67,6 @@ import type {
   AppConfig,
   ContentType,
   ButtonStateInfo,
-  RequestPolicyMode,
   CreateRequestPayload,
   ActingAsUserSelection,
   MetadataProviderSummary,
@@ -106,10 +100,6 @@ import {
   getRequestSuccessMessage,
   toContentType,
 } from './utils/requestPayload';
-import {
-  applyDirectPolicyModeToButtonState,
-  applyUniversalPolicyModeToButtonState,
-} from './utils/requestPolicyUi';
 
 // eslint-disable-next-line import/no-unassigned-import -- global app stylesheet is loaded for side effects
 import './styles.css';
@@ -128,6 +118,9 @@ const getInitialPinnedPreference = (): boolean => {
   }
 };
 
+type RequestActionMode = 'download' | 'request_release' | 'request_book' | 'blocked';
+type RequestPolicyMode = RequestActionMode;
+
 const POLICY_GUARD_ERROR_CODES = new Set(['policy_requires_request', 'policy_blocked']);
 const isPolicyGuardError = (error: unknown): boolean => {
   return (
@@ -137,7 +130,7 @@ const isPolicyGuardError = (error: unknown): boolean => {
   );
 };
 
-const asRequestPolicyMode = (value: unknown): RequestPolicyMode | null => {
+const asRequestActionMode = (value: unknown): RequestActionMode | null => {
   return value === 'download' ||
     value === 'request_release' ||
     value === 'request_book' ||
@@ -146,11 +139,11 @@ const asRequestPolicyMode = (value: unknown): RequestPolicyMode | null => {
     : null;
 };
 
-const getPolicyGuardRequiredMode = (error: unknown): RequestPolicyMode | null => {
+const getPolicyGuardRequiredMode = (error: unknown): RequestActionMode | null => {
   if (!isPolicyGuardError(error) || !isApiResponseError(error)) {
     return null;
   }
-  const explicitMode = asRequestPolicyMode(error.requiredMode);
+  const explicitMode = asRequestActionMode(error.requiredMode);
   if (explicitMode) {
     return explicitMode;
   }
@@ -203,8 +196,8 @@ const CONFIRMED_DOWNLOAD_INTERRUPTED_MESSAGE =
 
 type CombinedSelectionState = {
   phase: 'ebook' | 'audiobook';
-  ebookMode: RequestPolicyMode;
-  audiobookMode: RequestPolicyMode;
+  ebookMode: RequestActionMode;
+  audiobookMode: RequestActionMode;
   stagedEbook?: { book: Book; release: Release };
   stagedAudiobook?: Release;
 };
@@ -231,20 +224,17 @@ type PendingOnBehalfDownload =
 
 interface AuthenticatedAppBootstrapProps {
   refreshStatus: () => Promise<void>;
-  refreshRequestPolicy: (options?: { force?: boolean }) => Promise<unknown>;
   refreshActivitySnapshot: () => Promise<void>;
   loadConfig: (mode?: 'initial' | 'settings-saved') => void | Promise<void>;
 }
 
 const AuthenticatedAppBootstrap = ({
   refreshStatus,
-  refreshRequestPolicy,
   refreshActivitySnapshot,
   loadConfig,
 }: AuthenticatedAppBootstrapProps) => {
   useMountEffect(() => {
     void refreshStatus();
-    void refreshRequestPolicy({ force: true });
     void refreshActivitySnapshot();
     void loadConfig('initial');
   });
@@ -310,25 +300,50 @@ function App() {
   const { contentType, setContentType, combinedMode, setCombinedMode } =
     useContentTypePreferences();
 
-  const {
-    policy: requestPolicy,
-    getDefaultMode,
-    getSourceMode,
-    requestsEnabled: requestsPolicyEnabled,
-    allowNotes: allowRequestNotes,
-    refresh: refreshRequestPolicy,
-  } = useRequestPolicy({
-    enabled: isAuthenticated,
-    isAdmin: authIsAdmin,
-  });
-
-  const requestRoleIsAdmin = requestPolicy?.is_admin ?? false;
+  const getDefaultMode = useCallback((_contentType: string): RequestActionMode => 'download', []);
+  const getSourceMode = useCallback(
+    (_source: string, _contentType: string): RequestActionMode => 'download',
+    [],
+  );
+  const requestsPolicyEnabled = true;
+  const allowRequestNotes = true;
+  const requestRoleIsAdmin = authIsAdmin;
+  const refreshRequestPolicy = useCallback(
+    async (_options?: { force?: boolean }) => ({
+      is_admin: authIsAdmin,
+      defaults: { ebook: 'download' as const, audiobook: 'download' as const },
+      requests_enabled: true,
+    }),
+    [authIsAdmin],
+  );
+  const applyDirectPolicyModeToButtonState = useCallback(
+    (state: ButtonStateInfo, _mode: RequestActionMode) => state,
+    [],
+  );
+  const applyUniversalPolicyModeToButtonState = useCallback(
+    (state: ButtonStateInfo, _mode: RequestActionMode) => state,
+    [],
+  );
+  const resolveDefaultModeFromPolicy = useCallback(
+    (_value: unknown, _isAdmin: boolean, _contentType: ContentType): RequestActionMode =>
+      'download',
+    [],
+  );
+  const resolveSourceModeFromPolicy = useCallback(
+    (
+      _value: unknown,
+      _isAdmin: boolean,
+      _source: string,
+      _contentType: ContentType,
+    ): RequestActionMode => 'download',
+    [],
+  );
 
   // Compute which content types this user is allowed to search for.
   // If a content type's default policy mode is 'blocked', hide it from the dropdown.
   const allowedContentTypes = useMemo((): ContentType[] => {
     // If policy not loaded yet or user is admin, allow everything
-    if (!requestPolicy || requestRoleIsAdmin || !requestsPolicyEnabled) {
+    if (requestRoleIsAdmin || !requestsPolicyEnabled) {
       return ['ebook', 'audiobook'];
     }
     const types: ContentType[] = [];
@@ -336,7 +351,7 @@ function App() {
     if (getDefaultMode('audiobook') !== 'blocked') types.push('audiobook');
     // If both are blocked, still show both (user can see results, just can't download)
     return types.length > 0 ? types : ['ebook', 'audiobook'];
-  }, [requestPolicy, requestRoleIsAdmin, requestsPolicyEnabled, getDefaultMode]);
+  }, [requestRoleIsAdmin, requestsPolicyEnabled, getDefaultMode]);
 
   const effectiveContentType = useMemo(
     () =>
@@ -454,13 +469,8 @@ function App() {
     if (!isAuthenticated || !requestsPolicyEnabled) {
       return false;
     }
-    if (!requestPolicy) {
-      return false;
-    }
-    return !(
-      requestPolicy.defaults.ebook === 'download' && requestPolicy.defaults.audiobook === 'download'
-    );
-  }, [requestRoleIsAdmin, isAuthenticated, requestsPolicyEnabled, requestPolicy]);
+    return false;
+  }, [requestRoleIsAdmin, isAuthenticated, requestsPolicyEnabled]);
 
   // Search state and handlers
   const {
@@ -1915,7 +1925,13 @@ function App() {
       const mode = getDirectPolicyMode(book);
       return applyDirectPolicyModeToButtonState(baseState, mode);
     },
-    [books, getButtonState, getDirectPolicyMode, isDownloadTaskDismissed],
+    [
+      applyDirectPolicyModeToButtonState,
+      books,
+      getButtonState,
+      getDirectPolicyMode,
+      isDownloadTaskDismissed,
+    ],
   );
 
   const getUniversalActionButtonState = useCallback(
@@ -1940,6 +1956,7 @@ function App() {
     },
     [
       bookToReleaseMap,
+      applyUniversalPolicyModeToButtonState,
       getUniversalButtonState,
       getUniversalDefaultPolicyMode,
       isDownloadTaskDismissed,
@@ -2813,7 +2830,6 @@ function App() {
     <AuthenticatedAppBootstrap
       key={authenticatedBootstrapKey}
       refreshStatus={fetchStatus}
-      refreshRequestPolicy={refreshRequestPolicy}
       refreshActivitySnapshot={refreshActivitySnapshot}
       loadConfig={loadConfig}
     />

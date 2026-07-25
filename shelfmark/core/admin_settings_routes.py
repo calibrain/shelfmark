@@ -13,7 +13,6 @@ from shelfmark.config.notifications_settings import (
 )
 from shelfmark.config.users_settings import validate_search_preference_value
 from shelfmark.core.config import config as app_config
-from shelfmark.core.request_policy import parse_policy_mode, validate_policy_rules
 from shelfmark.core.settings_registry import load_config_file
 from shelfmark.core.user_settings_overrides import (
     build_user_preferences_payload as _build_user_preferences_payload,
@@ -52,21 +51,6 @@ def validate_user_settings(
             # null means "clear the per-user override; use global default"
             if value is None:
                 valid[key] = None
-                continue
-
-            if (
-                key in {"REQUEST_POLICY_DEFAULT_EBOOK", "REQUEST_POLICY_DEFAULT_AUDIOBOOK"}
-                and parse_policy_mode(value) is None
-            ):
-                errors.append(f"Invalid policy mode for {key}: {value}")
-                continue
-
-            if key == "REQUEST_POLICY_RULES":
-                normalized_rules, rule_errors = validate_policy_rules(value)
-                if rule_errors:
-                    errors.extend(rule_errors)
-                    continue
-                valid[key] = normalized_rules
                 continue
 
             if key == "USER_NOTIFICATION_ROUTES":

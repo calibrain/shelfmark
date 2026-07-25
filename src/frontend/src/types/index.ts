@@ -183,29 +183,6 @@ export interface QueryTargetOption {
 // Content type for search (ebook vs audiobook)
 export type ContentType = 'ebook' | 'audiobook';
 
-export type RequestPolicyMode = 'download' | 'request_release' | 'request_book' | 'blocked';
-
-export interface RequestPolicyDefaults {
-  ebook: RequestPolicyMode;
-  audiobook: RequestPolicyMode;
-}
-
-export interface RequestPolicySourceMode {
-  source: string;
-  supported_content_types: string[];
-  browse_results_are_releases?: boolean;
-  modes: Record<string, RequestPolicyMode>;
-}
-
-export interface RequestPolicyResponse {
-  requests_enabled: boolean;
-  is_admin: boolean;
-  allow_notes: boolean;
-  defaults: RequestPolicyDefaults;
-  rules: Array<Record<string, unknown>>;
-  source_modes: RequestPolicySourceMode[];
-}
-
 export interface RequestContextPayload {
   source: string;
   content_type: ContentType;
@@ -238,7 +215,7 @@ export interface RequestRecord {
   source_hint: string | null;
   content_type: ContentType;
   request_level: 'book' | 'release';
-  policy_mode: RequestPolicyMode;
+  policy_mode?: string;
   book_data: Record<string, unknown> | null;
   release_data: Record<string, unknown> | null;
   note: string | null;

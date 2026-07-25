@@ -7,7 +7,6 @@ import type {
   AuthResponse,
   ReleaseSource,
   ReleasesResponse,
-  RequestPolicyResponse,
   CreateRequestPayload,
   RequestRecord,
   RequestSubmissionResult,
@@ -52,7 +51,6 @@ const API = {
   logout: `${API_BASE}/auth/logout`,
   authCheck: `${API_BASE}/auth/check`,
   settings: `${API_BASE}/settings`,
-  requestPolicy: `${API_BASE}/request-policy`,
   requests: `${API_BASE}/requests`,
   requestsBatch: `${API_BASE}/requests/batch`,
   adminRequests: `${API_BASE}/admin/requests`,
@@ -668,10 +666,6 @@ export interface ActivityHistoryItem {
   request_id: number | null;
   source_id: string | null;
 }
-
-export const fetchRequestPolicy = async (): Promise<RequestPolicyResponse> => {
-  return fetchJSON<RequestPolicyResponse>(API.requestPolicy);
-};
 
 export const createRequests = async (
   payloads: CreateRequestPayload[],
