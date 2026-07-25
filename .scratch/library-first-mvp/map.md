@@ -7,7 +7,7 @@ A build-ready MVP specification for a library-first Shelfmark: persistent respon
 ## Notes
 
 - **Domain**: per-user ebook library management. A **download-capable user** may search releases and queue downloads; a **request-only user** may browse, add books, and submit book-level requests. Admins can download and fulfil requests from Activity.
-- **Map mode**: planning only. This map produces decisions and a build-ready MVP specification; implementation is separate work after the route is clear.
+- **Map mode**: delivery. This map carries the settled Library-First MVP decisions through implementation and cutover.
 - **Existing foundations**: reuse Shelfmark's request workflow (admin queue, fulfil/reject, WebSocket updates) rather than create a parallel request system. Replace the existing per-user policy machinery with Library Capability.
 - **Navigation**: the persistent left sidebar has Library, Add New, and Settings, in that order, with no nested destination hierarchy. Add New opens the book-add modal. It becomes a top-left-menu drawer on narrow screens. `/library` is the default authenticated route. Activity stays as the existing stateful right-side sidebar, not a navigation destination or full page.
 - **Settled constraints**: Direct search is removed entirely. Find Releases opens automatically only after a successful first add with no global files, carried as one-shot navigation state; all later detail navigation is quiet. Admins fulfil requests in Activity.
@@ -30,12 +30,12 @@ A build-ready MVP specification for a library-first Shelfmark: persistent respon
 - [Define legacy search and output retirement boundaries](issues/06-define-legacy-search-and-output-retirement-boundaries.md) — Remove direct search and generic per-user outputs; retain Book-scoped release selection, with custom-query override restricted to admins.
 - [Specify the user notification contract](issues/07-specify-user-notification-contract.md) — Separate role-relevant events from a single selected email or Apprise transport, with SMTP shared across all system email delivery.
 - [Expose Library Capability to authenticated clients](issues/17-expose-library-capability-to-authenticated-clients.md) — The authenticated bootstrap contract and typed client state retain the canonical capability separately from administrator status.
+- [Implement the persistent library app shell](issues/11-implement-persistent-library-app-shell.md) — `/library` is the authenticated default behind a responsive Library/Add New/Settings shell while Activity remains a stateful independent drawer.
 
 ## Not yet specified
 
 ## Out of scope
 
 - **Author browse.** Deferred completely from the preceding Library map; it needs a fresh effort if reprioritized.
-- **Implementation.** This planning map ends with a build-ready specification, not feature branches or production changes.
 - [Implement the polished book-detail experience](issues/09-implement-polished-book-detail-experience.md) — Closed here because feature implementation begins only after this map is handed off as a build-ready specification.
 - **Release-quality reporting and re-requesting another release.** Deferred from this MVP; Requests solve Book availability, not file-quality feedback or release replacement.

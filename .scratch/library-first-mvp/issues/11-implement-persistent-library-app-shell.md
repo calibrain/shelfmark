@@ -1,5 +1,5 @@
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by:
 
 # Implement the persistent library app shell
@@ -22,3 +22,9 @@ Add the persistent desktop left sidebar with `Library`, `Add New`, and `Settings
 
 - [Persistent shell decision](02-design-persistent-library-app-shell.md)
 - [Existing library routing and Activity foundations](../../library/issues/07-frontend-routing-contract.md)
+
+## Answer
+
+The authenticated root now redirects to `/library`. The application has a persistent desktop Library/Add New/Settings sidebar and a narrow-screen top-left navigation drawer; Activity remains the existing independent right-side drawer. Add New opens a metadata-provider-backed modal that adds the selected Book through the existing library API and navigates to its detail page. The legacy direct-search page remains temporarily at `/search` for its designated retirement ticket.
+
+Frontend type checking, formatting, all 105 unit tests, and the production build pass. `npm run lint` remains blocked by five existing unnecessary-assertion errors in `useUsersFetch.ts` and `SelfSettingsModal.tsx`, outside this ticket.
