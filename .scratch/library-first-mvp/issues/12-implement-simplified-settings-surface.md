@@ -1,6 +1,6 @@
 Type: task
 Status: ready-for-agent
-Blocked by: 10
+Blocked by: 17
 
 # Implement the simplified settings surface
 
@@ -24,4 +24,5 @@ Remove the generic per-user override model and its delivery, search, request-pol
 
 - [Simplified settings decision](03-specify-simplified-settings-surface.md)
 - [Library Capability implementation](10-implement-library-capability-and-request-lifecycle.md)
+- [Authenticated Library Capability client contract](17-expose-library-capability-to-authenticated-clients.md)
 - [User notification implementation](14-implement-user-notification-contract.md)

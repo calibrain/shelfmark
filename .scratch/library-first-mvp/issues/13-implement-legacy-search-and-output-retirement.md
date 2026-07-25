@@ -1,6 +1,6 @@
 Type: task
 Status: ready-for-agent
-Blocked by: 10
+Blocked by: 17
 
 # Implement legacy search and output retirement
 
@@ -22,3 +22,4 @@ Keep release discovery strictly Book-scoped. A download-capable user may use the
 
 - [Search and output retirement decision](06-define-legacy-search-and-output-retirement-boundaries.md)
 - [Library Capability implementation](10-implement-library-capability-and-request-lifecycle.md)
+- [Authenticated Library Capability client contract](17-expose-library-capability-to-authenticated-clients.md)

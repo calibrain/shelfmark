@@ -1,6 +1,6 @@
 Type: task
 Status: ready-for-agent
-Blocked by: 10, 11
+Blocked by: 11, 13, 17
 
 # Implement Activity request fulfilment experience
 
@@ -24,4 +24,5 @@ For administrators, open `Requests` when Book work is pending and otherwise reta
 
 - [Activity fulfilment design decision](05-design-activity-request-fulfilment-experience.md)
 - [Library Capability and Request lifecycle implementation](10-implement-library-capability-and-request-lifecycle.md)
+- [Authenticated Library Capability client contract](17-expose-library-capability-to-authenticated-clients.md)
 - [Persistent shell implementation](11-implement-persistent-library-app-shell.md)

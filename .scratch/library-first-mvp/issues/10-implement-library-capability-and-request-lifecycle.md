@@ -25,6 +25,12 @@ Remove legacy request-policy rules, settings, endpoints, release-level Requests,
 - Legacy request-policy implementation and tests are removed rather than hidden or retained for compatibility.
 - Focused backend, route, and state-transition tests cover capability permissions, cancellation during a Download, shared fulfilment, failure, and existing-File fulfilment.
 
+## Implementation state
+
+The canonical server-side foundation is implemented on draft PR [#6](https://github.com/muneebabbas/shelfmark/pull/6), branch `library-capability-request-lifecycle` (commit `3a941ae`). Backend core/config tests, Ruff, basedpyright, and frontend type checking passed at that commit.
+
+The PR is intentionally not merge-ready. Review found that the old frontend still calls retired Request and fulfilment routes, does not receive `library_capability`, and permits request-only users to begin release discovery. These are migration/cutover gaps, not reasons to restore a legacy compatibility API. Tickets 17, 12, 13, 15, and 18 deliver the replacement client paths and final cutover. Keep this ticket claimed until ticket 18 verifies the complete role matrix; do not resolve it or merge PR #6 early.
+
 ## References
 
 - [Library Capability decision](01-reconcile-request-policy-with-user-capabilities.md)
