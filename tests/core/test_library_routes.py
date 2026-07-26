@@ -329,6 +329,55 @@ def test_download_file_serves_exact_history_id(app, user_db, tmp_path):
     assert resp.data == b"pdf"
 
 
+def test_download_file_uses_book_metadata_for_attachment_name(app, user_db, tmp_path):
+    alice = user_db.create_user(username="alice")
+    book_id = client_post_book(app, alice, "hardcover", "1")
+    uuid_path = tmp_path / "79dff41c-49b7-4f97-9f04-1a6515e8e964.epub"
+    uuid_path.write_bytes(b"epub")
+    _seed_history_row(
+        user_db,
+        task_id="prowlarr-completed-release",
+        user_id=alice["id"],
+        username="alice",
+        book_id=book_id,
+        fmt="epub",
+        download_path=str(uuid_path),
+    )
+
+    resp = _authed_client(app, alice).get(f"/api/library/books/{book_id}/download")
+
+    assert resp.status_code == 200
+    assert resp.data == b"epub"
+    assert resp.headers["Content-Disposition"] == 'attachment; filename="Book 1 - Author A.epub"'
+
+
+def test_download_file_uses_safe_deterministic_name_for_incomplete_metadata(app, user_db, tmp_path):
+    alice = user_db.create_user(username="alice")
+    book_id = client_post_book(app, alice, "hardcover", "1")
+    epub_path = tmp_path / "d31b7cea-2f26-4956-8c24-5e03ab385ad4.epub"
+    epub_path.write_bytes(b"epub")
+    _seed_history_row(
+        user_db,
+        task_id="prowlarr-incomplete-book-metadata",
+        user_id=alice["id"],
+        username="alice",
+        book_id=book_id,
+        fmt="epub",
+        download_path=str(epub_path),
+    )
+    conn = user_db._connect()
+    try:
+        conn.execute("UPDATE books SET title = '', author = NULL WHERE id = ?", (book_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+    resp = _authed_client(app, alice).get(f"/api/library/books/{book_id}/download")
+
+    assert resp.status_code == 200
+    assert resp.headers["Content-Disposition"] == 'attachment; filename="Book 1.epub"'
+
+
 def test_download_file_rejects_history_id_from_another_book(app, user_db, tmp_path):
     alice = user_db.create_user(username="alice")
     first_book = client_post_book(app, alice, "hardcover", "1")

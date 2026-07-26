@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any, NamedTuple
 from flask import Flask, Response, jsonify, request, send_file, session
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.naming import sanitize_filename
 from shelfmark.core.request_helpers import (
     get_session_db_user_id,
     normalize_optional_text,
@@ -45,6 +46,19 @@ class _ActorContext(NamedTuple):
     db_user_id: int
     is_admin: bool
     owner_scope: int | None  # None → admin sees all
+
+
+def _book_attachment_name(*, book: dict[str, Any] | None, book_id: int, download_path: str) -> str:
+    """Return a safe Book-derived attachment name without renaming the artifact."""
+    title = normalize_optional_text(book.get("title")) if book else None
+    author = normalize_optional_text(book.get("author")) if book else None
+    stem = title or f"Book {book_id}"
+    if author:
+        stem = f"{stem} - {author}"
+
+    suffix = Path(download_path).suffix
+    safe_stem = sanitize_filename(stem, max_length=max(1, 245 - len(suffix)))
+    return f"{safe_stem or f'Book {book_id}'}{suffix}"
 
 
 type LibraryRouteResponse = tuple[Response, int]
@@ -440,6 +454,7 @@ def register_library_routes(
         history_id = normalize_positive_int(request.args.get("history_id"))
         try:
             files = library_service.get_files_on_disk(book_id)
+            book = library_service.get_book(book_id)
         except _OPERATIONAL_ERRORS as exc:
             return jsonify({"error": str(exc)}), 500
 
@@ -469,7 +484,15 @@ def register_library_routes(
                 error="File not found on disk",
                 book_id=book_id,
             )
-        return send_file(download_path, download_name=Path(download_path).name, as_attachment=True)
+        return send_file(
+            download_path,
+            download_name=_book_attachment_name(
+                book=book,
+                book_id=book_id,
+                download_path=download_path,
+            ),
+            as_attachment=True,
+        )
 
     @app.route("/api/library/books/<int:book_id>/send-to-kindle", methods=["POST"])
     def api_library_send_to_kindle(book_id: int) -> Response | LibraryRouteResponse:

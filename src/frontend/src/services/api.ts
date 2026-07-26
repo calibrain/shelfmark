@@ -500,6 +500,20 @@ export const sendLibraryBookToKindle = async (
   });
 };
 
+const attachmentFilename = (contentDisposition: string | null): string => {
+  if (!contentDisposition) return '';
+
+  const utf8Filename = contentDisposition.match(/filename\*\s*=\s*UTF-8''([^;]+)/i)?.[1];
+  if (utf8Filename) {
+    try {
+      return decodeURIComponent(utf8Filename);
+    } catch {
+      // Fall through to the ASCII filename if the extended value is malformed.
+    }
+  }
+  return contentDisposition.match(/filename\s*=\s*"?([^";]+)"?/i)?.[1] ?? '';
+};
+
 export const downloadLibraryFile = async (
   bookId: number,
   params: { format?: string; historyId?: number },
@@ -522,7 +536,7 @@ export const downloadLibraryFile = async (
   const url = URL.createObjectURL(blob);
   const link = document.createElement('a');
   link.href = url;
-  link.download = '';
+  link.download = attachmentFilename(response.headers.get('Content-Disposition'));
   link.click();
   URL.revokeObjectURL(url);
 };
