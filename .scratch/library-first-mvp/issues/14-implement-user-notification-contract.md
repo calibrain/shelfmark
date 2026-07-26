@@ -1,6 +1,6 @@
 Type: task
 Status: ready-for-agent
-Blocked by: 10, 12
+Blocked by: 12
 
 # Implement the user notification contract
 

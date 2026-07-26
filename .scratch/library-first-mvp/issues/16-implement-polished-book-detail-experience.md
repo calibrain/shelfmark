@@ -1,6 +1,6 @@
 Type: task
 Status: ready-for-agent
-Blocked by: 10, 11, 13
+Blocked by: 11, 13
 
 # Implement the polished book-detail experience
 
