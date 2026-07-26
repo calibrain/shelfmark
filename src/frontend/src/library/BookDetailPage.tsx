@@ -96,7 +96,7 @@ const RequestState = ({
         </p>
         <button
           type="button"
-          className="mt-3 rounded-md bg-violet-700 px-3 py-2 text-sm font-medium text-white"
+          className="mt-3 cursor-pointer rounded-md bg-violet-700 px-3 py-2 text-sm font-medium text-white hover:bg-violet-800"
           onClick={onRequest}
         >
           Request this book
@@ -117,7 +117,7 @@ const RequestState = ({
       {request.status === 'pending' && (
         <button
           type="button"
-          className="mt-3 text-sm font-medium text-rose-700 dark:text-rose-300"
+          className="hover-action mt-3 cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-rose-700 dark:text-rose-300"
           onClick={onCancel}
         >
           Cancel request
@@ -151,12 +151,21 @@ const AvailableFiles = ({
   const selectedKindleFormat = kindleFormats.includes(kindleFormat) ? kindleFormat : null;
 
   return (
-    <section className="mt-10 border-t border-(--border-muted) pt-6">
-      <div>
-        <h2 className="font-semibold text-(--text)">Available files</h2>
-        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
-          The newest downloaded file for each format.
-        </p>
+    <section className="mt-10">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h2 className="font-semibold text-(--text)">Available files</h2>
+          <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+            The newest downloaded file for each format.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="hover-action cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-emerald-700 dark:text-emerald-300"
+          onClick={onFindReleases}
+        >
+          Find another release
+        </button>
       </div>
       {latestFiles.length > 0 ? (
         <div className="mt-4 grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
@@ -178,7 +187,7 @@ const AvailableFiles = ({
                 {file.downloadable_by_me && (
                   <button
                     type="button"
-                    className="text-sm font-medium text-sky-700 dark:text-sky-300"
+                    className="hover-action cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-sky-700 dark:text-sky-300"
                     onClick={() => onDownload(file)}
                   >
                     Download
@@ -210,14 +219,14 @@ const AvailableFiles = ({
             <button
               type="button"
               disabled={!selectedKindleFormat}
-              className="mt-2 w-full rounded-md border border-(--border-muted) px-3 py-2 text-sm font-medium text-(--text) disabled:cursor-not-allowed disabled:opacity-50"
+              className={`mt-2 w-full rounded-md border border-(--border-muted) px-3 py-2 text-sm font-medium text-(--text) disabled:cursor-not-allowed disabled:opacity-50 ${selectedKindleFormat ? 'hover-action cursor-pointer' : ''}`}
               onClick={() => selectedKindleFormat && onSendToKindle(selectedKindleFormat)}
             >
               Send {selectedKindleFormat?.toUpperCase() ?? 'file'} to Kindle
             </button>
             <button
               type="button"
-              className="mt-3 text-xs text-emerald-700 underline dark:text-emerald-300"
+              className="hover-action mt-3 cursor-pointer rounded-md px-2 py-1 text-xs text-emerald-700 underline dark:text-emerald-300"
               onClick={onOpenSettings}
             >
               Configure Kindle email in Settings
@@ -244,7 +253,7 @@ const AvailableFiles = ({
                   {files.some((file) => file.downloadable_by_me) && (
                     <button
                       type="button"
-                      className="text-xs font-medium text-rose-700 dark:text-rose-300"
+                      className="hover-action cursor-pointer rounded-md px-2 py-1 text-xs font-medium text-rose-700 dark:text-rose-300"
                       onClick={() => onUnlinkRelease(files[0])}
                     >
                       Unlink release
@@ -267,7 +276,7 @@ const AvailableFiles = ({
                     {file.downloadable_by_me && (
                       <button
                         type="button"
-                        className="ml-auto text-sm font-medium text-sky-700 dark:text-sky-300"
+                        className="hover-action ml-auto cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-sky-700 dark:text-sky-300"
                         onClick={() => onDownload(file)}
                       >
                         Download
@@ -279,13 +288,6 @@ const AvailableFiles = ({
             ))}
           </div>
         )}
-        <button
-          type="button"
-          className="mt-5 text-sm font-medium text-emerald-700 dark:text-emerald-300"
-          onClick={onFindReleases}
-        >
-          Find another release
-        </button>
       </details>
     </section>
   );
@@ -385,7 +387,7 @@ export const BookDetailPage = ({
         <h1 className="text-xl font-semibold text-(--text)">{error}</h1>
         <button
           type="button"
-          className="mt-4 rounded-md border border-(--border-muted) px-3 py-2 text-sm"
+          className="hover-action mt-4 cursor-pointer rounded-md border border-(--border-muted) px-3 py-2 text-sm"
           onClick={() => (unavailable ? void navigate('/library') : void load())}
         >
           {unavailable ? 'Back to library' : 'Retry'}
@@ -443,15 +445,8 @@ export const BookDetailPage = ({
           ))}
         </dl>
       ) : null}
-      <article className="mt-8 max-w-4xl">
-        <h2 className="text-sm font-semibold text-(--text)">About this book</h2>
-        <p className="mt-3 leading-7 whitespace-pre-line text-gray-700 dark:text-gray-200">
-          {book.metadata_json?.description ||
-            "No description is available from this book's metadata provider."}
-        </p>
-      </article>
       {isRequestOnly ? (
-        <section className="mt-10 border-t border-(--border-muted) pt-6">
+        <section className="mt-10">
           <h2 className="font-semibold text-(--text)">Availability</h2>
           {book.files.length > 0 ? (
             <p className="mt-4 rounded-lg bg-(--bg-soft) px-4 py-4 text-sm text-gray-600 dark:text-gray-300">
@@ -498,6 +493,13 @@ export const BookDetailPage = ({
           }
         />
       )}
+      <article className="mt-10 max-w-4xl border-t border-(--border-muted) pt-6">
+        <h2 className="text-sm font-semibold text-(--text)">About this book</h2>
+        <p className="mt-3 leading-7 whitespace-pre-line text-gray-700 dark:text-gray-200">
+          {book.metadata_json?.description ||
+            "No description is available from this book's metadata provider."}
+        </p>
+      </article>
     </section>
   );
 };

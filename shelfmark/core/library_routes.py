@@ -520,10 +520,10 @@ def register_library_routes(
                 book_id=book_id,
             )
 
-        kindle_email = normalize_optional_text(
+        recipient = normalize_optional_text(
             user_db.get_personal_preferences(actor.db_user_id).get("kindle_address")
         )
-        if not kindle_email:
+        if not recipient:
             return _error_response(
                 action=action,
                 status_code=400,
@@ -548,8 +548,8 @@ def register_library_routes(
         try:
             masked_recipient = send_file_to_email(
                 Path(download_path),
-                kindle_email,
-                label=kindle_email,
+                recipient,
+                label=recipient,
                 subject=Path(download_path).name,
             )
         except EmailOutputError as exc:

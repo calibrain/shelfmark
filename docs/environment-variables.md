@@ -402,7 +402,6 @@ The release source tab to open by default in the release modal for audiobooks. U
 | `TEMPLATE_RENAME` | Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension). Universal adds: {Series}, {SeriesPosition}, {Subtitle}, {PrimaryTitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. Applies to single-file downloads. | string | `{Author} - {Title} ({Year})` |
 | `TEMPLATE_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension). Universal adds: {Series}, {SeriesPosition}, {Subtitle}, {PrimaryTitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. | string | `{Author}/{Title} ({Year})` |
 | `HARDLINK_TORRENTS` | Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder. | boolean | `false` |
-| `KINDLE_EMAIL` | Send-to-Kindle email address for your device (e.g., reader@kindle.com). | string | _none_ |
 | `DESTINATION_AUDIOBOOK` | Directory where downloaded audiobook files are saved. Leave empty to use the Books destination. | string | _none_ |
 | `FILE_ORGANIZATION_AUDIOBOOK` | Choose how downloaded audiobook files are named and organized. | string (choice) | `rename` |
 | `TEMPLATE_AUDIOBOOK_RENAME` | Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, {PrimaryTitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. Applies to single-file downloads. | string | `{Author} - {Title}` |
@@ -461,15 +460,6 @@ Create hardlinks instead of copying. Preserves seeding but archives won't be ext
 
 - **Type:** boolean
 - **Default:** `false`
-
-#### `KINDLE_EMAIL`
-
-**Kindle Email**
-
-Send-to-Kindle email address for your device (e.g., reader@kindle.com).
-
-- **Type:** string
-- **Default:** _none_
 
 #### `DESTINATION_AUDIOBOOK`
 

@@ -221,6 +221,10 @@ function App() {
     }
   }, [config?.settings_enabled, isAdmin]);
 
+  const handlePersonalSettingsClick = useCallback(() => {
+    setSelfSettingsOpen(true);
+  }, []);
+
   const handleReleaseDownload = useCallback(
     async (book: Book, release: Release, releaseContentType: ContentType) => {
       const payload: DownloadReleasePayload = {
@@ -363,6 +367,7 @@ function App() {
             prefetchActivityHistory();
           }}
           onSettingsClick={handleSettingsClick}
+          onPersonalSettingsClick={handlePersonalSettingsClick}
           isAdmin={isAdmin}
           canAccessSettings={isAuthenticated}
           statusCounts={statusCounts}

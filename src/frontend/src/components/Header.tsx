@@ -15,6 +15,7 @@ interface HeaderProps {
   debug?: boolean;
   onDownloadsClick?: () => void;
   onSettingsClick?: () => void;
+  onPersonalSettingsClick?: () => void;
   isAdmin?: boolean;
   canAccessSettings?: boolean;
   statusCounts?: ActivityStatusCounts;
@@ -61,6 +62,7 @@ export const Header = ({
   debug,
   onDownloadsClick,
   onSettingsClick,
+  onPersonalSettingsClick,
   isAdmin = false,
   canAccessSettings,
   statusCounts = DEFAULT_STATUS_COUNTS,
@@ -409,6 +411,34 @@ export const Header = ({
                 <span>Report a Bug</span>
               </a>
 
+              {/* Personal settings are available to every authenticated user, including admins. */}
+              {isAdmin && onPersonalSettingsClick && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    closeDropdown();
+                    onPersonalSettingsClick();
+                  }}
+                  className="hover-surface flex w-full items-center gap-3 px-4 py-2 text-left transition-colors"
+                >
+                  <svg
+                    className="h-5 w-5"
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth="1.5"
+                    stroke="currentColor"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M15.75 6.75a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.5 20.118a7.5 7.5 0 0115 0A17.933 17.933 0 0112 21c-2.676 0-5.216-.584-7.5-1.632z"
+                    />
+                  </svg>
+                  <span>My Settings</span>
+                </button>
+              )}
+
               {/* Settings Button */}
               {onSettingsClick && (
                 <button
@@ -445,7 +475,7 @@ export const Header = ({
                       d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
                     />
                   </svg>
-                  <span>Settings</span>
+                  <span>{isAdmin ? 'Admin Settings' : 'Settings'}</span>
                 </button>
               )}
 

@@ -8,7 +8,7 @@ Blocked by: 01
 
 Two decisions for one feature.
 
-**Background (settled in grilling session):** Send-to-Kindle uses the existing SMTP email-output machinery (`shelfmark/download/outputs/email.py`), not a new mailer. The Kindle email address is configured per-user (the architectural survey surfaces `EMAIL_RECIPIENT` at `shelfmark/config/settings.py:1143-1150` which is `user_overridable=True` — either reuse this field or add a new `KINDLE_EMAIL` field alongside it; pick one). The address lives in self-settings, the Send button lives on book detail, and the **format priority + override is chosen inline on the book detail page** (your latest answer).
+**Background (settled in grilling session):** Send-to-Kindle uses the existing SMTP email-output machinery (`shelfmark/download/outputs/email.py`), not a new mailer. The recipient is configured per-user in My Settings and stored as `kindle_address`. The Send button lives on book detail, and the **format priority + override is chosen inline on the book detail page** (your latest answer).
 
 **Decision 1 — Kindle-supported format set & priority.** Your initial request said default priority is "azw3 then epub". Send-to-Kindle's accepted formats (per Amazon) are PDF, EPUB, DOC, DOCX, TXT, RTF, HTM, HTML, PNG, GIF, JPG, JPEG, BMP — not azw3, not mobi (mobi was deprecated for send-to-kindle in 2022). Out of shelfmark's supported formats (`shelfmark/download/postprocess/policy.py:37-41`: epub, mobi, azw3, fb2, djvu, cbz, cbr), the intersection with Kindle-supported is just **epub** (and pdf if extended). So your stated priority "azw3 then epub" can't actually fire — azw3 is not Kindle-supported. Decide:
 
@@ -39,14 +39,14 @@ A spec for Send-to-Kindle behaviour. Implementation is part of #08 (book detail)
 
 #04 settled most of the questions this ticket originally posed. Scope is now **narrowed to the format-priority algorithm only**. The settled-and-removed-from-#05 list:
 
-- **Field name**: `KINDLE_EMAIL` (new setting, `user_overridable=True`). Reject the "reuse `EMAIL_RECIPIENT`" alternative — they're distinct concerns.
+- **Recipient storage**: the per-user `kindle_address` preference. Reject the "reuse `EMAIL_RECIPIENT`" alternative — they're distinct concerns.
 - **SMTP machinery**: new `send_file_to_email(file_path, recipient, *, label=None, subject=None) -> None` in `shelfmark/download/outputs/email.py`, reuses `compose_email_message` + `send_email_message` + `_get_email_settings()`. No synthetic `DownloadTask`.
-- **Per-user requirement**: `KINDLE_EMAIL` must be set per-user; no fallback to `EMAIL_RECIPIENT` (or anything else). If unset → 400 `{"error": "No email recipient configured"}`.
+- **Per-user requirement**: a recipient must be set per-user; no fallback to `EMAIL_RECIPIENT` (or anything else). If unset → 400 `{"error": "No email recipient configured"}`.
 - **Admin `EMAIL_FROM`** required at instance level (env-overrides-UI per existing convention). If unset, Send-to-Kindle fails at send time via `_OPERATIONAL_ERRORS` → 500. No new "not configured" error code.
 - **Endpoint shape**: `POST /api/library/books/:book_id/send-to-kindle` with optional body `{format?}`. Success response: `{"status": "sent", "recipient": "<masked>", "format": "<chosen>"}`. Masking reuses the `label` mechanism; no custom masker for MVP.
 - **Backend path**: dedicated library endpoint (`shelfmark/core/library_routes.py`), NOT `BOOKS_OUTPUT_MODE = email` reuse. The existing `BOOKS_OUTPUT_MODE` is the download-time output choice; Send-to-Kindle is a separate click action.
 
-**What #05 still owns**: the format-priority algorithm when `format` is omitted from the request body. Decision 1 above (Kindle-supported format set, default `["epub"]` since Amazon deprecated azw3/mobi for Send-to-Kindle in 2022) is the expected resolution — confirm before locking. Decision 2 (override UX on book detail) moves to #08 — the inline format picker is a UI concern, not #05's. The "Does Send-to-Kindle go through `BOOKS_OUTPUT_MODE = email`" question is answered above (no — dedicated endpoint). The "where does the Kindle address live" question is answered above (`KINDLE_EMAIL`, not `EMAIL_RECIPIENT`).
+**What #05 still owns**: the format-priority algorithm when `format` is omitted from the request body. Decision 1 above (Kindle-supported format set, default `["epub"]` since Amazon deprecated azw3/mobi for Send-to-Kindle in 2022) is the expected resolution — confirm before locking. Decision 2 (override UX on book detail) moves to #08 — the inline format picker is a UI concern, not #05's. The "Does Send-to-Kindle go through `BOOKS_OUTPUT_MODE = email`" question is answered above (no — dedicated endpoint). The recipient lives in the per-user `kindle_address` preference, not `EMAIL_RECIPIENT`.
 
 Recommended resolution path for #05 when worked: single grilling question — "default format list `["epub"]`, with PDF added if/when PDF support lands, and azw3/mobi never sent via Send-to-Kindle because Amazon doesn't accept them — confirm?". Confirm → close.
 

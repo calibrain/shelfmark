@@ -240,13 +240,17 @@ export const SelfSettingsModal = ({
                 <FieldWrapper
                   field={textField(
                     'kindle_address',
-                    'Kindle address',
+                    'Send-to-Kindle recipient',
                     values.kindle_address,
-                    'Used only for Send to Kindle.',
+                    'Used only for Send to Kindle. Any email recipient address is allowed.',
                   )}
                 >
                   <TextField
-                    field={textField('kindle_address', 'Kindle address', values.kindle_address)}
+                    field={textField(
+                      'kindle_address',
+                      'Send-to-Kindle recipient',
+                      values.kindle_address,
+                    )}
                     value={values.kindle_address}
                     onChange={(value) => update('kindle_address', value)}
                   />

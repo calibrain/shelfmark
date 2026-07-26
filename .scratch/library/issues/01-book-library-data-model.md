@@ -95,7 +95,7 @@ CREATE INDEX IF NOT EXISTS idx_download_history_book_id
 - External route shape (`/library/42` vs slug) → #07.
 - "Files on disk globally" exact predicate + in-flight handling → #02.
 - Admin/scope rules, pagination, refresh endpoint → #04.
-- Send-to-Kindle field name (`EMAIL_RECIPIENT` reuse vs `KINDLE_EMAIL`) → #05.
+- Send-to-Kindle per-user recipient storage → #05.
 - Authors table (if #12 needs one) → fresh ticket when #12 lands.
 
 ### Context assets

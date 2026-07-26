@@ -760,18 +760,6 @@ def download_settings() -> list[SettingsField]:
             description="Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder.",
             default=False,
         ),
-        # === SEND-TO-KINDLE ===
-        HeadingField(
-            key="send_to_kindle_heading",
-            title="Send to Kindle",
-            description="Per-user Kindle email address for one-click Send-to-Kindle from the library.",
-        ),
-        TextField(
-            key="KINDLE_EMAIL",
-            label="Kindle Email",
-            description="Send-to-Kindle email address for your device (e.g., reader@kindle.com).",
-            placeholder="reader@kindle.com",
-        ),
         # === AUDIOBOOKS SECTION ===
         # Universal mode only
         HeadingField(

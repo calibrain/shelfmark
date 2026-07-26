@@ -362,7 +362,7 @@ def test_send_to_kindle_fail_fast_no_compatible_file(app, user_db):
     assert resp.json["error"] == "No compatible file found"
 
 
-def test_send_to_kindle_400_when_kindle_email_unset(app, user_db, library_service):
+def test_send_to_kindle_400_when_personal_recipient_unset(app, user_db, library_service):
     alice = user_db.create_user(username="alice")
     book_id = client_post_book(app, alice, "hardcover", "1")
     history_id = _seed_history_row(
@@ -378,13 +378,7 @@ def test_send_to_kindle_400_when_kindle_email_unset(app, user_db, library_servic
         user_id=alice["id"], book_id=book_id, history_id=history_id
     )
 
-    # Patch the email sender to ensure we reach the KINDLE_EMAIL check first.
-    with patch("shelfmark.core.library_service.LibraryService.resolve_kindle_format"):
-        # Force a real resolve, then patch the SMTP layer to assert we don't reach it.
-        pass
-
-    # The endpoint imports `send_file_to_email` lazily. KINDLE_EMAIL is unset by
-    # default in tests → should return 400 before SMTP is touched.
+    # No per-user recipient is configured, so the route must reject before SMTP.
     resp = _authed_client(app, alice).post(f"/api/library/books/{book_id}/send-to-kindle")
     assert resp.status_code == 400
     assert resp.json["error"] == "No email recipient configured"
@@ -392,7 +386,7 @@ def test_send_to_kindle_400_when_kindle_email_unset(app, user_db, library_servic
 
 def test_send_to_kindle_success_path(app, user_db, library_service, tmp_path):
     alice = user_db.create_user(username="alice")
-    user_db.update_personal_preferences(alice["id"], kindle_address="alice@kindle.com")
+    user_db.update_personal_preferences(alice["id"], kindle_address="reader@example.test")
     book_id = client_post_book(app, alice, "hardcover", "1")
     epub_path = tmp_path / "enders.epub"
     epub_path.write_bytes(b"epub-bytes")
@@ -412,18 +406,18 @@ def test_send_to_kindle_success_path(app, user_db, library_service, tmp_path):
     # Also patch send_file_to_email so no real SMTP network call is made.
     with patch(
         "shelfmark.download.outputs.email.send_file_to_email",
-        return_value="a***@kindle.com",
+        return_value="r***@example.test",
     ) as fake_send:
         resp = _authed_client(app, alice).post(f"/api/library/books/{book_id}/send-to-kindle")
 
     assert resp.status_code == 200
     assert resp.json["status"] == "sent"
-    assert resp.json["recipient"] == "a***@kindle.com"
+    assert resp.json["recipient"] == "r***@example.test"
     assert resp.json["format"] == "epub"
     fake_send.assert_called_once()
     args, _kwargs = fake_send.call_args
     assert str(args[0]) == str(epub_path)
-    assert args[1] == "alice@kindle.com"
+    assert args[1] == "reader@example.test"
 
 
 def test_link_download_endpoint_inserts_user_downloads_row(app, user_db, library_service):
