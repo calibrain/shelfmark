@@ -31,6 +31,7 @@ A build-ready MVP specification for a library-first Shelfmark: persistent respon
 - [Specify the user notification contract](issues/07-specify-user-notification-contract.md) — Separate role-relevant events from a single selected email or Apprise transport, with SMTP shared across all system email delivery.
 - [Expose Library Capability to authenticated clients](issues/17-expose-library-capability-to-authenticated-clients.md) — The authenticated bootstrap contract and typed client state retain the canonical capability separately from administrator status.
 - [Implement the persistent library app shell](issues/11-implement-persistent-library-app-shell.md) — `/library` is the authenticated default behind a responsive Library/Add New/Settings shell while Activity remains a stateful independent drawer.
+- [Implement legacy search and output retirement](issues/13-implement-legacy-search-and-output-retirement.md) — Release discovery is Book-scoped and capability-gated, custom query overrides are administrator-only, and standalone direct search plus generic output routing are retired.
 
 ## Not yet specified
 
