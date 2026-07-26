@@ -17,20 +17,15 @@ const makeRequest = (overrides: Partial<RequestRecord> = {}): RequestRecord => (
   id: 42,
   user_id: 7,
   status: 'pending',
-  source_hint: 'prowlarr',
+  source_hint: null,
   content_type: 'ebook',
-  request_level: 'release',
-  policy_mode: 'request_release',
+  request_level: 'book',
   book_data: {
     title: 'Request Title',
     author: 'Request Author',
     preview: 'https://example.com/cover.jpg',
   },
-  release_data: {
-    source: 'prowlarr',
-    format: 'epub',
-    size: '2 MB',
-  },
+  release_data: null,
   note: 'please add this',
   admin_note: null,
   reviewed_by: null,
@@ -133,14 +128,14 @@ describe('activityMappers.requestToActivityItem', () => {
     });
   });
 
-  it('maps release-level admin request with release meta and username', () => {
+  it('maps Book-level admin request with Book meta and username', () => {
     const item = requestToActivityItem(makeRequest(), 'admin');
 
     expect(item.kind).toBe('request');
     expect(item.visualStatus).toBe('pending');
-    expect(item.metaLine).toBe('EPUB · 2 MB · Prowlarr · alice');
+    expect(item.metaLine).toBe('Book request · alice');
     expect(item.requestId).toBe(42);
-    expect(item.requestLevel).toBe('release');
+    expect(item.requestLevel).toBe('book');
     expect(item.requestNote).toBe('please add this');
     expect(item.statusLabel).toBe('Pending');
     expect(item.timestamp > 0).toBeTruthy();

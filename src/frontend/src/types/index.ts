@@ -175,20 +175,6 @@ export interface QueryTargetOption {
 // Content type for search (ebook vs audiobook)
 export type ContentType = 'ebook' | 'audiobook';
 
-export interface RequestContextPayload {
-  source: string;
-  content_type: ContentType;
-  request_level: 'book' | 'release';
-}
-
-export interface CreateRequestPayload {
-  book_data: Record<string, unknown>;
-  release_data?: Record<string, unknown> | null;
-  note?: string;
-  on_behalf_of_user_id?: number;
-  context: RequestContextPayload;
-}
-
 export interface RequestRecord {
   id: number;
   user_id: number;
@@ -223,18 +209,6 @@ export interface RequestRecord {
   updated_at: string;
   username?: string;
 }
-
-export interface QueuedDownloadResult {
-  kind: 'download';
-  status: 'queued';
-  priority: number;
-  title: string;
-  source: string;
-  source_id: string | null;
-  content_type?: ContentType;
-}
-
-export type RequestSubmissionResult = RequestRecord | QueuedDownloadResult;
 
 export interface AppConfig {
   calibre_web_url: string;

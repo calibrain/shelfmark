@@ -55,8 +55,8 @@ import { ReleaseCell } from './ReleaseCell';
 interface CombinedModeConfig {
   phase: 'ebook' | 'audiobook';
   stepLabel: string;
-  ebookMode: 'download' | 'request_release' | 'request_book' | 'blocked';
-  audiobookMode: 'download' | 'request_release' | 'request_book' | 'blocked';
+  ebookMode: 'download' | 'blocked';
+  audiobookMode: 'download' | 'blocked';
   stagedEbookRelease: Release | null;
   stagedAudiobookRelease: Release | null;
   onNext?: (release: Release | null) => void;
@@ -67,8 +67,8 @@ interface CombinedModeConfig {
 
 // Determine the combined download button label based on action modes
 function getCombinedDownloadLabel(
-  ebookMode: 'download' | 'request_release' | 'request_book' | 'blocked' | null | undefined,
-  audiobookMode: 'download' | 'request_release' | 'request_book' | 'blocked' | null | undefined,
+  ebookMode: 'download' | 'blocked' | null | undefined,
+  audiobookMode: 'download' | 'blocked' | null | undefined,
   hasEbookAction = true,
   hasAudiobookAction = true,
 ): string {
@@ -84,7 +84,7 @@ function getCombinedDownloadLabel(
 
 function getSingleCombinedActionLabel(
   contentType: ContentType,
-  _mode: 'download' | 'request_release' | 'request_book' | 'blocked' | null | undefined,
+  _mode: 'download' | 'blocked' | null | undefined,
 ): string {
   const noun = contentType === 'ebook' ? 'Book' : 'Audiobook';
   return `Download ${noun}`;
@@ -134,12 +134,6 @@ interface ReleaseModalProps {
   book: Book | null;
   onClose: () => void;
   onDownload: (book: Book, release: Release, contentType: ContentType) => Promise<void>;
-  onRequestRelease?: (book: Book, release: Release, contentType: ContentType) => Promise<void>;
-  onRequestBook?: (book: Book, contentType: ContentType) => Promise<void>;
-  getPolicyModeForSource?: (
-    source: string,
-    contentType: ContentType,
-  ) => 'download' | 'request_release' | 'request_book' | 'blocked';
   supportedFormats: string[];
   supportedAudiobookFormats?: string[]; // Audiobook formats (m4b, mp3)
   contentType: ContentType; // 'ebook' or 'audiobook'
@@ -753,7 +747,6 @@ const ReleaseModalSession = ({
   book,
   onClose,
   onDownload,
-  onRequestBook,
   supportedFormats,
   supportedAudiobookFormats = EMPTY_SUPPORTED_AUDIOBOOK_FORMATS,
   contentType,
@@ -777,7 +770,6 @@ const ReleaseModalSession = ({
     contentType === 'audiobook' && supportedAudiobookFormats.length > 0
       ? supportedAudiobookFormats
       : supportedFormats;
-  const [isRequestingBook, setIsRequestingBook] = useState(false);
   const [selectedRelease, setSelectedRelease] = useState<Release | null>(null);
   const isCombinedMode = combinedMode != null;
   const combinedPhase = combinedMode?.phase ?? null;
@@ -874,19 +866,6 @@ const ReleaseModalSession = ({
       release: stagedReleaseForPhase,
     });
   }
-
-  const handleRequestBook = useCallback(async (): Promise<void> => {
-    if (!book || !onRequestBook || isRequestingBook) {
-      return;
-    }
-    setIsRequestingBook(true);
-    try {
-      await onRequestBook(book, contentType);
-      handleClose();
-    } finally {
-      setIsRequestingBook(false);
-    }
-  }, [book, onRequestBook, isRequestingBook, contentType, handleClose]);
 
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const tabIndicatorStyle = useTabIndicator(tabRefs, activeTab, allTabs);
@@ -1233,13 +1212,9 @@ const ReleaseModalSession = ({
   }
 
   const hasCombinedEbookAction =
-    combinedPhase === 'ebook'
-      ? selectedRelease !== null
-      : stagedEbookRelease !== null || combinedFooterEbookMode === 'request_book';
+    combinedPhase === 'ebook' ? selectedRelease !== null : stagedEbookRelease !== null;
   const hasCombinedAudiobookAction =
-    combinedPhase === 'audiobook'
-      ? selectedRelease !== null
-      : stagedAudiobookRelease !== null || combinedFooterAudiobookMode === 'request_book';
+    combinedPhase === 'audiobook' ? selectedRelease !== null : stagedAudiobookRelease !== null;
   const hasCombinedActionOutsideCurrentPhase =
     combinedPhase === 'ebook' ? hasCombinedAudiobookAction : hasCombinedEbookAction;
   const canCompleteCombinedAction =
@@ -1606,42 +1581,13 @@ const ReleaseModalSession = ({
                         </svg>
                       </a>
                     )}
-                    {(onRequestBook || bookSupportsTargets(book)) && (
-                      <span className="inline-flex items-center gap-3">
-                        {onRequestBook && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void handleRequestBook();
-                            }}
-                            disabled={isRequestingBook}
-                            className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-emerald-900/20 dark:text-emerald-400 dark:hover:bg-emerald-900/40"
-                          >
-                            <svg
-                              className="h-3 w-3"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                              strokeWidth={2}
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M12 4.5v15m7.5-7.5h-15"
-                              />
-                            </svg>
-                            {isRequestingBook ? 'Adding...' : 'Add to requests'}
-                          </button>
-                        )}
-                        {bookSupportsTargets(book) && book.provider && book.provider_id && (
-                          <BookTargetDropdown
-                            provider={book.provider}
-                            bookId={book.provider_id}
-                            onShowToast={onShowToast}
-                            variant="pill"
-                          />
-                        )}
-                      </span>
+                    {bookSupportsTargets(book) && book.provider && book.provider_id && (
+                      <BookTargetDropdown
+                        provider={book.provider}
+                        bookId={book.provider_id}
+                        onShowToast={onShowToast}
+                        variant="pill"
+                      />
                     )}
                   </div>
                 </div>

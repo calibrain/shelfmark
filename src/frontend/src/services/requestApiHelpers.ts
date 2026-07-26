@@ -1,11 +1,3 @@
-import type { RequestRecord } from '../types';
-
-interface RequestListParams {
-  status?: RequestRecord['status'];
-  limit?: number;
-  offset?: number;
-}
-
 export interface FulfilAdminRequestBody {
   release_data?: Record<string, unknown>;
   admin_note?: string;
@@ -15,30 +7,6 @@ export interface FulfilAdminRequestBody {
 export interface RejectAdminRequestBody {
   admin_note?: string;
 }
-
-export const buildRequestListUrl = (baseUrl: string, params: RequestListParams = {}): string => {
-  const query = new URLSearchParams();
-  if (params.status) {
-    query.set('status', params.status);
-  }
-  if (typeof params.limit === 'number') {
-    query.set('limit', String(params.limit));
-  }
-  if (typeof params.offset === 'number') {
-    query.set('offset', String(params.offset));
-  }
-
-  const queryString = query.toString();
-  return queryString ? `${baseUrl}?${queryString}` : baseUrl;
-};
-
-export const buildAdminRequestActionUrl = (
-  adminRequestsBaseUrl: string,
-  id: number,
-  action: 'fulfil' | 'reject',
-): string => {
-  return `${adminRequestsBaseUrl}/${encodeURIComponent(String(id))}/${action}`;
-};
 
 export const buildFulfilBookRequestsUrl = (adminRequestsBaseUrl: string, bookId: number): string =>
   `${adminRequestsBaseUrl}/books/${encodeURIComponent(String(bookId))}/fulfil`;

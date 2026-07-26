@@ -1352,6 +1352,7 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
         return
 
     finalized_download = False
+    fulfilled_requests: list[dict[str, Any]] = []
     if download_history_service is not None:
         try:
             file_rows = _build_download_file_rows(task)

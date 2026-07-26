@@ -600,7 +600,8 @@ def notify_admin(event: NotificationEvent, context: NotificationContext) -> None
     if event not in _ADMIN_EVENTS:
         return
     for target in _resolve_admin_targets():
-        if event.value not in target["events"]:
+        events = target["events"]
+        if not isinstance(events, list) or event.value not in events:
             continue
         _submit_delivery(target["transport"], target["destination"], event, context, None)
 

@@ -40,9 +40,10 @@ import {
 import type { AppConfig, Book, ContentType, Release, RequestRecord, StatusData } from './types';
 import { buildLoginRedirectPath, getReturnToFromSearch } from './utils/authRedirect';
 import { canUseManualReleaseQuery } from './utils/releaseCapabilities';
+import { buildReleaseDataFromMetadataRelease } from './utils/releasePayload';
 import { bookFromRequestRecord } from './utils/requestFulfil';
-import { buildReleaseDataFromMetadataRelease } from './utils/requestPayload';
 
+// oxlint-disable-next-line import/no-unassigned-import
 import './styles.css';
 
 const ACTIVITY_SIDEBAR_PINNED_STORAGE_KEY = 'activity-sidebar-pinned';
@@ -287,23 +288,15 @@ function App() {
       options?: { browseOnly?: boolean; manualApproval?: boolean },
     ) => {
       try {
-        if (
-          options?.manualApproval ||
-          (!options?.browseOnly && record.request_level === 'release')
-        ) {
-          const bookId = Number(record.book_id);
-          if (!Number.isInteger(bookId) || bookId < 1) {
-            throw new Error('Request is missing its Book identity');
-          }
-          await fulfilBookRequests(
-            bookId,
-            options?.manualApproval ? undefined : (record.release_data ?? undefined),
-            undefined,
-            options?.manualApproval,
-          );
+        const bookId = Number(record.book_id);
+        if (!Number.isInteger(bookId) || bookId < 1) {
+          throw new Error('Request is missing its Book identity');
+        }
+        if (options?.manualApproval) {
+          await fulfilBookRequests(bookId);
           await refreshActivitySnapshot();
           await fetchStatus();
-          showToast('Request approved', 'success');
+          showToast('Book marked available', 'success');
           return;
         }
         setFulfillingRequest({
@@ -455,7 +448,6 @@ function App() {
                 setFulfillingRequest(null);
               }}
               onDownload={fulfillingRequest ? handleBrowseFulfilDownload : handleReleaseDownload}
-              getPolicyModeForSource={() => 'download'}
               supportedFormats={config?.supported_formats ?? DEFAULT_SUPPORTED_FORMATS}
               supportedAudiobookFormats={config?.supported_audiobook_formats}
               contentType={activeReleaseContentType}
@@ -527,14 +519,14 @@ function App() {
         authMode={authMode}
         onClose={() => setSettingsOpen(false)}
         onShowToast={showToast}
-        onSettingsSaved={loadConfig}
+        onSettingsSaved={() => void loadConfig()}
         onRefreshAuth={refreshAuth}
       />
       <SelfSettingsModal
         isOpen={selfSettingsOpen}
         onClose={() => setSelfSettingsOpen(false)}
         onShowToast={showToast}
-        onSettingsSaved={loadConfig}
+        onSettingsSaved={() => void loadConfig()}
       />
       {config && <ConfigSetupBanner settingsEnabled={config.settings_enabled} />}
       <ConfigSetupBanner
@@ -548,7 +540,7 @@ function App() {
       <OnboardingModal
         isOpen={onboardingOpen}
         onClose={() => setOnboardingOpen(false)}
-        onComplete={loadConfig}
+        onComplete={() => void loadConfig()}
         onShowToast={showToast}
       />
       <ToastContainer toasts={toasts} />

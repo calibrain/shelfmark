@@ -8,9 +8,7 @@ import type {
   AuthResponse,
   ReleaseSource,
   ReleasesResponse,
-  CreateRequestPayload,
   RequestRecord,
-  RequestSubmissionResult,
   MetadataProvidersResponse,
   MetadataSearchConfig,
 } from '../types';
@@ -27,7 +25,6 @@ import { transformMetadataToBook } from '../utils/bookTransformers';
 import { isRecord, toStringValue } from '../utils/objectHelpers';
 import type { FulfilAdminRequestBody, RejectAdminRequestBody } from './requestApiHelpers';
 import {
-  buildAdminRequestActionUrl,
   buildFulfilAdminRequestBody,
   buildFulfilBookRequestsUrl,
   buildRejectAdminRequestBody,
@@ -50,7 +47,6 @@ const API = {
   authCheck: `${API_BASE}/auth/check`,
   settings: `${API_BASE}/settings`,
   requests: `${API_BASE}/requests`,
-  requestsBatch: `${API_BASE}/requests/batch`,
   adminRequests: `${API_BASE}/admin/requests`,
   activitySnapshot: `${API_BASE}/activity/snapshot`,
   activityDismiss: `${API_BASE}/activity/dismiss`,
@@ -648,15 +644,6 @@ export interface ActivityHistoryItem {
   source_id: string | null;
 }
 
-export const createRequests = async (
-  payloads: CreateRequestPayload[],
-): Promise<RequestSubmissionResult[]> => {
-  return fetchJSON<RequestSubmissionResult[]>(API.requestsBatch, {
-    method: 'POST',
-    body: JSON.stringify({ requests: payloads }),
-  });
-};
-
 export const createLibraryRequest = async (bookId: number): Promise<RequestRecord> => {
   return fetchJSON<RequestRecord>(API.requests, {
     method: 'POST',
@@ -688,7 +675,7 @@ export const rejectAdminRequest = async (
   id: number,
   body: RejectAdminRequestBody = {},
 ): Promise<RequestRecord> => {
-  return fetchJSON<RequestRecord>(buildAdminRequestActionUrl(API.adminRequests, id, 'reject'), {
+  return fetchJSON<RequestRecord>(`${API.adminRequests}/${encodeURIComponent(String(id))}/reject`, {
     method: 'POST',
     body: JSON.stringify(buildRejectAdminRequestBody(body)),
   });

@@ -9,21 +9,20 @@ const makeRequestItem = (overrides: Partial<ActivityItem> = {}): ActivityItem =>
   visualStatus: 'fulfilled',
   title: 'Request Title',
   author: 'Request Author',
-  metaLine: 'Release request',
+  metaLine: 'Book request',
   statusLabel: 'Approved',
   timestamp: 1,
   requestId: 42,
-  requestLevel: 'release',
+  requestLevel: 'book',
   requestRecord: {
     id: 42,
     user_id: 7,
     status: 'fulfilled',
-    source_hint: 'prowlarr',
+    source_hint: null,
     content_type: 'ebook',
-    request_level: 'release',
-    policy_mode: 'request_release',
+    request_level: 'book',
     book_data: { title: 'Request Title', author: 'Request Author' },
-    release_data: { source: 'prowlarr', source_id: 'release-42' },
+    release_data: null,
     note: null,
     admin_note: null,
     reviewed_by: null,
@@ -50,7 +49,7 @@ const makeDownloadItem = (overrides: Partial<ActivityItem> = {}): ActivityItem =
 });
 
 describe('dedupeHistoryItems', () => {
-  it('keeps release-level request history rows when they are not duplicated by a download row', () => {
+  it('keeps Book request history rows when they are not duplicated by a download row', () => {
     const rejectedRequest = makeRequestItem({
       id: 'request-7',
       visualStatus: 'rejected',
@@ -66,7 +65,7 @@ describe('dedupeHistoryItems', () => {
         })(),
         id: 7,
         status: 'rejected',
-        release_data: { source: 'prowlarr', source_id: 'release-7' },
+        release_data: null,
       },
     });
 
