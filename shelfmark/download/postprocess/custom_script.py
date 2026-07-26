@@ -220,7 +220,6 @@ def _build_custom_script_payload(
         "task": {
             "task_id": context.task.task_id,
             "source": context.task.source,
-            "search_mode": context.task.search_mode,
             "title": context.task.title,
             "author": context.task.author,
             "year": context.task.year,

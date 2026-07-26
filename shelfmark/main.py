@@ -1,7 +1,6 @@
 """Flask app - routes, WebSocket handlers, and middleware."""
 
 import binascii
-import io
 import logging
 import os
 import re
@@ -1525,55 +1524,6 @@ def api_status() -> Response | tuple[Response, int]:
         return jsonify(status)
     except _OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Status error: {e}")
-        return jsonify({"error": str(e)}), 500
-
-
-@app.route("/api/localdownload", methods=["GET"])
-@login_required
-def api_local_download() -> Response | tuple[Response, int]:
-    """Download an EPUB file from local storage if available.
-
-    Query Parameters:
-        id (str): Book identifier (MD5 hash)
-
-    Returns:
-        flask.Response: The EPUB file if found, otherwise an error response.
-
-    """
-    book_id = request.args.get("id", "")
-    if not book_id:
-        return jsonify({"error": "No book ID provided"}), 400
-
-    try:
-        file_data, book_info = backend.get_book_data(book_id)
-        if file_data is None:
-            # Fallback for dismissed/history entries where queue task may no longer exist.
-            if download_history_service is not None:
-                is_admin, db_user_id, can_access_status = _resolve_status_scope()
-                if can_access_status:
-                    history_row = download_history_service.get_by_task_id(book_id)
-                    if history_row is not None:
-                        owner_user_id = history_row.get("user_id")
-                        if is_admin or owner_user_id == db_user_id:
-                            download_path = DownloadHistoryService._resolve_existing_download_path(
-                                history_row.get("download_path")
-                            )
-                            if download_path:
-                                return send_file(
-                                    download_path,
-                                    download_name=Path(download_path).name,
-                                    as_attachment=True,
-                                )
-
-            # Book data not found or not available
-            return jsonify({"error": "File not found"}), 404
-        file_name = book_info.get_filename() if book_info is not None else Path(book_id).name
-        # Prepare the file for sending to the client
-        data = io.BytesIO(file_data)
-        return send_file(data, download_name=file_name, as_attachment=True)
-
-    except _OPERATIONAL_ERRORS as e:
-        logger.error_trace(f"Local download error: {e}")
         return jsonify({"error": str(e)}), 500
 
 

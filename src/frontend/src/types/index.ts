@@ -1,11 +1,3 @@
-// Search mode constants and type
-export const SEARCH_MODE = {
-  DIRECT: 'direct',
-  UNIVERSAL: 'universal',
-} as const;
-
-export type SearchMode = (typeof SEARCH_MODE)[keyof typeof SEARCH_MODE];
-
 // Display field for metadata cards (provider-specific info like ratings, pages, etc.)
 export interface DisplayField {
   label: string; // e.g., "Rating", "Pages", "Readers"

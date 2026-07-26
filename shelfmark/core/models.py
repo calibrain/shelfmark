@@ -92,8 +92,6 @@ class DownloadTask:
     size: str | None = None
     preview: str | None = None
     content_type: str | None = None  # "book (fiction)", "audiobook", "magazine", etc.
-    search_mode: str = "universal"
-    output_args: dict[str, Any] = field(default_factory=dict)
     source_url: str | None = None  # Original release URL used by source-specific handlers
     retry_download_url: str | None = None  # Resolved download URL for restart-safe retries
     retry_download_protocol: str | None = (

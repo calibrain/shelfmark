@@ -86,8 +86,4 @@ def get_final_destination(task: DownloadTask) -> Path:
     if override:
         return override
 
-    return get_destination(
-        is_audiobook=is_audiobook,
-        user_id=task.user_id,
-        username=task.username,
-    )
+    return get_destination(is_audiobook=is_audiobook)

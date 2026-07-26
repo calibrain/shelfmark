@@ -44,6 +44,27 @@ const toReleaseBook = (book: BookDetailResponse): Book => ({
 const dateLabel = (date: string | null): string =>
   date ? new Date(date).toLocaleDateString() : 'date unknown';
 
+export const shouldAutoFindReleases = ({
+  canFindReleases,
+  autoFindReleases,
+  findRequested,
+  hasFiles,
+  hasInFlight,
+  alreadyOpened,
+}: {
+  canFindReleases: boolean;
+  autoFindReleases: boolean;
+  findRequested: boolean;
+  hasFiles: boolean;
+  hasInFlight: boolean;
+  alreadyOpened: boolean;
+}): boolean =>
+  canFindReleases &&
+  (findRequested || autoFindReleases) &&
+  !hasFiles &&
+  (findRequested || !hasInFlight) &&
+  !alreadyOpened;
+
 export const BookDetailPage = ({
   autoFindReleases,
   canFindReleases,
@@ -90,11 +111,14 @@ export const BookDetailPage = ({
   useDependencyEffect(() => {
     if (
       book &&
-      canFindReleases &&
-      (findRequested || autoFindReleases) &&
-      !book.files.length &&
-      (findRequested || !book.in_flight.length) &&
-      autoOpenedFor !== book.book_id
+      shouldAutoFindReleases({
+        canFindReleases,
+        autoFindReleases,
+        findRequested,
+        hasFiles: book.files.length > 0,
+        hasInFlight: book.in_flight.length > 0,
+        alreadyOpened: autoOpenedFor === book.book_id,
+      })
     ) {
       setAutoOpenedFor(book.book_id);
       onFindReleases(toReleaseBook(book));

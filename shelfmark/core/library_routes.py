@@ -119,7 +119,7 @@ def _require_library_membership(
     Admin sees any book (instance-wide read per sub-decision 2). Non-members
     get 403 — including for books with files they triggered but didn't keep
     linked. The dedicated library download endpoint is the only path that
-    serves file bytes; the legacy ``/api/localdownload`` path remains unchanged.
+    serves file bytes.
     """
     if actor.is_admin:
         return None

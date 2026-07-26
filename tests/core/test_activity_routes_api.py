@@ -212,30 +212,10 @@ class TestActivityRoutes:
             "item_key": "download:admin-visible-task",
         } in snapshot_response.json["dismissed"]
 
-    def test_localdownload_falls_back_to_download_history_file(self, main_module, client, tmp_path):
-        user = _create_user(main_module, prefix="reader")
-        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+    def test_localdownload_route_is_removed(self, client):
+        response = client.get("/api/localdownload?id=history-localdownload-task")
 
-        task_id = "history-localdownload-task"
-        file_path = tmp_path / "history-fallback.epub"
-        file_bytes = b"history download payload"
-        file_path.write_bytes(file_bytes)
-
-        _record_terminal_download(
-            main_module,
-            task_id=task_id,
-            user_id=user["id"],
-            username=user["username"],
-            title="History Local Download",
-            download_path=str(file_path),
-        )
-
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            response = client.get(f"/api/localdownload?id={task_id}")
-
-        assert response.status_code == 200
-        assert response.data == file_bytes
-        assert "attachment" in response.headers.get("Content-Disposition", "").lower()
+        assert response.status_code == 404
 
     def test_dismiss_requires_db_identity(self, main_module, client):
         user = _create_user(main_module, prefix="reader")

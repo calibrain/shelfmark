@@ -552,7 +552,6 @@ export type DownloadReleasePayload = {
   subtitle?: string;
   library_book_id?: number;
   search_author?: string;
-  search_mode?: 'direct' | 'universal';
 };
 
 export const downloadRelease = async (

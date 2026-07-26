@@ -1,6 +1,5 @@
 import { useState, useCallback, useRef, useMemo } from 'react';
 
-import { useSearchMode } from '../../contexts/SearchModeContext';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
@@ -179,7 +178,7 @@ const SettingsModalSession = ({
     isSaving,
   } = useSettings();
 
-  const { isUniversalMode } = useSearchMode();
+  const isUniversalMode = true;
 
   const [showMobileDetail, setShowMobileDetail] = useState(false);
   const [securityAccessError, setSecurityAccessError] = useState<string | null>(null);
