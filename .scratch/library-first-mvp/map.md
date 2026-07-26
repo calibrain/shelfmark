@@ -37,6 +37,7 @@ A delivered library-first Shelfmark MVP: persistent responsive navigation, `/lib
 - [Implement Activity request fulfilment experience](issues/15-implement-activity-request-fulfilment-experience.md) — Activity is request-only for request-only users and groups administrator fulfilment work by canonical Book, with shared-download completion linked back to all remaining requesters.
 - [Implement the user notification contract](issues/14-implement-user-notification-contract.md) — Personal Notifications use one validated saved destination for Request rejection and Book availability only; administrator targets remain isolated operational configuration.
 - [Implement the polished book-detail experience](issues/16-implement-polished-book-detail-experience.md) — Book Detail adopts the prototype's editorial hierarchy, capability-specific actions, live request lifecycle, and one-shot first-add release discovery.
+- [Cut over Library Capability and Request clients](issues/18-cut-over-library-capability-request-clients.md) — The replacement Book Request clients are the sole shipped path; legacy request-policy and release-level request UI is retired.
 
 ## Not yet specified
 

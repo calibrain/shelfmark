@@ -1,5 +1,5 @@
 Type: task
-Status: claimed
+Status: resolved
 Blocked by: 12, 13, 15, 17
 
 # Cut over Library Capability and Request clients
@@ -26,3 +26,9 @@ Work on draft PR [#6](https://github.com/muneebabbas/shelfmark/pull/6), branch `
 - [Legacy search retirement implementation](13-implement-legacy-search-and-output-retirement.md)
 - [Activity implementation](15-implement-activity-request-fulfilment-experience.md)
 - [Request lifecycle decision](08-define-request-lifecycle-and-ownership.md)
+
+## Answer
+
+The integration branch now has no frontend caller for batch Requests, per-request fulfilment, or request-policy behavior. It removes the unused release-level request confirmation flow and stale release-request controls; administrators now either mark a Book available from existing Files or choose a Book-scoped release. Request-only users remain on Book-only request, history, and cancellation flows, while discovery remains capability-gated client- and server-side.
+
+Verification passed: frontend lint, typecheck, 86 unit tests, and production build; Ruff, basedpyright, and 22 focused canonical Request/download lifecycle tests. Draft PR [#6](https://github.com/muneebabbas/shelfmark/pull/6) has no reviews, comments, or checks reporting release-blocking findings. Ticket 10 remains claimed for its separate closure, preserving the one-ticket-per-session wayfinding rule.
