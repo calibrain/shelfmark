@@ -40,7 +40,7 @@ import {
 import type { AppConfig, Book, ContentType, Release, RequestRecord, StatusData } from './types';
 import { buildLoginRedirectPath, getReturnToFromSearch } from './utils/authRedirect';
 import { canUseManualReleaseQuery } from './utils/releaseCapabilities';
-import { bookFromRequestData } from './utils/requestFulfil';
+import { bookFromRequestRecord } from './utils/requestFulfil';
 import { buildReleaseDataFromMetadataRelease } from './utils/requestPayload';
 
 import './styles.css';
@@ -87,7 +87,7 @@ function App() {
     handleLogout,
   } = useAuth({ showToast });
   const { contentType } = useContentTypePreferences();
-  const { cancelRequest, fulfilRequest, rejectRequest } = useRequests({ isAdmin });
+  const { cancelRequest, fulfilBookRequests, rejectRequest } = useRequests({ isAdmin });
   const {
     activityStatus,
     requestItems,
@@ -291,8 +291,12 @@ function App() {
           options?.manualApproval ||
           (!options?.browseOnly && record.request_level === 'release')
         ) {
-          await fulfilRequest(
-            requestId,
+          const bookId = Number(record.book_id);
+          if (!Number.isInteger(bookId) || bookId < 1) {
+            throw new Error('Request is missing its Book identity');
+          }
+          await fulfilBookRequests(
+            bookId,
             options?.manualApproval ? undefined : (record.release_data ?? undefined),
             undefined,
             options?.manualApproval,
@@ -304,21 +308,25 @@ function App() {
         }
         setFulfillingRequest({
           requestId,
-          book: bookFromRequestData(record.book_data),
+          book: bookFromRequestRecord(record),
           contentType: record.content_type,
         });
       } catch (error) {
         showToast(getErrorMessage(error, 'Failed to approve request'), 'error');
       }
     },
-    [fetchStatus, fulfilRequest, refreshActivitySnapshot, showToast],
+    [fetchStatus, fulfilBookRequests, refreshActivitySnapshot, showToast],
   );
   const handleBrowseFulfilDownload = useCallback(
     async (book: Book, release: Release, releaseContentType: ContentType) => {
       if (!fulfillingRequest) return;
       try {
-        await fulfilRequest(
-          fulfillingRequest.requestId,
+        const bookId = fulfillingRequest.book.book_id;
+        if (!bookId) {
+          throw new Error('Request is missing its Book identity');
+        }
+        await fulfilBookRequests(
+          bookId,
           buildReleaseDataFromMetadataRelease(book, release, releaseContentType),
         );
         setFulfillingRequest(null);
@@ -330,7 +338,7 @@ function App() {
         throw error;
       }
     },
-    [fetchStatus, fulfilRequest, fulfillingRequest, refreshActivitySnapshot, showToast],
+    [fetchStatus, fulfilBookRequests, fulfillingRequest, refreshActivitySnapshot, showToast],
   );
 
   const activeReleaseBook = fulfillingRequest?.book ?? releaseBook;
@@ -488,7 +496,7 @@ function App() {
         onClearHistory={handleClearHistory}
         onActiveTabChange={handleActivityTabChange}
         pendingRequestCount={pendingRequestCount}
-        showRequestsTab={isAdmin}
+        showRequestsTab={true}
         isRequestsLoading={isActivitySnapshotLoading}
         onRequestCancel={handleRequestCancel}
         onRequestApprove={isAdmin ? handleRequestApprove : undefined}

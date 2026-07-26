@@ -811,6 +811,7 @@ class UserDB:
         status: str | None = None,
         limit: int | None = None,
         offset: int = 0,
+        include_book_details: bool = False,
     ) -> list[dict[str, Any]]:
         """List requests with optional user/status filters."""
         where_clauses: list[str] = []
@@ -825,6 +826,13 @@ class UserDB:
             params.append(normalize_request_status(status))
 
         query = "SELECT * FROM download_requests"
+        if include_book_details:
+            query = """
+                SELECT download_requests.*, books.title AS book_title,
+                       books.author AS book_author, books.cover_url AS book_cover_url
+                FROM download_requests
+                LEFT JOIN books ON books.id = download_requests.book_id
+            """
         if where_clauses:
             query += " WHERE " + " AND ".join(where_clauses)
         query += " ORDER BY created_at DESC, id DESC"

@@ -1385,6 +1385,20 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
             logger.warning("Failed to finalize download history for task %s: %s", task_id, exc)
 
     if finalized_download:
+        book_id = normalize_positive_int(getattr(task, "library_book_id", None))
+        if (
+            final_status == QueueStatus.COMPLETE.value
+            and book_id is not None
+            and user_db is not None
+        ):
+            try:
+                fulfilled_requests = user_db.fulfil_pending_book_requests(
+                    book_id=book_id,
+                    reviewed_by=normalize_positive_int(getattr(task, "user_id", None)),
+                )
+                _emit_request_update_events(fulfilled_requests)
+            except _OPERATIONAL_ERRORS as exc:
+                logger.warning("Failed to fulfil Requests for Book %s: %s", book_id, exc)
         _emit_activity_update_for_task(
             task=task,
             payload={

@@ -192,6 +192,11 @@ export interface CreateRequestPayload {
 export interface RequestRecord {
   id: number;
   user_id: number;
+  // Library request snapshots use these flat fields; older activity records retain book_data.
+  book_id?: number | string;
+  book_title?: string;
+  book_author?: string | null;
+  book_cover_url?: string | null;
   status: 'pending' | 'fulfilled' | 'rejected' | 'cancelled';
   delivery_state?:
     | 'none'

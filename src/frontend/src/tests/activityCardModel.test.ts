@@ -45,7 +45,7 @@ describe('activityCardModel', () => {
     );
 
     expect(model.badges.length).toBe(1);
-    expect(model.badges[0]?.text).toBe('Awaiting review');
+    expect(model.badges[0]?.text).toBe('Awaiting availability');
   });
 
   it('uses requester-friendly approved wording for fulfilled requests', () => {
@@ -60,7 +60,16 @@ describe('activityCardModel', () => {
     );
 
     expect(model.badges.length).toBe(1);
-    expect(model.badges[0]?.text).toBe('Approved');
+    expect(model.badges[0]?.text).toBe('Available');
+  });
+
+  it('does not expose dismissal for terminal requester-side requests', () => {
+    const model = buildActivityCardModel(
+      makeItem({ kind: 'request', visualStatus: 'cancelled', requestId: 42 }),
+      false,
+    );
+
+    expect(model.actions).toEqual([]);
   });
 
   it('shows approved in-progress request badge while linked download is active', () => {

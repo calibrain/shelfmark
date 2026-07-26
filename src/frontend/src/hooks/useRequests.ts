@@ -2,7 +2,7 @@ import { useCallback } from 'react';
 
 import {
   cancelRequest as cancelUserRequest,
-  fulfilAdminRequest,
+  fulfilAdminBookRequests,
   rejectAdminRequest,
 } from '../services/api';
 
@@ -12,8 +12,8 @@ interface UseRequestsOptions {
 
 interface UseRequestsReturn {
   cancelRequest: (id: number) => Promise<void>;
-  fulfilRequest: (
-    id: number,
+  fulfilBookRequests: (
+    bookId: number,
     releaseData?: Record<string, unknown>,
     adminNote?: string,
     manualApproval?: boolean,
@@ -38,9 +38,9 @@ export const useRequests = ({ isAdmin }: UseRequestsOptions): UseRequestsReturn 
     }
   }, []);
 
-  const fulfilRequest = useCallback(
+  const fulfilBookRequests = useCallback(
     async (
-      id: number,
+      bookId: number,
       releaseData?: Record<string, unknown>,
       adminNote?: string,
       manualApproval?: boolean,
@@ -50,7 +50,7 @@ export const useRequests = ({ isAdmin }: UseRequestsOptions): UseRequestsReturn 
       }
 
       try {
-        await fulfilAdminRequest(id, {
+        await fulfilAdminBookRequests(bookId, {
           release_data: releaseData,
           admin_note: adminNote,
           manual_approval: manualApproval,
@@ -83,7 +83,7 @@ export const useRequests = ({ isAdmin }: UseRequestsOptions): UseRequestsReturn 
 
   return {
     cancelRequest,
-    fulfilRequest,
+    fulfilBookRequests,
     rejectRequest,
   };
 };

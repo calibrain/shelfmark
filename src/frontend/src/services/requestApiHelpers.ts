@@ -40,6 +40,9 @@ export const buildAdminRequestActionUrl = (
   return `${adminRequestsBaseUrl}/${encodeURIComponent(String(id))}/${action}`;
 };
 
+export const buildFulfilBookRequestsUrl = (adminRequestsBaseUrl: string, bookId: number): string =>
+  `${adminRequestsBaseUrl}/books/${encodeURIComponent(String(bookId))}/fulfil`;
+
 export const buildFulfilAdminRequestBody = (
   body: FulfilAdminRequestBody = {},
 ): FulfilAdminRequestBody => {

@@ -29,6 +29,7 @@ import type { FulfilAdminRequestBody, RejectAdminRequestBody } from './requestAp
 import {
   buildAdminRequestActionUrl,
   buildFulfilAdminRequestBody,
+  buildFulfilBookRequestsUrl,
   buildRejectAdminRequestBody,
 } from './requestApiHelpers';
 
@@ -662,11 +663,11 @@ export const cancelRequest = async (id: number): Promise<RequestRecord> => {
   });
 };
 
-export const fulfilAdminRequest = async (
-  id: number,
+export const fulfilAdminBookRequests = async (
+  bookId: number,
   body: FulfilAdminRequestBody = {},
-): Promise<RequestRecord> => {
-  return fetchJSON<RequestRecord>(buildAdminRequestActionUrl(API.adminRequests, id, 'fulfil'), {
+): Promise<RequestRecord[]> => {
+  return fetchJSON<RequestRecord[]>(buildFulfilBookRequestsUrl(API.adminRequests, bookId), {
     method: 'POST',
     body: JSON.stringify(buildFulfilAdminRequestBody(body)),
   });

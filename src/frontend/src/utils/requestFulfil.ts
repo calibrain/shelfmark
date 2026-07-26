@@ -1,4 +1,4 @@
-import type { Book } from '../types';
+import type { Book, RequestRecord } from '../types';
 
 const toOptionalText = (value: unknown): string | undefined => {
   if (typeof value === 'string' && value.trim()) {
@@ -48,5 +48,19 @@ export const bookFromRequestData = (bookData: Record<string, unknown> | null | u
     series_position: toOptionalNumber(row.series_position),
     subtitle: toOptionalText(row.subtitle),
     source_url: toOptionalText(row.source_url),
+  };
+};
+
+export const bookFromRequestRecord = (record: RequestRecord): Book => {
+  const book = bookFromRequestData(record.book_data);
+  const bookId = toOptionalText(record.book_id);
+
+  return {
+    ...book,
+    id: bookId || book.id,
+    title: toOptionalText(record.book_title) || book.title,
+    author: toOptionalText(record.book_author) || book.author,
+    preview: toOptionalText(record.book_cover_url) || book.preview,
+    book_id: toOptionalNumber(record.book_id),
   };
 };

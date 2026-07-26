@@ -186,8 +186,27 @@ describe('activityMappers.requestToActivityItem', () => {
     expect(item.adminNote).toBe('Not available');
   });
 
-  it('does not append username to meta line for user viewer role', () => {
+  it('hides release details from user viewer request rows', () => {
     const item = requestToActivityItem(makeRequest(), 'user');
-    expect(item.metaLine).toBe('EPUB · 2 MB · Prowlarr');
+    expect(item.metaLine).toBe('Book request');
+  });
+
+  it('uses flat canonical book fields when present', () => {
+    const item = requestToActivityItem(
+      makeRequest({
+        book_id: 17,
+        book_title: 'Canonical title',
+        book_author: 'Canonical author',
+        book_cover_url: 'https://example.com/canonical-cover.jpg',
+        book_data: null,
+      }),
+      'admin',
+    );
+
+    expect(item).toMatchObject({
+      title: 'Canonical title',
+      author: 'Canonical author',
+      preview: 'https://example.com/canonical-cover.jpg',
+    });
   });
 });

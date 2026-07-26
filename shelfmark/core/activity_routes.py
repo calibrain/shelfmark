@@ -324,13 +324,13 @@ def _list_visible_requests(
     user_db: UserDB, *, is_admin: bool, db_user_id: int | None
 ) -> list[dict[str, Any]]:
     if is_admin:
-        request_rows = user_db.list_requests()
+        request_rows = user_db.list_requests(include_book_details=True)
         populate_request_usernames(request_rows, user_db)
         return request_rows
 
     if db_user_id is None:
         return []
-    return user_db.list_requests(user_id=db_user_id)
+    return user_db.list_requests(user_id=db_user_id, include_book_details=True)
 
 
 def _parse_item_key(item_key: object, prefix: str) -> str | None:
