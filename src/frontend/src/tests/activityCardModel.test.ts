@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import { buildActivityCardModel } from '../components/activity/activityCardModel';
+import { isRequestOnlyActivityUser } from '../components/activity/ActivitySidebar';
 import type { ActivityItem } from '../components/activity/activityTypes';
 
 const makeItem = (overrides: Partial<ActivityItem> = {}): ActivityItem => ({
@@ -17,6 +18,14 @@ const makeItem = (overrides: Partial<ActivityItem> = {}): ActivityItem => ({
 });
 
 describe('activityCardModel', () => {
+  it('keeps download-capable non-admin users in the download activity view', () => {
+    expect(isRequestOnlyActivityUser(false, 'download-capable')).toBe(false);
+  });
+
+  it('keeps request-only users in the request activity view', () => {
+    expect(isRequestOnlyActivityUser(false, 'request-only')).toBe(true);
+  });
+
   it('shows ownership in badge text for admin pending requests', () => {
     const model = buildActivityCardModel(
       makeItem({

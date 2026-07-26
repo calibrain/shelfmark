@@ -4,7 +4,7 @@ import { useTabIndicator } from '../../hooks/ui/useTabIndicator';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useDependencyEffect } from '../../hooks/useMountEffect';
-import type { RequestRecord, StatusData } from '../../types';
+import type { LibraryCapability, RequestRecord, StatusData } from '../../types';
 import { Dropdown } from '../Dropdown';
 import { ActivityCard } from './ActivityCard';
 import type { DownloadStatusKey } from './activityMappers';
@@ -17,6 +17,7 @@ interface ActivitySidebarProps {
   onClose: () => void;
   status: StatusData;
   isAdmin: boolean;
+  libraryCapability: LibraryCapability | null;
   onClearCompleted: (items: ActivityDismissTarget[]) => void;
   onCancel: (id: string) => void;
   onRetry?: (id: string) => void;
@@ -69,6 +70,11 @@ type ActivityCategoryKey = 'needs_review' | 'in_progress' | 'complete' | 'failed
 
 type ActivityTabKey = 'all' | 'downloads' | 'requests' | 'history';
 const ALL_USERS_FILTER = '__all_users__';
+
+export const isRequestOnlyActivityUser = (
+  isAdmin: boolean,
+  libraryCapability: LibraryCapability | null,
+): boolean => !isAdmin && libraryCapability === 'request-only';
 
 const getCategoryLabel = (key: ActivityCategoryKey, isAdmin: boolean): string => {
   if (key === 'needs_review') {
@@ -235,6 +241,7 @@ export const ActivitySidebar = ({
   onClose,
   status,
   isAdmin,
+  libraryCapability,
   onClearCompleted,
   onCancel,
   onRetry,
@@ -288,7 +295,7 @@ export const ActivitySidebar = ({
   }, [isAdmin, isOpen, pendingRequestCount]);
 
   const isPinnedOpen = isOpen && isDesktop && isPinned;
-  const isRequestOnly = !isAdmin;
+  const isRequestOnly = isRequestOnlyActivityUser(isAdmin, libraryCapability);
   let effectiveActiveTab = activeTab;
   if (isRequestOnly) {
     effectiveActiveTab = 'requests';

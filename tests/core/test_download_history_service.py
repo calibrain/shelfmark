@@ -125,7 +125,6 @@ def test_finalize_download_files_fulfils_pending_book_requests_and_links_each_fi
             conn.close()
         alice_request = user_db.create_library_request(user_id=alice["id"], book_id=book_id)
         bob_request = user_db.create_library_request(user_id=bob["id"], book_id=book_id)
-        user_db.update_request(bob_request["id"], status="cancelled")
 
         service.record_download(
             task_id="shared-book",
@@ -143,6 +142,7 @@ def test_finalize_download_files_fulfils_pending_book_requests_and_links_each_fi
             origin="direct",
             book_id=book_id,
         )
+        user_db.update_request(bob_request["id"], status="cancelled")
         service.finalize_download_files(
             task_id="shared-book",
             final_status="complete",
@@ -158,6 +158,64 @@ def test_finalize_download_files_fulfils_pending_book_requests_and_links_each_fi
         assert {(link["user_id"], link["history_id"]) for link in links} == {
             (alice["id"], row["id"]) for row in _fetch_rows(db_path, "shared-book")
         }
+
+
+def test_failed_shared_download_keeps_requests_pending_for_retry():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "users.db")
+        user_db = UserDB(db_path)
+        user_db.initialize()
+        requester = user_db.create_user(username="requester", password_hash="x")
+        service = DownloadHistoryService(db_path)
+
+        conn = user_db._connect()
+        try:
+            cursor = conn.execute(
+                "INSERT INTO books (metadata_provider, provider_book_id, title, metadata_json) "
+                "VALUES (?, ?, ?, ?)",
+                ("hardcover", "retry-42", "Retry Example", "{}"),
+            )
+            book_id = int(cursor.lastrowid)
+            conn.execute(
+                "INSERT INTO user_library (user_id, book_id) VALUES (?, ?)",
+                (requester["id"], book_id),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+        library_request = user_db.create_library_request(user_id=requester["id"], book_id=book_id)
+
+        for task_id, final_status, file_rows in (
+            ("failed-shared-book", "error", []),
+            (
+                "retried-shared-book",
+                "complete",
+                [{"download_path": "/tmp/retry.epub", "format": "epub", "size": "1"}],
+            ),
+        ):
+            service.record_download(
+                task_id=task_id,
+                user_id=None,
+                username=None,
+                request_id=None,
+                source="direct_download",
+                source_display_name="Direct Download",
+                title="Retry Example",
+                author=None,
+                file_format=None,
+                size=None,
+                preview=None,
+                content_type="ebook",
+                origin="direct",
+                book_id=book_id,
+            )
+            service.finalize_download_files(
+                task_id=task_id,
+                final_status=final_status,
+                file_rows=file_rows,
+            )
+            expected_status = "pending" if final_status == "error" else "fulfilled"
+            assert user_db.get_request(library_request["id"])["status"] == expected_status
 
 
 def _setup_service(tmpdir: str) -> tuple[str, UserDB, DownloadHistoryService, int]:

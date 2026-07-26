@@ -475,6 +475,7 @@ function App() {
         onClose={() => setDownloadsSidebarOpen(false)}
         status={activitySidebarStatus}
         isAdmin={isAdmin}
+        libraryCapability={libraryCapability}
         onClearCompleted={handleClearCompleted}
         onCancel={(id) => void cancelDownload(id).then(fetchStatus)}
         onRetry={(id) => void retryDownload(id).then(fetchStatus)}
