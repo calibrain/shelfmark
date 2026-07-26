@@ -1,5 +1,5 @@
 Type: task
-Status: claimed
+Status: resolved
 Blocked by: 11, 13
 
 # Implement the polished book-detail experience
@@ -27,3 +27,9 @@ Preserve one-shot Find Releases navigation: auto-open only after a successful fi
 - [Persistent shell implementation](11-implement-persistent-library-app-shell.md)
 - [Search and output retirement implementation](13-implement-legacy-search-and-output-retirement.md)
 - [Prior closed planning-only ticket](09-implement-polished-book-detail-experience.md)
+
+## Answer
+
+The production Book Detail page now uses the settled prototype's editorial-first presentation: cached provider description and ratings lead, newest Files per format sit beside Send to Kindle on desktop, and release-level operations are collapsed under **Advanced: show all releases**. The page now consumes canonical request creation/list/cancellation APIs for request-only users and hides download, Kindle, and release controls from them. Successful first adds navigate with consumable router state, so Find Releases auto-opens only once for a download-capable user when no global Files or Download exist; links, refreshes, and later visits are quiet.
+
+Verification: frontend typecheck, all 96 frontend unit tests, and production build passed; 31 focused library/request backend route tests passed. `npm run lint` still reports four pre-existing App shell violations unrelated to this ticket.
