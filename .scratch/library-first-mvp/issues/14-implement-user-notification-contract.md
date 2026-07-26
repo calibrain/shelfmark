@@ -1,5 +1,5 @@
 Type: task
-Status: claimed
+Status: resolved
 Blocked by: 12
 
 # Implement the user notification contract
@@ -25,3 +25,9 @@ Delete the old per-user notification routes, event selectors, overrides, and tes
 - [Notification contract decision](07-specify-user-notification-contract.md)
 - [Library Capability and Request lifecycle implementation](10-implement-library-capability-and-request-lifecycle.md)
 - [Simplified settings implementation](12-implement-simplified-settings-surface.md)
+
+## Answer
+
+Personal Notifications now use each user's saved enabled email or Apprise destination, with validation, transport replacement, and an authenticated saved-destination test action. They send only Book-contextual Request rejection and availability messages; download lifecycle events no longer notify the queue owner.
+
+Administrator targets are instance-level email or Apprise targets for new requests and download completion/failure only. Legacy per-user route settings and endpoints are removed. The delivery implementation is commit `6145209` on `library-capability-request-lifecycle`; focused backend tests, frontend unit tests, typecheck, and production build pass. Frontend lint still reports four pre-existing `src/App.tsx` violations.
