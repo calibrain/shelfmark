@@ -657,6 +657,17 @@ export const createRequests = async (
   });
 };
 
+export const createLibraryRequest = async (bookId: number): Promise<RequestRecord> => {
+  return fetchJSON<RequestRecord>(API.requests, {
+    method: 'POST',
+    body: JSON.stringify({ book_id: bookId }),
+  });
+};
+
+export const listLibraryRequests = async (): Promise<RequestRecord[]> => {
+  return fetchJSON<RequestRecord[]>(API.requests);
+};
+
 export const cancelRequest = async (id: number): Promise<RequestRecord> => {
   return fetchJSON<RequestRecord>(`${API.requests}/${encodeURIComponent(String(id))}`, {
     method: 'DELETE',

@@ -6,7 +6,7 @@ describe('BookDetailPage release discovery gating', () => {
   const base = {
     canFindReleases: true,
     autoFindReleases: true,
-    findRequested: false,
+    firstAddIntent: true,
     hasFiles: false,
     hasInFlight: false,
     alreadyOpened: false,
@@ -16,10 +16,9 @@ describe('BookDetailPage release discovery gating', () => {
     expect(shouldAutoFindReleases({ ...base, canFindReleases: false })).toBe(false);
   });
 
-  it('allows an explicit find request even when automatic discovery is disabled', () => {
-    expect(shouldAutoFindReleases({ ...base, autoFindReleases: false, findRequested: true })).toBe(
-      true,
-    );
+  it('requires the transient first-add intent', () => {
+    expect(shouldAutoFindReleases({ ...base, firstAddIntent: false })).toBe(false);
+    expect(shouldAutoFindReleases({ ...base, autoFindReleases: false })).toBe(false);
   });
 
   it('does not reopen an already opened or in-flight automatic search', () => {

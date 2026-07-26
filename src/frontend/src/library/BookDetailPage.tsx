@@ -1,31 +1,44 @@
 import { useCallback, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
-import { Tooltip } from '../components/shared/Tooltip';
 import { useDependencyEffect } from '../hooks/useMountEffect';
 import {
+  cancelRequest,
+  createLibraryRequest,
   downloadLibraryFile,
   getLibraryBook,
   isApiResponseError,
+  listLibraryRequests,
   sendLibraryBookToKindle,
   unlinkLibraryRelease,
 } from '../services/api';
-import type { Book } from '../types';
+import type { Book, RequestRecord } from '../types';
 import { withBasePath } from '../utils/basePath';
 import {
   formatFileSize,
   groupFilesByRelease,
   latestFilesByFormat,
   type BookDetailResponse,
+  type LibraryFile,
 } from './types';
 
 interface BookDetailPageProps {
   autoFindReleases: boolean;
   canFindReleases: boolean;
+  isRequestOnly: boolean;
   onFindReleases: (book: Book) => void;
   onOpenSettings: () => void;
   onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
 }
+
+interface BookDetailLocationState {
+  autoFindReleases?: boolean;
+}
+
+const hasAutoFindReleasesIntent = (state: unknown): state is BookDetailLocationState =>
+  typeof state === 'object' &&
+  state !== null &&
+  Object.getOwnPropertyDescriptor(state, 'autoFindReleases')?.value === true;
 
 const toReleaseBook = (book: BookDetailResponse): Book => ({
   id: book.provider_book_id ?? String(book.book_id),
@@ -47,27 +60,241 @@ const dateLabel = (date: string | null): string =>
 export const shouldAutoFindReleases = ({
   canFindReleases,
   autoFindReleases,
-  findRequested,
+  firstAddIntent,
   hasFiles,
   hasInFlight,
   alreadyOpened,
 }: {
   canFindReleases: boolean;
   autoFindReleases: boolean;
-  findRequested: boolean;
+  firstAddIntent: boolean;
   hasFiles: boolean;
   hasInFlight: boolean;
   alreadyOpened: boolean;
 }): boolean =>
   canFindReleases &&
-  (findRequested || autoFindReleases) &&
+  autoFindReleases &&
+  firstAddIntent &&
   !hasFiles &&
-  (findRequested || !hasInFlight) &&
+  !hasInFlight &&
   !alreadyOpened;
+
+const RequestState = ({
+  request,
+  onRequest,
+  onCancel,
+}: {
+  request: RequestRecord | undefined;
+  onRequest: () => void;
+  onCancel: () => void;
+}) => {
+  if (!request) {
+    return (
+      <div className="mt-4 rounded-lg bg-(--bg-soft) px-4 py-4">
+        <p className="text-sm text-gray-600 dark:text-gray-300">
+          No files are available yet. Request this book and an administrator will find a release.
+        </p>
+        <button
+          type="button"
+          className="mt-3 rounded-md bg-violet-700 px-3 py-2 text-sm font-medium text-white"
+          onClick={onRequest}
+        >
+          Request this book
+        </button>
+      </div>
+    );
+  }
+
+  const labels = {
+    pending: 'Request pending',
+    cancelled: 'Request cancelled',
+    fulfilled: 'Book available',
+    rejected: 'Request declined',
+  } as const;
+  return (
+    <div className="mt-4 rounded-lg bg-(--bg-soft) px-4 py-4">
+      <p className="text-sm font-medium text-(--text)">{labels[request.status]}</p>
+      {request.status === 'pending' && (
+        <button
+          type="button"
+          className="mt-3 text-sm font-medium text-rose-700 dark:text-rose-300"
+          onClick={onCancel}
+        >
+          Cancel request
+        </button>
+      )}
+    </div>
+  );
+};
+
+const AvailableFiles = ({
+  book,
+  onDownload,
+  onFindReleases,
+  onOpenSettings,
+  onSendToKindle,
+  onUnlinkRelease,
+}: {
+  book: BookDetailResponse;
+  onDownload: (file: LibraryFile) => void;
+  onFindReleases: () => void;
+  onOpenSettings: () => void;
+  onSendToKindle: (format: string) => void;
+  onUnlinkRelease: (file: LibraryFile) => void;
+}) => {
+  const [kindleFormat, setKindleFormat] = useState('epub');
+  const releases = groupFilesByRelease(book.files);
+  const latestFiles = latestFilesByFormat(book.files);
+  const kindleFormats = latestFiles
+    .map((file) => file.format)
+    .filter((format): format is string => format?.toLowerCase() === 'epub');
+  const selectedKindleFormat = kindleFormats.includes(kindleFormat) ? kindleFormat : null;
+
+  return (
+    <section className="mt-10 border-t border-(--border-muted) pt-6">
+      <div>
+        <h2 className="font-semibold text-(--text)">Available files</h2>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+          The newest downloaded file for each format.
+        </p>
+      </div>
+      {latestFiles.length > 0 ? (
+        <div className="mt-4 grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
+          <div className="rounded-lg bg-(--bg-soft) px-4 py-2">
+            {latestFiles.map((file) => (
+              <div
+                key={file.history_id}
+                className="flex items-center gap-3 border-b border-(--border-muted) py-3 last:border-0"
+              >
+                <span className="w-16 text-sm font-semibold text-(--text)">
+                  {file.format?.toUpperCase() || 'Unknown'}
+                </span>
+                <span className="text-sm text-gray-600 dark:text-gray-300">
+                  {formatFileSize(file.size) || 'Size unknown'}
+                </span>
+                <span className="min-w-0 flex-1 truncate text-xs text-gray-500">
+                  {file.indexer_display_name || 'Unknown source'}
+                </span>
+                {file.downloadable_by_me && (
+                  <button
+                    type="button"
+                    className="text-sm font-medium text-sky-700 dark:text-sky-300"
+                    onClick={() => onDownload(file)}
+                  >
+                    Download
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+          <aside className="rounded-lg border border-(--border-muted) px-4 py-4">
+            <h3 className="text-sm font-semibold text-(--text)">Send to Kindle</h3>
+            <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
+              {selectedKindleFormat
+                ? `Selected format: ${selectedKindleFormat.toUpperCase()}. EPUB is selected by default.`
+                : 'No Kindle-compatible EPUB file is available.'}
+            </p>
+            <select
+              value={selectedKindleFormat ?? 'auto'}
+              disabled={!kindleFormats.length}
+              onChange={(event) => setKindleFormat(event.target.value)}
+              className="mt-4 w-full rounded-md border border-(--border-muted) bg-transparent px-2 py-2 text-sm text-(--text)"
+            >
+              <option value="auto">Auto (EPUB)</option>
+              {kindleFormats.map((format) => (
+                <option key={format} value={format}>
+                  {format.toUpperCase()}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={!selectedKindleFormat}
+              className="mt-2 w-full rounded-md border border-(--border-muted) px-3 py-2 text-sm font-medium text-(--text) disabled:cursor-not-allowed disabled:opacity-50"
+              onClick={() => selectedKindleFormat && onSendToKindle(selectedKindleFormat)}
+            >
+              Send {selectedKindleFormat?.toUpperCase() ?? 'file'} to Kindle
+            </button>
+            <button
+              type="button"
+              className="mt-3 text-xs text-emerald-700 underline dark:text-emerald-300"
+              onClick={onOpenSettings}
+            >
+              Configure Kindle email in Settings
+            </button>
+          </aside>
+        </div>
+      ) : (
+        <div className="mt-4 rounded-lg bg-(--bg-soft) px-4 py-4 text-sm text-gray-600 dark:text-gray-300">
+          {book.in_flight.length ? 'A release is downloading.' : 'No files are available yet.'}
+        </div>
+      )}
+      <details className="mt-6">
+        <summary className="cursor-pointer text-sm font-medium text-gray-600 dark:text-gray-300">
+          Advanced: show all releases{releases.length ? ` (${releases.length})` : ''}
+        </summary>
+        {releases.length > 0 && (
+          <div className="mt-3 space-y-2 border-l border-(--border-muted) pl-4">
+            {releases.map(([taskId, files]) => (
+              <div key={taskId} className="rounded-lg bg-(--bg-soft) px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <p className="min-w-0 flex-1 text-sm font-medium text-(--text)">
+                    {files[0].indexer_display_name || 'Unknown source'}
+                  </p>
+                  {files.some((file) => file.downloadable_by_me) && (
+                    <button
+                      type="button"
+                      className="text-xs font-medium text-rose-700 dark:text-rose-300"
+                      onClick={() => onUnlinkRelease(files[0])}
+                    >
+                      Unlink release
+                    </button>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-gray-500">
+                  {files.length} file{files.length === 1 ? '' : 's'} in this release · Grabbed{' '}
+                  {dateLabel(files[0].downloaded_at)}
+                  {files[0].protocol && ` · ${files[0].protocol}`}
+                </p>
+                {files.map((file) => (
+                  <div key={file.history_id} className="flex items-center gap-3 pt-3 text-sm">
+                    <span className="font-medium text-(--text)">
+                      {file.format?.toUpperCase() || 'Unknown'}
+                    </span>
+                    <span className="text-xs text-gray-500">
+                      {formatFileSize(file.size) || 'Size unknown'}
+                    </span>
+                    {file.downloadable_by_me && (
+                      <button
+                        type="button"
+                        className="ml-auto text-sm font-medium text-sky-700 dark:text-sky-300"
+                        onClick={() => onDownload(file)}
+                      >
+                        Download
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
+            ))}
+          </div>
+        )}
+        <button
+          type="button"
+          className="mt-5 text-sm font-medium text-emerald-700 dark:text-emerald-300"
+          onClick={onFindReleases}
+        >
+          Find another release
+        </button>
+      </details>
+    </section>
+  );
+};
 
 export const BookDetailPage = ({
   autoFindReleases,
   canFindReleases,
+  isRequestOnly,
   onFindReleases,
   onOpenSettings,
   onShowToast,
@@ -77,11 +304,11 @@ export const BookDetailPage = ({
   const navigate = useNavigate();
   const bookId = Number(rawBookId);
   const [book, setBook] = useState<BookDetailResponse | null>(null);
+  const [request, setRequest] = useState<RequestRecord>();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [autoOpenedFor, setAutoOpenedFor] = useState<number | null>(null);
-  const [kindleFormat, setKindleFormat] = useState('epub');
-  const findRequested = new URLSearchParams(location.search).get('find') === 'true';
+  const firstAddIntent = hasAutoFindReleasesIntent(location.state);
 
   const load = useCallback(async () => {
     if (!Number.isInteger(bookId) || bookId < 1) {
@@ -92,7 +319,12 @@ export const BookDetailPage = ({
     setLoading(true);
     setError(null);
     try {
-      setBook(await getLibraryBook(bookId));
+      const [detail, requests] = await Promise.all([
+        getLibraryBook(bookId),
+        isRequestOnly ? listLibraryRequests() : Promise.resolve([]),
+      ]);
+      setBook(detail);
+      setRequest(requests.find((entry) => Number(entry.book_id) === bookId));
     } catch (caught) {
       if (isApiResponseError(caught) && (caught.status === 403 || caught.status === 404)) {
         setError('Not in your library');
@@ -102,7 +334,7 @@ export const BookDetailPage = ({
     } finally {
       setLoading(false);
     }
-  }, [bookId]);
+  }, [bookId, isRequestOnly]);
 
   useDependencyEffect(() => {
     void load();
@@ -114,50 +346,27 @@ export const BookDetailPage = ({
       shouldAutoFindReleases({
         canFindReleases,
         autoFindReleases,
-        findRequested,
+        firstAddIntent,
         hasFiles: book.files.length > 0,
         hasInFlight: book.in_flight.length > 0,
         alreadyOpened: autoOpenedFor === book.book_id,
       })
     ) {
       setAutoOpenedFor(book.book_id);
+      void navigate(location.pathname, { replace: true, state: null });
       onFindReleases(toReleaseBook(book));
     }
-  }, [autoFindReleases, autoOpenedFor, book, canFindReleases, findRequested, onFindReleases]);
+  }, [
+    autoFindReleases,
+    autoOpenedFor,
+    book,
+    canFindReleases,
+    firstAddIntent,
+    location.pathname,
+    navigate,
+    onFindReleases,
+  ]);
 
-  if (loading) return <BookDetailSkeleton />;
-  if (error) {
-    const unavailable = error === 'Not in your library';
-    return (
-      <section className="mx-auto max-w-5xl px-4 py-10 text-center sm:px-6 lg:px-8">
-        <h1 className="text-xl font-semibold text-(--text)">{error}</h1>
-        <button
-          type="button"
-          className="mt-4 rounded-md border border-(--border-muted) px-3 py-2 text-sm"
-          onClick={() => {
-            if (unavailable) {
-              void navigate('/library');
-            } else {
-              void load();
-            }
-          }}
-        >
-          {unavailable ? 'Back to library' : 'Retry'}
-        </button>
-      </section>
-    );
-  }
-  if (!book) return null;
-
-  const formats = [...new Set(book.files.flatMap((file) => (file.format ? [file.format] : [])))];
-  const kindleFormats = formats.filter((format) => format.toLowerCase() === 'epub');
-  const latestFiles = latestFilesByFormat(book.files);
-  const defaultKindleFormat = kindleFormats[0] ?? null;
-  const selectedKindleFormat = kindleFormats.includes(kindleFormat)
-    ? kindleFormat
-    : defaultKindleFormat;
-  const canSendToKindle = selectedKindleFormat !== null;
-  const findReleases = () => onFindReleases(toReleaseBook(book));
   const mutate = async (action: () => Promise<void>, success: string) => {
     try {
       await action();
@@ -168,214 +377,134 @@ export const BookDetailPage = ({
     }
   };
 
+  if (loading) return <BookDetailSkeleton />;
+  if (error) {
+    const unavailable = error === 'Not in your library';
+    return (
+      <section className="mx-auto max-w-5xl px-4 py-10 text-center sm:px-6 lg:px-8">
+        <h1 className="text-xl font-semibold text-(--text)">{error}</h1>
+        <button
+          type="button"
+          className="mt-4 rounded-md border border-(--border-muted) px-3 py-2 text-sm"
+          onClick={() => (unavailable ? void navigate('/library') : void load())}
+        >
+          {unavailable ? 'Back to library' : 'Retry'}
+        </button>
+      </section>
+    );
+  }
+  if (!book) return null;
+
+  const metadata = [
+    book.publish_year,
+    book.series_name &&
+      `${book.series_name}${book.series_position ? ` #${book.series_position}` : ''}`,
+    book.language?.toUpperCase(),
+    book.isbn_13 && `ISBN ${book.isbn_13}`,
+  ].filter(Boolean);
+
   return (
-    <section className="mx-auto max-w-5xl px-4 py-6 sm:px-6 lg:px-8">
-      {book.in_flight.length > 0 && (
-        <p className="mb-5 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
-          {book.in_flight.length === 1
-            ? 'A release is currently downloading.'
-            : `${book.in_flight.length} releases are currently downloading.`}
-        </p>
-      )}
-      <header className="mb-8 flex gap-5">
+    <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-10">
+      <header className="flex gap-5 border-b border-(--border-muted) pb-8">
         {book.cover_url ? (
           <img
             src={withBasePath(book.cover_url)}
-            alt=""
-            className="h-48 w-32 rounded-lg object-cover shadow"
+            alt={`Cover of ${book.title ?? 'book'}`}
+            className="h-52 w-36 rounded-lg object-cover shadow-lg"
           />
         ) : (
-          <div className="flex h-48 w-32 items-center justify-center rounded-lg bg-(--bg-soft) text-xs text-gray-500">
+          <div className="flex h-52 w-36 items-center justify-center rounded-lg bg-(--bg-soft) text-xs text-gray-500">
             No cover
           </div>
         )}
-        <div>
-          <h1 className="text-2xl font-semibold text-(--text)">{book.title}</h1>
+        <div className="min-w-0 self-end">
+          <p className="text-xs font-semibold tracking-[0.16em] text-emerald-700 uppercase dark:text-emerald-300">
+            In your library
+          </p>
+          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-(--text)">{book.title}</h1>
           {book.subtitle && (
-            <p className="mt-1 text-gray-600 dark:text-gray-300">{book.subtitle}</p>
+            <p className="mt-1 text-lg text-gray-600 dark:text-gray-300">{book.subtitle}</p>
           )}
-          <p className="mt-2 text-sm text-gray-700 dark:text-gray-200">
+          <p className="mt-3 text-sm font-medium text-gray-700 dark:text-gray-200">
             {book.author || 'Unknown author'}
           </p>
-          <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-            {[
-              book.publish_year,
-              book.series_name,
-              book.language?.toUpperCase(),
-              book.isbn_13 && `ISBN ${book.isbn_13}`,
-            ]
-              .filter(Boolean)
-              .join(' · ')}
-          </p>
-        </div>
-      </header>
-
-      <h2 className="mb-3 text-sm font-semibold text-(--text)">Available formats</h2>
-      {latestFiles.length ? (
-        <div className="overflow-hidden rounded-xl border border-(--border-muted)">
-          {latestFiles.map((file) => (
-            <div
-              key={file.format}
-              className="flex items-center justify-between border-b border-(--border-muted) px-4 py-3 last:border-0"
-            >
-              <div>
-                <strong className="text-sm uppercase">{file.format}</strong>
-                <p className="text-xs text-gray-500">
-                  Latest from {file.indexer_display_name || 'unknown source'} ·{' '}
-                  {dateLabel(file.downloaded_at)}
-                </p>
-              </div>
-              <button
-                type="button"
-                className="rounded bg-sky-700 px-3 py-1.5 text-xs font-medium text-white"
-                onClick={() =>
-                  void mutate(
-                    () => downloadLibraryFile(book.book_id, { format: file.format ?? undefined }),
-                    'Download started',
-                  )
-                }
-              >
-                Download
-              </button>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <div className="rounded-xl border border-dashed border-(--border-muted) p-6 text-center">
-          <p className="text-sm text-gray-600 dark:text-gray-300">No files on disk yet.</p>
-          {canFindReleases && (
-            <button
-              type="button"
-              className="mt-3 rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white"
-              onClick={findReleases}
-            >
-              Find Releases
-            </button>
+          {metadata.length > 0 && (
+            <p className="mt-3 text-xs text-gray-500">{metadata.join(' · ')}</p>
           )}
         </div>
-      )}
-
-      <details className="mt-7">
-        <summary className="cursor-pointer rounded-xl border border-(--border-muted) px-4 py-3 text-sm font-medium">
-          Releases
-        </summary>
-        <div className="mt-3 space-y-3">
-          {groupFilesByRelease(book.files).map(([taskId, files]) => (
-            <div key={taskId} className="rounded-xl border border-(--border-muted)">
-              <div className="flex items-center justify-between border-b border-(--border-muted) px-4 py-3">
-                <span className="text-sm">
-                  {files[0].indexer_display_name || 'Unknown source'} ·{' '}
-                  {dateLabel(files[0].downloaded_at)}
-                </span>
-                {files.some((file) => file.downloadable_by_me) && (
-                  <button
-                    type="button"
-                    className="text-xs text-rose-700 dark:text-rose-300"
-                    onClick={() =>
-                      void mutate(
-                        () => unlinkLibraryRelease(book.book_id, files[0].history_id),
-                        'Release unlinked',
-                      )
-                    }
-                  >
-                    Unlink release
-                  </button>
-                )}
-              </div>
-              {files.map((file) => (
-                <div key={file.history_id} className="flex items-center gap-3 px-4 py-2 text-sm">
-                  <span className="uppercase">{file.format || 'unknown'}</span>
-                  <span className="text-xs text-gray-500">{formatFileSize(file.size)}</span>
-                  {file.protocol && <span className="text-xs text-gray-500">{file.protocol}</span>}
-                  <button
-                    type="button"
-                    className="ml-auto text-xs text-sky-700 dark:text-sky-300"
-                    onClick={() =>
-                      void mutate(
-                        () => downloadLibraryFile(book.book_id, { historyId: file.history_id }),
-                        'Download started',
-                      )
-                    }
-                  >
-                    Download file
-                  </button>
-                </div>
-              ))}
+      </header>
+      {book.metadata_json?.display_fields?.length ? (
+        <dl className="mt-6 flex flex-wrap gap-3">
+          {book.metadata_json.display_fields.slice(0, 3).map((field) => (
+            <div key={field.label} className="rounded-lg bg-(--bg-soft) px-3 py-2">
+              <dt className="text-xs text-gray-500">{field.label}</dt>
+              <dd className="mt-0.5 text-sm font-semibold text-(--text)">{field.value}</dd>
             </div>
           ))}
-          {book.in_flight.map((file) => (
-            <p
-              key={file.history_id}
-              className="rounded border border-amber-300 px-4 py-3 text-sm text-amber-800 dark:border-amber-700 dark:text-amber-200"
-            >
-              {file.source_display_name || 'A release'} is still downloading.
+        </dl>
+      ) : null}
+      <article className="mt-8 max-w-4xl">
+        <h2 className="text-sm font-semibold text-(--text)">About this book</h2>
+        <p className="mt-3 leading-7 whitespace-pre-line text-gray-700 dark:text-gray-200">
+          {book.metadata_json?.description ||
+            "No description is available from this book's metadata provider."}
+        </p>
+      </article>
+      {isRequestOnly ? (
+        <section className="mt-10 border-t border-(--border-muted) pt-6">
+          <h2 className="font-semibold text-(--text)">Availability</h2>
+          {book.files.length > 0 ? (
+            <p className="mt-4 rounded-lg bg-(--bg-soft) px-4 py-4 text-sm text-gray-600 dark:text-gray-300">
+              Files are available for this book.
             </p>
-          ))}
-        </div>
-      </details>
-
-      <div className="mt-7 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-(--border-muted) p-4">
-        <div>
-          <h2 className="text-sm font-semibold">Send to Kindle</h2>
-          <button
-            type="button"
-            className="mt-1 text-xs text-emerald-700 underline dark:text-emerald-300"
-            onClick={onOpenSettings}
-          >
-            Configure Kindle email in Settings
-          </button>
-        </div>
-        <div className="flex gap-2">
-          <select
-            value={selectedKindleFormat ?? 'auto'}
-            disabled={!kindleFormats.length}
-            onChange={(event) => setKindleFormat(event.target.value)}
-            className="rounded border border-(--border-muted) bg-transparent px-2 text-sm"
-          >
-            <option value="auto">Auto (EPUB)</option>
-            {kindleFormats.map((format) => (
-              <option key={format} value={format}>
-                {format.toUpperCase()}
-              </option>
-            ))}
-          </select>
-          <Tooltip content="Send-to-Kindle defaults to EPUB. Choose an on-disk format to override it.">
-            <button
-              type="button"
-              disabled={!canSendToKindle}
-              className="rounded bg-emerald-600 px-3 py-2 text-sm font-medium text-white disabled:cursor-not-allowed disabled:bg-gray-400"
-              onClick={() => {
-                if (selectedKindleFormat)
-                  void mutate(async () => {
-                    await sendLibraryBookToKindle(book.book_id, selectedKindleFormat);
-                  }, 'Sent to Kindle');
-              }}
-            >
-              {canSendToKindle
-                ? `Send ${selectedKindleFormat.toUpperCase()} to Kindle`
-                : 'No Kindle-compatible format'}
-            </button>
-          </Tooltip>
-        </div>
-      </div>
-      {canFindReleases && (
-        <div className="mt-5 text-right">
-          <button
-            type="button"
-            className="text-sm text-emerald-700 underline dark:text-emerald-300"
-            onClick={findReleases}
-          >
-            Find Releases
-          </button>
-        </div>
+          ) : (
+            <RequestState
+              request={request}
+              onRequest={() =>
+                void mutate(async () => {
+                  await createLibraryRequest(book.book_id);
+                }, 'Book requested')
+              }
+              onCancel={() =>
+                request &&
+                void mutate(async () => {
+                  await cancelRequest(request.id);
+                }, 'Request cancelled')
+              }
+            />
+          )}
+        </section>
+      ) : (
+        <AvailableFiles
+          book={book}
+          onDownload={(file) =>
+            void mutate(
+              () => downloadLibraryFile(book.book_id, { historyId: file.history_id }),
+              'Download started',
+            )
+          }
+          onFindReleases={() => onFindReleases(toReleaseBook(book))}
+          onOpenSettings={onOpenSettings}
+          onSendToKindle={(format) =>
+            void mutate(async () => {
+              await sendLibraryBookToKindle(book.book_id, format);
+            }, 'Sent to Kindle')
+          }
+          onUnlinkRelease={(file) =>
+            void mutate(
+              () => unlinkLibraryRelease(book.book_id, file.history_id),
+              'Release unlinked',
+            )
+          }
+        />
       )}
     </section>
   );
 };
 
 const BookDetailSkeleton = () => (
-  <section className="mx-auto max-w-5xl animate-pulse px-4 py-6 sm:px-6 lg:px-8">
-    <div className="h-48 w-32 rounded bg-gray-200 dark:bg-gray-700" />
+  <section className="mx-auto max-w-7xl animate-pulse px-4 py-8 sm:px-6 lg:px-10">
+    <div className="h-52 w-36 rounded bg-gray-200 dark:bg-gray-700" />
     <div className="mt-6 h-20 rounded-xl bg-gray-200 dark:bg-gray-700" />
   </section>
 );

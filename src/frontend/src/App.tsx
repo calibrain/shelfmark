@@ -438,6 +438,7 @@ function App() {
                 <BookDetailPage
                   autoFindReleases={config?.library_auto_find_releases !== false}
                   canFindReleases={isAdmin || libraryCapability === 'download-capable'}
+                  isRequestOnly={!isAdmin && libraryCapability === 'request-only'}
                   onFindReleases={setReleaseBook}
                   onOpenSettings={handleSettingsClick}
                   onShowToast={showToast}
@@ -512,8 +513,13 @@ function App() {
           if (!book.provider || !book.provider_id) {
             throw new Error('This book cannot be added to the library');
           }
-          await addLibraryBook(book.provider, book.provider_id);
-          void navigate('/library');
+          const result = await addLibraryBook(book.provider, book.provider_id);
+          void navigate(`/library/${result.book_id}`, {
+            state: {
+              // Router state is intentionally consumed by BookDetailPage, so refreshes and links stay quiet.
+              autoFindReleases: !result.files_exist_globally && !result.in_flight_globally,
+            },
+          });
         }}
       />
       <SettingsModal
