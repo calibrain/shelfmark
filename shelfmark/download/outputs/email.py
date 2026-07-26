@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import mimetypes
+import os
 import smtplib
 import ssl
 from contextlib import suppress
@@ -113,16 +114,25 @@ def build_email_smtp_config(values: Mapping[str, Any]) -> EmailSmtpConfig:
 
 
 def _get_email_settings() -> dict[str, Any]:
+    def get_setting(key: str, default: object) -> object:
+        # SMTP is deployment configuration: retain environment support even
+        # when no administrator-facing settings field is registered.
+        return os.environ.get(key, core_config.config.get(key, default))
+
+    allow_unverified_tls = get_setting("EMAIL_ALLOW_UNVERIFIED_TLS", False)
+    if isinstance(allow_unverified_tls, str):
+        allow_unverified_tls = allow_unverified_tls.lower() in {"true", "1", "yes", "on"}
+
     return {
-        "EMAIL_SMTP_HOST": core_config.config.get("EMAIL_SMTP_HOST", ""),
-        "EMAIL_SMTP_PORT": core_config.config.get("EMAIL_SMTP_PORT", 587),
-        "EMAIL_SMTP_SECURITY": core_config.config.get("EMAIL_SMTP_SECURITY", SECURITY_STARTTLS),
-        "EMAIL_SMTP_USERNAME": core_config.config.get("EMAIL_SMTP_USERNAME", ""),
-        "EMAIL_SMTP_PASSWORD": core_config.config.get("EMAIL_SMTP_PASSWORD", ""),
-        "EMAIL_FROM": core_config.config.get("EMAIL_FROM", ""),
-        "EMAIL_SUBJECT_TEMPLATE": core_config.config.get("EMAIL_SUBJECT_TEMPLATE", "{Title}"),
-        "EMAIL_SMTP_TIMEOUT_SECONDS": core_config.config.get("EMAIL_SMTP_TIMEOUT_SECONDS", 60),
-        "EMAIL_ALLOW_UNVERIFIED_TLS": core_config.config.get("EMAIL_ALLOW_UNVERIFIED_TLS", False),
+        "EMAIL_SMTP_HOST": get_setting("EMAIL_SMTP_HOST", ""),
+        "EMAIL_SMTP_PORT": get_setting("EMAIL_SMTP_PORT", 587),
+        "EMAIL_SMTP_SECURITY": get_setting("EMAIL_SMTP_SECURITY", SECURITY_STARTTLS),
+        "EMAIL_SMTP_USERNAME": get_setting("EMAIL_SMTP_USERNAME", ""),
+        "EMAIL_SMTP_PASSWORD": get_setting("EMAIL_SMTP_PASSWORD", ""),
+        "EMAIL_FROM": get_setting("EMAIL_FROM", ""),
+        "EMAIL_SUBJECT_TEMPLATE": get_setting("EMAIL_SUBJECT_TEMPLATE", "{Title}"),
+        "EMAIL_SMTP_TIMEOUT_SECONDS": get_setting("EMAIL_SMTP_TIMEOUT_SECONDS", 60),
+        "EMAIL_ALLOW_UNVERIFIED_TLS": allow_unverified_tls,
     }
 
 

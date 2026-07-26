@@ -10,9 +10,25 @@ import pytest
 from shelfmark.download.outputs.email import (
     EmailOutputError,
     EmailSmtpConfig,
+    _get_email_settings,
     _mask_recipient,
     send_file_to_email,
 )
+
+
+def test_email_settings_use_environment_when_no_settings_field_is_registered(monkeypatch):
+    monkeypatch.setenv("EMAIL_SMTP_HOST", "smtp.example.com")
+    monkeypatch.setenv("EMAIL_SMTP_PORT", "587")
+    monkeypatch.setenv("EMAIL_SMTP_SECURITY", "starttls")
+    monkeypatch.setenv("EMAIL_SMTP_USERNAME", "sender@example.com")
+    monkeypatch.setenv("EMAIL_SMTP_PASSWORD", "secret")
+    monkeypatch.setenv("EMAIL_FROM", "Shelfmark <sender@example.com>")
+
+    settings = _get_email_settings()
+
+    assert settings["EMAIL_SMTP_HOST"] == "smtp.example.com"
+    assert settings["EMAIL_SMTP_PORT"] == "587"
+    assert settings["EMAIL_FROM"] == "Shelfmark <sender@example.com>"
 
 
 def test_mask_recipient_masks_local_part_only():

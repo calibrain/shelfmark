@@ -414,7 +414,7 @@ function App() {
         }}
       />
       <div
-        className={`flex flex-col lg:pl-64${usePinnedMainScrollContainer ? ' min-h-0 overflow-y-auto overscroll-y-contain' : ' flex-1'}`}
+        className={`library-app-shell flex flex-col${usePinnedMainScrollContainer ? ' min-h-0 overflow-y-auto overscroll-y-contain' : ' flex-1'}`}
         style={
           usePinnedMainScrollContainer
             ? {
