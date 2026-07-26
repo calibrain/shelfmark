@@ -2,8 +2,8 @@ import { useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { DEFAULT_SUPPORTED_FORMATS } from '../data/languages';
-import { searchBooks, searchMetadata, AuthenticationError } from '../services/api';
-import type { Book, AppConfig, AdvancedFilterState, ContentType, SearchMode } from '../types';
+import { searchMetadata, AuthenticationError } from '../services/api';
+import type { Book, AppConfig, AdvancedFilterState, ContentType } from '../types';
 import { LANGUAGE_OPTION_DEFAULT } from '../utils/languageFilters';
 
 const DEFAULT_FORMAT_SELECTION = DEFAULT_SUPPORTED_FORMATS;
@@ -36,7 +36,6 @@ interface UseSearchReturn {
     config: AppConfig | null;
     fieldValues?: Record<string, string | number | boolean>;
     contentTypeOverride?: ContentType;
-    searchMode?: SearchMode;
     providerOverride?: string;
   }) => Promise<void>;
   handleResetSearch: (config: AppConfig | null) => void;
@@ -48,7 +47,7 @@ interface UseSearchReturn {
   // Pagination (universal mode only)
   hasMore: boolean;
   isLoadingMore: boolean;
-  loadMore: (config: AppConfig | null, searchMode?: SearchMode) => Promise<void>;
+  loadMore: (config: AppConfig | null) => Promise<void>;
   totalFound: number;
   // Source URL and title for the current result set (e.g. Hardcover list page)
   resultsSourceUrl: string | undefined;
@@ -151,125 +150,84 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
   const handleSearch = useCallback(
     async ({
       query,
-      config,
+      config: _config,
       fieldValues,
       contentTypeOverride,
-      searchMode: searchModeOverride,
       providerOverride,
     }: {
       query: string;
       config: AppConfig | null;
       fieldValues?: Record<string, string | number | boolean>;
       contentTypeOverride?: ContentType;
-      searchMode?: SearchMode;
       providerOverride?: string;
     }) => {
       const effectiveContentType = contentTypeOverride ?? contentType;
-      const searchMode = (searchModeOverride ?? config?.search_mode) || 'universal';
+      const params = new URLSearchParams(query);
+      const searchQuery = params.get('query') || '';
+      // Use explicitly passed fieldValues if provided, otherwise fall back to state.
+      const effectiveFieldValues = fieldValues ?? searchFieldValues;
+      const hasFieldValues = Object.values(effectiveFieldValues).some(
+        (v) => v !== '' && v !== false,
+      );
+      const sort = params.get('sort') || 'relevance';
 
-      // In universal mode, check if we have either a query or field values
-      if (searchMode === 'universal') {
-        const params = new URLSearchParams(query);
-        const searchQuery = params.get('query') || '';
-        // Use explicitly passed fieldValues if provided, otherwise fall back to state
-        const effectiveFieldValues = fieldValues ?? searchFieldValues;
-        const hasFieldValues = Object.values(effectiveFieldValues).some(
-          (v) => v !== '' && v !== false,
-        );
-        const sort = params.get('sort') || 'relevance';
-
-        if (!searchQuery && !hasFieldValues) {
-          setBooks([]);
-          setLastSearchQuery('');
-          setHasMore(false);
-          setTotalFound(0);
-          setCurrentPage(1);
-          setResultsSourceUrl(undefined);
-          setResultsSourceTitle(undefined);
-          lastSearchParamsRef.current = null;
-          return;
-        }
-
-        setIsSearching(true);
-        setLastSearchQuery(query);
-        // Reset pagination for new search
-        setCurrentPage(1);
-        setHasMore(false);
-        setTotalFound(0);
-
-        try {
-          const result = await searchMetadata(
-            searchQuery,
-            40,
-            sort,
-            effectiveFieldValues,
-            1,
-            effectiveContentType,
-            providerOverride,
-          );
-          if (result.books.length > 0) {
-            setBooks(result.books);
-            setHasMore(result.hasMore);
-            setTotalFound(result.totalFound);
-            setResultsSourceUrl(result.sourceUrl);
-            setResultsSourceTitle(result.sourceTitle);
-            // Replace URL in search input with list title for display
-            if (result.sourceTitle && searchQuery) {
-              setSearchInput(result.sourceTitle);
-            }
-            // Store params for loadMore
-            lastSearchParamsRef.current = {
-              query: searchQuery,
-              sort,
-              fieldValues: effectiveFieldValues,
-              providerOverride,
-              contentType: effectiveContentType,
-            };
-          } else {
-            setBooks([]);
-            setHasMore(false);
-            setTotalFound(0);
-            setResultsSourceUrl(undefined);
-            setResultsSourceTitle(undefined);
-            showToast('No results found', 'error');
-          }
-        } catch (error) {
-          handleSearchError(error, 'Search failed');
-        } finally {
-          setIsSearching(false);
-        }
-        return;
-      }
-
-      // Direct mode: require a query
-      if (!query) {
+      if (!searchQuery && !hasFieldValues) {
         setBooks([]);
         setLastSearchQuery('');
+        setHasMore(false);
+        setTotalFound(0);
+        setCurrentPage(1);
+        setResultsSourceUrl(undefined);
+        setResultsSourceTitle(undefined);
+        lastSearchParamsRef.current = null;
         return;
       }
+
       setIsSearching(true);
       setLastSearchQuery(query);
+      // Reset pagination for new search.
+      setCurrentPage(1);
+      setHasMore(false);
+      setTotalFound(0);
 
       try {
-        const results = await searchBooks(query);
-
-        if (results.length > 0) {
-          setBooks(results);
+        const result = await searchMetadata(
+          searchQuery,
+          40,
+          sort,
+          effectiveFieldValues,
+          1,
+          effectiveContentType,
+          providerOverride,
+        );
+        if (result.books.length > 0) {
+          setBooks(result.books);
+          setHasMore(result.hasMore);
+          setTotalFound(result.totalFound);
+          setResultsSourceUrl(result.sourceUrl);
+          setResultsSourceTitle(result.sourceTitle);
+          // Replace URL in search input with list title for display.
+          if (result.sourceTitle && searchQuery) {
+            setSearchInput(result.sourceTitle);
+          }
+          // Store params for loadMore.
+          lastSearchParamsRef.current = {
+            query: searchQuery,
+            sort,
+            fieldValues: effectiveFieldValues,
+            providerOverride,
+            contentType: effectiveContentType,
+          };
         } else {
+          setBooks([]);
+          setHasMore(false);
+          setTotalFound(0);
+          setResultsSourceUrl(undefined);
+          setResultsSourceTitle(undefined);
           showToast('No results found', 'error');
         }
       } catch (error) {
-        if (error instanceof AuthenticationError) {
-          handleSearchError(error, 'Search failed');
-        } else {
-          console.error('Search failed:', error);
-          const message = error instanceof Error ? error.message : 'Search failed';
-          const friendly =
-            message.includes('Network restricted') || message.includes('Unable to reach')
-              ? message
-              : 'Unable to reach download source. Network may be restricted or mirrors blocked.';
-          showToast(friendly, 'error');
-        }
+        handleSearchError(error, 'Search failed');
       } finally {
         setIsSearching(false);
       }
@@ -313,9 +271,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
 
   // Load more results (universal mode pagination)
   const loadMore = useCallback(
-    async (config: AppConfig | null, searchModeOverride?: SearchMode) => {
-      const searchMode = (searchModeOverride ?? config?.search_mode) || 'universal';
-      if (searchMode !== 'universal') return;
+    async (_config: AppConfig | null) => {
       if (!lastSearchParamsRef.current) return;
       if (isLoadingMore || !hasMore) return;
 

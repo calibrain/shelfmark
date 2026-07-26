@@ -9,20 +9,18 @@ import random
 import threading
 import time
 from concurrent.futures import Future, ThreadPoolExecutor
-from email.utils import parseaddr
 from pathlib import Path
 from threading import Event, Lock
 from typing import Any
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import DownloadTask, QueueStatus, SearchMode
+from shelfmark.core.models import DownloadTask, QueueStatus
 from shelfmark.core.queue import book_queue
 from shelfmark.core.request_helpers import (
     normalize_optional_text,
     normalize_positive_int,
 )
-from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.core.utils import transform_cover_url
 from shelfmark.download.fs import run_blocking_io
 from shelfmark.download.postprocess.pipeline import is_torrent_source, safe_cleanup_path
@@ -69,44 +67,6 @@ COORDINATOR_LOOP_ERROR_RETRY_DELAY = 1.0
 _PROGRESS_BROADCAST_START_PERCENT = 1
 _PROGRESS_BROADCAST_COMPLETE_PERCENT = 99
 _PROGRESS_BROADCAST_MIN_DELTA = 10
-
-
-def _is_plain_email_address(value: str) -> bool:
-    parsed = parseaddr(value or "")[1]
-    return bool(parsed) and "@" in parsed and parsed == value
-
-
-def _resolve_email_destination(
-    user_id: int | None = None,
-) -> tuple[str | None, str | None]:
-    """Resolve the destination email address for email output mode.
-
-    Returns:
-      (email_to, error_message)
-
-    """
-    configured_recipient = str(config.get("EMAIL_RECIPIENT", "", user_id=user_id) or "").strip()
-    if configured_recipient:
-        if _is_plain_email_address(configured_recipient):
-            return configured_recipient, None
-        return None, "Configured email recipient is invalid"
-
-    return None, None
-
-
-def _parse_release_search_mode(value: object) -> SearchMode:
-    if isinstance(value, SearchMode):
-        return value
-    if value is None:
-        return SearchMode.UNIVERSAL
-    if isinstance(value, str):
-        try:
-            return SearchMode(value.strip().lower())
-        except ValueError as exc:
-            msg = f"Invalid search_mode: {value}"
-            raise ValueError(msg) from exc
-    msg = f"Invalid search_mode: {value}"
-    raise ValueError(msg)
 
 
 def _source_unavailable_message(source_name: str) -> str | None:
@@ -238,8 +198,6 @@ def queue_release(
         request_id: int | None = None
         if isinstance(raw_request_id, int) and raw_request_id > 0:
             request_id = raw_request_id
-        search_mode = _parse_release_search_mode(release_data.get("search_mode"))
-
         # Get author, year, preview, and content_type from top-level (preferred) or extra (fallback)
         author = release_data.get("author") or extra.get("author")
         year = release_data.get("year") or extra.get("year")
@@ -261,23 +219,7 @@ def queue_release(
         series_position = release_data.get("series_position") or extra.get("series_position")
         subtitle = release_data.get("subtitle") or extra.get("subtitle")
 
-        books_output_mode = (
-            str(config.get("BOOKS_OUTPUT_MODE", "folder", user_id=user_id) or "folder")
-            .strip()
-            .lower()
-        )
-        is_audiobook = check_audiobook(content_type)
-
-        output_mode = "folder" if is_audiobook else books_output_mode
-        output_args: dict[str, Any] = {}
         retry_resolution_fields = _build_retry_resolution_fields(release_data)
-
-        if output_mode == "email" and not is_audiobook:
-            email_to, email_error = _resolve_email_destination(user_id=user_id)
-            if email_error:
-                return False, email_error
-            if email_to:
-                output_args = {"to": email_to}
 
         # Create a source-agnostic download task from release data
         task = DownloadTask(
@@ -294,9 +236,6 @@ def queue_release(
             series_name=series_name,
             series_position=series_position,
             subtitle=subtitle,
-            search_mode=search_mode,
-            output_mode=output_mode,
-            output_args=output_args,
             priority=priority,
             user_id=user_id,
             username=username,
@@ -405,15 +344,6 @@ def can_retry_download_task(
 
 def serialize_task_for_retry(task: DownloadTask) -> dict[str, Any]:
     """Serialize the task state needed for restart-safe retries."""
-    raw_search_mode = getattr(task, "search_mode", None)
-    search_mode: str | None = None
-    if isinstance(raw_search_mode, SearchMode):
-        search_mode = raw_search_mode.value
-    elif isinstance(raw_search_mode, str):
-        normalized_search_mode = raw_search_mode.strip().lower()
-        search_mode = normalized_search_mode or None
-
-    raw_output_args = getattr(task, "output_args", None)
     raw_retry_source_context = getattr(task, "retry_source_context", None)
 
     return {
@@ -430,9 +360,6 @@ def serialize_task_for_retry(task: DownloadTask) -> dict[str, Any]:
         "series_name": getattr(task, "series_name", None),
         "series_position": getattr(task, "series_position", None),
         "subtitle": getattr(task, "subtitle", None),
-        "search_mode": search_mode,
-        "output_mode": getattr(task, "output_mode", None),
-        "output_args": dict(raw_output_args) if isinstance(raw_output_args, dict) else {},
         "user_id": getattr(task, "user_id", None),
         "username": getattr(task, "username", None),
         "request_id": getattr(task, "request_id", None),
@@ -462,15 +389,6 @@ def _restore_task_from_retry_payload(payload: object) -> DownloadTask | None:
     if task_id is None or source is None or title is None:
         return None
 
-    search_mode = None
-    raw_search_mode = payload.get("search_mode")
-    if raw_search_mode is not None:
-        try:
-            search_mode = _parse_release_search_mode(raw_search_mode)
-        except ValueError:
-            search_mode = None
-
-    output_args = payload.get("output_args")
     retry_source_context = payload.get("retry_source_context")
 
     return DownloadTask(
@@ -487,9 +405,6 @@ def _restore_task_from_retry_payload(payload: object) -> DownloadTask | None:
         series_name=normalize_optional_text(payload.get("series_name")),
         series_position=_optional_number(payload.get("series_position")),
         subtitle=normalize_optional_text(payload.get("subtitle")),
-        search_mode=search_mode,
-        output_mode=normalize_optional_text(payload.get("output_mode")),
-        output_args=dict(output_args) if isinstance(output_args, dict) else {},
         user_id=normalize_positive_int(payload.get("user_id")),
         username=normalize_optional_text(payload.get("username")),
         request_id=normalize_positive_int(payload.get("request_id")),

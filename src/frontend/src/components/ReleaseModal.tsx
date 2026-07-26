@@ -150,6 +150,7 @@ interface ReleaseModalProps {
   defaultAudiobookReleaseSource?: string; // Default audiobook tab to show
   onSearchSeries?: (seriesName: string, seriesId?: string) => void; // Callback to search for series
   defaultShowManualQuery?: boolean;
+  allowManualQuery?: boolean;
   isRequestMode?: boolean;
   showReleaseSourceLinks?: boolean;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
@@ -763,6 +764,7 @@ const ReleaseModalSession = ({
   defaultAudiobookReleaseSource,
   onSearchSeries,
   defaultShowManualQuery = false,
+  allowManualQuery = false,
   isRequestMode = false,
   showReleaseSourceLinks = true,
   onShowToast,
@@ -1692,30 +1694,31 @@ const ReleaseModalSession = ({
                   </div>
 
                   <div className="flex items-center gap-3 pr-1 pl-2">
-                    {/* Manual query button */}
-                    <button
-                      type="button"
-                      onClick={toggleManualQuery}
-                      className={`hover-surface rounded-full p-2.5 text-zinc-500 transition-colors dark:text-zinc-400 ${
-                        manualQuery.trim() ? 'text-emerald-600 dark:text-emerald-400' : ''
-                      }`}
-                      aria-label="Manual search query"
-                      title="Manual query"
-                    >
-                      <svg
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        strokeWidth={1.5}
+                    {allowManualQuery && (
+                      <button
+                        type="button"
+                        onClick={toggleManualQuery}
+                        className={`hover-surface rounded-full p-2.5 text-zinc-500 transition-colors dark:text-zinc-400 ${
+                          manualQuery.trim() ? 'text-emerald-600 dark:text-emerald-400' : ''
+                        }`}
+                        aria-label="Manual search query"
+                        title="Manual query"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="m16.862 4.487 1.687-1.688a1.875 1.875 0 0 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
-                        />
-                      </svg>
-                    </button>
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          strokeWidth={1.5}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="m16.862 4.487 1.687-1.688a1.875 1.875 0 0 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
+                          />
+                        </svg>
+                      </button>
+                    )}
 
                     {/* Sort dropdown - show if source has sort options or multiple formats */}
                     {(allSortOptions.length > 0 || availableFormats.length > 1) && (
@@ -2054,7 +2057,7 @@ const ReleaseModalSession = ({
             </div>
 
             {/* Manual query panel (below source tabs) */}
-            {showManualQuery && (
+            {allowManualQuery && showManualQuery && (
               <div className="border-b border-(--border-muted) bg-(--bg) px-5 py-3 sm:bg-(--bg-soft)">
                 <form
                   className="flex items-center gap-2"

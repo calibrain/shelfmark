@@ -22,12 +22,8 @@ import type {
   UpdateResult,
 } from '../types/settings';
 import { getApiBase, withBasePath } from '../utils/basePath';
-import type { MetadataBookData, SourceRecordData } from '../utils/bookTransformers';
-import {
-  transformMetadataToBook,
-  transformReleaseToDirectBook,
-  transformSourceRecordToBook,
-} from '../utils/bookTransformers';
+import type { MetadataBookData } from '../utils/bookTransformers';
+import { transformMetadataToBook } from '../utils/bookTransformers';
 import { isRecord, toStringValue } from '../utils/objectHelpers';
 import type { FulfilAdminRequestBody, RejectAdminRequestBody } from './requestApiHelpers';
 import {
@@ -230,15 +226,6 @@ async function fetchJSON<T>(
     }
   }
 }
-
-// API functions
-export const searchBooks = async (query: string): Promise<Book[]> => {
-  if (!query) return [];
-  const response = await fetchJSON<ReleasesResponse>(
-    `${API_BASE}/releases?source=direct_download&${query}`,
-  );
-  return response.releases.map(transformReleaseToDirectBook);
-};
 
 // Metadata search response type (internal)
 interface MetadataSearchResponse {
@@ -463,13 +450,6 @@ export const setBookTargetState = async (
     deselectedTarget:
       typeof response.deselected_target === 'string' ? response.deselected_target : undefined,
   };
-};
-
-export const getSourceRecordInfo = async (source: string, id: string): Promise<Book> => {
-  const response = await fetchJSON<SourceRecordData>(
-    `${API_BASE}/release-sources/${encodeURIComponent(source)}/records/${encodeURIComponent(id)}`,
-  );
-  return transformSourceRecordToBook(response);
 };
 
 // Get full book details from a metadata provider
@@ -810,11 +790,8 @@ export const getReleaseSources = async (): Promise<ReleaseSource[]> => {
 
 // Search for releases of a book
 export const getReleases = async (
-  provider: string,
-  bookId: string,
+  libraryBookId: number,
   source?: string,
-  title?: string,
-  author?: string,
   expandSearch?: boolean,
   languages?: string[],
   contentType?: string,
@@ -822,17 +799,10 @@ export const getReleases = async (
   indexers?: string[],
 ): Promise<ReleasesResponse> => {
   const params = new URLSearchParams({
-    provider,
-    book_id: bookId,
+    library_book_id: String(libraryBookId),
   });
   if (source) {
     params.set('source', source);
-  }
-  if (title) {
-    params.set('title', title);
-  }
-  if (author) {
-    params.set('author', author);
   }
   if (expandSearch) {
     params.set('expand_search', 'true');

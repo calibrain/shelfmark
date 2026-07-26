@@ -41,16 +41,12 @@ def test_config_endpoint_uses_user_scope_and_runtime_flags(main_module, client):
         values = {
             "SHOW_RELEASE_SOURCE_LINKS": False,
             "SHOW_COMBINED_SELECTOR": False,
-            "SEARCH_MODE": "universal",
-            "SEARCH_PAGE_TITLE": "Custom Shelfmark",
             "METADATA_PROVIDER": "openlibrary",
             "METADATA_PROVIDER_AUDIOBOOK": "",
             "DEFAULT_RELEASE_SOURCE": "prowlarr",
             "DEFAULT_RELEASE_SOURCE_AUDIOBOOK": "audiobookbay",
-            "DOWNLOAD_TO_BROWSER_CONTENT_TYPES": ["book", "audiobook"],
             "AUTO_OPEN_DOWNLOADS_SIDEBAR": False,
             "HARDCOVER_AUTO_REMOVE_ON_DOWNLOAD": True,
-            "AA_DEFAULT_SORT": "newest",
         }
         return values.get(key, default)
 
@@ -68,19 +64,15 @@ def test_config_endpoint_uses_user_scope_and_runtime_flags(main_module, client):
     data = resp.get_json()
     assert data["show_release_source_links"] is False
     assert data["show_combined_selector"] is False
-    assert data["search_mode"] == "universal"
-    assert data["search_page_title"] == "Custom Shelfmark"
     assert data["metadata_sort_options"] == ["sort-a"]
     assert data["metadata_search_fields"] == ["field-a"]
     assert data["default_release_source"] == "prowlarr"
     assert data["default_release_source_audiobook"] == "audiobookbay"
-    assert data["download_to_browser_content_types"] == ["book", "audiobook"]
     assert data["settings_enabled"] is True
     assert data["metadata_default_sort"] == "relevance"
 
     assert ("SHOW_RELEASE_SOURCE_LINKS", None) in calls
     assert ("SHOW_COMBINED_SELECTOR", 42) in calls
-    assert ("DOWNLOAD_TO_BROWSER_CONTENT_TYPES", 42) in calls
 
 
 def test_config_endpoint_falls_back_to_audiobook_metadata_provider(main_module, client):

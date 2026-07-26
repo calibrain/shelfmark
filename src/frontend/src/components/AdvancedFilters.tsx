@@ -1,40 +1,16 @@
 import type { ReactNode } from 'react';
 
-import { CONTENT_OPTIONS } from '../data/filterOptions';
-import type {
-  AdvancedFilterState,
-  ContentType,
-  Language,
-  MetadataProviderSummary,
-  SearchMode,
-} from '../types';
-import { normalizeLanguageSelection } from '../utils/languageFilters';
+import type { AdvancedFilterState, ContentType, Language, MetadataProviderSummary } from '../types';
 import { DropdownList } from './DropdownList';
-import { LanguageMultiSelect } from './LanguageMultiSelect';
-
-const FORMAT_TYPES = [
-  'pdf',
-  'epub',
-  'mobi',
-  'azw3',
-  'fb2',
-  'djvu',
-  'cbz',
-  'cbr',
-  'zip',
-  'rar',
-] as const;
 
 interface AdvancedFiltersProps {
   visible: boolean;
-  bookLanguages: Language[];
-  defaultLanguage: string[];
-  filters: AdvancedFilterState;
-  onFiltersChange: (updates: Partial<AdvancedFilterState>) => void;
+  bookLanguages?: Language[];
+  defaultLanguage?: string[];
+  filters?: AdvancedFilterState;
+  onFiltersChange?: (updates: Partial<AdvancedFilterState>) => void;
   formClassName?: string;
   renderWrapper?: (form: ReactNode) => ReactNode;
-  searchMode: SearchMode;
-  onSearchModeChange: (mode: SearchMode) => void;
   metadataProviders?: MetadataProviderSummary[];
   activeMetadataProvider?: string | null;
   onMetadataProviderChange?: (provider: string) => void;
@@ -44,32 +20,12 @@ interface AdvancedFiltersProps {
   onClose?: () => void;
 }
 
-const SEARCH_MODE_OPTIONS = [
-  {
-    value: 'direct',
-    label: 'Direct',
-    description: 'Search web sources for books and download directly. Works out of the box.',
-  },
-  {
-    value: 'universal',
-    label: 'Universal',
-    description:
-      'Metadata-based search with downloads from all sources. Book and Audiobook support.',
-  },
-];
-
 const EMPTY_PROVIDERS: MetadataProviderSummary[] = [];
 
 export const AdvancedFilters = ({
   visible,
-  bookLanguages,
-  defaultLanguage,
-  filters,
-  onFiltersChange,
   formClassName,
   renderWrapper,
-  searchMode,
-  onSearchModeChange,
   metadataProviders = EMPTY_PROVIDERS,
   activeMetadataProvider,
   onMetadataProviderChange,
@@ -78,33 +34,6 @@ export const AdvancedFilters = ({
   isAdmin = false,
   onClose,
 }: AdvancedFiltersProps) => {
-  const { lang, content, formats } = filters;
-
-  const handleLangChange = (next: string[]) => {
-    const normalized = normalizeLanguageSelection(next);
-    onFiltersChange({ lang: normalized });
-  };
-
-  const handleContentChange = (next: string[] | string) => {
-    const value = Array.isArray(next) ? (next[0] ?? '') : next;
-    onFiltersChange({ content: value });
-  };
-
-  const handleFormatsChange = (next: string[] | string) => {
-    let nextFormats: string[] = [];
-    if (Array.isArray(next)) {
-      nextFormats = next;
-    } else if (next) {
-      nextFormats = [next];
-    }
-    onFiltersChange({ formats: nextFormats });
-  };
-
-  const formatOptions = FORMAT_TYPES.map((format) => ({
-    value: format,
-    label: format.toUpperCase(),
-  }));
-
   const providerOptions = metadataProviders.map((provider) => {
     const details: string[] = [];
     if (!provider.enabled) details.push('Disabled in Settings');
@@ -156,66 +85,18 @@ export const AdvancedFilters = ({
         </div>
       )}
       {isAdmin && (
-        <div className="mb-4 grid grid-cols-1 gap-4 md:grid-cols-2">
+        <div className="mb-4">
           <DropdownList
-            label="Search Mode"
-            options={SEARCH_MODE_OPTIONS}
-            value={searchMode}
+            label={metadataProviderLabel}
+            options={providerOptions}
+            value={activeMetadataProvider ?? ''}
             onChange={(value) => {
-              const next = Array.isArray(value) ? (value[0] ?? 'direct') : value;
-              onSearchModeChange(next === 'universal' ? 'universal' : 'direct');
+              const next = Array.isArray(value) ? (value[0] ?? '') : value;
+              onMetadataProviderChange?.(next);
             }}
-            placeholder="Choose a mode"
+            placeholder="Choose a provider"
             widthClassName="w-full"
           />
-
-          {searchMode === 'universal' && (
-            <DropdownList
-              label={metadataProviderLabel}
-              options={providerOptions}
-              value={activeMetadataProvider ?? ''}
-              onChange={(value) => {
-                const next = Array.isArray(value) ? (value[0] ?? '') : value;
-                onMetadataProviderChange?.(next);
-              }}
-              placeholder="Choose a provider"
-              widthClassName="w-full"
-            />
-          )}
-        </div>
-      )}
-
-      {searchMode === 'direct' && (
-        <div className="space-y-4">
-          <form
-            id="search-filters"
-            className={formClassName ?? 'grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3'}
-          >
-            <LanguageMultiSelect
-              options={bookLanguages}
-              value={lang}
-              onChange={handleLangChange}
-              defaultLanguageCodes={defaultLanguage}
-              label="Language"
-            />
-            <DropdownList
-              label="Content"
-              options={CONTENT_OPTIONS}
-              value={content}
-              onChange={handleContentChange}
-              placeholder="All"
-            />
-            <DropdownList
-              label="Formats"
-              placeholder="Any"
-              options={formatOptions}
-              value={formats}
-              onChange={handleFormatsChange}
-              multiple
-              showCheckboxes
-              keepOpenOnSelect
-            />
-          </form>
         </div>
       )}
     </div>

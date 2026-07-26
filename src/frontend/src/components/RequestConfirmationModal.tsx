@@ -13,7 +13,6 @@ import {
   MAX_REQUEST_NOTE_LENGTH,
   truncateRequestNote,
 } from '../utils/requestConfirmation';
-import { isSourceBackedRequestPayload } from '../utils/requestPayload';
 
 interface RequestConfirmationModalProps {
   payload: CreateRequestPayload | null;
@@ -152,7 +151,6 @@ function RequestConfirmationModalSession({
       !provider ||
       typeof providerId !== 'string' ||
       !providerId ||
-      isSourceBackedRequestPayload(payload) ||
       bookData.series_name
     ) {
       return;

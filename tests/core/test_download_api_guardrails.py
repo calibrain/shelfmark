@@ -65,6 +65,94 @@ def _add_library_book(main_module, *, user_id: int, provider_book_id: str) -> in
 
 
 class TestReleaseDownloadEndpointGuardrails:
+    def test_release_search_requires_library_book_id(self, main_module, client):
+        with patch.object(main_module, "get_auth_mode", return_value="none"):
+            response = client.get(
+                "/api/releases", query_string={"provider": "hardcover", "book_id": "1"}
+            )
+
+        assert response.status_code == 400
+        assert response.get_json() == {"error": "library_book_id is required"}
+
+    @pytest.mark.parametrize(
+        "legacy_params",
+        [
+            {"provider": "hardcover", "book_id": "1"},
+            {"query": "other book", "source": "direct_download"},
+            {"isbn": "9780000000000", "title": "Other Book"},
+        ],
+    )
+    def test_release_search_rejects_legacy_entry_parameters(
+        self, main_module, client, legacy_params
+    ):
+        with patch.object(main_module, "get_auth_mode", return_value="none"):
+            response = client.get(
+                "/api/releases",
+                query_string={"library_book_id": 1, **legacy_params},
+            )
+
+        assert response.status_code == 400
+        assert response.get_json() == {
+            "error": "Legacy release search parameters are not supported"
+        }
+
+    def test_request_only_user_cannot_search_releases(self, main_module, client):
+        user = _create_user(main_module, prefix="requester")
+        main_module.user_db.update_user(user["id"], library_capability="request-only")
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            response = client.get("/api/releases", query_string={"library_book_id": "1"})
+
+        assert response.status_code == 403
+        assert response.get_json() == {"error": "Download capability required"}
+
+    def test_release_search_requires_book_in_users_library(self, main_module, client):
+        owner = _create_user(main_module, prefix="owner")
+        other_user = _create_user(main_module, prefix="other")
+        library_book_id = _add_library_book(
+            main_module, user_id=owner["id"], provider_book_id="private-book"
+        )
+        _set_authenticated_session(
+            client,
+            user_id=other_user["username"],
+            db_user_id=other_user["id"],
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            response = client.get(
+                "/api/releases", query_string={"library_book_id": library_book_id}
+            )
+
+        assert response.status_code == 403
+        assert response.get_json() == {"error": "Book is not in your library"}
+
+    def test_non_admin_cannot_override_book_derived_release_query(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        library_book_id = _add_library_book(
+            main_module, user_id=user["id"], provider_book_id="book-for-query"
+        )
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            response = client.get(
+                "/api/releases",
+                query_string={"library_book_id": library_book_id, "manual_query": "other book"},
+            )
+
+        assert response.status_code == 403
+        assert response.get_json() == {
+            "error": "Manual release queries require administrator access"
+        }
+
     def test_empty_json_payload_returns_400(self, main_module, client):
         with patch.object(main_module, "get_auth_mode", return_value="none"):
             with patch.object(main_module.backend, "queue_release") as mock_queue_release:

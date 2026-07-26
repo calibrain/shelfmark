@@ -21,6 +21,7 @@ import {
 
 interface BookDetailPageProps {
   autoFindReleases: boolean;
+  canFindReleases: boolean;
   onFindReleases: (book: Book) => void;
   onOpenSettings: () => void;
   onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
@@ -45,6 +46,7 @@ const dateLabel = (date: string | null): string =>
 
 export const BookDetailPage = ({
   autoFindReleases,
+  canFindReleases,
   onFindReleases,
   onOpenSettings,
   onShowToast,
@@ -88,6 +90,7 @@ export const BookDetailPage = ({
   useDependencyEffect(() => {
     if (
       book &&
+      canFindReleases &&
       (findRequested || autoFindReleases) &&
       !book.files.length &&
       (findRequested || !book.in_flight.length) &&
@@ -96,7 +99,7 @@ export const BookDetailPage = ({
       setAutoOpenedFor(book.book_id);
       onFindReleases(toReleaseBook(book));
     }
-  }, [autoFindReleases, autoOpenedFor, book, findRequested, onFindReleases]);
+  }, [autoFindReleases, autoOpenedFor, book, canFindReleases, findRequested, onFindReleases]);
 
   if (loading) return <BookDetailSkeleton />;
   if (error) {
@@ -216,13 +219,15 @@ export const BookDetailPage = ({
       ) : (
         <div className="rounded-xl border border-dashed border-(--border-muted) p-6 text-center">
           <p className="text-sm text-gray-600 dark:text-gray-300">No files on disk yet.</p>
-          <button
-            type="button"
-            className="mt-3 rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white"
-            onClick={findReleases}
-          >
-            Find Releases
-          </button>
+          {canFindReleases && (
+            <button
+              type="button"
+              className="mt-3 rounded bg-emerald-600 px-3 py-1.5 text-sm font-medium text-white"
+              onClick={findReleases}
+            >
+              Find Releases
+            </button>
+          )}
         </div>
       )}
 
@@ -329,15 +334,17 @@ export const BookDetailPage = ({
           </Tooltip>
         </div>
       </div>
-      <div className="mt-5 text-right">
-        <button
-          type="button"
-          className="text-sm text-emerald-700 underline dark:text-emerald-300"
-          onClick={findReleases}
-        >
-          Find Releases
-        </button>
-      </div>
+      {canFindReleases && (
+        <div className="mt-5 text-right">
+          <button
+            type="button"
+            className="text-sm text-emerald-700 underline dark:text-emerald-300"
+            onClick={findReleases}
+          >
+            Find Releases
+          </button>
+        </div>
+      )}
     </section>
   );
 };

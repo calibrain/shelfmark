@@ -4,7 +4,6 @@ import type {
   MetadataSearchField,
   ContentType,
   QueryTargetOption,
-  SearchMode,
   MetadataProviderSummary,
 } from '../types';
 import { AdvancedFilters } from './AdvancedFilters';
@@ -35,8 +34,6 @@ interface SearchSectionProps {
   combinedModeLocked?: boolean;
   onCombinedModeChange?: (enabled: boolean) => void;
   activeQueryField?: MetadataSearchField | null;
-  searchMode: SearchMode;
-  onSearchModeChange: (mode: SearchMode) => void;
   metadataProviders?: MetadataProviderSummary[];
   activeMetadataProvider?: string | null;
   onMetadataProviderChange?: (provider: string) => void;
@@ -68,8 +65,6 @@ export const SearchSection = ({
   combinedModeLocked,
   onCombinedModeChange,
   activeQueryField,
-  searchMode,
-  onSearchModeChange,
   metadataProviders,
   activeMetadataProvider,
   onMetadataProviderChange,
@@ -114,12 +109,6 @@ export const SearchSection = ({
           onQueryTargetChange={onQueryTargetChange}
           activeQueryField={activeQueryField}
         />
-        {activeQueryTarget === 'manual' && (
-          <p className="px-2 text-xs opacity-50">
-            Manual search queries release sources directly. Some sources may return limited
-            metadata, which can affect file naming templates.
-          </p>
-        )}
         <AdvancedFilters
           visible={showAdvanced}
           bookLanguages={bookLanguages}
@@ -128,8 +117,6 @@ export const SearchSection = ({
           onFiltersChange={onAdvancedFiltersChange}
           formClassName="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
           renderWrapper={(form) => form}
-          searchMode={searchMode}
-          onSearchModeChange={onSearchModeChange}
           metadataProviders={metadataProviders}
           activeMetadataProvider={activeMetadataProvider}
           onMetadataProviderChange={onMetadataProviderChange}

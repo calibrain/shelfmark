@@ -222,7 +222,7 @@ export function useReleaseSearchSession(
         manualQueryOverride,
       } = options;
 
-      if (!book.provider || !book.provider_id || !tabName) {
+      if (!book.book_id || !book.provider || !book.provider_id || !tabName) {
         return;
       }
 
@@ -260,11 +260,8 @@ export function useReleaseSearchSession(
 
       try {
         const response = await getReleases(
-          provider,
-          bookId,
+          book.book_id,
           tabName,
-          book.title,
-          book.author,
           expandSearch || undefined,
           languagesParam,
           contentType,
@@ -307,10 +304,9 @@ export function useReleaseSearchSession(
       }
     },
     [
-      book.author,
+      book.book_id,
       book.provider,
       book.provider_id,
-      book.title,
       bookLanguages,
       clearSearchStatusForTab,
       contentType,

@@ -29,6 +29,8 @@ def _get_current_user(
     user_db: UserDB,
 ) -> tuple[int | None, dict[str, Any] | None, tuple[Response, int] | None]:
     raw_user_id = session.get("db_user_id")
+    if raw_user_id is None:
+        return None, None, (jsonify({"error": "Invalid user context"}), 400)
     try:
         user_id = int(raw_user_id)
     except TypeError, ValueError:

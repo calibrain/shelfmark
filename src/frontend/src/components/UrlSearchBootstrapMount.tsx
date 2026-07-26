@@ -1,7 +1,7 @@
 import type { Dispatch, SetStateAction } from 'react';
 
 import { useMountEffect } from '@/hooks/useMountEffect';
-import type { AppConfig, AdvancedFilterState, ContentType, SearchMode, SortOption } from '@/types';
+import type { AppConfig, AdvancedFilterState, ContentType, SortOption } from '@/types';
 import { buildSearchQuery } from '@/utils/buildSearchQuery';
 import { getEffectiveMetadataSort } from '@/utils/metadataSort';
 import type { ParsedUrlSearch } from '@/utils/parseUrlSearchParams';
@@ -23,11 +23,7 @@ interface UrlSearchBootstrapMountProps {
   setAdvancedFilters: Dispatch<SetStateAction<AdvancedFilterState>>;
   setShowAdvanced: (value: boolean) => void;
   setActiveQueryTarget: (value: string) => void;
-  runSearchWithPolicyRefresh: (opts: {
-    query: string;
-    contentTypeOverride?: ContentType;
-    searchModeOverride?: SearchMode;
-  }) => void;
+  runSearchWithPolicyRefresh: (opts: { query: string; contentTypeOverride?: ContentType }) => void;
   onComplete: () => void;
 }
 
@@ -52,11 +48,8 @@ export const UrlSearchBootstrapMount = ({
   useMountEffect(() => {
     onComplete();
 
-    const parsedSearchMode = config.search_mode || 'universal';
-    const urlContentTypeOverride =
-      parsedSearchMode === 'universal' ? parsedParams.contentType : undefined;
-    const urlForcesCombined =
-      parsedSearchMode === 'universal' && parsedParams.combinedMode === true && combinedModeAllowed;
+    const urlContentTypeOverride = parsedParams.contentType;
+    const urlForcesCombined = parsedParams.combinedMode === true && combinedModeAllowed;
 
     if (urlContentTypeOverride && urlContentTypeOverride !== contentType) {
       setContentType(urlContentTypeOverride);
@@ -82,37 +75,23 @@ export const UrlSearchBootstrapMount = ({
       setSearchInput(parsedParams.searchInput);
     }
 
-    let nextQueryTarget = 'general';
-    if (parsedSearchMode === 'direct') {
-      if (parsedParams.advancedFilters.isbn) {
-        nextQueryTarget = 'isbn';
-      } else if (parsedParams.advancedFilters.author) {
-        nextQueryTarget = 'author';
-      } else if (parsedParams.advancedFilters.title) {
-        nextQueryTarget = 'title';
-      }
-    }
+    const nextQueryTarget = 'general';
     setActiveQueryTarget(nextQueryTarget);
 
-    const resolvedUrlMetadataSort =
-      parsedSearchMode === 'universal'
-        ? getEffectiveMetadataSort({
-            currentSort:
-              typeof parsedParams.advancedFilters.sort === 'string'
-                ? parsedParams.advancedFilters.sort
-                : '',
-            defaultSort: resolvedMetadataDefaultSort,
-            sortOptions: resolvedMetadataSortOptions,
-          })
-        : parsedParams.advancedFilters.sort;
+    const resolvedUrlMetadataSort = getEffectiveMetadataSort({
+      currentSort:
+        typeof parsedParams.advancedFilters.sort === 'string'
+          ? parsedParams.advancedFilters.sort
+          : '',
+      defaultSort: resolvedMetadataDefaultSort,
+      sortOptions: resolvedMetadataSortOptions,
+    });
 
     if (Object.keys(parsedParams.advancedFilters).length > 0) {
       setAdvancedFilters((prev) => ({
         ...prev,
         ...parsedParams.advancedFilters,
-        ...(parsedSearchMode === 'universal' && resolvedUrlMetadataSort
-          ? { sort: resolvedUrlMetadataSort }
-          : {}),
+        ...(resolvedUrlMetadataSort ? { sort: resolvedUrlMetadataSort } : {}),
       }));
 
       const hasAdvancedValues = ADVANCED_FILTER_VISIBILITY_KEYS.some((key) => {
@@ -127,32 +106,25 @@ export const UrlSearchBootstrapMount = ({
     const mergedFilters: AdvancedFilterState = {
       ...advancedFilters,
       ...parsedParams.advancedFilters,
-      ...(parsedSearchMode === 'universal' && resolvedUrlMetadataSort
-        ? { sort: resolvedUrlMetadataSort }
-        : {}),
+      ...(resolvedUrlMetadataSort ? { sort: resolvedUrlMetadataSort } : {}),
     };
 
     const query = buildSearchQuery({
-      searchInput:
-        parsedSearchMode === 'direct' && nextQueryTarget !== 'general'
-          ? ''
-          : parsedParams.searchInput,
+      searchInput: parsedParams.searchInput,
       showAdvanced: true,
       advancedFilters: {
         ...mergedFilters,
-        isbn: nextQueryTarget === 'isbn' ? parsedParams.advancedFilters.isbn || '' : '',
-        author: nextQueryTarget === 'author' ? parsedParams.advancedFilters.author || '' : '',
-        title: nextQueryTarget === 'title' ? parsedParams.advancedFilters.title || '' : '',
+        isbn: '',
+        author: '',
+        title: '',
       },
       bookLanguages,
       defaultLanguage: defaultLanguageCodes,
-      searchMode: parsedSearchMode,
     });
 
     runSearchWithPolicyRefresh({
       query,
       contentTypeOverride: urlContentTypeOverride,
-      searchModeOverride: parsedSearchMode,
     });
   });
 

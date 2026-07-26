@@ -239,8 +239,6 @@ export interface QueuedDownloadResult {
 
 export type RequestSubmissionResult = RequestRecord | QueuedDownloadResult;
 
-export type BooksOutputMode = 'folder' | 'booklore' | 'email';
-
 export interface AppConfig {
   calibre_web_url: string;
   audiobook_library_url: string;
@@ -252,7 +250,6 @@ export interface AppConfig {
   default_language: string[];
   supported_formats: string[];
   supported_audiobook_formats: string[]; // Audiobook formats (m4b, mp3)
-  search_mode: SearchMode;
   metadata_sort_options: SortOption[];
   metadata_search_fields: MetadataSearchField[];
   default_release_source?: string; // Default tab in ReleaseModal (e.g., 'direct_download')
@@ -261,13 +258,10 @@ export interface AppConfig {
   library_auto_find_releases: boolean;
   show_combined_selector: boolean;
   force_combined_search: boolean;
-  books_output_mode: BooksOutputMode;
   auto_open_downloads_sidebar: boolean; // Auto-open sidebar when download is queued
   hardcover_auto_remove_on_download: boolean; // Auto-remove from active Hardcover list on download
-  download_to_browser_content_types: string[]; // Auto-download completed files to browser for selected content types
   settings_enabled: boolean; // Whether config directory is mounted and writable
   onboarding_complete: boolean; // Whether the user has completed initial setup
-  default_sort: string; // Default sort for direct mode
   metadata_default_sort: string; // Default sort for universal mode (from metadata provider)
 }
 
