@@ -1,5 +1,5 @@
 Type: task
-Status: ready-for-agent
+Status: claimed
 Blocked by:
 
 # Implement Library Capability and Request lifecycle

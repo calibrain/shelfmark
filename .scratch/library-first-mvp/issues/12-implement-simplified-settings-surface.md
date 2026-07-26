@@ -1,5 +1,5 @@
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: 17
 
 # Implement the simplified settings surface
@@ -26,3 +26,13 @@ Remove the generic per-user override model and its delivery, search, request-pol
 - [Library Capability implementation](10-implement-library-capability-and-request-lifecycle.md)
 - [Authenticated Library Capability client contract](17-expose-library-capability-to-authenticated-clients.md)
 - [User notification implementation](14-implement-user-notification-contract.md)
+
+## Answer
+
+The generic per-user override system is removed. `GET` and `PUT /api/users/me` now expose one explicit self-settings contract: read-only username and account email, plus display name, Kindle address, and the persisted personal-notification transport, destination, and enablement fields. Theme remains local. Normal users cannot update account-access fields, and no delivery, search, request-policy, output, destination, or metadata-provider override route, UI, or storage remains.
+
+The administrator Settings shell and instance configuration remain. Administrators now manage username, password, active state, role, and Library Capability, but cannot edit another user's personal preferences. Send to Kindle reads the explicit personal Kindle address.
+
+The notification fields persist the settled shape; validation of an enabled destination, sending, and event delivery remain with [Implement the user notification contract](14-implement-user-notification-contract.md).
+
+Focused backend tests (31), frontend typecheck, all 105 frontend unit tests, frontend lint, Ruff, and `git diff --check` pass.

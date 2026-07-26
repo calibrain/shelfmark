@@ -1,5 +1,6 @@
 Type: task
 Status: resolved
+Blocked by: 17
 
 # Implement legacy search and output retirement
 
@@ -23,6 +24,10 @@ Keep release discovery strictly Book-scoped. A download-capable user may use the
 - [Library Capability implementation](10-implement-library-capability-and-request-lifecycle.md)
 - [Authenticated Library Capability client contract](17-expose-library-capability-to-authenticated-clients.md)
 
-## Resolution
+## Answer
 
-Removed standalone direct search and generic output routing. Release discovery now requires a Library Book and capability, with administrator-only manual query overrides. Settings, onboarding, client contracts, documentation, and tests no longer expose legacy search modes, per-user provider/output choices, browser delivery, or Booklore/email download outputs.
+The authenticated client now exposes only library workflows: metadata-backed Add New, Library and Book Detail routes, Book-scoped release discovery, Activity, and settings. The dormant global/direct search UI, route, URL bootstrap, query builder, search-mode state, and related client tests are deleted. Release discovery remains gated by Library Capability, and its custom-query control is restricted to administrators.
+
+Shared Downloads now use the instance destination without user-scoped path expansion or generic output selection. The legacy email output handler was removed while retaining the SMTP helper used by Send to Kindle. Completed activity items no longer expose the legacy local-download endpoint; that route is removed and Library file downloads are the explicit file-serving path.
+
+Verification: Ruff passed; 107 focused Python tests passed; frontend typecheck, focused capability tests, and production build passed.

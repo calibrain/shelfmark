@@ -2,7 +2,7 @@
 
 ## Destination
 
-A build-ready MVP specification for a library-first Shelfmark: persistent responsive navigation, `/library` as home, a polished book-detail experience, role-based download/request capabilities, and a simplified user-facing settings surface. It preserves the existing library and request foundations while removing legacy download-machine choices from normal users.
+A delivered library-first Shelfmark MVP: persistent responsive navigation, `/library` as home, a polished book-detail experience, role-based download/request capabilities, and a simplified user-facing settings surface. It preserves the existing library and request foundations while removing legacy download-machine choices from normal users.
 
 ## Notes
 
@@ -15,7 +15,8 @@ A build-ready MVP specification for a library-first Shelfmark: persistent respon
 - **Skills every session should consult**: `/domain-modeling` for capability, request, and settings terminology; `/grilling` for all product decisions. Work later UI decisions against the existing UI or through discussion; do not build standalone in-app prototypes that duplicate the shell.
 - **Tracker**: local markdown under `.scratch/library-first-mvp/`. Map = this file. Tickets = `.scratch/library-first-mvp/issues/NN-<slug>.md`.
 - **Delivery recovery (2026-07-25)**: ticket 10's draft implementation PR, [#6](https://github.com/muneebabbas/shelfmark/pull/6), established the canonical server contract but removed client-facing legacy routes before their replacement clients existed. Do not merge it to `main` yet. Treat its branch, `library-capability-request-lifecycle`, as the shared integration branch. First expand the authenticated client contract (ticket 17), then migrate settings (12), release discovery (13), and Activity (15). Ticket 18 performs the final legacy-client cutover and end-to-end role verification. A ticket may not remove a live client contract unless its replacement is delivered in that same ticket or ticket 18.
-- **Recovery delivery (2026-07-25)**: [Expose Library Capability to authenticated clients](issues/17-expose-library-capability-to-authenticated-clients.md) is resolved and committed directly to the shared `library-capability-request-lifecycle` branch, which remains the branch behind draft PR #6. [Implement the simplified settings surface](issues/12-implement-simplified-settings-surface.md) is the next dependent recovery ticket; ticket 11 remains independently available for app-shell work.
+- **Recovery delivery (2026-07-25)**: [Expose Library Capability to authenticated clients](issues/17-expose-library-capability-to-authenticated-clients.md) and [Implement the simplified settings surface](issues/12-implement-simplified-settings-surface.md) are resolved on the shared `library-capability-request-lifecycle` branch, which remains the branch behind draft PR #6. [Implement legacy search and output retirement](issues/13-implement-legacy-search-and-output-retirement.md) is the next recovery ticket.
+- **Tracker synchronization**: Before selecting or claiming a ticket, read the tracker from updated `main`. If this integration branch advances the tracker, record the tracker-only change in a standalone commit and apply that commit to `main` before another ticket is selected.
 
 ## Decisions so far
 
@@ -31,7 +32,8 @@ A build-ready MVP specification for a library-first Shelfmark: persistent respon
 - [Specify the user notification contract](issues/07-specify-user-notification-contract.md) — Separate role-relevant events from a single selected email or Apprise transport, with SMTP shared across all system email delivery.
 - [Expose Library Capability to authenticated clients](issues/17-expose-library-capability-to-authenticated-clients.md) — The authenticated bootstrap contract and typed client state retain the canonical capability separately from administrator status.
 - [Implement the persistent library app shell](issues/11-implement-persistent-library-app-shell.md) — `/library` is the authenticated default behind a responsive Library/Add New/Settings shell while Activity remains a stateful independent drawer.
-- [Implement legacy search and output retirement](issues/13-implement-legacy-search-and-output-retirement.md) — Release discovery is Book-scoped and capability-gated, custom query overrides are administrator-only, and standalone direct search plus generic output routing are retired.
+- [Implement the simplified settings surface](issues/12-implement-simplified-settings-surface.md) — Self-settings are an explicit personal-preference contract; administrators retain account access and Library Capability management while generic per-user overrides are removed.
+- [Implement legacy search and output retirement](issues/13-implement-legacy-search-and-output-retirement.md) — The client now uses only library-scoped discovery, shared Downloads use instance storage, and legacy direct-search and generic-output paths are removed.
 
 ## Not yet specified
 
