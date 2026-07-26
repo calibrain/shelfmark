@@ -39,7 +39,7 @@ import {
 } from './services/api';
 import type { AppConfig, Book, ContentType, Release, RequestRecord, StatusData } from './types';
 import { buildLoginRedirectPath, getReturnToFromSearch } from './utils/authRedirect';
-import { canUseManualReleaseQuery } from './utils/releaseCapabilities';
+import { canUseManualReleaseQuery, isRequestOnlyLibraryUser } from './utils/releaseCapabilities';
 import { buildReleaseDataFromMetadataRelease } from './utils/releasePayload';
 import { bookFromRequestRecord } from './utils/requestFulfil';
 
@@ -431,7 +431,7 @@ function App() {
                 <BookDetailPage
                   autoFindReleases={config?.library_auto_find_releases !== false}
                   canFindReleases={isAdmin || libraryCapability === 'download-capable'}
-                  isRequestOnly={!isAdmin && libraryCapability === 'request-only'}
+                  isRequestOnly={isRequestOnlyLibraryUser(isAdmin, libraryCapability)}
                   onFindReleases={setReleaseBook}
                   onOpenSettings={handleSettingsClick}
                   onShowToast={showToast}

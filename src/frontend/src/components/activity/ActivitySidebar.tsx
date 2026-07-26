@@ -5,6 +5,7 @@ import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useDependencyEffect } from '../../hooks/useMountEffect';
 import type { LibraryCapability, RequestRecord, StatusData } from '../../types';
+import { isRequestOnlyLibraryUser } from '../../utils/releaseCapabilities';
 import { Dropdown } from '../Dropdown';
 import { ActivityCard } from './ActivityCard';
 import type { DownloadStatusKey } from './activityMappers';
@@ -71,10 +72,11 @@ type ActivityCategoryKey = 'needs_review' | 'in_progress' | 'complete' | 'failed
 type ActivityTabKey = 'all' | 'downloads' | 'requests' | 'history';
 const ALL_USERS_FILTER = '__all_users__';
 
-export const isRequestOnlyActivityUser = (
+export const getInitialActivityTab = (
   isAdmin: boolean,
-  libraryCapability: LibraryCapability | null,
-): boolean => !isAdmin && libraryCapability === 'request-only';
+  isRequestOnly: boolean,
+  pendingRequestCount: number,
+): ActivityTabKey => (isRequestOnly || (isAdmin && pendingRequestCount > 0) ? 'requests' : 'all');
 
 const getCategoryLabel = (key: ActivityCategoryKey, isAdmin: boolean): string => {
   if (key === 'needs_review') {
@@ -275,6 +277,7 @@ export const ActivitySidebar = ({
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   const wasOpenRef = useRef(false);
   const dismissedKeySet = useMemo(() => new Set(dismissedItemKeys), [dismissedItemKeys]);
+  const isRequestOnly = isRequestOnlyLibraryUser(isAdmin, libraryCapability);
   const handleTabChange = useCallback(
     (nextTab: ActivityTabKey) => {
       if (nextTab === 'downloads') {
@@ -289,13 +292,12 @@ export const ActivitySidebar = ({
 
   useDependencyEffect(() => {
     if (isOpen && !wasOpenRef.current) {
-      setActiveTab(isAdmin && pendingRequestCount === 0 ? 'all' : 'requests');
+      setActiveTab(getInitialActivityTab(isAdmin, isRequestOnly, pendingRequestCount));
     }
     wasOpenRef.current = isOpen;
-  }, [isAdmin, isOpen, pendingRequestCount]);
+  }, [isAdmin, isOpen, isRequestOnly, pendingRequestCount]);
 
   const isPinnedOpen = isOpen && isDesktop && isPinned;
-  const isRequestOnly = isRequestOnlyActivityUser(isAdmin, libraryCapability);
   let effectiveActiveTab = activeTab;
   if (isRequestOnly) {
     effectiveActiveTab = 'requests';

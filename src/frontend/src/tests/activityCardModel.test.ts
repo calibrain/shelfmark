@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 
 import { buildActivityCardModel } from '../components/activity/activityCardModel';
-import { isRequestOnlyActivityUser } from '../components/activity/ActivitySidebar';
+import { getInitialActivityTab } from '../components/activity/ActivitySidebar';
 import type { ActivityItem } from '../components/activity/activityTypes';
+import { isRequestOnlyLibraryUser } from '../utils/releaseCapabilities';
 
 const makeItem = (overrides: Partial<ActivityItem> = {}): ActivityItem => ({
   id: 'book-1',
@@ -19,11 +20,13 @@ const makeItem = (overrides: Partial<ActivityItem> = {}): ActivityItem => ({
 
 describe('activityCardModel', () => {
   it('keeps download-capable non-admin users in the download activity view', () => {
-    expect(isRequestOnlyActivityUser(false, 'download-capable')).toBe(false);
+    expect(isRequestOnlyLibraryUser(false, 'download-capable')).toBe(false);
+    expect(getInitialActivityTab(false, false, 0)).toBe('all');
   });
 
   it('keeps request-only users in the request activity view', () => {
-    expect(isRequestOnlyActivityUser(false, 'request-only')).toBe(true);
+    expect(isRequestOnlyLibraryUser(false, 'request-only')).toBe(true);
+    expect(getInitialActivityTab(false, true, 0)).toBe('requests');
   });
 
   it('shows ownership in badge text for admin pending requests', () => {
