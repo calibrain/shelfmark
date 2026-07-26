@@ -175,15 +175,19 @@ def test_admin_can_reject_pending_request(main_module, client):
     pending = main_module.user_db.create_library_request(user_id=requester["id"], book_id=book_id)
     _set_session(client, user=admin)
 
-    with _auth_mode():
-        response = client.post(
-            f"/api/admin/requests/{pending['id']}/reject", json={"admin_note": "  Unavailable  "}
-        )
+    with patch("shelfmark.core.request_routes.notify_user") as notify:
+        with _auth_mode():
+            response = client.post(
+                f"/api/admin/requests/{pending['id']}/reject",
+                json={"admin_note": "  Unavailable  "},
+            )
 
     assert response.status_code == 200
     assert response.json["status"] == "rejected"
     assert response.json["reviewed_by"] == admin["id"]
     assert response.json["admin_note"] == "Unavailable"
+    assert notify.call_args.args[2].value == "request_rejected"
+    assert notify.call_args.args[3].title == "Canonical Request Book"
 
 
 def test_admin_fulfils_all_pending_requests_when_book_has_files(main_module, client):
@@ -198,8 +202,9 @@ def test_admin_fulfils_all_pending_requests_when_book_has_files(main_module, cli
     history_id = _add_completed_file(main_module, book_id=book_id)
     _set_session(client, user=admin)
 
-    with _auth_mode():
-        response = client.post(f"/api/admin/requests/books/{book_id}/fulfil", json={})
+    with patch("shelfmark.core.request_routes.notify_user") as notify:
+        with _auth_mode():
+            response = client.post(f"/api/admin/requests/books/{book_id}/fulfil", json={})
 
     assert response.status_code == 200
     assert {request["id"] for request in response.json} == {
@@ -218,6 +223,9 @@ def test_admin_fulfils_all_pending_requests_when_book_has_files(main_module, cli
         (first["id"], history_id),
         (second["id"], history_id),
     }
+    assert notify.call_count == 2
+    assert {call.args[2].value for call in notify.call_args_list} == {"request_fulfilled"}
+    assert {call.args[3].book_id for call in notify.call_args_list} == {book_id}
 
 
 def test_shared_release_queue_failure_keeps_all_requests_pending(main_module, client):

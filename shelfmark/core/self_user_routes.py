@@ -8,6 +8,11 @@ from flask import Flask, Response, g, jsonify, request, session
 from shelfmark.config.env import CWA_DB_PATH
 from shelfmark.core.auth_modes import load_active_auth_mode
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.notifications import (
+    is_valid_apprise_destination,
+    is_valid_email_destination,
+    send_personal_test_notification,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -76,6 +81,18 @@ def _normalize_preferences(data: Mapping[str, Any]) -> tuple[dict[str, Any], str
     transport = preferences.get("notification_transport")
     if transport is not None and transport not in _NOTIFICATION_TRANSPORTS:
         return {}, "notification_transport must be 'email' or 'apprise'"
+    if preferences.get("notifications_enabled"):
+        if transport is None:
+            return {}, "notification_transport is required when notifications are enabled"
+        destination = preferences.get("notification_destination")
+        validator = (
+            is_valid_email_destination if transport == "email" else is_valid_apprise_destination
+        )
+        if not isinstance(destination, str) or not validator(destination):
+            return (
+                {},
+                f"A valid {transport} notification destination is required when notifications are enabled",
+            )
     return preferences, None
 
 
@@ -138,6 +155,32 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
         preferences, error = _normalize_preferences(data)
         if error:
             return jsonify({"error": error}), 400
+        if (
+            "notification_transport" in preferences
+            and "notification_destination" not in preferences
+        ):
+            # A destination belongs to one transport; selecting another clears the old one.
+            preferences["notification_destination"] = None
+        effective_preferences = user_db.get_personal_preferences(user_id)
+        effective_preferences.update(preferences)
+        if effective_preferences["notifications_enabled"]:
+            effective_transport = effective_preferences["notification_transport"]
+            effective_destination = effective_preferences["notification_destination"]
+            validator = (
+                is_valid_email_destination
+                if effective_transport == "email"
+                else is_valid_apprise_destination
+            )
+            if (
+                effective_transport not in _NOTIFICATION_TRANSPORTS
+                or not isinstance(effective_destination, str)
+                or not validator(effective_destination)
+            ):
+                return jsonify(
+                    {
+                        "error": "A valid notification destination is required when notifications are enabled"
+                    }
+                ), 400
         if preferences:
             user_db.update_personal_preferences(user_id, **preferences)
 
@@ -146,3 +189,14 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
             return jsonify({"error": "User not found"}), 404
         logger.info("User %s updated their personal settings", user_id)
         return jsonify(_serialize_self_settings(updated, user_db.get_personal_preferences(user_id)))
+
+    @app.route("/api/users/me/notifications/test", methods=["POST"])
+    @_require_authenticated_user
+    def users_me_notification_test() -> Response | tuple[Response, int]:
+        user_id, _user, user_error = _get_current_user(user_db)
+        if user_error:
+            return user_error
+        if user_id is None:
+            return jsonify({"error": "User not found"}), 404
+        result = send_personal_test_notification(user_db, user_id)
+        return jsonify(result), 200 if result.get("success") else 400

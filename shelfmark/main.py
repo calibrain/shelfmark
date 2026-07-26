@@ -1194,12 +1194,6 @@ def _notify_admin_for_terminal_download_status(
     if event is None:
         return
 
-    raw_owner_user_id = getattr(task, "user_id", None)
-    try:
-        owner_user_id = int(raw_owner_user_id) if raw_owner_user_id is not None else None
-    except TypeError, ValueError:
-        owner_user_id = None
-
     content_type = normalize_optional_text(getattr(task, "content_type", None))
     context = NotificationContext(
         event=event,
@@ -1222,18 +1216,6 @@ def _notify_admin_for_terminal_download_status(
             "Failed to trigger admin notification for download %s (%s): %s",
             task_id,
             status.value,
-            exc,
-        )
-    if owner_user_id is None:
-        return
-    try:
-        notify_user(owner_user_id, event, context)
-    except (RuntimeError, TypeError, ValueError) as exc:
-        logger.warning(
-            "Failed to trigger user notification for download %s (%s, user_id=%s): %s",
-            task_id,
-            status.value,
-            owner_user_id,
             exc,
         )
 
@@ -1373,7 +1355,7 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
     if download_history_service is not None:
         try:
             file_rows = _build_download_file_rows(task)
-            download_history_service.finalize_download_files(
+            fulfilled_requests = download_history_service.finalize_download_files(
                 task_id=task_id,
                 final_status=final_status,
                 status_message=normalize_optional_text(getattr(task, "status_message", None)),
@@ -1392,11 +1374,21 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
             and user_db is not None
         ):
             try:
-                fulfilled_requests = user_db.fulfil_pending_book_requests(
-                    book_id=book_id,
-                    reviewed_by=normalize_positive_int(getattr(task, "user_id", None)),
-                )
                 _emit_request_update_events(fulfilled_requests)
+                book = user_db.get_book_notification_context(book_id)
+                if book:
+                    for fulfilled in fulfilled_requests:
+                        notify_user(
+                            user_db,
+                            fulfilled["user_id"],
+                            NotificationEvent.REQUEST_FULFILLED,
+                            NotificationContext(
+                                event=NotificationEvent.REQUEST_FULFILLED,
+                                title=book["title"],
+                                author=book["author"],
+                                book_id=book_id,
+                            ),
+                        )
             except _OPERATIONAL_ERRORS as exc:
                 logger.warning("Failed to fulfil Requests for Book %s: %s", book_id, exc)
         _emit_activity_update_for_task(

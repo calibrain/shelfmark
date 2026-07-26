@@ -386,7 +386,7 @@ class DownloadHistoryService:
         status_message: str | None = None,
         file_rows: list[dict[str, Any]] | None = None,
         retry_payload: dict[str, Any] | None = None,
-    ) -> None:
+    ) -> list[dict[str, Any]]:
         """Finalize a release: delete the queue-time sentinel and insert one
         ``download_history`` row per transferred file plus one
         ``user_downloads`` link per row for the triggering user.
@@ -444,7 +444,7 @@ class DownloadHistoryService:
                         "(may have been missed at queue time)",
                         normalized_task_id,
                     )
-                    return
+                    return []
 
                 triggering_user_id = (
                     int(sentinel["user_id"]) if sentinel["user_id"] is not None else None
@@ -479,7 +479,7 @@ class DownloadHistoryService:
                         ),
                     )
                     conn.commit()
-                    return
+                    return []
 
                 # Drop the sentinel (and, defensively, any partial multi-file
                 # rows from a crashed previous finalize attempt for the same
@@ -546,6 +546,7 @@ class DownloadHistoryService:
                     )
 
                 book_id = sentinel["book_id"]
+                pending_requests: list[Any] = []
                 if (
                     normalized_final_status == "complete"
                     and book_id is not None
@@ -555,13 +556,15 @@ class DownloadHistoryService:
                     # requester still pending for this exact Book gains every
                     # File and transitions to fulfilled. Cancelled requests
                     # are deliberately excluded.
-                    pending_requests = conn.execute(
-                        """
+                    pending_requests = list(
+                        conn.execute(
+                            """
                         SELECT id, user_id FROM download_requests
                         WHERE book_id = ? AND status = 'pending'
                         """,
-                        (book_id,),
-                    ).fetchall()
+                            (book_id,),
+                        ).fetchall()
+                    )
                     if pending_requests:
                         conn.executemany(
                             """
@@ -591,6 +594,19 @@ class DownloadHistoryService:
                         normalized_final_status,
                     )
                 conn.commit()
+                fulfilled_requests = [dict(request) for request in pending_requests]
+                for fulfilled_request in fulfilled_requests:
+                    fulfilled_request["status"] = "fulfilled"
+                    fulfilled_request["reviewed_at"] = effective_terminal_at
+                return (
+                    fulfilled_requests
+                    if (
+                        normalized_final_status == "complete"
+                        and book_id is not None
+                        and inserted_history_ids
+                    )
+                    else []
+                )
             finally:
                 conn.close()
 

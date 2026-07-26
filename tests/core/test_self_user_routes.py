@@ -91,3 +91,64 @@ def test_self_settings_validates_notification_shape(app, user_db):
         response = _client(app, user).put("/api/users/me", json={"notification_transport": "sms"})
     assert response.status_code == 400
     assert response.json["error"] == "notification_transport must be 'email' or 'apprise'"
+
+
+def test_enabled_notifications_require_valid_destination_and_transport_switch_clears_old_value(
+    app, user_db
+):
+    user = user_db.create_user(username="alice")
+    client = _client(app, user)
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
+        rejected = client.put(
+            "/api/users/me",
+            json={
+                "notifications_enabled": True,
+                "notification_transport": "email",
+                "notification_destination": "bad",
+            },
+        )
+        saved = client.put(
+            "/api/users/me",
+            json={
+                "notification_transport": "apprise",
+                "notification_destination": "ntfys://ntfy.sh/alice",
+            },
+        )
+        switched = client.put("/api/users/me", json={"notification_transport": "email"})
+    assert rejected.status_code == 400
+    assert saved.status_code == 200
+    assert switched.json["notification_destination"] is None
+
+
+def test_enabled_preferences_validate_partial_updates_against_saved_destination(app, user_db):
+    user = user_db.create_user(username="alice")
+    user_db.update_personal_preferences(
+        user["id"],
+        notifications_enabled=True,
+        notification_transport="email",
+        notification_destination="alice@example.com",
+    )
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
+        response = _client(app, user).put(
+            "/api/users/me", json={"notification_destination": "not-an-email"}
+        )
+    assert response.status_code == 400
+
+
+def test_active_destination_test_endpoint_is_authenticated_and_uses_saved_preferences(app, user_db):
+    user = user_db.create_user(username="alice")
+    user_db.update_personal_preferences(
+        user["id"],
+        notifications_enabled=True,
+        notification_transport="email",
+        notification_destination="alice@example.com",
+    )
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
+        with patch(
+            "shelfmark.core.self_user_routes.send_personal_test_notification",
+            return_value={"success": True, "message": "sent"},
+        ) as send:
+            response = _client(app, user).post("/api/users/me/notifications/test")
+    assert response.status_code == 200
+    assert response.json == {"success": True, "message": "sent"}
+    send.assert_called_once_with(user_db, user["id"])

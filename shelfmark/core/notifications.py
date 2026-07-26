@@ -7,6 +7,8 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager, suppress
 from dataclasses import dataclass
+from email.message import EmailMessage
+from email.utils import parseaddr
 from enum import StrEnum
 from typing import TYPE_CHECKING, Any, Protocol, TypeGuard
 from urllib.parse import urlsplit
@@ -19,6 +21,12 @@ except ImportError:  # pragma: no cover - exercised in tests via monkeypatch
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import normalize_positive_int
+from shelfmark.download.outputs.email import (
+    EmailOutputError,
+    _get_email_settings,
+    build_email_smtp_config,
+    send_email_message,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Iterable, Iterator
@@ -86,6 +94,7 @@ class NotificationContext:
     source: str | None = None
     admin_note: str | None = None
     error_message: str | None = None
+    book_id: int | None = None
 
 
 def _normalize_urls(value: object) -> list[str]:
@@ -230,19 +239,29 @@ def _build_apprise_warning_detail(
     return None
 
 
-def _normalize_routes(value: object) -> list[dict[str, str]]:
+_ADMIN_EVENTS = {
+    NotificationEvent.REQUEST_CREATED,
+    NotificationEvent.DOWNLOAD_COMPLETE,
+    NotificationEvent.DOWNLOAD_FAILED,
+}
+
+
+def _normalize_admin_targets(value: object) -> list[dict[str, object]]:
     if not isinstance(value, list):
         return []
 
-    allowed_events = {_ROUTE_EVENT_ALL, *(event.value for event in NotificationEvent)}
-    normalized: list[dict[str, str]] = []
-    seen: set[tuple[str, str]] = set()
+    normalized: list[dict[str, object]] = []
+    seen: set[tuple[str, str, tuple[str, ...]]] = set()
 
     for row in value:
         if not isinstance(row, dict):
             continue
 
-        raw_events = row.get("event")
+        transport = str(row.get("transport") or "").strip().lower()
+        destination = str(row.get("destination") or "").strip()
+        if transport not in {"email", "apprise"} or not destination:
+            continue
+        raw_events = row.get("events")
         if isinstance(raw_events, list):
             event_values = raw_events
         elif isinstance(raw_events, (tuple, set)):
@@ -250,72 +269,31 @@ def _normalize_routes(value: object) -> list[dict[str, str]]:
         else:
             event_values = [raw_events]
 
-        url = str(row.get("url") or "").strip()
-        if not url:
-            continue
-
         row_events: list[str] = []
         for raw_event in event_values:
             event = str(raw_event or "").strip().lower()
-            if event not in allowed_events:
+            if event not in {item.value for item in _ADMIN_EVENTS}:
                 continue
             if event in row_events:
                 continue
             row_events.append(event)
 
-        if _ROUTE_EVENT_ALL in row_events:
-            row_events = [_ROUTE_EVENT_ALL]
-
-        for event in row_events:
-            key = (event, url)
-            if key in seen:
-                continue
+        key = (transport, destination, tuple(row_events))
+        if row_events and key not in seen:
             seen.add(key)
-
-            normalized.append({"event": event, "url": url})
+            normalized.append(
+                {"transport": transport, "destination": destination, "events": row_events}
+            )
 
     return normalized
 
 
-def _resolve_admin_routes() -> list[dict[str, str]]:
-    return _normalize_routes(app_config.get("ADMIN_NOTIFICATION_ROUTES", []))
+def _resolve_admin_targets() -> list[dict[str, object]]:
+    return _normalize_admin_targets(app_config.get("ADMIN_NOTIFICATION_TARGETS", []))
 
 
 def _normalize_user_id(value: object) -> int | None:
     return normalize_positive_int(value)
-
-
-def _resolve_user_routes(user_id: int | None) -> list[dict[str, str]]:
-    normalized_user_id = _normalize_user_id(user_id)
-    if normalized_user_id is None:
-        return []
-
-    return _normalize_routes(
-        app_config.get("USER_NOTIFICATION_ROUTES", [], user_id=normalized_user_id)
-    )
-
-
-def _resolve_route_urls_for_event(
-    routes: list[dict[str, str]],
-    event: NotificationEvent,
-) -> list[str]:
-    selected: list[str] = []
-    seen: set[str] = set()
-    event_value = event.value
-
-    for row in routes:
-        row_event = row.get("event", "")
-        if row_event not in {_ROUTE_EVENT_ALL, event_value}:
-            continue
-
-        url = row.get("url", "")
-        if not url or url in seen:
-            continue
-
-        seen.add(url)
-        selected.append(url)
-
-    return selected
 
 
 def _resolve_notify_type(event: NotificationEvent) -> object:
@@ -353,7 +331,8 @@ def _render_message(context: NotificationContext) -> tuple[str, str]:
     if event == NotificationEvent.REQUEST_CREATED:
         return "New Request", f'{username} requested "{title}" by {author}'
     if event == NotificationEvent.REQUEST_FULFILLED:
-        return "Request Approved", f'Request for "{title}" by {author} was approved.'
+        link = f"\nView book: /library/{context.book_id}" if context.book_id else ""
+        return "Requested Book Available", f'"{title}" by {author} is now available.{link}'
     if event == NotificationEvent.REQUEST_REJECTED:
         note = _clean_text(context.admin_note, "")
         note_line = f"\nNote: {note}" if note else ""
@@ -608,7 +587,7 @@ def _create_apprise_client() -> _AppriseClient | None:
     return client if _is_apprise_client(client) else None
 
 
-def _send_admin_event(
+def _send_apprise_event(
     event: NotificationEvent, context: NotificationContext, urls: list[str]
 ) -> dict[str, Any]:
     title, body = _render_message(context)
@@ -618,67 +597,127 @@ def _send_admin_event(
 
 def notify_admin(event: NotificationEvent, context: NotificationContext) -> None:
     """Send a global admin notification for an event if subscribed."""
-    routes = _resolve_admin_routes()
-    urls = _resolve_route_urls_for_event(routes, event)
-    if not urls:
+    if event not in _ADMIN_EVENTS:
         return
-
-    try:
-        _executor.submit(_dispatch_admin_async, event, context, urls)
-    except RuntimeError as exc:
-        logger.warning("Failed to queue admin notification '%s': %s", event.value, exc)
+    for target in _resolve_admin_targets():
+        if event.value not in target["events"]:
+            continue
+        _submit_delivery(target["transport"], target["destination"], event, context, None)
 
 
 def notify_user(
-    user_id: int | None, event: NotificationEvent, context: NotificationContext
+    user_db: Any, user_id: int | None, event: NotificationEvent, context: NotificationContext
 ) -> None:
-    """Send a per-user notification for an event if subscribed."""
+    """Send the only personal events to the user's saved active destination."""
+    if event not in {NotificationEvent.REQUEST_FULFILLED, NotificationEvent.REQUEST_REJECTED}:
+        return
     normalized_user_id = _normalize_user_id(user_id)
     if normalized_user_id is None:
         return
 
-    routes = _resolve_user_routes(normalized_user_id)
-    urls = _resolve_route_urls_for_event(routes, event)
-    if not urls:
+    preferences = user_db.get_personal_preferences(normalized_user_id)
+    if not preferences["notifications_enabled"]:
         return
-
-    try:
-        _executor.submit(_dispatch_user_async, normalized_user_id, event, context, urls)
-    except RuntimeError as exc:
-        logger.warning(
-            "Failed to queue user notification '%s' for user_id=%s: %s",
-            event.value,
-            normalized_user_id,
-            exc,
-        )
+    transport = preferences.get("notification_transport")
+    destination = preferences.get("notification_destination")
+    if transport not in {"email", "apprise"} or not isinstance(destination, str):
+        return
+    _submit_delivery(transport, destination, event, context, normalized_user_id)
 
 
-def _dispatch_admin_async(
-    event: NotificationEvent, context: NotificationContext, urls: list[str]
-) -> None:
-    result = _send_admin_event(event, context, urls)
-    if not result.get("success", False):
-        logger.warning(
-            "Admin notification failed for event '%s': %s",
-            event.value,
-            result.get("message"),
-        )
-
-
-def _dispatch_user_async(
-    user_id: int,
+def _dispatch_async(
+    transport: str,
+    destination: str,
     event: NotificationEvent,
     context: NotificationContext,
-    urls: list[str],
+    user_id: int | None,
 ) -> None:
-    result = _send_admin_event(event, context, urls)
+    result = _deliver(transport, destination, event, context)
     if not result.get("success", False):
         logger.warning(
-            "User notification failed for event '%s' (user_id=%s): %s",
+            "Notification failed for event '%s' (user_id=%s): %s",
             event.value,
             user_id,
             result.get("message"),
         )
+
+
+def _submit_delivery(
+    transport: object,
+    destination: object,
+    event: NotificationEvent,
+    context: NotificationContext,
+    user_id: int | None,
+) -> None:
+    try:
+        _executor.submit(_dispatch_async, str(transport), str(destination), event, context, user_id)
+    except RuntimeError as exc:
+        logger.warning("Failed to queue notification '%s': %s", event.value, exc)
+
+
+def is_valid_email_destination(destination: str) -> bool:
+    return bool(parseaddr(destination)[1]) and "@" in parseaddr(destination)[1]
+
+
+def is_valid_apprise_destination(destination: str) -> bool:
+    return (
+        bool(destination.strip()) and bool(urlsplit(destination).scheme) and " " not in destination
+    )
+
+
+def _deliver(
+    transport: str, destination: str, event: NotificationEvent, context: NotificationContext
+) -> dict[str, Any]:
+    title, body = _render_message(context)
+    if transport == "apprise":
+        return _send_apprise_event(event, context, [destination])
+    if transport != "email" or not is_valid_email_destination(destination):
+        return {"success": False, "message": "Invalid notification destination"}
+    try:
+        message = EmailMessage()
+        message["To"] = destination
+        message["Subject"] = title
+        message.set_content(body)
+        send_email_message(build_email_smtp_config(_get_email_settings()), message)
+    except EmailOutputError as exc:
+        return {"success": False, "message": str(exc)}
+    return {"success": True, "message": "Notification sent"}
+
+
+def send_personal_test_notification(user_db: Any, user_id: int) -> dict[str, Any]:
+    preferences = user_db.get_personal_preferences(user_id)
+    transport = preferences.get("notification_transport")
+    destination = preferences.get("notification_destination")
+    if (
+        not preferences.get("notifications_enabled")
+        or transport not in {"email", "apprise"}
+        or not isinstance(destination, str)
+    ):
+        return {
+            "success": False,
+            "message": "Enable personal notifications with a valid destination first",
+        }
+    valid = (
+        is_valid_email_destination(destination)
+        if transport == "email"
+        else is_valid_apprise_destination(destination)
+    )
+    if not valid:
+        return {
+            "success": False,
+            "message": "Enable personal notifications with a valid destination first",
+        }
+    return _deliver(
+        transport,
+        destination,
+        NotificationEvent.REQUEST_CREATED,
+        NotificationContext(
+            event=NotificationEvent.REQUEST_CREATED,
+            title="Shelfmark Test Notification",
+            author="Shelfmark",
+            username="Shelfmark",
+        ),
+    )
 
 
 def send_test_notification(urls: list[str]) -> dict[str, Any]:
@@ -693,4 +732,4 @@ def send_test_notification(urls: list[str]) -> dict[str, Any]:
         author="Shelfmark",
         username="Shelfmark",
     )
-    return _send_admin_event(NotificationEvent.REQUEST_CREATED, test_context, normalized_urls)
+    return _send_apprise_event(NotificationEvent.REQUEST_CREATED, test_context, normalized_urls)

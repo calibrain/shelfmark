@@ -6,6 +6,12 @@ from typing import TYPE_CHECKING, Any
 
 from flask import Flask, Response, jsonify, request, session
 
+from shelfmark.core.notifications import (
+    NotificationContext,
+    NotificationEvent,
+    notify_admin,
+    notify_user,
+)
 from shelfmark.core.request_helpers import (
     emit_ws_event,
     normalize_positive_int,
@@ -59,6 +65,25 @@ def _emit_request_update(
         emit_ws_event(ws_manager, event_name="request_update", payload=payload, room="admins")
 
 
+def _notify_request(user_db: UserDB, request_row: dict[str, Any], event: NotificationEvent) -> None:
+    book = user_db.get_book_notification_context(request_row["book_id"])
+    if book is None:
+        return
+    context = NotificationContext(
+        event=event,
+        title=book["title"],
+        author=book["author"],
+        admin_note=request_row.get("admin_note"),
+        book_id=book["id"],
+    )
+    if event == NotificationEvent.REQUEST_CREATED:
+        requester = user_db.get_user(user_id=request_row["user_id"])
+        context.username = requester.get("username") if requester else None
+        notify_admin(event, context)
+    else:
+        notify_user(user_db, request_row["user_id"], event, context)
+
+
 def register_request_routes(
     app: Flask,
     user_db: UserDB,
@@ -97,6 +122,7 @@ def register_request_routes(
         except ValueError as exc:
             return _error(str(exc), 409)
         _emit_request_update(ws_manager, created)
+        _notify_request(user_db, created, NotificationEvent.REQUEST_CREATED)
         return jsonify(created), 201
 
     @app.route("/api/requests", methods=["GET"])
@@ -190,6 +216,7 @@ def register_request_routes(
         except RequestServiceError, ValueError:
             return _error("Request state changed before update", 409, code="stale_transition")
         _emit_request_update(ws_manager, updated)
+        _notify_request(user_db, updated, NotificationEvent.REQUEST_REJECTED)
         return jsonify(updated)
 
     @app.route("/api/admin/requests/books/<int:book_id>/fulfil", methods=["POST"])
@@ -213,6 +240,7 @@ def register_request_routes(
                 return _error("Book has no completed Files", 409)
             for updated in fulfilled:
                 _emit_request_update(ws_manager, updated)
+                _notify_request(user_db, updated, NotificationEvent.REQUEST_FULFILLED)
             return jsonify(fulfilled)
         if not isinstance(release_data, dict):
             return _error("release_data must be an object", 400)

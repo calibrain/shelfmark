@@ -3,7 +3,7 @@ import { useCallback, useState } from 'react';
 import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useMountEffect } from '../../hooks/useMountEffect';
-import { getSelfSettings, updateSelfSettings } from '../../services/api';
+import { getSelfSettings, testPersonalNotification, updateSelfSettings } from '../../services/api';
 import type { CheckboxFieldConfig, SelectFieldConfig, TextFieldConfig } from '../../types/settings';
 import {
   getStoredThemePreference,
@@ -78,6 +78,7 @@ export const SelfSettingsModal = ({
 }: SelfSettingsModalProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
+  const [isTestingNotification, setIsTestingNotification] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [values, setValues] = useState<SelfSettingsForm>({
     username: '',
@@ -151,6 +152,20 @@ export const SelfSettingsModal = ({
       );
     } finally {
       setIsSaving(false);
+    }
+  };
+  const testNotification = async () => {
+    setIsTestingNotification(true);
+    try {
+      const result = await testPersonalNotification();
+      onShowToast?.(result.message, result.success ? 'success' : 'error');
+    } catch (testError) {
+      onShowToast?.(
+        testError instanceof Error ? testError.message : 'Failed to send test notification',
+        'error',
+      );
+    } finally {
+      setIsTestingNotification(false);
     }
   };
 
@@ -250,9 +265,23 @@ export const SelfSettingsModal = ({
                   <SelectField
                     field={notificationTransportField}
                     value={values.notification_transport}
-                    onChange={(value) => update('notification_transport', value)}
+                    onChange={(value) =>
+                      setValues((current) => ({
+                        ...current,
+                        notification_transport: value === 'apprise' ? 'apprise' : 'email',
+                        notification_destination: '',
+                      }))
+                    }
                   />
                 </FieldWrapper>
+                <button
+                  type="button"
+                  onClick={() => void testNotification()}
+                  disabled={!values.notifications_enabled || hasChanges || isTestingNotification}
+                  className="rounded-lg border border-(--border-muted) px-3 py-2 text-sm disabled:opacity-60"
+                >
+                  {isTestingNotification ? 'Sending test...' : 'Test saved destination'}
+                </button>
                 <FieldWrapper
                   field={textField(
                     'notification_destination',

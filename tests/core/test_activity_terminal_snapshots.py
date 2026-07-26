@@ -113,11 +113,7 @@ class TestTerminalSnapshotCapture:
             assert context.title == "Notify Complete Snapshot"
             assert context.author == "Notify Author"
             assert context.username == user["username"]
-            mock_notify_user.assert_called_once()
-            user_id, user_event, user_context = mock_notify_user.call_args.args
-            assert user_id == user["id"]
-            assert user_event == NotificationEvent.DOWNLOAD_COMPLETE
-            assert user_context.title == "Notify Complete Snapshot"
+            mock_notify_user.assert_not_called()
         finally:
             main_module.backend.book_queue.cancel_download(task_id)
 
@@ -175,11 +171,7 @@ class TestTerminalSnapshotCapture:
             assert event == NotificationEvent.DOWNLOAD_FAILED
             assert context.title == "Notify Error Snapshot"
             assert context.error_message == "Resolver timed out"
-            mock_notify_user.assert_called_once()
-            user_id, user_event, user_context = mock_notify_user.call_args.args
-            assert user_id == user["id"]
-            assert user_event == NotificationEvent.DOWNLOAD_FAILED
-            assert user_context.error_message == "Resolver timed out"
+            mock_notify_user.assert_not_called()
         finally:
             main_module.backend.book_queue.cancel_download(task_id)
 

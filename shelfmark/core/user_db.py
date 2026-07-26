@@ -804,6 +804,17 @@ class UserDB:
         finally:
             conn.close()
 
+    def get_book_notification_context(self, book_id: int) -> dict[str, Any] | None:
+        """Return the small canonical Book projection used by notifications."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT id, title, author FROM books WHERE id = ?", (book_id,)
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
     def list_requests(
         self,
         *,

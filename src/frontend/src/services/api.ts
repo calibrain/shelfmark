@@ -929,3 +929,10 @@ export const updateSelfSettings = async (
     body: JSON.stringify(data),
   });
 };
+
+export const testPersonalNotification = async (): Promise<{
+  success: boolean;
+  message: string;
+}> => {
+  return fetchJSON(`${API_BASE}/users/me/notifications/test`, { method: 'POST' });
+};
