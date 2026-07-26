@@ -1,5 +1,5 @@
 Type: task
-Status: ready-for-agent
+Status: claimed
 Blocked by: 11, 13
 
 # Implement the polished book-detail experience
