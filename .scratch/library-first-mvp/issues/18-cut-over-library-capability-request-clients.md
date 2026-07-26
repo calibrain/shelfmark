@@ -1,5 +1,5 @@
 Type: task
-Status: ready-for-agent
+Status: claimed
 Blocked by: 12, 13, 15, 17
 
 # Cut over Library Capability and Request clients
