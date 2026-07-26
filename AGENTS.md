@@ -18,14 +18,10 @@ When completed work is on a non-POC feature branch and is intended to merge into
 
 ### Local library development
 
-Run the backend from the repository root (not Docker). Local library development uses builtin authentication and reads an untracked Hardcover key from `shelfmark/.env` when present:
+Run the backend from the repository root (not Docker). Local library development uses builtin authentication and persistent local paths configured in the untracked `shelfmark/.env`:
 
 ```bash
-set -a
-[ -f "$PWD/.env" ] && source "$PWD/.env"
-[ -f "$PWD/shelfmark/.env" ] && source "$PWD/shelfmark/.env"
-set +a
-AUTH_METHOD=builtin METADATA_PROVIDER=hardcover HARDCOVER_ENABLED=true CONFIG_DIR="$PWD/.local/config" LOG_ROOT="$PWD/.local/log" INGEST_DIR="$PWD/.local/ingest" TMP_DIR="$PWD/.local/tmp" uv run python -m shelfmark
+uv run --env-file shelfmark/.env python -m shelfmark
 ```
 
 Run the frontend in a second terminal:
