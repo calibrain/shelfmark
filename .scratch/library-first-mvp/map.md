@@ -38,6 +38,7 @@ A delivered library-first Shelfmark MVP: persistent responsive navigation, `/lib
 - [Implement the user notification contract](issues/14-implement-user-notification-contract.md) — Personal Notifications use one validated saved destination for Request rejection and Book availability only; administrator targets remain isolated operational configuration.
 - [Implement the polished book-detail experience](issues/16-implement-polished-book-detail-experience.md) — Book Detail adopts the prototype's editorial hierarchy, capability-specific actions, live request lifecycle, and one-shot first-add release discovery.
 - [Cut over Library Capability and Request clients](issues/18-cut-over-library-capability-request-clients.md) — The replacement Book Request clients are the sole shipped path; legacy request-policy and release-level request UI is retired.
+- [Implement Library Capability and Request lifecycle](issues/10-implement-library-capability-and-request-lifecycle.md) — Library Capability and canonical Book Requests now enforce their role and shared-fulfilment lifecycle through the delivered client cutover.
 
 ## Not yet specified
 

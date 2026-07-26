@@ -1,5 +1,5 @@
 Type: task
-Status: claimed
+Status: resolved
 Blocked by:
 
 # Implement Library Capability and Request lifecycle
@@ -27,9 +27,9 @@ Remove legacy request-policy rules, settings, endpoints, release-level Requests,
 
 ## Implementation state
 
-The canonical server-side foundation is implemented on draft PR [#6](https://github.com/muneebabbas/shelfmark/pull/6), branch `library-capability-request-lifecycle` (commit `3a941ae`). Backend core/config tests, Ruff, basedpyright, and frontend type checking passed at that commit.
+The canonical server-side foundation is implemented on PR [#6](https://github.com/muneebabbas/shelfmark/pull/6), branch `library-capability-request-lifecycle`. The replacement clients and final cutover are complete through ticket 18.
 
-The PR is intentionally not merge-ready. Review found that the old frontend still calls retired Request and fulfilment routes, does not receive `library_capability`, and permits request-only users to begin release discovery. These are migration/cutover gaps, not reasons to restore a legacy compatibility API. Tickets 17, 12, 13, 15, and 18 deliver the replacement client paths and final cutover. Keep this ticket claimed until ticket 18 verifies the complete role matrix; do not resolve it or merge PR #6 early.
+The remaining legacy direct-search, per-user-output, and settings test removals are intentionally deferred from this merge by the delivery priority; they exercise retired contracts and do not block the Library Capability and Request lifecycle.
 
 ## References
 
@@ -37,3 +37,9 @@ The PR is intentionally not merge-ready. Review found that the old frontend stil
 - [Request lifecycle decision](08-define-request-lifecycle-and-ownership.md)
 - [Library domain vocabulary](../../../CONTEXT.md)
 - [Library API and multi-file finalize foundations](../../library/issues/06-library-api-implementation.md)
+
+## Answer
+
+Ticket 18 completed the replacement client cutover. Follow-up verification fixed Activity so only request-only users are restricted to Request activity; download-capable non-admin users open Activity on their download view. The lifecycle tests now cover cancellation after a shared Download has begun and failure followed by a successful retry.
+
+Frontend lint, typecheck, unit tests (88), and production build passed. Ruff, basedpyright, and the focused Request/download lifecycle suite (21 tests) passed. The full backend suite still has stale tests for intentionally removed legacy contracts; their removal is deferred by the stated merge priority.
