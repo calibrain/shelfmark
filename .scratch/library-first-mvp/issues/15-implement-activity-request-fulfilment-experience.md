@@ -1,5 +1,5 @@
 Type: task
-Status: ready-for-agent
+Status: resolved
 Blocked by: 11, 13, 17
 
 # Implement Activity request fulfilment experience
@@ -26,3 +26,9 @@ For administrators, open `Requests` when Book work is pending and otherwise reta
 - [Library Capability and Request lifecycle implementation](10-implement-library-capability-and-request-lifecycle.md)
 - [Authenticated Library Capability client contract](17-expose-library-capability-to-authenticated-clients.md)
 - [Persistent shell implementation](11-implement-persistent-library-app-shell.md)
+
+## Answer
+
+Activity remains a stateful drawer. Request-only users now see only their Requests, with availability-oriented statuses and pending-only cancellation. Administrators see pending work grouped by canonical Book, with requester expansion and selected-request rejection, and can find a release or fulfil a Book already backed by Files.
+
+The client uses the Book-scoped fulfil endpoint. Activity snapshots carry Book identity for request cards, and completed shared downloads fulfil every remaining pending Request for that Book, link their Files, and emit request updates. A shared download continues when its requesters cancel; a failed queue leaves any remaining Requests pending and retryable.

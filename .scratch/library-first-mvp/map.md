@@ -34,6 +34,7 @@ A delivered library-first Shelfmark MVP: persistent responsive navigation, `/lib
 - [Implement the persistent library app shell](issues/11-implement-persistent-library-app-shell.md) — `/library` is the authenticated default behind a responsive Library/Add New/Settings shell while Activity remains a stateful independent drawer.
 - [Implement the simplified settings surface](issues/12-implement-simplified-settings-surface.md) — Self-settings are an explicit personal-preference contract; administrators retain account access and Library Capability management while generic per-user overrides are removed.
 - [Implement legacy search and output retirement](issues/13-implement-legacy-search-and-output-retirement.md) — The client now uses only library-scoped discovery, shared Downloads use instance storage, and legacy direct-search and generic-output paths are removed.
+- [Implement Activity request fulfilment experience](issues/15-implement-activity-request-fulfilment-experience.md) — Activity is request-only for request-only users and groups administrator fulfilment work by canonical Book, with shared-download completion linked back to all remaining requesters.
 
 ## Not yet specified
 
