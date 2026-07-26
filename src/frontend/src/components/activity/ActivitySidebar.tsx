@@ -3,18 +3,22 @@ import { useCallback, useMemo, useRef, useState, type WheelEvent } from 'react';
 import { useTabIndicator } from '../../hooks/ui/useTabIndicator';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
-import type { RequestRecord, StatusData } from '../../types';
+import { useDependencyEffect } from '../../hooks/useMountEffect';
+import type { LibraryCapability, RequestRecord, StatusData } from '../../types';
+import { isRequestOnlyLibraryUser } from '../../utils/releaseCapabilities';
 import { Dropdown } from '../Dropdown';
 import { ActivityCard } from './ActivityCard';
 import type { DownloadStatusKey } from './activityMappers';
 import { downloadToActivityItem } from './activityMappers';
 import type { ActivityItem } from './activityTypes';
+import { RequestBookGroups } from './RequestBookGroups';
 
 interface ActivitySidebarProps {
   isOpen: boolean;
   onClose: () => void;
   status: StatusData;
   isAdmin: boolean;
+  libraryCapability: LibraryCapability | null;
   onClearCompleted: (items: ActivityDismissTarget[]) => void;
   onCancel: (id: string) => void;
   onRetry?: (id: string) => void;
@@ -67,6 +71,12 @@ type ActivityCategoryKey = 'needs_review' | 'in_progress' | 'complete' | 'failed
 
 type ActivityTabKey = 'all' | 'downloads' | 'requests' | 'history';
 const ALL_USERS_FILTER = '__all_users__';
+
+export const getInitialActivityTab = (
+  isAdmin: boolean,
+  isRequestOnly: boolean,
+  pendingRequestCount: number,
+): ActivityTabKey => (isRequestOnly || (isAdmin && pendingRequestCount > 0) ? 'requests' : 'all');
 
 const getCategoryLabel = (key: ActivityCategoryKey, isAdmin: boolean): string => {
   if (key === 'needs_review') {
@@ -233,6 +243,7 @@ export const ActivitySidebar = ({
   onClose,
   status,
   isAdmin,
+  libraryCapability,
   onClearCompleted,
   onCancel,
   onRetry,
@@ -264,7 +275,9 @@ export const ActivitySidebar = ({
   const [reviewingRequestId, setReviewingRequestId] = useState<number | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
+  const wasOpenRef = useRef(false);
   const dismissedKeySet = useMemo(() => new Set(dismissedItemKeys), [dismissedItemKeys]);
+  const isRequestOnly = isRequestOnlyLibraryUser(isAdmin, libraryCapability);
   const handleTabChange = useCallback(
     (nextTab: ActivityTabKey) => {
       if (nextTab === 'downloads') {
@@ -277,8 +290,20 @@ export const ActivitySidebar = ({
     [onActiveTabChange],
   );
 
+  useDependencyEffect(() => {
+    if (isOpen && !wasOpenRef.current) {
+      setActiveTab(getInitialActivityTab(isAdmin, isRequestOnly, pendingRequestCount));
+    }
+    wasOpenRef.current = isOpen;
+  }, [isAdmin, isOpen, isRequestOnly, pendingRequestCount]);
+
   const isPinnedOpen = isOpen && isDesktop && isPinned;
-  const effectiveActiveTab = !showRequestsTab && activeTab === 'requests' ? 'all' : activeTab;
+  let effectiveActiveTab = activeTab;
+  if (isRequestOnly) {
+    effectiveActiveTab = 'requests';
+  } else if (!showRequestsTab && activeTab === 'requests') {
+    effectiveActiveTab = 'all';
+  }
   if (effectiveActiveTab !== activeTab) {
     setActiveTab(effectiveActiveTab);
   }
@@ -307,16 +332,17 @@ export const ActivitySidebar = ({
     return items.toSorted((left, right) => right.timestamp - left.timestamp);
   }, [dismissedKeySet, status]);
 
-  const visibleRequestItems = useMemo(
-    () =>
-      requestItems.filter((item) => {
-        if (!item.requestId) {
-          return true;
-        }
-        return !dismissedKeySet.has(`request:${item.requestId}`);
-      }),
-    [dismissedKeySet, requestItems],
-  );
+  const visibleRequestItems = useMemo(() => {
+    if (!isAdmin) {
+      return requestItems;
+    }
+    return requestItems.filter((item) => {
+      if (!item.requestId) {
+        return true;
+      }
+      return !dismissedKeySet.has(`request:${item.requestId}`);
+    });
+  }, [dismissedKeySet, isAdmin, requestItems]);
 
   const { mergedRequestItems, mergedDownloadItems } = useMemo(() => {
     const downloadsById = new Map<string, ActivityItem>();
@@ -403,12 +429,16 @@ export const ActivitySidebar = ({
     return combined.toSorted((a, b) => b.timestamp - a.timestamp);
   }, [mergedDownloadItems, mergedRequestItems]);
 
-  let baseVisibleItems = mergedDownloadItems;
+  let baseVisibleItems = isRequestOnly ? mergedRequestItems : mergedDownloadItems;
   if (effectiveActiveTab === 'all') {
     baseVisibleItems = allItems;
   } else if (effectiveActiveTab === 'requests') {
-    baseVisibleItems = mergedRequestItems.filter((item) => {
+    const requestTabItems = isRequestOnly ? visibleRequestItems : mergedRequestItems;
+    baseVisibleItems = requestTabItems.filter((item) => {
       const requestStatus = item.requestRecord?.status;
+      if (isRequestOnly) {
+        return item.kind === 'request';
+      }
       if (
         requestStatus === 'pending' ||
         requestStatus === 'rejected' ||
@@ -574,6 +604,12 @@ export const ActivitySidebar = ({
   // Tab indicator (sliding underline, same pattern as ReleaseModal)
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const tabIndicatorStyle = useTabIndicator(tabRefs, effectiveActiveTab, showRequestsTab);
+  let sidebarTitle = 'Activity';
+  if (isRequestOnly) {
+    sidebarTitle = 'Requests';
+  } else if (effectiveActiveTab === 'history') {
+    sidebarTitle = 'History';
+  }
 
   const panel = (
     <>
@@ -586,9 +622,7 @@ export const ActivitySidebar = ({
       >
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
-            <h2 className="text-lg font-semibold">
-              {effectiveActiveTab === 'history' ? 'History' : 'Activity'}
-            </h2>
+            <h2 className="text-lg font-semibold">{sidebarTitle}</h2>
             <button
               type="button"
               onClick={handleTogglePinned}
@@ -620,7 +654,7 @@ export const ActivitySidebar = ({
           </div>
 
           <div className="flex items-center gap-1">
-            {hasUserFilter && (
+            {!isRequestOnly && hasUserFilter && (
               <Dropdown
                 align="right"
                 widthClassName="w-auto"
@@ -703,33 +737,37 @@ export const ActivitySidebar = ({
                 )}
               </Dropdown>
             )}
-            <button
-              type="button"
-              onClick={() => handleTabChange(effectiveActiveTab === 'history' ? 'all' : 'history')}
-              className={`hover-action relative inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
-                effectiveActiveTab === 'history' ? 'text-sky-600 dark:text-sky-400' : ''
-              }`}
-              title={effectiveActiveTab === 'history' ? 'Back to activity' : 'Open history'}
-              aria-label={effectiveActiveTab === 'history' ? 'Back to activity' : 'Open history'}
-              aria-pressed={effectiveActiveTab === 'history'}
-            >
-              <svg
-                className="h-5 w-5"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.75"
-                aria-hidden="true"
+            {!isRequestOnly && (
+              <button
+                type="button"
+                onClick={() =>
+                  handleTabChange(effectiveActiveTab === 'history' ? 'all' : 'history')
+                }
+                className={`hover-action relative inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
+                  effectiveActiveTab === 'history' ? 'text-sky-600 dark:text-sky-400' : ''
+                }`}
+                title={effectiveActiveTab === 'history' ? 'Back to activity' : 'Open history'}
+                aria-label={effectiveActiveTab === 'history' ? 'Back to activity' : 'Open history'}
+                aria-pressed={effectiveActiveTab === 'history'}
               >
-                <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l3.75 2.25" />
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v4.5h4.5" />
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  d="M3.75 12a8.25 8.25 0 1 0 3.37-6.63"
-                />
-              </svg>
-            </button>
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  aria-hidden="true"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v6l3.75 2.25" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3 3v4.5h4.5" />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M3.75 12a8.25 8.25 0 1 0 3.37-6.63"
+                  />
+                </svg>
+              </button>
+            )}
             <button
               type="button"
               onClick={onClose}
@@ -750,7 +788,7 @@ export const ActivitySidebar = ({
           </div>
         </div>
 
-        {effectiveActiveTab !== 'history' && (
+        {!isRequestOnly && effectiveActiveTab !== 'history' && (
           <div className="-mx-4 mt-2 border-b border-(--border-muted) px-4">
             <div className="relative flex gap-1">
               {/* Sliding indicator */}
@@ -855,136 +893,157 @@ export const ActivitySidebar = ({
             );
           }
 
-          return groupedVisibleItems.map((group) => (
-            <section key={group.key} className="mb-4 last:mb-0">
-              {effectiveActiveTab !== 'downloads' && (
-                <button
-                  type="button"
-                  onClick={() =>
-                    setCollapsedGroups((prev) => ({ ...prev, [group.key]: !prev[group.key] }))
-                  }
-                  className="mb-2 flex w-full cursor-pointer items-center justify-between text-[11px] tracking-wide uppercase opacity-70 transition-opacity hover:opacity-100"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <svg
-                      className={`h-3 w-3 transition-transform ${collapsedGroups[group.key] ? '-rotate-90' : ''}`}
-                      fill="none"
-                      stroke="currentColor"
-                      viewBox="0 0 24 24"
-                      strokeWidth="1.5"
-                    >
-                      <path
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                        d="m19.5 8.25-7.5 7.5-7.5-7.5"
-                      />
-                    </svg>
-                    <span>{group.label}</span>
-                  </div>
-                  <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-gray-500/10 px-1 leading-none dark:bg-gray-400/10">
-                    {group.items.length}
-                  </span>
-                </button>
-              )}
-              {!collapsedGroups[group.key] && (
-                <div className="divide-y divide-[color-mix(in_srgb,var(--border-muted)_60%,transparent)]">
-                  {group.items.map((item) => {
-                    const showRequestActions =
-                      effectiveActiveTab === 'requests' || effectiveActiveTab === 'all';
-                    const requestId = item.requestId;
-                    const shouldShowRejectDialog =
-                      showRequestActions &&
-                      effectiveRejectingRequest !== null &&
-                      requestId === effectiveRejectingRequest.requestId;
-                    const requestRecord = item.requestRecord;
-                    const canShowRequestReview =
-                      showRequestActions &&
-                      isAdmin &&
-                      item.kind === 'request' &&
-                      typeof requestId === 'number' &&
-                      requestRecord?.status === 'pending';
-                    const shouldShowRequestReview =
-                      canShowRequestReview &&
-                      effectiveReviewingRequestId !== null &&
-                      requestId === effectiveReviewingRequestId &&
-                      requestRecord !== undefined;
+          const renderedGroups =
+            effectiveActiveTab === 'requests' && isAdmin
+              ? groupedVisibleItems.filter((group) => group.key !== 'needs_review')
+              : groupedVisibleItems;
 
-                    return (
-                      <div key={item.id}>
-                        <ActivityCard
-                          item={item}
-                          isAdmin={isAdmin}
-                          onDownloadCancel={onCancel}
-                          onDownloadRetry={onRetry}
-                          onDownloadDismiss={onDownloadDismiss}
-                          onRequestCancel={
-                            onRequestCancel
-                              ? (nextRequestId) => {
-                                  void onRequestCancel(nextRequestId);
-                                }
-                              : undefined
-                          }
-                          onRequestApprove={onRequestApprove}
-                          onRequestDismiss={onRequestDismiss}
-                          onRequestReject={
-                            showRequestActions && onRequestReject
-                              ? (nextRequestId) => {
-                                  setReviewingRequestId(null);
-                                  setRejectingRequest({ requestId: nextRequestId });
-                                }
-                              : undefined
-                          }
-                          showRequestDetailsToggle={canShowRequestReview}
-                          isRequestDetailsOpen={shouldShowRequestReview}
-                          isSelected={shouldShowRequestReview || shouldShowRejectDialog}
-                          onRequestReviewApprove={
-                            onRequestApprove
-                              ? async (approvedRequestId, record, options) => {
-                                  await onRequestApprove(approvedRequestId, record, options);
-                                  setReviewingRequestId(null);
-                                }
-                              : undefined
-                          }
-                          isRequestRejectOpen={shouldShowRejectDialog}
-                          onRequestRejectClose={() => setRejectingRequest(null)}
-                          onRequestRejectConfirm={
-                            onRequestReject
-                              ? async (rejectedRequestId, adminNote) => {
-                                  await onRequestReject(rejectedRequestId, adminNote);
-                                  setRejectingRequest(null);
-                                }
-                              : undefined
-                          }
-                          onRequestDetailsToggle={
-                            canShowRequestReview && typeof requestId === 'number'
-                              ? () => {
-                                  if (shouldShowRejectDialog) {
-                                    setRejectingRequest(null);
-                                    return;
-                                  }
-                                  setRejectingRequest(null);
-                                  setReviewingRequestId((current) =>
-                                    current === requestId ? null : requestId,
-                                  );
-                                }
-                              : undefined
-                          }
-                          onRequestDetailsOpen={
-                            canShowRequestReview && typeof requestId === 'number'
-                              ? () => {
-                                  setRejectingRequest(null);
-                                  setReviewingRequestId(requestId);
-                                }
-                              : undefined
-                          }
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
+          return (
+            <>
+              {effectiveActiveTab === 'requests' && isAdmin && (
+                <RequestBookGroups
+                  items={visibleItems}
+                  onFindRelease={(requestId, record) =>
+                    onRequestApprove?.(requestId, record, { browseOnly: true })
+                  }
+                  onMarkAvailable={(requestId, record) =>
+                    onRequestApprove?.(requestId, record, { manualApproval: true })
+                  }
+                  onReject={(requestId) => onRequestReject?.(requestId)}
+                />
               )}
-            </section>
-          ));
+              {renderedGroups.map((group) => (
+                <section key={group.key} className="mb-4 last:mb-0">
+                  {effectiveActiveTab !== 'downloads' && (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setCollapsedGroups((prev) => ({ ...prev, [group.key]: !prev[group.key] }))
+                      }
+                      className="mb-2 flex w-full cursor-pointer items-center justify-between text-[11px] tracking-wide uppercase opacity-70 transition-opacity hover:opacity-100"
+                    >
+                      <div className="flex items-center gap-1.5">
+                        <svg
+                          className={`h-3 w-3 transition-transform ${collapsedGroups[group.key] ? '-rotate-90' : ''}`}
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          strokeWidth="1.5"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="m19.5 8.25-7.5 7.5-7.5-7.5"
+                          />
+                        </svg>
+                        <span>{group.label}</span>
+                      </div>
+                      <span className="inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-full bg-gray-500/10 px-1 leading-none dark:bg-gray-400/10">
+                        {group.items.length}
+                      </span>
+                    </button>
+                  )}
+                  {!collapsedGroups[group.key] && (
+                    <div className="divide-y divide-[color-mix(in_srgb,var(--border-muted)_60%,transparent)]">
+                      {group.items.map((item) => {
+                        const showRequestActions =
+                          effectiveActiveTab === 'requests' || effectiveActiveTab === 'all';
+                        const requestId = item.requestId;
+                        const shouldShowRejectDialog =
+                          showRequestActions &&
+                          effectiveRejectingRequest !== null &&
+                          requestId === effectiveRejectingRequest.requestId;
+                        const requestRecord = item.requestRecord;
+                        const canShowRequestReview =
+                          showRequestActions &&
+                          isAdmin &&
+                          item.kind === 'request' &&
+                          typeof requestId === 'number' &&
+                          requestRecord?.status === 'pending';
+                        const shouldShowRequestReview =
+                          canShowRequestReview &&
+                          effectiveReviewingRequestId !== null &&
+                          requestId === effectiveReviewingRequestId &&
+                          requestRecord !== undefined;
+
+                        return (
+                          <div key={item.id}>
+                            <ActivityCard
+                              item={item}
+                              isAdmin={isAdmin}
+                              onDownloadCancel={onCancel}
+                              onDownloadRetry={onRetry}
+                              onDownloadDismiss={onDownloadDismiss}
+                              onRequestCancel={
+                                onRequestCancel
+                                  ? (nextRequestId) => {
+                                      void onRequestCancel(nextRequestId);
+                                    }
+                                  : undefined
+                              }
+                              onRequestApprove={onRequestApprove}
+                              onRequestDismiss={onRequestDismiss}
+                              onRequestReject={
+                                showRequestActions && onRequestReject
+                                  ? (nextRequestId) => {
+                                      setReviewingRequestId(null);
+                                      setRejectingRequest({ requestId: nextRequestId });
+                                    }
+                                  : undefined
+                              }
+                              showRequestDetailsToggle={canShowRequestReview}
+                              isRequestDetailsOpen={shouldShowRequestReview}
+                              isSelected={shouldShowRequestReview || shouldShowRejectDialog}
+                              onRequestReviewApprove={
+                                onRequestApprove
+                                  ? async (approvedRequestId, record, options) => {
+                                      await onRequestApprove(approvedRequestId, record, options);
+                                      setReviewingRequestId(null);
+                                    }
+                                  : undefined
+                              }
+                              isRequestRejectOpen={shouldShowRejectDialog}
+                              onRequestRejectClose={() => setRejectingRequest(null)}
+                              onRequestRejectConfirm={
+                                onRequestReject
+                                  ? async (rejectedRequestId, adminNote) => {
+                                      await onRequestReject(rejectedRequestId, adminNote);
+                                      setRejectingRequest(null);
+                                    }
+                                  : undefined
+                              }
+                              onRequestDetailsToggle={
+                                canShowRequestReview && typeof requestId === 'number'
+                                  ? () => {
+                                      if (shouldShowRejectDialog) {
+                                        setRejectingRequest(null);
+                                        return;
+                                      }
+                                      setRejectingRequest(null);
+                                      setReviewingRequestId((current) =>
+                                        current === requestId ? null : requestId,
+                                      );
+                                    }
+                                  : undefined
+                              }
+                              onRequestDetailsOpen={
+                                canShowRequestReview && typeof requestId === 'number'
+                                  ? () => {
+                                      setRejectingRequest(null);
+                                      setReviewingRequestId(requestId);
+                                    }
+                                  : undefined
+                              }
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </section>
+              ))}
+            </>
+          );
         })()}
       </div>
 

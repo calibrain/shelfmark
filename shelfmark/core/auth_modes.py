@@ -125,6 +125,8 @@ def load_active_auth_mode(
 
 def is_user_active_for_auth_mode(user: Mapping[str, Any], auth_mode: str) -> bool:
     """Return whether a user can authenticate under the current auth mode."""
+    if not bool(user.get("is_active", True)):
+        return False
     source = normalize_auth_source(user.get("auth_source"), user.get("oidc_subject"))
     if source == AUTH_SOURCE_BUILTIN:
         return auth_mode in (AUTH_SOURCE_BUILTIN, AUTH_SOURCE_OIDC)

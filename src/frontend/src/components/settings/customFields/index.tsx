@@ -3,7 +3,6 @@ import type { ComponentType, ReactNode } from 'react';
 import { NamingTemplateField } from './NamingTemplateField';
 import { OidcAdminHint } from './OidcAdminHint';
 import { OidcEnvInfo } from './OidcEnvInfo';
-import { RequestPolicyGridField } from './RequestPolicyGridField';
 import { SettingsLabel } from './SettingsLabel';
 import type {
   CustomSettingsFieldLayout,
@@ -22,31 +21,14 @@ interface CustomFieldDefinition {
   getLayout?: CustomFieldLayoutResolver;
 }
 
-function isSaveHandler(value: unknown): value is () => void | Promise<void> {
-  return typeof value === 'function';
-}
-
 const CUSTOM_FIELD_DEFINITIONS: Record<string, CustomFieldDefinition> = {
   users_management: {
     renderer: UsersManagementField,
-    getLayout: ({ uiState }) => {
-      const routeKind = typeof uiState.routeKind === 'string' ? uiState.routeKind : 'list';
-      const isSubpage = routeKind === 'edit-overrides';
-      const onSave = isSaveHandler(uiState.onSave) ? uiState.onSave : undefined;
+    getLayout: () => {
       return {
-        takeOverTab: isSubpage,
-        saveBar: isSubpage
-          ? {
-              hasChanges: Boolean(uiState.hasChanges),
-              isSaving: Boolean(uiState.isSaving),
-              onSave,
-            }
-          : undefined,
+        takeOverTab: false,
       };
     },
-  },
-  request_policy_grid: {
-    renderer: RequestPolicyGridField,
   },
   naming_template: {
     renderer: NamingTemplateField,

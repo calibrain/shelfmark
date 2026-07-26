@@ -1,6 +1,6 @@
 import { useState } from 'react';
 
-import type { AdminUser, DownloadDefaults } from '../../../services/api';
+import type { AdminUser } from '../../../services/api';
 import type { CreateUserFormState } from './types';
 import { canCreateLocalUsersForAuthMode } from './types';
 import {
@@ -36,8 +36,6 @@ interface UserListViewProps {
   onEditPasswordChange: (value: string) => void;
   editPasswordConfirm: string;
   onEditPasswordConfirmChange: (value: string) => void;
-  downloadDefaults: DownloadDefaults | null;
-  onOpenOverrides: () => void;
   onEdit: (user: AdminUser) => void;
   onDelete: (userId: number) => Promise<boolean>;
   deletingUserId: number | null;
@@ -71,8 +69,6 @@ export const UserListView = ({
   onEditPasswordChange,
   editPasswordConfirm,
   onEditPasswordConfirmChange,
-  downloadDefaults,
-  onOpenOverrides,
   onEdit,
   onDelete,
   deletingUserId,
@@ -172,7 +168,6 @@ export const UserListView = ({
                           <UserRoleControl
                             user={editingUser}
                             onUserChange={onEditingUserChange}
-                            oidcAdminGroup={downloadDefaults?.OIDC_ADMIN_GROUP}
                             tooltipPosition="bottom"
                           />
                         ) : (
@@ -222,11 +217,6 @@ export const UserListView = ({
                           onCancelDelete={() => setConfirmDelete(null)}
                           isDeletePending={confirmDelete === user.id}
                           deleting={deletingUserId === user.id}
-                          preferencesPanel={{
-                            description: 'Customise delivery and request settings for this user.',
-                            actionLabel: 'Open User Preferences',
-                            onAction: onOpenOverrides,
-                          }}
                         />
                       ) : (
                         <div className="text-sm opacity-60">Loading user details...</div>

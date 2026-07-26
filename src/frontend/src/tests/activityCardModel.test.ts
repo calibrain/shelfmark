@@ -1,7 +1,9 @@
 import { describe, it, expect } from 'vitest';
 
 import { buildActivityCardModel } from '../components/activity/activityCardModel';
+import { getInitialActivityTab } from '../components/activity/ActivitySidebar';
 import type { ActivityItem } from '../components/activity/activityTypes';
+import { isRequestOnlyLibraryUser } from '../utils/releaseCapabilities';
 
 const makeItem = (overrides: Partial<ActivityItem> = {}): ActivityItem => ({
   id: 'book-1',
@@ -17,6 +19,16 @@ const makeItem = (overrides: Partial<ActivityItem> = {}): ActivityItem => ({
 });
 
 describe('activityCardModel', () => {
+  it('keeps download-capable non-admin users in the download activity view', () => {
+    expect(isRequestOnlyLibraryUser(false, 'download-capable')).toBe(false);
+    expect(getInitialActivityTab(false, false, 0)).toBe('all');
+  });
+
+  it('keeps request-only users in the request activity view', () => {
+    expect(isRequestOnlyLibraryUser(false, 'request-only')).toBe(true);
+    expect(getInitialActivityTab(false, true, 0)).toBe('requests');
+  });
+
   it('shows ownership in badge text for admin pending requests', () => {
     const model = buildActivityCardModel(
       makeItem({
@@ -45,7 +57,7 @@ describe('activityCardModel', () => {
     );
 
     expect(model.badges.length).toBe(1);
-    expect(model.badges[0]?.text).toBe('Awaiting review');
+    expect(model.badges[0]?.text).toBe('Awaiting availability');
   });
 
   it('uses requester-friendly approved wording for fulfilled requests', () => {
@@ -60,7 +72,16 @@ describe('activityCardModel', () => {
     );
 
     expect(model.badges.length).toBe(1);
-    expect(model.badges[0]?.text).toBe('Approved');
+    expect(model.badges[0]?.text).toBe('Available');
+  });
+
+  it('does not expose dismissal for terminal requester-side requests', () => {
+    const model = buildActivityCardModel(
+      makeItem({ kind: 'request', visualStatus: 'cancelled', requestId: 42 }),
+      false,
+    );
+
+    expect(model.actions).toEqual([]);
   });
 
   it('shows approved in-progress request badge while linked download is active', () => {
@@ -74,12 +95,11 @@ describe('activityCardModel', () => {
           id: 42,
           user_id: 7,
           status: 'fulfilled',
-          source_hint: 'prowlarr',
+          source_hint: null,
           content_type: 'ebook',
-          request_level: 'release',
-          policy_mode: 'request_release',
+          request_level: 'book',
           book_data: { title: 'The Martian', author: 'Andy Weir' },
-          release_data: { source_id: 'book-1' },
+          release_data: null,
           note: null,
           admin_note: null,
           reviewed_by: null,
@@ -109,12 +129,11 @@ describe('activityCardModel', () => {
           id: 42,
           user_id: 7,
           status: 'fulfilled',
-          source_hint: 'prowlarr',
+          source_hint: null,
           content_type: 'ebook',
-          request_level: 'release',
-          policy_mode: 'request_release',
+          request_level: 'book',
           book_data: { title: 'The Martian', author: 'Andy Weir' },
-          release_data: { source_id: 'book-1' },
+          release_data: null,
           note: null,
           admin_note: null,
           reviewed_by: null,
@@ -144,12 +163,11 @@ describe('activityCardModel', () => {
           user_id: 7,
           status: 'fulfilled',
           delivery_state: 'complete',
-          source_hint: 'prowlarr',
+          source_hint: null,
           content_type: 'ebook',
-          request_level: 'release',
-          policy_mode: 'request_release',
+          request_level: 'book',
           book_data: { title: 'The Martian', author: 'Andy Weir' },
-          release_data: { source_id: 'book-1' },
+          release_data: null,
           note: null,
           admin_note: null,
           reviewed_by: null,
@@ -175,12 +193,11 @@ describe('activityCardModel', () => {
           id: 42,
           user_id: 7,
           status: 'pending',
-          source_hint: 'prowlarr',
+          source_hint: null,
           content_type: 'ebook',
-          request_level: 'release',
-          policy_mode: 'request_release',
+          request_level: 'book',
           book_data: { title: 'The Martian', author: 'Andy Weir' },
-          release_data: { source_id: 'book-1' },
+          release_data: null,
           note: null,
           admin_note: null,
           reviewed_by: null,

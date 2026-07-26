@@ -4,13 +4,11 @@ import type {
   StatusData,
   AppConfig,
   LoginCredentials,
+  AuthCheckResponse,
   AuthResponse,
   ReleaseSource,
   ReleasesResponse,
-  RequestPolicyResponse,
-  CreateRequestPayload,
   RequestRecord,
-  RequestSubmissionResult,
   MetadataProvidersResponse,
   MetadataSearchConfig,
 } from '../types';
@@ -22,17 +20,13 @@ import type {
   UpdateResult,
 } from '../types/settings';
 import { getApiBase, withBasePath } from '../utils/basePath';
-import type { MetadataBookData, SourceRecordData } from '../utils/bookTransformers';
-import {
-  transformMetadataToBook,
-  transformReleaseToDirectBook,
-  transformSourceRecordToBook,
-} from '../utils/bookTransformers';
+import type { MetadataBookData } from '../utils/bookTransformers';
+import { transformMetadataToBook } from '../utils/bookTransformers';
 import { isRecord, toStringValue } from '../utils/objectHelpers';
 import type { FulfilAdminRequestBody, RejectAdminRequestBody } from './requestApiHelpers';
 import {
-  buildAdminRequestActionUrl,
   buildFulfilAdminRequestBody,
+  buildFulfilBookRequestsUrl,
   buildRejectAdminRequestBody,
 } from './requestApiHelpers';
 
@@ -52,9 +46,7 @@ const API = {
   logout: `${API_BASE}/auth/logout`,
   authCheck: `${API_BASE}/auth/check`,
   settings: `${API_BASE}/settings`,
-  requestPolicy: `${API_BASE}/request-policy`,
   requests: `${API_BASE}/requests`,
-  requestsBatch: `${API_BASE}/requests/batch`,
   adminRequests: `${API_BASE}/admin/requests`,
   activitySnapshot: `${API_BASE}/activity/snapshot`,
   activityDismiss: `${API_BASE}/activity/dismiss`,
@@ -231,15 +223,6 @@ async function fetchJSON<T>(
     }
   }
 }
-
-// API functions
-export const searchBooks = async (query: string): Promise<Book[]> => {
-  if (!query) return [];
-  const response = await fetchJSON<ReleasesResponse>(
-    `${API_BASE}/releases?source=direct_download&${query}`,
-  );
-  return response.releases.map(transformReleaseToDirectBook);
-};
 
 // Metadata search response type (internal)
 interface MetadataSearchResponse {
@@ -466,13 +449,6 @@ export const setBookTargetState = async (
   };
 };
 
-export const getSourceRecordInfo = async (source: string, id: string): Promise<Book> => {
-  const response = await fetchJSON<SourceRecordData>(
-    `${API_BASE}/release-sources/${encodeURIComponent(source)}/records/${encodeURIComponent(id)}`,
-  );
-  return transformSourceRecordToBook(response);
-};
-
 // Get full book details from a metadata provider
 export const getMetadataBookInfo = async (provider: string, bookId: string): Promise<Book> => {
   const response = await fetchJSON<MetadataBookData>(
@@ -573,7 +549,6 @@ export type DownloadReleasePayload = {
   subtitle?: string;
   library_book_id?: number;
   search_author?: string;
-  search_mode?: 'direct' | 'universal';
 };
 
 export const downloadRelease = async (
@@ -669,17 +644,15 @@ export interface ActivityHistoryItem {
   source_id: string | null;
 }
 
-export const fetchRequestPolicy = async (): Promise<RequestPolicyResponse> => {
-  return fetchJSON<RequestPolicyResponse>(API.requestPolicy);
+export const createLibraryRequest = async (bookId: number): Promise<RequestRecord> => {
+  return fetchJSON<RequestRecord>(API.requests, {
+    method: 'POST',
+    body: JSON.stringify({ book_id: bookId }),
+  });
 };
 
-export const createRequests = async (
-  payloads: CreateRequestPayload[],
-): Promise<RequestSubmissionResult[]> => {
-  return fetchJSON<RequestSubmissionResult[]>(API.requestsBatch, {
-    method: 'POST',
-    body: JSON.stringify({ requests: payloads }),
-  });
+export const listLibraryRequests = async (): Promise<RequestRecord[]> => {
+  return fetchJSON<RequestRecord[]>(API.requests);
 };
 
 export const cancelRequest = async (id: number): Promise<RequestRecord> => {
@@ -688,11 +661,11 @@ export const cancelRequest = async (id: number): Promise<RequestRecord> => {
   });
 };
 
-export const fulfilAdminRequest = async (
-  id: number,
+export const fulfilAdminBookRequests = async (
+  bookId: number,
   body: FulfilAdminRequestBody = {},
-): Promise<RequestRecord> => {
-  return fetchJSON<RequestRecord>(buildAdminRequestActionUrl(API.adminRequests, id, 'fulfil'), {
+): Promise<RequestRecord[]> => {
+  return fetchJSON<RequestRecord[]>(buildFulfilBookRequestsUrl(API.adminRequests, bookId), {
     method: 'POST',
     body: JSON.stringify(buildFulfilAdminRequestBody(body)),
   });
@@ -702,7 +675,7 @@ export const rejectAdminRequest = async (
   id: number,
   body: RejectAdminRequestBody = {},
 ): Promise<RequestRecord> => {
-  return fetchJSON<RequestRecord>(buildAdminRequestActionUrl(API.adminRequests, id, 'reject'), {
+  return fetchJSON<RequestRecord>(`${API.adminRequests}/${encodeURIComponent(String(id))}/reject`, {
     method: 'POST',
     body: JSON.stringify(buildRejectAdminRequestBody(body)),
   });
@@ -722,8 +695,8 @@ export const logout = async (): Promise<AuthResponse> => {
   });
 };
 
-export const checkAuth = async (): Promise<AuthResponse> => {
-  return fetchJSON<AuthResponse>(API.authCheck);
+export const checkAuth = async (): Promise<AuthCheckResponse> => {
+  return fetchJSON<AuthCheckResponse>(API.authCheck);
 };
 
 // Settings API functions
@@ -815,11 +788,8 @@ export const getReleaseSources = async (): Promise<ReleaseSource[]> => {
 
 // Search for releases of a book
 export const getReleases = async (
-  provider: string,
-  bookId: string,
+  libraryBookId: number,
   source?: string,
-  title?: string,
-  author?: string,
   expandSearch?: boolean,
   languages?: string[],
   contentType?: string,
@@ -827,17 +797,10 @@ export const getReleases = async (
   indexers?: string[],
 ): Promise<ReleasesResponse> => {
   const params = new URLSearchParams({
-    provider,
-    book_id: bookId,
+    library_book_id: String(libraryBookId),
   });
   if (source) {
     params.set('source', source);
-  }
-  if (title) {
-    params.set('title', title);
-  }
-  if (author) {
-    params.set('author', author);
   }
   if (expandSearch) {
     params.set('expand_search', 'true');
@@ -880,17 +843,18 @@ export interface AdminUser {
   is_active: boolean;
   oidc_subject: string | null;
   created_at: string;
+  library_capability: 'download-capable' | 'request-only';
   edit_capabilities: AdminUserEditCapabilities;
-  settings?: Record<string, unknown>;
 }
 
-interface SelfUserEditContext {
-  user: AdminUser;
-  deliveryPreferences: DeliveryPreferencesResponse | null;
-  searchPreferences: DeliveryPreferencesResponse | null;
-  notificationPreferences: DeliveryPreferencesResponse | null;
-  userOverridableKeys: string[];
-  visibleUserSettingsSections?: string[];
+export interface SelfSettings {
+  username: string;
+  email: string | null;
+  display_name: string | null;
+  kindle_address: string | null;
+  notifications_enabled: boolean;
+  notification_transport: 'email' | 'apprise' | null;
+  notification_destination: string | null;
 }
 
 export const getAdminUsers = async (): Promise<AdminUser[]> => {
@@ -916,9 +880,13 @@ export const createAdminUser = async (data: {
 
 export const updateAdminUser = async (
   userId: number,
-  data: Partial<Pick<AdminUser, 'role' | 'email' | 'display_name'>> & {
+  data: Partial<
+    Pick<
+      AdminUser,
+      'username' | 'role' | 'email' | 'display_name' | 'library_capability' | 'is_active'
+    >
+  > & {
     password?: string;
-    settings?: Record<string, unknown>;
   },
 ): Promise<AdminUser> => {
   return fetchJSON<AdminUser>(`${API_BASE}/admin/users/${userId}`, {
@@ -947,129 +915,22 @@ export const syncAdminCwaUsers = async (): Promise<CwaUserSyncResult> => {
   });
 };
 
-export interface DownloadDefaults {
-  BOOKS_OUTPUT_MODE: string;
-  DESTINATION: string;
-  DESTINATION_AUDIOBOOK: string;
-  BOOKLORE_LIBRARY_ID: string;
-  BOOKLORE_PATH_ID: string;
-  EMAIL_RECIPIENT: string;
-  OIDC_ADMIN_GROUP: string;
-  OIDC_USE_ADMIN_GROUP: boolean;
-  OIDC_AUTO_PROVISION: boolean;
-}
-
-export const getDownloadDefaults = async (): Promise<DownloadDefaults> => {
-  return fetchJSON<DownloadDefaults>(`${API_BASE}/admin/download-defaults`);
+export const getSelfSettings = async (): Promise<SelfSettings> => {
+  return fetchJSON<SelfSettings>(`${API_BASE}/users/me`);
 };
 
-export interface DeliveryPreferencesResponse {
-  tab: string;
-  keys: string[];
-  fields: SettingsField[];
-  globalValues: Record<string, unknown>;
-  userOverrides: Record<string, unknown>;
-  effective: Record<string, { value: unknown; source: string }>;
-}
-
-export const getAdminDeliveryPreferences = async (
-  userId: number,
-): Promise<DeliveryPreferencesResponse> => {
-  return fetchJSON<DeliveryPreferencesResponse>(
-    `${API_BASE}/admin/users/${userId}/delivery-preferences`,
-  );
-};
-
-export const getAdminSearchPreferences = async (
-  userId: number,
-): Promise<DeliveryPreferencesResponse> => {
-  return fetchJSON<DeliveryPreferencesResponse>(
-    `${API_BASE}/admin/users/${userId}/search-preferences`,
-  );
-};
-
-export const getAdminNotificationPreferences = async (
-  userId: number,
-): Promise<DeliveryPreferencesResponse> => {
-  return fetchJSON<DeliveryPreferencesResponse>(
-    `${API_BASE}/admin/users/${userId}/notification-preferences`,
-  );
-};
-
-export const testAdminUserNotificationPreferences = async (
-  userId: number,
-  routes: Array<Record<string, unknown>>,
-): Promise<ActionResult> => {
-  try {
-    return await fetchJSON<ActionResult>(
-      `${API_BASE}/admin/users/${userId}/notification-preferences/test`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ USER_NOTIFICATION_ROUTES: routes }),
-      },
-    );
-  } catch (error) {
-    const mapped = mapApiErrorToActionResult(error);
-    if (mapped) {
-      return mapped;
-    }
-    throw error;
-  }
-};
-
-export const testSelfNotificationPreferences = async (
-  routes: Array<Record<string, unknown>>,
-): Promise<ActionResult> => {
-  try {
-    return await fetchJSON<ActionResult>(`${API_BASE}/users/me/notification-preferences/test`, {
-      method: 'POST',
-      body: JSON.stringify({ USER_NOTIFICATION_ROUTES: routes }),
-    });
-  } catch (error) {
-    const mapped = mapApiErrorToActionResult(error);
-    if (mapped) {
-      return mapped;
-    }
-    throw error;
-  }
-};
-
-interface SettingsOverrideUserDetail {
-  userId: number;
-  username: string;
-  value: unknown;
-}
-
-interface SettingsOverrideKeySummary {
-  count: number;
-  users: SettingsOverrideUserDetail[];
-}
-
-interface SettingsOverridesSummaryResponse {
-  tab: string;
-  keys: Record<string, SettingsOverrideKeySummary>;
-}
-
-export const getAdminSettingsOverridesSummary = async (
-  tabName: string,
-): Promise<SettingsOverridesSummaryResponse> => {
-  return fetchJSON<SettingsOverridesSummaryResponse>(
-    `${API_BASE}/admin/settings/overrides-summary?tab=${encodeURIComponent(tabName)}`,
-  );
-};
-
-export const getSelfUserEditContext = async (): Promise<SelfUserEditContext> => {
-  return fetchJSON<SelfUserEditContext>(`${API_BASE}/users/me/edit-context`);
-};
-
-export const updateSelfUser = async (
-  data: Partial<Pick<AdminUser, 'email' | 'display_name'>> & {
-    password?: string;
-    settings?: Record<string, unknown>;
-  },
-): Promise<AdminUser> => {
-  return fetchJSON<AdminUser>(`${API_BASE}/users/me`, {
+export const updateSelfSettings = async (
+  data: Partial<Omit<SelfSettings, 'username' | 'email'>>,
+): Promise<SelfSettings> => {
+  return fetchJSON<SelfSettings>(`${API_BASE}/users/me`, {
     method: 'PUT',
     body: JSON.stringify(data),
   });
+};
+
+export const testPersonalNotification = async (): Promise<{
+  success: boolean;
+  message: string;
+}> => {
+  return fetchJSON(`${API_BASE}/users/me/notifications/test`, { method: 'POST' });
 };

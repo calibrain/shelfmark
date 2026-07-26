@@ -36,6 +36,12 @@
   }
 }
 
+@media (min-width: 64rem) {
+  .library-app-shell {
+    margin-left: 16rem;
+  }
+}
+
 /* Fonts */
 @font-face {
   font-family: 'Inter';

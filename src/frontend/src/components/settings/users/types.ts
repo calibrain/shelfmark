@@ -1,28 +1,5 @@
 import type { AdminUser } from '../../../services/api';
 
-export interface PerUserSettings {
-  [key: string]: unknown;
-  BOOKS_OUTPUT_MODE?: string;
-  DESTINATION?: string;
-  DESTINATION_AUDIOBOOK?: string;
-  BOOKLORE_LIBRARY_ID?: string;
-  BOOKLORE_PATH_ID?: string;
-  EMAIL_RECIPIENT?: string;
-  DOWNLOAD_TO_BROWSER_CONTENT_TYPES?: string[];
-  SEARCH_MODE?: string;
-  METADATA_PROVIDER?: string;
-  METADATA_PROVIDER_AUDIOBOOK?: string;
-  DEFAULT_RELEASE_SOURCE?: string;
-  DEFAULT_RELEASE_SOURCE_AUDIOBOOK?: string;
-  USER_NOTIFICATION_ROUTES?: Array<Record<string, unknown>>;
-  REQUESTS_ENABLED?: boolean;
-  REQUEST_POLICY_DEFAULT_EBOOK?: string;
-  REQUEST_POLICY_DEFAULT_AUDIOBOOK?: string;
-  REQUEST_POLICY_RULES?: Array<Record<string, unknown>>;
-  MAX_PENDING_REQUESTS_PER_USER?: number;
-  REQUESTS_ALLOW_NOTES?: boolean;
-}
-
 export interface CreateUserFormState {
   username: string;
   email: string;
@@ -44,8 +21,7 @@ export const INITIAL_CREATE_FORM: CreateUserFormState = {
 export type UsersPanelRoute =
   | { kind: 'list' }
   | { kind: 'create' }
-  | { kind: 'edit'; userId: number }
-  | { kind: 'edit-overrides'; userId: number };
+  | { kind: 'edit'; userId: number };
 
 type AuthSource = AdminUser['auth_source'];
 

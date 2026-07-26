@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 
 import { useSocket } from '../contexts/SocketContext';
 import { login, logout, checkAuth } from '../services/api';
-import type { LoginCredentials } from '../types';
+import type { LibraryCapability, LoginCredentials } from '../types';
 import { getReturnToFromSearch } from '../utils/authRedirect';
 import { useMountEffect } from './useMountEffect';
 
@@ -17,6 +17,7 @@ interface UseAuthReturn {
   authRequired: boolean;
   authChecked: boolean;
   isAdmin: boolean;
+  libraryCapability: LibraryCapability | null;
   authMode: string;
   username: string | null;
   displayName: string | null;
@@ -42,6 +43,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
   const [authRequired, setAuthRequired] = useState(true);
   const [authChecked, setAuthChecked] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [libraryCapability, setLibraryCapability] = useState<LibraryCapability | null>(null);
   const [authMode, setAuthMode] = useState('none');
   const [username, setUsername] = useState<string | null>(null);
   const [displayName, setDisplayName] = useState<string | null>(null);
@@ -55,6 +57,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
     setAuthRequired(response.auth_required !== false);
     setIsAuthenticated(response.authenticated || false);
     setIsAdmin(response.is_admin || false);
+    setLibraryCapability(response.library_capability);
     setAuthMode(response.auth_mode || 'none');
     setUsername(response.username || null);
     setDisplayName(response.display_name || null);
@@ -83,6 +86,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
         setAuthRequired(true);
         setIsAuthenticated(false);
         setIsAdmin(false);
+        setLibraryCapability(null);
       } finally {
         setAuthChecked(true);
       }
@@ -169,6 +173,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
         console.error('Post-logout auth refresh failed:', error);
         setIsAuthenticated(false);
         setIsAdmin(false);
+        setLibraryCapability(null);
         setUsername(null);
         setDisplayName(null);
       }
@@ -186,6 +191,7 @@ export function useAuth(options: UseAuthOptions = {}): UseAuthReturn {
     authRequired,
     authChecked,
     isAdmin,
+    libraryCapability,
     authMode,
     username,
     displayName,

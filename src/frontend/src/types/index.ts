@@ -1,11 +1,3 @@
-// Search mode constants and type
-export const SEARCH_MODE = {
-  DIRECT: 'direct',
-  UNIVERSAL: 'universal',
-} as const;
-
-export type SearchMode = (typeof SEARCH_MODE)[keyof typeof SEARCH_MODE];
-
 // Display field for metadata cards (provider-specific info like ratings, pages, etc.)
 export interface DisplayField {
   label: string; // e.g., "Rating", "Pages", "Readers"
@@ -183,46 +175,14 @@ export interface QueryTargetOption {
 // Content type for search (ebook vs audiobook)
 export type ContentType = 'ebook' | 'audiobook';
 
-export type RequestPolicyMode = 'download' | 'request_release' | 'request_book' | 'blocked';
-
-export interface RequestPolicyDefaults {
-  ebook: RequestPolicyMode;
-  audiobook: RequestPolicyMode;
-}
-
-export interface RequestPolicySourceMode {
-  source: string;
-  supported_content_types: string[];
-  browse_results_are_releases?: boolean;
-  modes: Record<string, RequestPolicyMode>;
-}
-
-export interface RequestPolicyResponse {
-  requests_enabled: boolean;
-  is_admin: boolean;
-  allow_notes: boolean;
-  defaults: RequestPolicyDefaults;
-  rules: Array<Record<string, unknown>>;
-  source_modes: RequestPolicySourceMode[];
-}
-
-export interface RequestContextPayload {
-  source: string;
-  content_type: ContentType;
-  request_level: 'book' | 'release';
-}
-
-export interface CreateRequestPayload {
-  book_data: Record<string, unknown>;
-  release_data?: Record<string, unknown> | null;
-  note?: string;
-  on_behalf_of_user_id?: number;
-  context: RequestContextPayload;
-}
-
 export interface RequestRecord {
   id: number;
   user_id: number;
+  // Library request snapshots use these flat fields; older activity records retain book_data.
+  book_id?: number | string;
+  book_title?: string;
+  book_author?: string | null;
+  book_cover_url?: string | null;
   status: 'pending' | 'fulfilled' | 'rejected' | 'cancelled';
   delivery_state?:
     | 'none'
@@ -238,7 +198,7 @@ export interface RequestRecord {
   source_hint: string | null;
   content_type: ContentType;
   request_level: 'book' | 'release';
-  policy_mode: RequestPolicyMode;
+  policy_mode?: string;
   book_data: Record<string, unknown> | null;
   release_data: Record<string, unknown> | null;
   note: string | null;
@@ -249,20 +209,6 @@ export interface RequestRecord {
   updated_at: string;
   username?: string;
 }
-
-export interface QueuedDownloadResult {
-  kind: 'download';
-  status: 'queued';
-  priority: number;
-  title: string;
-  source: string;
-  source_id: string | null;
-  content_type?: ContentType;
-}
-
-export type RequestSubmissionResult = RequestRecord | QueuedDownloadResult;
-
-export type BooksOutputMode = 'folder' | 'booklore' | 'email';
 
 export interface AppConfig {
   calibre_web_url: string;
@@ -275,7 +221,6 @@ export interface AppConfig {
   default_language: string[];
   supported_formats: string[];
   supported_audiobook_formats: string[]; // Audiobook formats (m4b, mp3)
-  search_mode: SearchMode;
   metadata_sort_options: SortOption[];
   metadata_search_fields: MetadataSearchField[];
   default_release_source?: string; // Default tab in ReleaseModal (e.g., 'direct_download')
@@ -284,13 +229,10 @@ export interface AppConfig {
   library_auto_find_releases: boolean;
   show_combined_selector: boolean;
   force_combined_search: boolean;
-  books_output_mode: BooksOutputMode;
   auto_open_downloads_sidebar: boolean; // Auto-open sidebar when download is queued
   hardcover_auto_remove_on_download: boolean; // Auto-remove from active Hardcover list on download
-  download_to_browser_content_types: string[]; // Auto-download completed files to browser for selected content types
   settings_enabled: boolean; // Whether config directory is mounted and writable
   onboarding_complete: boolean; // Whether the user has completed initial setup
-  default_sort: string; // Default sort for direct mode
   metadata_default_sort: string; // Default sort for universal mode (from metadata provider)
 }
 
@@ -346,6 +288,12 @@ export interface AuthResponse {
   oidc_button_label?: string;
   hide_local_auth?: boolean;
   oidc_auto_redirect?: boolean;
+}
+
+export type LibraryCapability = 'download-capable' | 'request-only';
+
+export interface AuthCheckResponse extends AuthResponse {
+  library_capability: LibraryCapability | null;
 }
 
 export interface ActingAsUserSelection {

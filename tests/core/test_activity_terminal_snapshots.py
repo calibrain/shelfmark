@@ -66,48 +66,6 @@ class TestTerminalSnapshotCapture:
         finally:
             main_module.backend.book_queue.cancel_download(task_id)
 
-    def test_complete_transition_records_requested_origin_for_graduated_request(self, main_module):
-        user = _create_user(main_module, prefix="snap-requested")
-        task_id = f"requested-{uuid.uuid4().hex[:8]}"
-        request_row = main_module.user_db.create_request(
-            user_id=user["id"],
-            content_type="ebook",
-            request_level="release",
-            policy_mode="request_release",
-            book_data={
-                "title": "Requested Snapshot",
-                "author": "Snapshot Author",
-                "provider": "openlibrary",
-                "provider_id": "snapshot-req",
-            },
-            release_data={
-                "source": "prowlarr",
-                "source_id": task_id,
-                "title": "Requested Snapshot.epub",
-            },
-            status="fulfilled",
-            delivery_state="queued",
-        )
-        task = DownloadTask(
-            task_id=task_id,
-            source="prowlarr",
-            title="Requested Snapshot",
-            user_id=user["id"],
-            username=user["username"],
-            request_id=request_row["id"],
-        )
-        assert main_module.backend.book_queue.add(task) is True
-
-        try:
-            main_module.backend.book_queue.update_status(task_id, QueueStatus.COMPLETE)
-            row = _read_download_history_row(main_module, task_id)
-            assert row is not None
-            assert row["origin"] == "requested"
-            assert row["request_id"] == request_row["id"]
-            assert row["task_id"] == task_id
-        finally:
-            main_module.backend.book_queue.cancel_download(task_id)
-
     def test_complete_transition_snapshot_uses_latest_terminal_status_message(self, main_module):
         user = _create_user(main_module, prefix="snap-message")
         task_id = f"message-{uuid.uuid4().hex[:8]}"
@@ -155,11 +113,7 @@ class TestTerminalSnapshotCapture:
             assert context.title == "Notify Complete Snapshot"
             assert context.author == "Notify Author"
             assert context.username == user["username"]
-            mock_notify_user.assert_called_once()
-            user_id, user_event, user_context = mock_notify_user.call_args.args
-            assert user_id == user["id"]
-            assert user_event == NotificationEvent.DOWNLOAD_COMPLETE
-            assert user_context.title == "Notify Complete Snapshot"
+            mock_notify_user.assert_not_called()
         finally:
             main_module.backend.book_queue.cancel_download(task_id)
 
@@ -217,72 +171,7 @@ class TestTerminalSnapshotCapture:
             assert event == NotificationEvent.DOWNLOAD_FAILED
             assert context.title == "Notify Error Snapshot"
             assert context.error_message == "Resolver timed out"
-            mock_notify_user.assert_called_once()
-            user_id, user_event, user_context = mock_notify_user.call_args.args
-            assert user_id == user["id"]
-            assert user_event == NotificationEvent.DOWNLOAD_FAILED
-            assert user_context.error_message == "Resolver timed out"
-        finally:
-            main_module.backend.book_queue.cancel_download(task_id)
-
-    def test_error_transition_keeps_request_fulfilled_when_postprocess_retry_is_available(
-        self,
-        main_module,
-        tmp_path,
-    ):
-        user = _create_user(main_module, prefix="snap-retryable-request")
-        task_id = f"retryable-request-{uuid.uuid4().hex[:8]}"
-        staged_file = tmp_path / "retryable-request.epub"
-        staged_file.write_text("staged")
-        request_row = main_module.user_db.create_request(
-            user_id=user["id"],
-            content_type="ebook",
-            request_level="release",
-            policy_mode="request_release",
-            book_data={
-                "title": "Retryable Request",
-                "author": "Retry Author",
-                "provider": "openlibrary",
-                "provider_id": "retryable-request-1",
-            },
-            release_data={
-                "source": "prowlarr",
-                "source_id": task_id,
-                "title": "Retryable Request.epub",
-            },
-            status="fulfilled",
-            delivery_state="queued",
-        )
-        task = DownloadTask(
-            task_id=task_id,
-            source="prowlarr",
-            title="Retryable Request",
-            user_id=user["id"],
-            username=user["username"],
-            request_id=request_row["id"],
-            staged_path=str(staged_file),
-        )
-        assert main_module.backend.book_queue.add(task) is True
-
-        try:
-            main_module.backend.book_queue.update_status_message(
-                task_id, "Destination not writable"
-            )
-            with patch.object(main_module, "reopen_failed_request") as mock_reopen:
-                main_module.backend.book_queue.update_status(task_id, QueueStatus.ERROR)
-
-            mock_reopen.assert_not_called()
-            persisted_request = next(
-                row
-                for row in main_module.user_db.list_requests(user_id=user["id"])
-                if row["id"] == request_row["id"]
-            )
-            assert persisted_request["status"] == "fulfilled"
-            assert persisted_request["release_data"] is not None
-
-            history_row = _read_download_history_row(main_module, task_id)
-            assert history_row is not None
-            assert history_row["final_status"] == "error"
+            mock_notify_user.assert_not_called()
         finally:
             main_module.backend.book_queue.cancel_download(task_id)
 
@@ -309,47 +198,6 @@ class TestTerminalSnapshotCapture:
             assert row["title"] == "Queue Time Snapshot"
             assert row["author"] == "Queue Author"
             assert row["queued_at"] is not None
-        finally:
-            main_module.backend.book_queue.cancel_download(task_id)
-
-    def test_queue_hook_records_requested_origin_for_request_linked_task(self, main_module):
-        user = _create_user(main_module, prefix="snap-queue-req")
-        task_id = f"queue-req-{uuid.uuid4().hex[:8]}"
-        request_row = main_module.user_db.create_request(
-            user_id=user["id"],
-            content_type="ebook",
-            request_level="release",
-            policy_mode="request_release",
-            book_data={
-                "title": "Requested Queue",
-                "author": "Request Author",
-                "provider": "openlibrary",
-                "provider_id": "queue-req-1",
-            },
-            release_data={
-                "source": "prowlarr",
-                "source_id": task_id,
-                "title": "Requested Queue.epub",
-            },
-            status="fulfilled",
-            delivery_state="queued",
-        )
-        task = DownloadTask(
-            task_id=task_id,
-            source="prowlarr",
-            title="Requested Queue",
-            user_id=user["id"],
-            username=user["username"],
-            request_id=request_row["id"],
-        )
-        assert main_module.backend.book_queue.add(task) is True
-
-        try:
-            row = _read_download_history_row(main_module, task_id)
-            assert row is not None
-            assert row["final_status"] == "active"
-            assert row["origin"] == "requested"
-            assert row["request_id"] == request_row["id"]
         finally:
             main_module.backend.book_queue.cancel_download(task_id)
 

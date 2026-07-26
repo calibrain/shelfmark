@@ -1,7 +1,6 @@
 import { useEffect, useEffectEvent, useRef } from 'react';
 
 import type { AppConfig, StatusData } from '../../types';
-import { withBasePath } from '../../utils/basePath';
 
 interface UseStatusChangeNotificationsOptions {
   currentStatus: StatusData;
@@ -23,15 +22,6 @@ export const useStatusChangeNotifications = ({
   const prevStatusRef = useRef<StatusData>({});
   const handleStatusTransition = useEffectEvent(
     (prevStatus: StatusData, nextStatus: StatusData) => {
-      const autoDownloadContentTypes = Array.isArray(config?.download_to_browser_content_types)
-        ? config.download_to_browser_content_types
-        : [];
-      const canAutoDownloadContentType = (downloadContentType?: string): boolean => {
-        const contentTypeKey =
-          (downloadContentType || '').trim().toLowerCase() === 'audiobook' ? 'audiobook' : 'book';
-        return autoDownloadContentTypes.includes(contentTypeKey);
-      };
-
       const prevQueued = prevStatus.queued || {};
       const currQueued = nextStatus.queued || {};
       let shouldOpenDownloadsSidebar = false;
@@ -63,15 +53,6 @@ export const useStatusChangeNotifications = ({
         if (!prevComplete[bookId]) {
           const book = currComplete[bookId];
           showToast(`${book.title || 'Book'} completed`, 'success');
-
-          if (book.download_path && canAutoDownloadContentType(book.content_type)) {
-            const link = document.createElement('a');
-            link.href = withBasePath(`/api/localdownload?id=${encodeURIComponent(bookId)}`);
-            link.download = '';
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-          }
 
           Object.entries(bookToReleaseMap).forEach(([metadataBookId, releaseIds]) => {
             if (releaseIds.includes(bookId)) {

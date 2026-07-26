@@ -14,15 +14,7 @@ from typing import TYPE_CHECKING, Any, ParamSpec
 from flask import Flask, Response, g, jsonify, request, session
 from werkzeug.security import generate_password_hash
 
-from shelfmark.config.booklore_settings import (
-    get_booklore_library_options,
-    get_booklore_path_options,
-)
 from shelfmark.config.env import CWA_DB_PATH
-from shelfmark.core.admin_settings_routes import (
-    register_admin_settings_routes,
-    validate_user_settings,
-)
 from shelfmark.core.auth_modes import (
     AUTH_SOURCE_BUILTIN,
     AUTH_SOURCE_CWA,
@@ -49,12 +41,7 @@ logger = setup_logger(__name__)
 MIN_PASSWORD_LENGTH = 4
 _CONFIG_REFRESH_ERRORS = (ImportError, OSError, RuntimeError, TypeError, ValueError)
 
-__all__ = [
-    "get_booklore_library_options",
-    "get_booklore_path_options",
-    "register_admin_routes",
-    "validate_user_settings",
-]
+__all__ = ["register_admin_routes"]
 
 
 def _get_user_edit_capabilities(
@@ -185,6 +172,20 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
     def admin_create_user() -> Response | tuple[Response, int]:
         """Create a new user with password authentication."""
         data = request.get_json() or {}
+        if not isinstance(data, dict):
+            return jsonify({"error": "Request body must be a JSON object"}), 400
+        allowed_fields = {
+            "username",
+            "role",
+            "email",
+            "display_name",
+            "library_capability",
+            "is_active",
+            "password",
+        }
+        unknown_fields = sorted(set(data) - allowed_fields)
+        if unknown_fields:
+            return jsonify({"error": f"Unsupported user fields: {', '.join(unknown_fields)}"}), 400
         auth_mode = g.auth_mode
 
         username = (data.get("username") or "").strip()
@@ -192,6 +193,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         email = (data.get("email") or "").strip() or None
         display_name = (data.get("display_name") or "").strip() or None
         role = data.get("role", "user")
+        library_capability = data.get("library_capability", "download-capable")
 
         if auth_mode in {AUTH_SOURCE_PROXY, AUTH_SOURCE_CWA}:
             return jsonify(
@@ -212,6 +214,8 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             ), 400
         if role not in ("admin", "user"):
             return jsonify({"error": "Role must be 'admin' or 'user'"}), 400
+        if library_capability not in ("download-capable", "request-only"):
+            return jsonify({"error": "Invalid library_capability"}), 400
 
         # First user is always admin
         existing_users = user_db.list_users()
@@ -231,6 +235,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
                 display_name=display_name,
                 auth_source=AUTH_SOURCE_BUILTIN,
                 role=role,
+                library_capability=library_capability,
             )
         except ValueError:
             return jsonify({"error": "Username already exists"}), 409
@@ -260,18 +265,31 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             user,
             g.auth_mode,
         )
-        result["settings"] = user_db.get_user_settings(user_id)
         return jsonify(result)
 
     @app.route("/api/admin/users/<int:user_id>", methods=["PUT"])
     @_require_admin
     def admin_update_user(user_id: int) -> Response | tuple[Response, int]:
-        """Update user fields and/or settings."""
+        """Update administrator-managed account access fields."""
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
 
         data = request.get_json() or {}
+        if not isinstance(data, dict):
+            return jsonify({"error": "Request body must be a JSON object"}), 400
+        allowed_fields = {
+            "username",
+            "role",
+            "email",
+            "display_name",
+            "library_capability",
+            "is_active",
+            "password",
+        }
+        unknown_fields = sorted(set(data) - allowed_fields)
+        if unknown_fields:
+            return jsonify({"error": f"Unsupported user fields: {', '.join(unknown_fields)}"}), 400
         auth_source = normalize_auth_source(
             user.get("auth_source"),
             user.get("oidc_subject"),
@@ -296,12 +314,34 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
         # Update user fields
         user_fields = {}
-        for field in ("role", "email", "display_name"):
+        for field in (
+            "username",
+            "role",
+            "email",
+            "display_name",
+            "library_capability",
+            "is_active",
+        ):
             if field in data:
                 user_fields[field] = data[field]
 
         if "role" in user_fields and user_fields["role"] not in ("admin", "user"):
             return jsonify({"error": "Role must be 'admin' or 'user'"}), 400
+        if "library_capability" in user_fields and user_fields["library_capability"] not in (
+            "download-capable",
+            "request-only",
+        ):
+            return jsonify({"error": "Invalid library_capability"}), 400
+        if "username" in user_fields:
+            username = str(user_fields["username"]).strip()
+            if not username:
+                return jsonify({"error": "Username is required"}), 400
+            other = user_db.get_user(username=username)
+            if other and other["id"] != user_id:
+                return jsonify({"error": "Username already exists"}), 409
+            user_fields["username"] = username
+        if "is_active" in user_fields and not isinstance(user_fields["is_active"], bool):
+            return jsonify({"error": "is_active must be a boolean"}), 400
 
         role_changed = "role" in user_fields and user_fields["role"] != user.get("role")
         email_changed = "email" in user_fields and user_fields["email"] != user.get("email")
@@ -354,37 +394,19 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         # local password admin remains.
 
         # Avoid unnecessary writes for no-op field updates.
-        for field in ("role", "email", "display_name"):
+        for field in (
+            "username",
+            "role",
+            "email",
+            "display_name",
+            "library_capability",
+            "is_active",
+        ):
             if field in user_fields and user_fields[field] == user.get(field):
                 user_fields.pop(field)
 
         if user_fields:
             user_db.update_user(user_id, **user_fields)
-
-        # Update per-user settings
-        if "settings" in data:
-            if not isinstance(data["settings"], dict):
-                return jsonify({"error": "Settings must be an object"}), 400
-
-            validated_settings, validation_errors = validate_user_settings(data["settings"])
-            if validation_errors:
-                return jsonify(
-                    {
-                        "error": "Invalid settings payload",
-                        "details": validation_errors,
-                    }
-                ), 400
-
-            user_db.set_user_settings(user_id, validated_settings)
-            # Ensure runtime reads see updated per-user overrides immediately.
-            try:
-                app_config.refresh(force=True)
-            except _CONFIG_REFRESH_ERRORS as exc:
-                logger.warning(
-                    "Updated settings for user %s but failed to refresh runtime config: %s",
-                    user_id,
-                    exc,
-                )
 
         updated = user_db.get_user(user_id=user_id)
         if not isinstance(updated, dict):
@@ -393,7 +415,6 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             updated,
             g.auth_mode,
         )
-        result["settings"] = user_db.get_user_settings(user_id)
         logger.info("Admin updated user %s", user_id)
         return jsonify(result)
 
@@ -438,8 +459,6 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
                 **summary,
             }
         )
-
-    register_admin_settings_routes(app, user_db, _require_admin)
 
     @app.route("/api/admin/users/<int:user_id>", methods=["DELETE"])
     @_require_admin

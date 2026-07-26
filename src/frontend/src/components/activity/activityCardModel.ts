@@ -53,7 +53,7 @@ const toRequestVisualStatus = (status: RequestRecord['status']): ActivityVisualS
 
 const getPendingRequestText = (item: ActivityItem, isAdmin: boolean): string => {
   if (!isAdmin) {
-    return 'Awaiting review';
+    return 'Awaiting availability';
   }
   const username = item.username?.trim() || item.requestRecord?.username?.trim();
   return username ? `Needs review · ${username}` : 'Needs review';
@@ -84,7 +84,7 @@ const getRequestBadge = (item: ActivityItem, isAdmin: boolean): ActivityCardBadg
   } else if (requestVisualStatus === 'pending') {
     text = getPendingRequestText(item, isAdmin);
   } else if (requestVisualStatus === 'fulfilled') {
-    text = 'Approved';
+    text = isAdmin ? 'Approved' : 'Available';
   } else if (requestVisualStatus === 'rejected') {
     text = isAdmin ? 'Declined' : 'Not approved';
   } else if (requestVisualStatus === 'cancelled') {
@@ -215,9 +215,10 @@ const buildActions = (item: ActivityItem, isAdmin: boolean): ActivityCardAction[
     }
 
     if (
-      item.visualStatus === 'fulfilled' ||
-      item.visualStatus === 'rejected' ||
-      item.visualStatus === 'cancelled'
+      isAdmin &&
+      (item.visualStatus === 'fulfilled' ||
+        item.visualStatus === 'rejected' ||
+        item.visualStatus === 'cancelled')
     ) {
       return [{ kind: 'request-dismiss', requestId: item.requestId }];
     }

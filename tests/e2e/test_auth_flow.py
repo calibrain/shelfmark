@@ -26,6 +26,7 @@ def _auth_check(api_client: APIClient) -> dict:
     assert "auth_required" in data
     assert "auth_mode" in data
     assert "is_admin" in data
+    assert "library_capability" in data
     return data
 
 
@@ -43,6 +44,7 @@ class TestAuthenticationFlow:
                 "auth_required": False,
                 "auth_mode": "none",
                 "is_admin": True,
+                "library_capability": None,
             }
             return
 
@@ -50,6 +52,10 @@ class TestAuthenticationFlow:
         assert data["auth_required"] is True
         assert data["auth_mode"] in ["builtin", "cwa", "proxy", "oidc"]
         assert isinstance(data["is_admin"], bool)
+        assert data["library_capability"] is None or data["library_capability"] in {
+            "download-capable",
+            "request-only",
+        }
         assert data["username"] is None or isinstance(data["username"], str)
         assert "display_name" in data
         assert data["display_name"] is None or isinstance(data["display_name"], str)

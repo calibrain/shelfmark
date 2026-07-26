@@ -3,7 +3,7 @@
 <img src="src/frontend/public/logo.png" alt="Shelfmark" width="200">
 
 > [!NOTE]
-> This project is in a stable state as of May 2026 but is not under active maintenance. 
+> This project is in a stable state as of May 2026 but is not under active maintenance.
 
 Shelfmark is a self-hosted web interface for searching and requesting books and audiobooks across multiple sources. Bring your own sources, metadata providers, and download clients to build a single hub for your digital library. Supports multiple users with a built-in request system, so you can share your instance with others and let them browse and request books on their own.
 
@@ -84,16 +84,6 @@ volumes:
 
 ## ⚙️ Configuration
 
-### Search Modes
-
-**Direct**
-- Queries configured sources directly
-
-**Universal** (recommended)
-- Search via metadata providers (Hardcover, Open Library, Google Books) for richer results
-- Aggregates releases from multiple configured sources
-- Full audiobook support
-
 ### Environment Variables
 
 Environment variables work for initial setup and Docker deployments. They serve as defaults that can be overridden in the web interface.
@@ -104,7 +94,6 @@ Environment variables work for initial setup and Docker deployments. They serve 
 | `INGEST_DIR` | Book download directory | `/books` |
 | `TZ` | Container timezone | `UTC` |
 | `PUID` / `PGID` | Runtime user/group for the default root-startup flow (also supports legacy `UID`/`GID`) | `1000` / `1000` |
-| `SEARCH_MODE` | `direct` or `universal` | `universal` |
 | `USING_TOR` | Enable Tor routing (requires root startup) | `false` |
 | `USING_WIREGUARD` | Enable WireGuard VPN egress with kill-switch (requires root startup) | `false` |
 | `WIREGUARD_CONFIG` | Path to the mounted wg-quick config | `/config/wg0.conf` |

@@ -9,7 +9,7 @@ This document lists all configuration options that can be set via environment va
 - [Bootstrap Configuration](#bootstrap-configuration)
 - [Egress / VPN Routing](#egress--vpn-routing)
 - [General](#general)
-- [Search Mode](#search-mode)
+- [Release Discovery](#release-discovery)
 - [Downloads](#downloads)
 - [Security](#security)
 - [Network](#network)
@@ -242,7 +242,6 @@ Seconds since the last WireGuard handshake before the healthcheck bounces the tu
 
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
-| `SEARCH_PAGE_TITLE` | Title shown above the main search box on the homepage. | string | `Shelfmark` |
 | `CALIBRE_WEB_URL` | Adds a navigation button to your book library (Calibre-Web Automated, Grimmory, etc). | string | _none_ |
 | `AUDIOBOOK_LIBRARY_URL` | Adds a separate navigation button for your audiobook library (Audiobookshelf, Plex, etc). When both URLs are set, icons are shown instead of text. | string | _none_ |
 | `SUPPORTED_FORMATS` | Book formats to include in search results. ZIP/RAR archives are extracted automatically and book files are used if found. | string (comma-separated) | `epub,mobi,azw3,fb2,djvu,cbz,cbr` |
@@ -251,15 +250,6 @@ Seconds since the last WireGuard handshake before the healthcheck bounces the tu
 
 <details>
 <summary>Detailed descriptions</summary>
-
-#### `SEARCH_PAGE_TITLE`
-
-**Search Page Title**
-
-Title shown above the main search box on the homepage.
-
-- **Type:** string
-- **Default:** `Shelfmark`
 
 #### `CALIBRE_WEB_URL`
 
@@ -308,12 +298,10 @@ Default language filter for searches.
 
 </details>
 
-## Search Mode
+## Release Discovery
 
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
-| `SEARCH_MODE` | How you want to search for and download books. | string (choice) | `universal` |
-| `AA_DEFAULT_SORT` | Default sort order for search results. | string (choice) | `relevance` |
 | `SHOW_RELEASE_SOURCE_LINKS` | Show clickable release-source links in release and details modals. Metadata provider links stay enabled. | boolean | `true` |
 | `SHOW_COMBINED_SELECTOR` | Show the option to search for and download both a book and audiobook together. | boolean | `true` |
 | `FORCE_COMBINED_SEARCH` | Force combined search whenever it's available. Locks the combined toggle on. | boolean | `false` |
@@ -325,26 +313,6 @@ Default language filter for searches.
 
 <details>
 <summary>Detailed descriptions</summary>
-
-#### `SEARCH_MODE`
-
-**Search Mode**
-
-How you want to search for and download books.
-
-- **Type:** string (choice)
-- **Default:** `universal`
-- **Options:** `direct` (Direct), `universal` (Universal)
-
-#### `AA_DEFAULT_SORT`
-
-**Default Sort Order**
-
-Default sort order for search results.
-
-- **Type:** string (choice)
-- **Default:** `relevance`
-- **Options:** `relevance` (Most relevant), `newest` (Newest (publication year)), `oldest` (Oldest (publication year)), `largest` (Largest (filesize)), `smallest` (Smallest (filesize)), `newest_added` (Newest (open sourced)), `oldest_added` (Oldest (open sourced))
 
 #### `SHOW_RELEASE_SOURCE_LINKS`
 
@@ -429,57 +397,29 @@ The release source tab to open by default in the release modal for audiobooks. U
 
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
-| `BOOKS_OUTPUT_MODE` | Choose where completed book files are sent. | string (choice) | `folder` |
-| `INGEST_DIR` | Directory where downloaded files are saved. Use {User} for per-user folders (e.g. /books/{User}). | string | `/books` |
+| `INGEST_DIR` | Directory where completed Files are saved. | string | `/books` |
 | `FILE_ORGANIZATION` | Choose how downloaded book files are named and organized. | string (choice) | `rename` |
 | `TEMPLATE_RENAME` | Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension). Universal adds: {Series}, {SeriesPosition}, {Subtitle}, {PrimaryTitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. Applies to single-file downloads. | string | `{Author} - {Title} ({Year})` |
 | `TEMPLATE_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension). Universal adds: {Series}, {SeriesPosition}, {Subtitle}, {PrimaryTitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. | string | `{Author}/{Title} ({Year})` |
 | `HARDLINK_TORRENTS` | Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder. | boolean | `false` |
-| `BOOKLORE_HOST` | Base URL of your Grimmory instance | string | _none_ |
-| `BOOKLORE_USERNAME` | Grimmory account username | string | _none_ |
-| `BOOKLORE_PASSWORD` | Grimmory account password | string (secret) | _none_ |
-| `BOOKLORE_DESTINATION` | Choose whether uploads go directly to a specific library path or to Bookdrop for review. | string (choice) | `library` |
-| `BOOKLORE_LIBRARY_ID` | Grimmory library to upload into. | string (choice) | _none_ |
-| `BOOKLORE_PATH_ID` | Grimmory library path for uploads. | string (choice) | _none_ |
-| `EMAIL_RECIPIENT` | Optional fallback email address when no per-user email recipient override is configured. | string | _none_ |
-| `EMAIL_ATTACHMENT_SIZE_LIMIT_MB` | Maximum total attachment size per email. Email encoding adds overhead; keep this below your provider's limit. | number | `25` |
-| `EMAIL_SMTP_HOST` | SMTP server hostname or IP (e.g., smtp.gmail.com). | string | _none_ |
-| `EMAIL_SMTP_PORT` | SMTP server port (587 is typical for STARTTLS, 465 for SSL). | number | `587` |
-| `EMAIL_SMTP_SECURITY` | Transport security mode for SMTP. | string (choice) | `starttls` |
-| `EMAIL_SMTP_USERNAME` | SMTP username (leave empty for no authentication). | string | _none_ |
-| `EMAIL_SMTP_PASSWORD` | SMTP password (required if Username is set). | string (secret) | _none_ |
-| `EMAIL_FROM` | From address used for the email. You can include a display name (e.g., Shelfmark <mail@example.com>). Leave blank to default to the SMTP username (when it is an email address). | string | _none_ |
-| `EMAIL_SUBJECT_TEMPLATE` | Email subject. Variables: {Author}, {Title}, {PrimaryTitle}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {Format}. | string | `{Title}` |
-| `EMAIL_SMTP_TIMEOUT_SECONDS` | How long to wait for SMTP operations before failing. | number | `60` |
-| `EMAIL_ALLOW_UNVERIFIED_TLS` | Disable TLS certificate verification (not recommended). | boolean | `false` |
+| `KINDLE_EMAIL` | Send-to-Kindle email address for your device (e.g., reader@kindle.com). | string | _none_ |
 | `DESTINATION_AUDIOBOOK` | Directory where downloaded audiobook files are saved. Leave empty to use the Books destination. | string | _none_ |
 | `FILE_ORGANIZATION_AUDIOBOOK` | Choose how downloaded audiobook files are named and organized. | string (choice) | `rename` |
 | `TEMPLATE_AUDIOBOOK_RENAME` | Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, {PrimaryTitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. Applies to single-file downloads. | string | `{Author} - {Title}` |
 | `TEMPLATE_AUDIOBOOK_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, {PrimaryTitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. | string | `{Author}/{Title}/{Title}` |
 | `HARDLINK_TORRENTS_AUDIOBOOK` | Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder. | boolean | `true` |
 | `AUTO_OPEN_DOWNLOADS_SIDEBAR` | Automatically open the downloads sidebar when a new download is queued. | boolean | `false` |
-| `DOWNLOAD_TO_BROWSER_CONTENT_TYPES` | Automatically download completed files to your browser for the selected content types. | string (comma-separated) | _empty list_ |
 | `MAX_CONCURRENT_DOWNLOADS` | Maximum number of simultaneous downloads. | number | `3` |
 | `STATUS_TIMEOUT` | How long to keep completed/failed downloads in the queue display. | number | `3600` |
 
 <details>
 <summary>Detailed descriptions</summary>
 
-#### `BOOKS_OUTPUT_MODE`
-
-**Output Mode**
-
-Choose where completed book files are sent.
-
-- **Type:** string (choice)
-- **Default:** `folder`
-- **Options:** `folder` (Folder), `email` (Email (SMTP)), `booklore` (Grimmory (API))
-
 #### `INGEST_DIR`
 
 **Destination**
 
-Directory where downloaded files are saved. Use {User} for per-user folders (e.g. /books/{User}).
+Directory where completed Files are saved.
 
 - **Type:** string
 - **Default:** `/books`
@@ -522,169 +462,14 @@ Create hardlinks instead of copying. Preserves seeding but archives won't be ext
 - **Type:** boolean
 - **Default:** `false`
 
-#### `BOOKLORE_HOST`
+#### `KINDLE_EMAIL`
 
-**Grimmory URL**
+**Kindle Email**
 
-Base URL of your Grimmory instance
-
-- **Type:** string
-- **Default:** _none_
-- **Required:** Yes
-
-#### `BOOKLORE_USERNAME`
-
-**Username**
-
-Grimmory account username
+Send-to-Kindle email address for your device (e.g., reader@kindle.com).
 
 - **Type:** string
 - **Default:** _none_
-- **Required:** Yes
-
-#### `BOOKLORE_PASSWORD`
-
-**Password**
-
-Grimmory account password
-
-- **Type:** string (secret)
-- **Default:** _none_
-- **Required:** Yes
-
-#### `BOOKLORE_DESTINATION`
-
-**Upload Destination**
-
-Choose whether uploads go directly to a specific library path or to Bookdrop for review.
-
-- **Type:** string (choice)
-- **Default:** `library`
-- **Options:** `library` (Specific Library), `bookdrop` (Bookdrop)
-
-#### `BOOKLORE_LIBRARY_ID`
-
-**Library**
-
-Grimmory library to upload into.
-
-- **Type:** string (choice)
-- **Default:** _none_
-- **Required:** Yes
-
-#### `BOOKLORE_PATH_ID`
-
-**Path**
-
-Grimmory library path for uploads.
-
-- **Type:** string (choice)
-- **Default:** _none_
-- **Required:** Yes
-
-#### `EMAIL_RECIPIENT`
-
-**Default Email Recipient**
-
-Optional fallback email address when no per-user email recipient override is configured.
-
-- **Type:** string
-- **Default:** _none_
-
-#### `EMAIL_ATTACHMENT_SIZE_LIMIT_MB`
-
-**Attachment Size Limit (MB)**
-
-Maximum total attachment size per email. Email encoding adds overhead; keep this below your provider's limit.
-
-- **Type:** number
-- **Default:** `25`
-- **Constraints:** min: 1, max: 600
-
-#### `EMAIL_SMTP_HOST`
-
-**SMTP Host**
-
-SMTP server hostname or IP (e.g., smtp.gmail.com).
-
-- **Type:** string
-- **Default:** _none_
-- **Required:** Yes
-
-#### `EMAIL_SMTP_PORT`
-
-**SMTP Port**
-
-SMTP server port (587 is typical for STARTTLS, 465 for SSL).
-
-- **Type:** number
-- **Default:** `587`
-- **Constraints:** min: 1, max: 65535
-
-#### `EMAIL_SMTP_SECURITY`
-
-**SMTP Security**
-
-Transport security mode for SMTP.
-
-- **Type:** string (choice)
-- **Default:** `starttls`
-- **Options:** `none` (None), `starttls` (STARTTLS), `ssl` (SSL/TLS)
-
-#### `EMAIL_SMTP_USERNAME`
-
-**Username**
-
-SMTP username (leave empty for no authentication).
-
-- **Type:** string
-- **Default:** _none_
-
-#### `EMAIL_SMTP_PASSWORD`
-
-**Password**
-
-SMTP password (required if Username is set).
-
-- **Type:** string (secret)
-- **Default:** _none_
-
-#### `EMAIL_FROM`
-
-**From Address**
-
-From address used for the email. You can include a display name (e.g., Shelfmark <mail@example.com>). Leave blank to default to the SMTP username (when it is an email address).
-
-- **Type:** string
-- **Default:** _none_
-
-#### `EMAIL_SUBJECT_TEMPLATE`
-
-**Subject Template**
-
-Email subject. Variables: {Author}, {Title}, {PrimaryTitle}, {Year}, {Series}, {SeriesPosition}, {Subtitle}, {Format}.
-
-- **Type:** string
-- **Default:** `{Title}`
-
-#### `EMAIL_SMTP_TIMEOUT_SECONDS`
-
-**SMTP Timeout (seconds)**
-
-How long to wait for SMTP operations before failing.
-
-- **Type:** number
-- **Default:** `60`
-- **Constraints:** min: 1, max: 600
-
-#### `EMAIL_ALLOW_UNVERIFIED_TLS`
-
-**Allow Unverified TLS**
-
-Disable TLS certificate verification (not recommended).
-
-- **Type:** boolean
-- **Default:** `false`
 
 #### `DESTINATION_AUDIOBOOK`
 
@@ -740,15 +525,6 @@ Automatically open the downloads sidebar when a new download is queued.
 
 - **Type:** boolean
 - **Default:** `false`
-
-#### `DOWNLOAD_TO_BROWSER_CONTENT_TYPES`
-
-**Download to Browser**
-
-Automatically download completed files to your browser for the selected content types.
-
-- **Type:** string (comma-separated)
-- **Default:** _empty list_
 
 #### `MAX_CONCURRENT_DOWNLOADS`
 
@@ -1397,7 +1173,7 @@ Delay between requests in seconds to avoid rate limiting (0-10).
 | `IRC_USE_TLS` | Enable TLS/SSL encryption for the IRC connection. Disable for servers that don't support TLS. | boolean | `true` |
 | `IRC_CHANNEL` | Channel name without the # prefix | string | _none_ |
 | `IRC_NICK` | Your IRC nickname (required). Must be unique on the IRC network. | string | _none_ |
-| `IRC_SEARCH_BOT` | The search bot to address queries to (required). | string | _none_ |
+| `IRC_SEARCH_BOT` | The search bot to address queries to (required). Searches are sent as "@<bot> <query>". | string | _none_ |
 | `IRC_CACHE_TTL` | How long to keep cached search results before they expire. | string (choice) | `2592000` |
 
 <details>
@@ -1455,7 +1231,7 @@ Your IRC nickname (required). Must be unique on the IRC network.
 
 **Search bot**
 
-The search bot to address queries to (required). Searches are sent as "@<bot> <query>". Without it, queries would be posted unaddressed to the channel.
+The search bot to address queries to (required). Searches are sent as "@<bot> <query>".
 
 - **Type:** string
 - **Default:** _none_
@@ -1500,7 +1276,8 @@ How long to keep cached search results before they expire.
 | `RTORRENT_URL` | XML-RPC URL of your rTorrent instance | string | _none_ |
 | `RTORRENT_USERNAME` | HTTP Basic auth username (if authentication enabled) | string | _none_ |
 | `RTORRENT_PASSWORD` | HTTP Basic auth password | string (secret) | _none_ |
-| `RTORRENT_LABEL` | Label to assign to book downloads in rTorrent | string | `cwabd` |
+| `RTORRENT_LABEL` | Label to assign to ebook downloads in rTorrent | string | `cwabd` |
+| `RTORRENT_AUDIOBOOK_LABEL` | Label to assign to audiobook downloads in rTorrent (falls back to Book Label if not set) | string | _none_ |
 | `RTORRENT_DOWNLOAD_DIR` | Server-side directory where torrents are downloaded (optional, uses rTorrent default if not specified) | string | _none_ |
 | `PROWLARR_TORRENT_ACTION` | Remove deletes the torrent from your client immediately after import (stops seeding, files are kept); Keep leaves it in the client to continue seeding | string (choice) | `keep` |
 | `PROWLARR_USENET_CLIENT` | Choose which usenet client to use | string (choice) | _empty string_ |
@@ -1730,10 +1507,19 @@ HTTP Basic auth password
 
 **Book Label**
 
-Label to assign to book downloads in rTorrent
+Label to assign to ebook downloads in rTorrent
 
 - **Type:** string
 - **Default:** `cwabd`
+
+#### `RTORRENT_AUDIOBOOK_LABEL`
+
+**Audiobook Label**
+
+Label to assign to audiobook downloads in rTorrent (falls back to Book Label if not set)
+
+- **Type:** string
+- **Default:** _none_
 
 #### `RTORRENT_DOWNLOAD_DIR`
 
@@ -2011,6 +1797,7 @@ Default sort order for Google Books search results.
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
 | `DIRECT_DOWNLOAD_ENABLED` | Show Direct Download in release-source lists and allow Direct mode searches. Add your own mirror URLs in the Mirrors tab before using it. | boolean | `false` |
+| `DIRECT_DOWNLOAD_LANGUAGE_FROM_PATH` | When language metadata is missing or unknown, parse the distant path (file path shown in search results) for language tags like [BD FR] or [En]. Also enables local language filtering so lgli files without AA language metadata are not excluded before the distant path can be checked. | boolean | `false` |
 | `AA_DONATOR_KEY` | Enables fast download access on AA. Get this from your donator account page. | string (secret) | _none_ |
 | `FAST_SOURCES_DISPLAY` | Always tried first, no waiting or bypass required. | JSON array | _see UI for defaults_ |
 | `SOURCE_PRIORITY` | Fallback sources, may have waiting. Requires bypasser. Drag to reorder. | JSON array | _see UI for defaults_ |
@@ -2034,6 +1821,15 @@ Default sort order for Google Books search results.
 **Enable Direct Download Source**
 
 Show Direct Download in release-source lists and allow Direct mode searches. Add your own mirror URLs in the Mirrors tab before using it.
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `DIRECT_DOWNLOAD_LANGUAGE_FROM_PATH`
+
+**Detect Language From Distant Path**
+
+When language metadata is missing or unknown, parse the distant path (file path shown in search results) for language tags like [BD FR] or [En]. Also enables local language filtering so lgli files without AA language metadata are not excluded before the distant path can be checked.
 
 - **Type:** boolean
 - **Default:** `false`

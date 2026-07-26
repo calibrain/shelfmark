@@ -29,6 +29,11 @@ export interface BookDetailResponse {
   series_name: string | null;
   series_position: number | null;
   language: string | null;
+  metadata_json: {
+    description?: string | null;
+    provider_display_name?: string | null;
+    display_fields?: Array<{ label: string; value: string; icon?: string | null }>;
+  };
   files: LibraryFile[];
   in_flight: InFlightDownload[];
 }

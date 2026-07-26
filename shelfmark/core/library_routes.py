@@ -119,7 +119,7 @@ def _require_library_membership(
     Admin sees any book (instance-wide read per sub-decision 2). Non-members
     get 403 — including for books with files they triggered but didn't keep
     linked. The dedicated library download endpoint is the only path that
-    serves file bytes; the legacy ``/api/localdownload`` path remains unchanged.
+    serves file bytes.
     """
     if actor.is_admin:
         return None
@@ -520,12 +520,8 @@ def register_library_routes(
                 book_id=book_id,
             )
 
-        # Now check the per-user KINDLE_EMAIL setting (sub-decision 14).
-        # Config lookups use the user_overridable framework end-to-end.
-        from shelfmark.core.config import config as app_config
-
         kindle_email = normalize_optional_text(
-            app_config.get("KINDLE_EMAIL", "", user_id=actor.db_user_id)
+            user_db.get_personal_preferences(actor.db_user_id).get("kindle_address")
         )
         if not kindle_email:
             return _error_response(

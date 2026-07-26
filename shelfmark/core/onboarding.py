@@ -71,7 +71,7 @@ def _get_field_from_tab(tab_name: str, field_key: str) -> SettingsField | None:
 
     Args:
         tab_name: Name of the settings tab (e.g., 'search_mode', 'hardcover')
-        field_key: Key of the field to extract (e.g., 'SEARCH_MODE', 'HARDCOVER_API_KEY')
+        field_key: Key of the field to extract (e.g., 'METADATA_PROVIDER', 'HARDCOVER_API_KEY')
 
     Returns:
         The field if found, None otherwise
@@ -193,9 +193,6 @@ def _is_field_visible(field: SettingsField, values: dict[str, Any]) -> bool:
     if getattr(field, "hidden_in_ui", False):
         return False
 
-    if getattr(field, "universal_only", False) and values.get("SEARCH_MODE") != "universal":
-        return False
-
     show_when = getattr(field, "show_when", None)
     if not show_when:
         return True
@@ -211,30 +208,6 @@ def _is_field_visible(field: SettingsField, values: dict[str, Any]) -> bool:
 # =============================================================================
 
 
-def get_search_mode_fields() -> list[SettingsField]:
-    """Step 1: Choose search mode - uses actual SEARCH_MODE field from settings."""
-    fields: list[SettingsField] = [
-        HeadingField(
-            key="welcome_heading",
-            title="Welcome to Shelfmark",
-            description="Let's configure how you want to search for and download books.",
-        ),
-    ]
-
-    # Get the actual SEARCH_MODE field from settings
-    search_mode_field = _get_field_from_tab("search_mode", "SEARCH_MODE")
-    if search_mode_field:
-        # Clone with onboarding-specific description
-        fields.append(
-            _clone_field_with_overrides(
-                search_mode_field,
-                description="Choose how you want to find books.",
-            )
-        )
-
-    return fields
-
-
 def get_metadata_provider_fields() -> list[SettingsField]:
     """Step 2: Choose metadata provider - uses actual METADATA_PROVIDER field."""
     fields: list[SettingsField] = [
@@ -246,7 +219,7 @@ def get_metadata_provider_fields() -> list[SettingsField]:
     ]
 
     # Get the actual METADATA_PROVIDER field from settings
-    provider_field = _get_field_from_tab("search_mode", "METADATA_PROVIDER")
+    provider_field = _get_field_from_tab("discovery", "METADATA_PROVIDER")
     if provider_field:
         # Custom options with Hardcover marked as recommended
         onboarding_options = [
@@ -456,69 +429,38 @@ def get_onboarding_steps() -> list[dict[str, Any]]:
     """Return the full onboarding step configuration."""
     return [
         {
-            "id": "search_mode",
-            "title": "Search Mode",
-            "tab": "search_mode",
-            "get_fields": get_search_mode_fields,
-        },
-        {
             "id": "metadata_provider",
             "title": "Metadata Provider",
-            "tab": "search_mode",
+            "tab": "discovery",
             "get_fields": get_metadata_provider_fields,
-            "show_when": [{"field": "SEARCH_MODE", "value": "universal"}],
         },
         {
             "id": "hardcover_setup",
             "title": "Hardcover Setup",
             "tab": "hardcover",
             "get_fields": get_hardcover_setup_fields,
-            "show_when": [
-                {"field": "SEARCH_MODE", "value": "universal"},
-                {"field": "METADATA_PROVIDER", "value": "hardcover"},
-            ],
+            "show_when": [{"field": "METADATA_PROVIDER", "value": "hardcover"}],
         },
         {
             "id": "googlebooks_setup",
             "title": "Google Books Setup",
             "tab": "googlebooks",
             "get_fields": get_googlebooks_setup_fields,
-            "show_when": [
-                {"field": "SEARCH_MODE", "value": "universal"},
-                {"field": "METADATA_PROVIDER", "value": "googlebooks"},
-            ],
+            "show_when": [{"field": "METADATA_PROVIDER", "value": "googlebooks"}],
         },
         {
             "id": "release_sources",
             "title": "Release Sources",
-            "tab": "search_mode",
+            "tab": "discovery",
             "get_fields": get_release_source_selection_fields,
-            "show_when": [{"field": "SEARCH_MODE", "value": "universal"}],
             "optional": True,
-        },
-        {
-            "id": "direct_download_setup_direct_mode",
-            "title": "Direct Download Setup",
-            "tab": "download_sources",
-            "get_fields": get_direct_download_setup_fields,
-            "show_when": [{"field": "SEARCH_MODE", "value": "direct"}],
-        },
-        {
-            "id": "direct_download_cloudflare_bypass_direct_mode",
-            "title": "Cloudflare Bypass",
-            "tab": "cloudflare_bypass",
-            "get_fields": get_direct_download_bypass_fields,
-            "show_when": [{"field": "SEARCH_MODE", "value": "direct"}],
         },
         {
             "id": "direct_download_setup",
             "title": "Direct Download Setup",
             "tab": "download_sources",
             "get_fields": get_direct_download_setup_fields,
-            "show_when": [
-                {"field": "SEARCH_MODE", "value": "universal"},
-                {"field": ONBOARDING_RELEASE_SOURCES_KEY, "value": "direct_download"},
-            ],
+            "show_when": [{"field": ONBOARDING_RELEASE_SOURCES_KEY, "value": "direct_download"}],
             "optional": True,
         },
         {
@@ -526,10 +468,7 @@ def get_onboarding_steps() -> list[dict[str, Any]]:
             "title": "Cloudflare Bypass",
             "tab": "cloudflare_bypass",
             "get_fields": get_direct_download_bypass_fields,
-            "show_when": [
-                {"field": "SEARCH_MODE", "value": "universal"},
-                {"field": ONBOARDING_RELEASE_SOURCES_KEY, "value": "direct_download"},
-            ],
+            "show_when": [{"field": ONBOARDING_RELEASE_SOURCES_KEY, "value": "direct_download"}],
             "optional": True,
         },
         {
@@ -537,10 +476,7 @@ def get_onboarding_steps() -> list[dict[str, Any]]:
             "title": "Prowlarr",
             "tab": "prowlarr_config",
             "get_fields": get_prowlarr_fields,
-            "show_when": [
-                {"field": "SEARCH_MODE", "value": "universal"},
-                {"field": ONBOARDING_RELEASE_SOURCES_KEY, "value": "prowlarr"},
-            ],
+            "show_when": [{"field": ONBOARDING_RELEASE_SOURCES_KEY, "value": "prowlarr"}],
             "optional": True,
         },
         {
@@ -548,10 +484,7 @@ def get_onboarding_steps() -> list[dict[str, Any]]:
             "title": "AudiobookBay",
             "tab": "audiobookbay_config",
             "get_fields": get_audiobookbay_fields,
-            "show_when": [
-                {"field": "SEARCH_MODE", "value": "universal"},
-                {"field": ONBOARDING_RELEASE_SOURCES_KEY, "value": "audiobookbay"},
-            ],
+            "show_when": [{"field": ONBOARDING_RELEASE_SOURCES_KEY, "value": "audiobookbay"}],
             "optional": True,
         },
         {
@@ -559,10 +492,7 @@ def get_onboarding_steps() -> list[dict[str, Any]]:
             "title": "IRC",
             "tab": "irc",
             "get_fields": get_irc_fields,
-            "show_when": [
-                {"field": "SEARCH_MODE", "value": "universal"},
-                {"field": ONBOARDING_RELEASE_SOURCES_KEY, "value": "irc"},
-            ],
+            "show_when": [{"field": ONBOARDING_RELEASE_SOURCES_KEY, "value": "irc"}],
             "optional": True,
         },
     ]
@@ -656,33 +586,31 @@ def save_onboarding_settings(values: dict[str, Any]) -> dict[str, Any]:
                 save_config_file(tab_name, tab_data)
                 logger.info("Saved onboarding settings to %s: %s", tab_name, list(tab_data.keys()))
 
-        search_mode = values.get("SEARCH_MODE", "universal")
-        if search_mode == "universal":
-            provider = values.get("METADATA_PROVIDER", "hardcover")
-            if provider:
-                # Map provider name to its enabled key
-                enabled_key_map = {
-                    "hardcover": "HARDCOVER_ENABLED",
-                    "openlibrary": "OPENLIBRARY_ENABLED",
-                    "googlebooks": "GOOGLEBOOKS_ENABLED",
-                }
-                enabled_key = enabled_key_map.get(provider, f"{provider.upper()}_ENABLED")
+        provider = values.get("METADATA_PROVIDER", "hardcover")
+        if provider:
+            # Map provider name to its enabled key
+            enabled_key_map = {
+                "hardcover": "HARDCOVER_ENABLED",
+                "openlibrary": "OPENLIBRARY_ENABLED",
+                "googlebooks": "GOOGLEBOOKS_ENABLED",
+            }
+            enabled_key = enabled_key_map.get(provider, f"{provider.upper()}_ENABLED")
 
-                # Get existing provider config and add enabled flag
-                provider_config = {enabled_key: True}
+            # Get existing provider config and add enabled flag
+            provider_config = {enabled_key: True}
 
-                # Include API key if provided for that provider
-                if provider == "hardcover" and values.get("HARDCOVER_API_KEY"):
-                    provider_config["HARDCOVER_API_KEY"] = values["HARDCOVER_API_KEY"]
-                elif provider == "googlebooks" and values.get("GOOGLEBOOKS_API_KEY"):
-                    provider_config["GOOGLEBOOKS_API_KEY"] = values["GOOGLEBOOKS_API_KEY"]
+            # Include API key if provided for that provider
+            if provider == "hardcover" and values.get("HARDCOVER_API_KEY"):
+                provider_config["HARDCOVER_API_KEY"] = values["HARDCOVER_API_KEY"]
+            elif provider == "googlebooks" and values.get("GOOGLEBOOKS_API_KEY"):
+                provider_config["GOOGLEBOOKS_API_KEY"] = values["GOOGLEBOOKS_API_KEY"]
 
-                save_config_file(provider, provider_config)
-                logger.info(
-                    "Enabled metadata provider: %s with keys: %s",
-                    provider,
-                    list(provider_config.keys()),
-                )
+            save_config_file(provider, provider_config)
+            logger.info(
+                "Enabled metadata provider: %s with keys: %s",
+                provider,
+                list(provider_config.keys()),
+            )
 
         selected_release_sources = values.get(ONBOARDING_RELEASE_SOURCES_KEY, [])
         if not isinstance(selected_release_sources, list):
@@ -690,31 +618,28 @@ def save_onboarding_settings(values: dict[str, Any]) -> dict[str, Any]:
 
         source_updates: dict[str, dict[str, Any]] = {}
 
-        if search_mode == "direct":
+        if _is_release_source_selected(values, "direct_download"):
             source_updates.setdefault("download_sources", {})["DIRECT_DOWNLOAD_ENABLED"] = True
-        else:
-            if _is_release_source_selected(values, "direct_download"):
-                source_updates.setdefault("download_sources", {})["DIRECT_DOWNLOAD_ENABLED"] = True
-            if _is_release_source_selected(values, "prowlarr"):
-                source_updates.setdefault("prowlarr_config", {})["PROWLARR_ENABLED"] = True
-            if _is_release_source_selected(values, "audiobookbay"):
-                source_updates.setdefault("audiobookbay_config", {})["ABB_ENABLED"] = True
+        if _is_release_source_selected(values, "prowlarr"):
+            source_updates.setdefault("prowlarr_config", {})["PROWLARR_ENABLED"] = True
+        if _is_release_source_selected(values, "audiobookbay"):
+            source_updates.setdefault("audiobookbay_config", {})["ABB_ENABLED"] = True
 
-            if not values.get("DEFAULT_RELEASE_SOURCE"):
-                for source_name in selected_release_sources:
-                    if source_name in {"direct_download", "prowlarr", "irc"}:
-                        source_updates.setdefault("search_mode", {})["DEFAULT_RELEASE_SOURCE"] = (
-                            source_name
-                        )
-                        break
+        if not values.get("DEFAULT_RELEASE_SOURCE"):
+            for source_name in selected_release_sources:
+                if source_name in {"direct_download", "prowlarr", "irc"}:
+                    source_updates.setdefault("discovery", {})["DEFAULT_RELEASE_SOURCE"] = (
+                        source_name
+                    )
+                    break
 
-            if not values.get("DEFAULT_RELEASE_SOURCE_AUDIOBOOK"):
-                for source_name in selected_release_sources:
-                    if source_name in {"prowlarr", "audiobookbay", "irc"}:
-                        source_updates.setdefault("search_mode", {})[
-                            "DEFAULT_RELEASE_SOURCE_AUDIOBOOK"
-                        ] = source_name
-                        break
+        if not values.get("DEFAULT_RELEASE_SOURCE_AUDIOBOOK"):
+            for source_name in selected_release_sources:
+                if source_name in {"prowlarr", "audiobookbay", "irc"}:
+                    source_updates.setdefault("discovery", {})[
+                        "DEFAULT_RELEASE_SOURCE_AUDIOBOOK"
+                    ] = source_name
+                    break
 
         for tab_name, tab_data in source_updates.items():
             if tab_data:

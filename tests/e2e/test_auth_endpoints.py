@@ -112,6 +112,7 @@ class TestAuthCheckEndpoint:
             "auth_required": False,
             "auth_mode": "none",
             "is_admin": True,
+            "library_capability": None,
         }
 
     def test_auth_check_builtin_not_authenticated(self, main_module):
@@ -130,6 +131,7 @@ class TestAuthCheckEndpoint:
             "is_admin": False,
             "username": None,
             "display_name": None,
+            "library_capability": None,
         }
 
     def test_auth_check_builtin_authenticated(self, main_module):
@@ -150,6 +152,7 @@ class TestAuthCheckEndpoint:
             "is_admin": True,
             "username": "admin",
             "display_name": None,
+            "library_capability": None,
         }
 
     def test_auth_check_proxy_includes_logout_url(self, main_module):
@@ -180,6 +183,7 @@ class TestAuthCheckEndpoint:
             "is_admin": True,
             "username": "proxyuser",
             "display_name": None,
+            "library_capability": None,
             "logout_url": "https://auth.example.com/logout",
         }
 

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 
 import { useDependencyEffect } from '../hooks/useMountEffect';
 import { getLibraryBooks } from '../services/api';
@@ -55,7 +55,6 @@ const FormatBadges = ({ formats }: { formats: LibraryBookSummary['formats_on_dis
 };
 
 export const LibraryPage = () => {
-  const navigate = useNavigate();
   const [books, setBooks] = useState<LibraryBookSummary[]>([]);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FileFilter>('all');
@@ -170,19 +169,11 @@ export const LibraryPage = () => {
                 </h2>
                 <p className="truncate text-sm opacity-65">{book.author || 'Unknown author'}</p>
               </Link>
-              <div className="mt-2">
-                {book.formats_on_disk.length ? (
+              {book.formats_on_disk.length > 0 && (
+                <div className="mt-2">
                   <FormatBadges formats={book.formats_on_disk} />
-                ) : (
-                  <button
-                    type="button"
-                    className="rounded-md border border-violet-500 px-2.5 py-1.5 text-xs font-semibold text-violet-700 dark:text-violet-300"
-                    onClick={() => void navigate(`/library/${book.book_id}?find=true`)}
-                  >
-                    Find this book
-                  </button>
-                )}
-              </div>
+                </div>
+              )}
             </article>
           ))}
         </div>

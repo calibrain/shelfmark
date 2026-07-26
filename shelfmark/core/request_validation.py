@@ -5,7 +5,6 @@ from __future__ import annotations
 from enum import StrEnum
 
 from shelfmark.core.models import QueueStatus
-from shelfmark.core.request_policy import parse_policy_mode
 
 
 class RequestStatus(StrEnum):
@@ -44,12 +43,11 @@ def normalize_request_status(status: object) -> str:
 
 
 def normalize_policy_mode(mode: object) -> str:
-    """Validate and normalize policy mode values."""
-    parsed = parse_policy_mode(mode)
-    if parsed is None:
+    """Temporary legacy-row validation pending schema retirement."""
+    if not isinstance(mode, str) or not mode.strip():
         msg = f"Invalid policy_mode: {mode}"
         raise ValueError(msg)
-    return parsed.value
+    return mode.strip().lower()
 
 
 def normalize_request_level(request_level: object) -> str:

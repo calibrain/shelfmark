@@ -13,10 +13,6 @@ export const useUsersPanelState = () => {
     setRoute({ kind: 'edit', userId });
   }, []);
 
-  const openEditOverrides = useCallback((userId: number) => {
-    setRoute({ kind: 'edit-overrides', userId });
-  }, []);
-
   const backToList = useCallback(() => {
     setRoute({ kind: 'list' });
   }, []);
@@ -25,7 +21,6 @@ export const useUsersPanelState = () => {
     route,
     openCreate,
     openEdit,
-    openEditOverrides,
     backToList,
   };
 };

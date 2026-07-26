@@ -45,7 +45,114 @@ def _create_user(main_module, *, prefix: str, role: str = "user") -> dict:
     return main_module.user_db.create_user(username=username, role=role)
 
 
+def _add_library_book(main_module, *, user_id: int, provider_book_id: str) -> int:
+    book = main_module.library_service.upsert_book_from_metadata(
+        metadata_provider="hardcover",
+        provider_book_id=provider_book_id,
+        title="Library Book",
+        author="Library Author",
+        subtitle=None,
+        publish_year=None,
+        isbn_13=None,
+        cover_url=None,
+        series_name=None,
+        series_position=None,
+        language="en",
+        metadata_json={},
+    )
+    main_module.library_service.add_to_library(user_id=user_id, book_id=book["id"])
+    return book["id"]
+
+
 class TestReleaseDownloadEndpointGuardrails:
+    def test_release_search_requires_library_book_id(self, main_module, client):
+        with patch.object(main_module, "get_auth_mode", return_value="none"):
+            response = client.get(
+                "/api/releases", query_string={"provider": "hardcover", "book_id": "1"}
+            )
+
+        assert response.status_code == 400
+        assert response.get_json() == {"error": "library_book_id is required"}
+
+    @pytest.mark.parametrize(
+        "legacy_params",
+        [
+            {"provider": "hardcover", "book_id": "1"},
+            {"query": "other book", "source": "direct_download"},
+            {"isbn": "9780000000000", "title": "Other Book"},
+        ],
+    )
+    def test_release_search_rejects_legacy_entry_parameters(
+        self, main_module, client, legacy_params
+    ):
+        with patch.object(main_module, "get_auth_mode", return_value="none"):
+            response = client.get(
+                "/api/releases",
+                query_string={"library_book_id": 1, **legacy_params},
+            )
+
+        assert response.status_code == 400
+        assert response.get_json() == {
+            "error": "Legacy release search parameters are not supported"
+        }
+
+    def test_request_only_user_cannot_search_releases(self, main_module, client):
+        user = _create_user(main_module, prefix="requester")
+        main_module.user_db.update_user(user["id"], library_capability="request-only")
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            response = client.get("/api/releases", query_string={"library_book_id": "1"})
+
+        assert response.status_code == 403
+        assert response.get_json() == {"error": "Download capability required"}
+
+    def test_release_search_requires_book_in_users_library(self, main_module, client):
+        owner = _create_user(main_module, prefix="owner")
+        other_user = _create_user(main_module, prefix="other")
+        library_book_id = _add_library_book(
+            main_module, user_id=owner["id"], provider_book_id="private-book"
+        )
+        _set_authenticated_session(
+            client,
+            user_id=other_user["username"],
+            db_user_id=other_user["id"],
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            response = client.get(
+                "/api/releases", query_string={"library_book_id": library_book_id}
+            )
+
+        assert response.status_code == 403
+        assert response.get_json() == {"error": "Book is not in your library"}
+
+    def test_non_admin_cannot_override_book_derived_release_query(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        library_book_id = _add_library_book(
+            main_module, user_id=user["id"], provider_book_id="book-for-query"
+        )
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            response = client.get(
+                "/api/releases",
+                query_string={"library_book_id": library_book_id, "manual_query": "other book"},
+            )
+
+        assert response.status_code == 403
+        assert response.get_json() == {
+            "error": "Manual release queries require administrator access"
+        }
+
     def test_empty_json_payload_returns_400(self, main_module, client):
         with patch.object(main_module, "get_auth_mode", return_value="none"):
             with patch.object(main_module.backend, "queue_release") as mock_queue_release:
@@ -95,11 +202,15 @@ class TestReleaseDownloadEndpointGuardrails:
             )
             return True, None
 
+        user = _create_user(main_module, prefix="bob")
         _set_authenticated_session(
             client,
-            user_id="bob",
-            db_user_id=19,
+            user_id=user["username"],
+            db_user_id=user["id"],
             is_admin=False,
+        )
+        library_book_id = _add_library_book(
+            main_module, user_id=user["id"], provider_book_id="release-xyz"
         )
         payload = {
             "source": "direct_download",
@@ -107,6 +218,7 @@ class TestReleaseDownloadEndpointGuardrails:
             "title": "Release Title",
             "priority": 3,
             "search_mode": "direct",
+            "library_book_id": library_book_id,
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
@@ -115,10 +227,10 @@ class TestReleaseDownloadEndpointGuardrails:
 
         assert resp.status_code == 200
         assert resp.get_json() == {"status": "queued", "priority": 3}
-        assert captured["release_data"] == {**payload, "content_type": "ebook"}
+        assert captured["release_data"] == payload
         assert captured["priority"] == 3
-        assert captured["user_id"] == 19
-        assert captured["username"] == "bob"
+        assert captured["user_id"] == user["id"]
+        assert captured["username"] == user["username"]
 
     def test_missing_content_type_infers_audiobook_from_format(self, main_module, client):
         captured: dict[str, object] = {}
@@ -193,6 +305,11 @@ class TestReleaseDownloadEndpointGuardrails:
             "title": "Release Title",
             "priority": 2,
             "on_behalf_of_user_id": target_user["id"],
+            "library_book_id": _add_library_book(
+                main_module,
+                user_id=target_user["id"],
+                provider_book_id="release-admin-on-behalf",
+            ),
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
@@ -204,10 +321,7 @@ class TestReleaseDownloadEndpointGuardrails:
         assert captured["priority"] == 2
         assert captured["user_id"] == target_user["id"]
         assert captured["username"] == target_user["username"]
-        assert captured["release_data"] == {
-            **payload,
-            "content_type": "ebook",
-        }
+        assert captured["release_data"] == payload
 
     def test_non_admin_cannot_queue_release_on_behalf_of_user(self, main_module, client):
         target_user = _create_user(main_module, prefix="target")
@@ -365,54 +479,7 @@ class TestCancelDownloadEndpointGuardrails:
         assert resp.get_json()["code"] == "download_not_owned"
         mock_cancel.assert_not_called()
 
-    def test_owner_cannot_cancel_graduated_request_download(self, main_module, client):
-        user = _create_user(main_module, prefix="requester")
-        _set_authenticated_session(
-            client,
-            user_id=user["username"],
-            db_user_id=user["id"],
-            is_admin=False,
-        )
-        request_row = main_module.user_db.create_request(
-            user_id=user["id"],
-            content_type="ebook",
-            request_level="release",
-            policy_mode="request_release",
-            book_data={
-                "title": "Requested Book",
-                "author": "Request Author",
-                "provider": "openlibrary",
-                "provider_id": "req-guard-1",
-            },
-            release_data={
-                "source": "prowlarr",
-                "source_id": "requested-task-1",
-                "title": "Requested Book.epub",
-            },
-            status="fulfilled",
-            delivery_state="queued",
-        )
-        task = DownloadTask(
-            task_id="requested-task-1",
-            source="prowlarr",
-            title="Requested Book",
-            user_id=user["id"],
-            username=user["username"],
-            request_id=request_row["id"],
-        )
-
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
-                with patch.object(
-                    main_module.backend, "cancel_download", return_value=True
-                ) as mock_cancel:
-                    resp = client.delete("/api/download/requested-task-1/cancel")
-
-        assert resp.status_code == 403
-        assert resp.get_json()["code"] == "requested_download_cancel_forbidden"
-        mock_cancel.assert_not_called()
-
-    def test_admin_can_cancel_graduated_request_download(self, main_module, client):
+    def test_admin_can_cancel_another_users_download(self, main_module, client):
         admin = _create_user(main_module, prefix="admin", role="admin")
         requester = _create_user(main_module, prefix="requester")
         _set_authenticated_session(
@@ -421,29 +488,10 @@ class TestCancelDownloadEndpointGuardrails:
             db_user_id=admin["id"],
             is_admin=True,
         )
-        main_module.user_db.create_request(
-            user_id=requester["id"],
-            content_type="ebook",
-            request_level="release",
-            policy_mode="request_release",
-            book_data={
-                "title": "Admin Requested Book",
-                "author": "Admin Request Author",
-                "provider": "openlibrary",
-                "provider_id": "req-guard-2",
-            },
-            release_data={
-                "source": "prowlarr",
-                "source_id": "requested-task-2",
-                "title": "Admin Requested Book.epub",
-            },
-            status="fulfilled",
-            delivery_state="queued",
-        )
         task = DownloadTask(
-            task_id="requested-task-2",
-            source="prowlarr",
-            title="Admin Requested Book",
+            task_id="admin-cancel-task-1",
+            source="direct_download",
+            title="Admin Cancel Book",
             user_id=requester["id"],
             username=requester["username"],
         )
@@ -453,11 +501,11 @@ class TestCancelDownloadEndpointGuardrails:
                 with patch.object(
                     main_module.backend, "cancel_download", return_value=True
                 ) as mock_cancel:
-                    resp = client.delete("/api/download/requested-task-2/cancel")
+                    resp = client.delete("/api/download/admin-cancel-task-1/cancel")
 
         assert resp.status_code == 200
-        assert resp.get_json() == {"status": "cancelled", "book_id": "requested-task-2"}
-        mock_cancel.assert_called_once_with("requested-task-2")
+        assert resp.get_json() == {"status": "cancelled", "book_id": "admin-cancel-task-1"}
+        mock_cancel.assert_called_once_with("admin-cancel-task-1")
 
 
 class TestRetryDownloadEndpointGuardrails:
@@ -583,179 +631,6 @@ class TestRetryDownloadEndpointGuardrails:
         assert resp.status_code == 403
         assert resp.get_json()["code"] == "download_not_owned"
         mock_retry.assert_not_called()
-
-    def test_retry_forbidden_for_request_id_linked_download(self, main_module, client):
-        user = _create_user(main_module, prefix="requester")
-        _set_authenticated_session(
-            client,
-            user_id=user["username"],
-            db_user_id=user["id"],
-            is_admin=False,
-        )
-        task = DownloadTask(
-            task_id="requested-retry-1",
-            source="prowlarr",
-            title="Requested Book",
-            user_id=user["id"],
-            username=user["username"],
-            request_id=123,
-        )
-
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
-                with patch.object(
-                    main_module.backend, "retry_download", return_value=(True, None)
-                ) as mock_retry:
-                    resp = client.post("/api/download/requested-retry-1/retry")
-
-        assert resp.status_code == 403
-        assert resp.get_json()["code"] == "requested_download_retry_forbidden"
-        mock_retry.assert_not_called()
-
-    def test_retry_forbidden_for_graduated_request_download(self, main_module, client):
-        user = _create_user(main_module, prefix="requester")
-        _set_authenticated_session(
-            client,
-            user_id=user["username"],
-            db_user_id=user["id"],
-            is_admin=False,
-        )
-        request_row = main_module.user_db.create_request(
-            user_id=user["id"],
-            content_type="ebook",
-            request_level="release",
-            policy_mode="request_release",
-            book_data={
-                "title": "Requested Book",
-                "author": "Request Author",
-                "provider": "openlibrary",
-                "provider_id": "req-retry-1",
-            },
-            release_data={
-                "source": "prowlarr",
-                "source_id": "requested-retry-2",
-                "title": "Requested Book.epub",
-            },
-            status="fulfilled",
-            delivery_state="error",
-        )
-        task = DownloadTask(
-            task_id="requested-retry-2",
-            source="prowlarr",
-            title="Requested Book",
-            user_id=user["id"],
-            username=user["username"],
-            request_id=request_row["id"],
-        )
-
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
-                with patch.object(
-                    main_module.backend, "retry_download", return_value=(True, None)
-                ) as mock_retry:
-                    resp = client.post("/api/download/requested-retry-2/retry")
-
-        assert resp.status_code == 403
-        assert resp.get_json()["code"] == "requested_download_retry_forbidden"
-        mock_retry.assert_not_called()
-
-    def test_retry_allows_request_linked_postprocess_error_with_staged_file(
-        self, main_module, client, tmp_path
-    ):
-        user = _create_user(main_module, prefix="requester")
-        _set_authenticated_session(
-            client,
-            user_id=user["username"],
-            db_user_id=user["id"],
-            is_admin=False,
-        )
-        staged_file = tmp_path / "requested-postprocess.epub"
-        staged_file.write_text("staged")
-        task = DownloadTask(
-            task_id="requested-retry-postprocess-1",
-            source="prowlarr",
-            title="Requested Book",
-            user_id=user["id"],
-            username=user["username"],
-            request_id=123,
-            staged_path=str(staged_file),
-        )
-
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module.backend.book_queue, "get_task", return_value=task):
-                with patch.object(
-                    main_module.backend.book_queue,
-                    "get_task_status",
-                    return_value=main_module.QueueStatus.ERROR,
-                ):
-                    with patch.object(
-                        main_module.backend, "retry_download", return_value=(True, None)
-                    ) as mock_retry:
-                        resp = client.post("/api/download/requested-retry-postprocess-1/retry")
-
-        assert resp.status_code == 200
-        assert resp.get_json() == {"status": "queued", "book_id": "requested-retry-postprocess-1"}
-        mock_retry.assert_called_once_with("requested-retry-postprocess-1")
-
-    def test_retry_allows_persisted_request_postprocess_error_with_staged_file(
-        self, main_module, client, tmp_path
-    ):
-        user = _create_user(main_module, prefix="requester")
-        _set_authenticated_session(
-            client,
-            user_id=user["username"],
-            db_user_id=user["id"],
-            is_admin=False,
-        )
-
-        staged_file = tmp_path / "persisted-request-postprocess.epub"
-        staged_file.write_text("staged")
-        retry_payload = {
-            "task_id": "persisted-request-retry-1",
-            "source": "prowlarr",
-            "title": "Persisted Requested Book",
-            "user_id": user["id"],
-            "username": user["username"],
-            "request_id": 123,
-            "search_mode": "universal",
-            "staged_path": str(staged_file),
-        }
-        main_module.download_history_service.record_download(
-            task_id="persisted-request-retry-1",
-            user_id=user["id"],
-            username=user["username"],
-            request_id=123,
-            source="prowlarr",
-            source_display_name="Prowlarr",
-            title="Persisted Requested Book",
-            author="Request Author",
-            file_format="epub",
-            size="1 MB",
-            preview=None,
-            content_type="ebook",
-            origin="requested",
-            retry_payload=retry_payload,
-        )
-        main_module.download_history_service.finalize_download(
-            task_id="persisted-request-retry-1",
-            final_status="error",
-            status_message="Output routing failed",
-            retry_payload=retry_payload,
-        )
-
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module.backend.book_queue, "get_task", return_value=None):
-                with patch.object(
-                    main_module.backend,
-                    "retry_persisted_download",
-                    return_value=(True, None),
-                ) as mock_retry:
-                    resp = client.post("/api/download/persisted-request-retry-1/retry")
-
-        assert resp.status_code == 200
-        assert resp.get_json() == {"status": "queued", "book_id": "persisted-request-retry-1"}
-        assert mock_retry.call_args.args[0] == retry_payload
-        assert mock_retry.call_args.kwargs["final_status"] == "error"
 
     def test_retry_returns_409_for_non_retryable_state(self, main_module, client):
         user = _create_user(main_module, prefix="reader")

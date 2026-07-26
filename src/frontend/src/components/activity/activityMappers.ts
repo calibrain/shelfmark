@@ -18,6 +18,9 @@ const toOptionalText = (value: unknown): string | undefined => {
   if (typeof value === 'string' && value.trim()) {
     return value.trim();
   }
+  if (typeof value === 'number' && Number.isFinite(value)) {
+    return String(value);
+  }
   return undefined;
 };
 
@@ -123,6 +126,35 @@ const parseRecordData = (
   value: Record<string, unknown> | null | undefined,
 ): Record<string, unknown> => value ?? {};
 
+export interface RequestBookIdentity {
+  id: string;
+  title: string;
+  author: string;
+  coverUrl?: string;
+}
+
+export const getRequestBookIdentity = (record: RequestRecord): RequestBookIdentity => {
+  const bookData = parseRecordData(record.book_data);
+  const releaseData = parseRecordData(record.release_data);
+  const id =
+    toOptionalText(record.book_id) ||
+    toOptionalText(bookData.book_id) ||
+    toOptionalText(bookData.id) ||
+    toOptionalText(bookData.provider_id) ||
+    `request-${record.id}`;
+
+  return {
+    id,
+    title: toText(record.book_title ?? bookData.title ?? releaseData.title, 'Unknown title'),
+    author: toText(record.book_author ?? bookData.author ?? releaseData.author, 'Unknown author'),
+    coverUrl:
+      toOptionalText(record.book_cover_url) ||
+      toOptionalText(bookData.preview) ||
+      toOptionalText(bookData.cover_url) ||
+      toOptionalText(releaseData.preview),
+  };
+};
+
 const requestStatusToVisualStatus = (status: RequestRecord['status']): ActivityVisualStatus => {
   if (status === 'pending') return 'pending';
   if (status === 'fulfilled') return 'fulfilled';
@@ -136,6 +168,11 @@ const buildRequestMetaLine = (
   releaseData: Record<string, unknown>,
   viewerRole: 'user' | 'admin',
 ): string => {
+  if (viewerRole === 'user') {
+    const contentType = toOptionalText(record.content_type || bookData.content_type)?.toLowerCase();
+    return contentType === 'audiobook' ? 'Audiobook request' : 'Book request';
+  }
+
   if (record.request_level === 'book') {
     const contentType = toOptionalText(record.content_type || bookData.content_type)?.toLowerCase();
     const requestTypeLabel = contentType === 'audiobook' ? 'Audiobook request' : 'Book request';
@@ -159,6 +196,7 @@ export const requestToActivityItem = (
   const visualStatus = requestStatusToVisualStatus(record.status);
   const bookData = parseRecordData(record.book_data);
   const releaseData = parseRecordData(record.release_data);
+  const book = getRequestBookIdentity(record);
 
   const timestamp = Number.isFinite(Date.parse(record.created_at))
     ? Date.parse(record.created_at)
@@ -168,9 +206,9 @@ export const requestToActivityItem = (
     id: `request-${record.id}`,
     kind: 'request',
     visualStatus,
-    title: toText(bookData.title ?? releaseData.title, 'Unknown title'),
-    author: toText(bookData.author ?? releaseData.author, 'Unknown author'),
-    preview: toOptionalText(bookData.preview) || toOptionalText(releaseData.preview),
+    title: book.title,
+    author: book.author,
+    preview: book.coverUrl,
     metaLine: buildRequestMetaLine(record, bookData, releaseData, viewerRole),
     statusLabel: STATUS_LABELS[visualStatus],
     adminNote: toOptionalText(record.admin_note),

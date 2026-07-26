@@ -62,13 +62,6 @@ ACTIVE_QUEUE_STATUSES: frozenset[QueueStatus] = frozenset(
 )
 
 
-class SearchMode(StrEnum):
-    """Search modes supported by the Shelfmark UI and API."""
-
-    DIRECT = "direct"
-    UNIVERSAL = "universal"
-
-
 @dataclass
 class QueueItem:
     """Queue item with priority and metadata."""
@@ -122,18 +115,6 @@ class DownloadTask:
 
     # Hardlinking support
     original_download_path: str | None = None  # Path in download client (for hardlinking)
-
-    # Search mode - determines post-download processing behavior
-    # See SearchMode enum for behavioral differences
-    search_mode: SearchMode | None = None
-
-    # Output selection for post-processing.
-    # This is captured at queue time so in-flight tasks are not affected if the user changes settings later.
-    output_mode: str | None = None
-
-    output_args: dict[str, Any] = field(
-        default_factory=dict
-    )  # Per-output parameters (e.g. email recipient)
 
     # User association (multi-user support)
     user_id: int | None = None  # DB user ID who queued this download

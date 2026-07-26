@@ -17,7 +17,6 @@ import type {
   ReleaseColumnConfig,
   LeadingCellConfig,
   ContentType,
-  RequestPolicyMode,
 } from '../types';
 import { isMetadataBook } from '../types';
 import { bookSupportsTargets } from '../utils/bookTargetLoader';
@@ -56,8 +55,8 @@ import { ReleaseCell } from './ReleaseCell';
 interface CombinedModeConfig {
   phase: 'ebook' | 'audiobook';
   stepLabel: string;
-  ebookMode: RequestPolicyMode;
-  audiobookMode: RequestPolicyMode;
+  ebookMode: 'download' | 'blocked';
+  audiobookMode: 'download' | 'blocked';
   stagedEbookRelease: Release | null;
   stagedAudiobookRelease: Release | null;
   onNext?: (release: Release | null) => void;
@@ -68,8 +67,8 @@ interface CombinedModeConfig {
 
 // Determine the combined download button label based on action modes
 function getCombinedDownloadLabel(
-  ebookMode: RequestPolicyMode | null | undefined,
-  audiobookMode: RequestPolicyMode | null | undefined,
+  ebookMode: 'download' | 'blocked' | null | undefined,
+  audiobookMode: 'download' | 'blocked' | null | undefined,
   hasEbookAction = true,
   hasAudiobookAction = true,
 ): string {
@@ -80,21 +79,15 @@ function getCombinedDownloadLabel(
     return getSingleCombinedActionLabel('audiobook', audiobookMode);
   }
 
-  const ebookIsRequest = ebookMode === 'request_release' || ebookMode === 'request_book';
-  const audiobookIsRequest =
-    audiobookMode === 'request_release' || audiobookMode === 'request_book';
-  if (ebookIsRequest && audiobookIsRequest) return 'Request Both';
-  if (ebookIsRequest || audiobookIsRequest) return 'Download & Request';
   return 'Download Both';
 }
 
 function getSingleCombinedActionLabel(
   contentType: ContentType,
-  mode: RequestPolicyMode | null | undefined,
+  _mode: 'download' | 'blocked' | null | undefined,
 ): string {
   const noun = contentType === 'ebook' ? 'Book' : 'Audiobook';
-  const isRequest = mode === 'request_release' || mode === 'request_book';
-  return `${isRequest ? 'Request' : 'Download'} ${noun}`;
+  return `Download ${noun}`;
 }
 
 // Default column configuration (fallback when backend doesn't provide one)
@@ -141,9 +134,6 @@ interface ReleaseModalProps {
   book: Book | null;
   onClose: () => void;
   onDownload: (book: Book, release: Release, contentType: ContentType) => Promise<void>;
-  onRequestRelease?: (book: Book, release: Release, contentType: ContentType) => Promise<void>;
-  onRequestBook?: (book: Book, contentType: ContentType) => Promise<void>;
-  getPolicyModeForSource?: (source: string, contentType: ContentType) => RequestPolicyMode;
   supportedFormats: string[];
   supportedAudiobookFormats?: string[]; // Audiobook formats (m4b, mp3)
   contentType: ContentType; // 'ebook' or 'audiobook'
@@ -154,6 +144,7 @@ interface ReleaseModalProps {
   defaultAudiobookReleaseSource?: string; // Default audiobook tab to show
   onSearchSeries?: (seriesName: string, seriesId?: string) => void; // Callback to search for series
   defaultShowManualQuery?: boolean;
+  allowManualQuery?: boolean;
   isRequestMode?: boolean;
   showReleaseSourceLinks?: boolean;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
@@ -756,9 +747,6 @@ const ReleaseModalSession = ({
   book,
   onClose,
   onDownload,
-  onRequestRelease,
-  onRequestBook,
-  getPolicyModeForSource,
   supportedFormats,
   supportedAudiobookFormats = EMPTY_SUPPORTED_AUDIOBOOK_FORMATS,
   contentType,
@@ -769,6 +757,7 @@ const ReleaseModalSession = ({
   defaultAudiobookReleaseSource,
   onSearchSeries,
   defaultShowManualQuery = false,
+  allowManualQuery = false,
   isRequestMode = false,
   showReleaseSourceLinks = true,
   onShowToast,
@@ -781,7 +770,6 @@ const ReleaseModalSession = ({
     contentType === 'audiobook' && supportedAudiobookFormats.length > 0
       ? supportedAudiobookFormats
       : supportedFormats;
-  const [isRequestingBook, setIsRequestingBook] = useState(false);
   const [selectedRelease, setSelectedRelease] = useState<Release | null>(null);
   const isCombinedMode = combinedMode != null;
   const combinedPhase = combinedMode?.phase ?? null;
@@ -878,19 +866,6 @@ const ReleaseModalSession = ({
       release: stagedReleaseForPhase,
     });
   }
-
-  const handleRequestBook = useCallback(async (): Promise<void> => {
-    if (!book || !onRequestBook || isRequestingBook) {
-      return;
-    }
-    setIsRequestingBook(true);
-    try {
-      await onRequestBook(book, contentType);
-      handleClose();
-    } finally {
-      setIsRequestingBook(false);
-    }
-  }, [book, onRequestBook, isRequestingBook, contentType, handleClose]);
 
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const tabIndicatorStyle = useTabIndicator(tabRefs, activeTab, allTabs);
@@ -1138,29 +1113,14 @@ const ReleaseModalSession = ({
     return { starField, ratingsField, usersField, pagesField, lengthField, narratorField };
   }, [book?.display_fields]);
 
-  const getReleaseActionMode = useCallback(
-    (release: Release): RequestPolicyMode => {
-      if (!getPolicyModeForSource) {
-        return 'download';
-      }
-      return getPolicyModeForSource(release.source, contentType);
-    },
-    [getPolicyModeForSource, contentType],
-  );
+  const getReleaseActionMode = useCallback((_release: Release) => 'download' as const, []);
 
-  // Get button state for a release row (queue state + policy mode).
+  // Get button state for a release row.
   const getButtonState = useCallback(
     (release: Release): ButtonStateInfo => {
       const releaseId = release.source_id;
-      const mode = getReleaseActionMode(release);
       // Check error first
       if (currentStatus.error && currentStatus.error[releaseId]) {
-        if (mode === 'request_release') {
-          return { text: 'Request', state: 'download' };
-        }
-        if (mode === 'blocked' || mode === 'request_book') {
-          return { text: 'Unavailable', state: 'blocked' };
-        }
         return currentStatus.error[releaseId].retry_available === true
           ? { text: 'Retry', state: 'download' }
           : { text: 'Failed', state: 'error' };
@@ -1187,18 +1147,12 @@ const ReleaseModalSession = ({
       if (currentStatus.queued && currentStatus.queued[releaseId]) {
         return { text: 'Queued', state: 'queued' };
       }
-      if (mode === 'request_release') {
-        return { text: 'Request', state: 'download' };
-      }
-      if (mode === 'blocked' || mode === 'request_book') {
-        return { text: 'Unavailable', state: 'blocked' };
-      }
       return { text: 'Download', state: 'download' };
     },
-    [currentStatus, getReleaseActionMode],
+    [currentStatus],
   );
 
-  // Handle row action based on resolved policy mode.
+  // Handle a release-row download action.
   const handleReleaseAction = useCallback(
     async (release: Release): Promise<void> => {
       if (!book) {
@@ -1207,36 +1161,14 @@ const ReleaseModalSession = ({
 
       // In combined mode, clicking a row selects it (don't download)
       if (isCombinedMode) {
-        const mode = getReleaseActionMode(release);
-        if (mode === 'blocked' || mode === 'request_book') {
-          return;
-        }
         setSelectedRelease(release);
         return;
       }
 
-      const mode = getReleaseActionMode(release);
-      if (mode === 'download') {
-        await onDownload(book, release, contentType);
-        handleClose();
-        return;
-      }
-      if (mode === 'request_release') {
-        if (onRequestRelease) {
-          await onRequestRelease(book, release, contentType);
-          handleClose();
-        }
-      }
+      await onDownload(book, release, contentType);
+      handleClose();
     },
-    [
-      book,
-      isCombinedMode,
-      getReleaseActionMode,
-      onDownload,
-      onRequestRelease,
-      contentType,
-      handleClose,
-    ],
+    [book, isCombinedMode, onDownload, contentType, handleClose],
   );
 
   const titleId = `release-modal-title-${book.id}`;
@@ -1280,13 +1212,9 @@ const ReleaseModalSession = ({
   }
 
   const hasCombinedEbookAction =
-    combinedPhase === 'ebook'
-      ? selectedRelease !== null
-      : stagedEbookRelease !== null || combinedFooterEbookMode === 'request_book';
+    combinedPhase === 'ebook' ? selectedRelease !== null : stagedEbookRelease !== null;
   const hasCombinedAudiobookAction =
-    combinedPhase === 'audiobook'
-      ? selectedRelease !== null
-      : stagedAudiobookRelease !== null || combinedFooterAudiobookMode === 'request_book';
+    combinedPhase === 'audiobook' ? selectedRelease !== null : stagedAudiobookRelease !== null;
   const hasCombinedActionOutsideCurrentPhase =
     combinedPhase === 'ebook' ? hasCombinedAudiobookAction : hasCombinedEbookAction;
   const canCompleteCombinedAction =
@@ -1653,42 +1581,13 @@ const ReleaseModalSession = ({
                         </svg>
                       </a>
                     )}
-                    {(onRequestBook || bookSupportsTargets(book)) && (
-                      <span className="inline-flex items-center gap-3">
-                        {onRequestBook && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              void handleRequestBook();
-                            }}
-                            disabled={isRequestingBook}
-                            className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-600 transition-colors hover:bg-emerald-100 disabled:cursor-not-allowed disabled:opacity-60 dark:bg-emerald-900/20 dark:text-emerald-400 dark:hover:bg-emerald-900/40"
-                          >
-                            <svg
-                              className="h-3 w-3"
-                              fill="none"
-                              stroke="currentColor"
-                              viewBox="0 0 24 24"
-                              strokeWidth={2}
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M12 4.5v15m7.5-7.5h-15"
-                              />
-                            </svg>
-                            {isRequestingBook ? 'Adding...' : 'Add to requests'}
-                          </button>
-                        )}
-                        {bookSupportsTargets(book) && book.provider && book.provider_id && (
-                          <BookTargetDropdown
-                            provider={book.provider}
-                            bookId={book.provider_id}
-                            onShowToast={onShowToast}
-                            variant="pill"
-                          />
-                        )}
-                      </span>
+                    {bookSupportsTargets(book) && book.provider && book.provider_id && (
+                      <BookTargetDropdown
+                        provider={book.provider}
+                        bookId={book.provider_id}
+                        onShowToast={onShowToast}
+                        variant="pill"
+                      />
                     )}
                   </div>
                 </div>
@@ -1741,30 +1640,31 @@ const ReleaseModalSession = ({
                   </div>
 
                   <div className="flex items-center gap-3 pr-1 pl-2">
-                    {/* Manual query button */}
-                    <button
-                      type="button"
-                      onClick={toggleManualQuery}
-                      className={`hover-surface rounded-full p-2.5 text-zinc-500 transition-colors dark:text-zinc-400 ${
-                        manualQuery.trim() ? 'text-emerald-600 dark:text-emerald-400' : ''
-                      }`}
-                      aria-label="Manual search query"
-                      title="Manual query"
-                    >
-                      <svg
-                        className="h-4 w-4"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                        strokeWidth={1.5}
+                    {allowManualQuery && (
+                      <button
+                        type="button"
+                        onClick={toggleManualQuery}
+                        className={`hover-surface rounded-full p-2.5 text-zinc-500 transition-colors dark:text-zinc-400 ${
+                          manualQuery.trim() ? 'text-emerald-600 dark:text-emerald-400' : ''
+                        }`}
+                        aria-label="Manual search query"
+                        title="Manual query"
                       >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="m16.862 4.487 1.687-1.688a1.875 1.875 0 0 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
-                        />
-                      </svg>
-                    </button>
+                        <svg
+                          className="h-4 w-4"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                          strokeWidth={1.5}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="m16.862 4.487 1.687-1.688a1.875 1.875 0 0 1 2.652 2.652L10.582 16.07a4.5 4.5 0 0 1-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 0 1 1.13-1.897l8.932-8.931Zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0 1 15.75 21H5.25A2.25 2.25 0 0 1 3 18.75V8.25A2.25 2.25 0 0 1 5.25 6H10"
+                          />
+                        </svg>
+                      </button>
+                    )}
 
                     {/* Sort dropdown - show if source has sort options or multiple formats */}
                     {(allSortOptions.length > 0 || availableFormats.length > 1) && (
@@ -2103,7 +2003,7 @@ const ReleaseModalSession = ({
             </div>
 
             {/* Manual query panel (below source tabs) */}
-            {showManualQuery && (
+            {allowManualQuery && showManualQuery && (
               <div className="border-b border-(--border-muted) bg-(--bg) px-5 py-3 sm:bg-(--bg-soft)">
                 <form
                   className="flex items-center gap-2"

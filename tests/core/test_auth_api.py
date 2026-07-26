@@ -151,6 +151,7 @@ class TestLoginSemantics:
             "auth_required": False,
             "auth_mode": "none",
             "is_admin": True,
+            "library_capability": None,
         }
 
     @pytest.mark.parametrize("auth_mode", ["builtin", "oidc"])
@@ -166,21 +167,29 @@ class TestLoginSemantics:
         assert body["authenticated"] is False
         assert body["hide_local_auth"] is True
 
-    def test_auth_check_includes_display_name_for_authenticated_user(
-        self, main_module, client, temp_user_db, monkeypatch
+    @pytest.mark.parametrize(
+        ("library_capability", "role", "is_admin"),
+        [
+            ("download-capable", "admin", True),
+            ("request-only", "user", False),
+        ],
+    )
+    def test_auth_check_includes_authenticated_user_capability(
+        self, main_module, client, temp_user_db, monkeypatch, library_capability, role, is_admin
     ):
         monkeypatch.setattr(main_module, "user_db", temp_user_db)
         user = temp_user_db.create_user(
             username="alice",
             password_hash=generate_password_hash("secret"),
             display_name="Alice Example",
-            role="admin",
+            role=role,
+            library_capability=library_capability,
         )
 
         with client.session_transaction() as sess:
             sess["user_id"] = "alice"
             sess["db_user_id"] = user["id"]
-            sess["is_admin"] = True
+            sess["is_admin"] = is_admin
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             response = client.get("/api/auth/check")
@@ -190,9 +199,10 @@ class TestLoginSemantics:
         assert body["authenticated"] is True
         assert body["auth_required"] is True
         assert body["auth_mode"] == "builtin"
-        assert body["is_admin"] is True
+        assert body["is_admin"] is is_admin
         assert body["username"] == "alice"
         assert body["display_name"] == "Alice Example"
+        assert body["library_capability"] == library_capability
 
     def test_logout_proxy_includes_logout_url_and_clears_session(self, main_module, client):
         with client.session_transaction() as sess:

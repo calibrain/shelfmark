@@ -2,7 +2,6 @@ import type { ReactNode } from 'react';
 import { useLayoutEffect, useMemo, useRef, useState } from 'react';
 
 import type { RequestRecord } from '../../types';
-import { withBasePath } from '../../utils/basePath';
 import { Tooltip } from '../shared/Tooltip';
 import type { ActivityCardAction } from './activityCardModel';
 import { buildActivityCardModel } from './activityCardModel';
@@ -679,25 +678,7 @@ export const ActivityCard = ({
       'Previous download failed and the attached release was cleared. Choose a release before re-approving.';
   }
 
-  const canShowDownloadLink =
-    item.kind === 'download' &&
-    item.visualStatus === 'complete' &&
-    Boolean(item.downloadBookId) &&
-    Boolean(item.downloadPath);
-
-  const titleNode =
-    canShowDownloadLink && item.downloadBookId ? (
-      <Tooltip content="Download file" position="top" delay={0}>
-        <a
-          href={withBasePath(`/api/localdownload?id=${encodeURIComponent(item.downloadBookId)}`)}
-          className="text-sky-600 hover:underline"
-        >
-          {item.title}
-        </a>
-      </Tooltip>
-    ) : (
-      item.title
-    );
+  const titleNode = item.title;
 
   return (
     <div className={`-mx-4 cursor-default px-4 py-2 ${isSelected ? 'relative' : 'hover-row'}`}>

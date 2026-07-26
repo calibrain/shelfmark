@@ -1,17 +1,7 @@
 import { useCallback, useState } from 'react';
 
-import type { PerUserSettings } from '../components/settings/users/types';
-import type { AdminUser, DeliveryPreferencesResponse, DownloadDefaults } from '../services/api';
-import {
-  getAdminDeliveryPreferences,
-  getAdminNotificationPreferences,
-  getAdminSearchPreferences,
-  getAdminUser,
-  getAdminUsers,
-  getDownloadDefaults,
-  getSettingsTab,
-} from '../services/api';
-import type { SettingsField } from '../types/settings';
+import type { AdminUser } from '../services/api';
+import { getAdminUsers } from '../services/api';
 import { useMountEffect } from './useMountEffect';
 
 interface UseUsersFetchParams {
@@ -63,44 +53,6 @@ export const primeUsersCache = async (): Promise<void> => {
   }
 };
 
-export interface UserEditContext {
-  user: AdminUser;
-  downloadDefaults: DownloadDefaults;
-  deliveryPreferences: DeliveryPreferencesResponse | null;
-  searchPreferences: DeliveryPreferencesResponse | null;
-  notificationPreferences: DeliveryPreferencesResponse | null;
-  userSettings: PerUserSettings;
-  userOverridableSettings: Set<string>;
-}
-
-const getUserOverridableKeys = (fields: SettingsField[]): string[] => {
-  const keys: string[] = [];
-  const seen = new Set<string>();
-
-  const collect = (candidateFields: SettingsField[]) => {
-    candidateFields.forEach((field) => {
-      if (field.type === 'CustomComponentField') {
-        if (field.boundFields && field.boundFields.length > 0) {
-          collect(field.boundFields);
-        }
-        return;
-      }
-
-      if (field.type === 'HeadingField') {
-        return;
-      }
-
-      if ((field as { userOverridable?: boolean }).userOverridable && !seen.has(field.key)) {
-        seen.add(field.key);
-        keys.push(field.key);
-      }
-    });
-  };
-
-  collect(fields);
-  return keys;
-};
-
 export const useUsersFetch = ({ onShowToast }: UseUsersFetchParams) => {
   const [users, setUsers] = useState<AdminUser[]>(() => cachedUsers ?? []);
   const [loading, setLoading] = useState<boolean>(() => cachedUsers === null);
@@ -136,83 +88,10 @@ export const useUsersFetch = ({ onShowToast }: UseUsersFetchParams) => {
     void fetchUsers();
   });
 
-  const fetchUserEditContext = useCallback(async (userId: number): Promise<UserEditContext> => {
-    const [fullUser, defaults] = await Promise.all([getAdminUser(userId), getDownloadDefaults()]);
-
-    let deliveryPreferences: DeliveryPreferencesResponse | null = null;
-    let searchPreferences: DeliveryPreferencesResponse | null = null;
-    let notificationPreferences: DeliveryPreferencesResponse | null = null;
-    let userSettings = {} as PerUserSettings;
-    if (fullUser.settings) {
-      userSettings = {
-        ...fullUser.settings,
-      } as PerUserSettings;
-    }
-    const userOverridableSettings = new Set<string>();
-
-    const [deliveryResult, searchResult, notificationResult] = await Promise.allSettled([
-      getAdminDeliveryPreferences(userId),
-      getAdminSearchPreferences(userId),
-      getAdminNotificationPreferences(userId),
-    ]);
-
-    if (deliveryResult.status === 'fulfilled') {
-      deliveryPreferences = deliveryResult.value;
-      if (deliveryResult.value.userOverrides) {
-        userSettings = {
-          ...userSettings,
-          ...deliveryResult.value.userOverrides,
-        } as PerUserSettings;
-      }
-      deliveryResult.value.keys.forEach((key) => userOverridableSettings.add(key));
-    }
-
-    if (searchResult.status === 'fulfilled') {
-      searchPreferences = searchResult.value;
-      if (searchResult.value.userOverrides) {
-        userSettings = {
-          ...userSettings,
-          ...searchResult.value.userOverrides,
-        } as PerUserSettings;
-      }
-      searchResult.value.keys.forEach((key) => userOverridableSettings.add(key));
-    }
-
-    if (notificationResult.status === 'fulfilled') {
-      notificationPreferences = notificationResult.value;
-      if (notificationResult.value.userOverrides) {
-        userSettings = {
-          ...userSettings,
-          ...notificationResult.value.userOverrides,
-        } as PerUserSettings;
-      }
-      notificationResult.value.keys.forEach((key) => userOverridableSettings.add(key));
-    }
-
-    try {
-      const usersTab = await getSettingsTab('users');
-      const usersOverridableKeys = getUserOverridableKeys(usersTab.fields);
-      usersOverridableKeys.forEach((key) => userOverridableSettings.add(key));
-    } catch {
-      // Users-tab metadata is best-effort; save still validates server-side.
-    }
-
-    return {
-      user: fullUser,
-      downloadDefaults: defaults,
-      deliveryPreferences,
-      searchPreferences,
-      notificationPreferences,
-      userSettings,
-      userOverridableSettings,
-    };
-  }, []);
-
   return {
     users,
     loading,
     loadError,
     fetchUsers,
-    fetchUserEditContext,
   };
 };

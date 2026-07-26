@@ -393,7 +393,7 @@ def _get_config_file_path(tab_name: str) -> Path:
     """Get the config file path for a settings tab."""
     config_dir = _get_config_dir()
     # Core settings tabs share the main settings.json file
-    if tab_name in ("general", "search_mode"):
+    if tab_name in ("general", "discovery"):
         return config_dir / "settings.json"
 
     # Plugin config file names should match their tab names exactly after
@@ -523,7 +523,6 @@ def sync_env_to_config() -> None:
     """Sync supported environment-backed settings into config files."""
     config_dir = _get_config_dir()
     plugins_dir = config_dir / "plugins"
-    had_existing_search_page_title = "SEARCH_PAGE_TITLE" in load_config_file("general")
     had_existing_install_state = (
         (config_dir / "settings.json").exists()
         or (config_dir / "users.db").exists()
@@ -556,13 +555,8 @@ def sync_env_to_config() -> None:
             )
 
     migrate_legacy_settings()
-    migrate_download_to_browser_settings()
     migrate_mirror_settings()
     migrate_direct_download_upgrade(existing_install=had_existing_install_state)
-    migrate_search_page_title(
-        existing_install=had_existing_install_state,
-        had_existing_value=had_existing_search_page_title,
-    )
 
 
 def migrate_direct_download_upgrade(*, existing_install: bool) -> None:
@@ -579,14 +573,6 @@ def migrate_direct_download_upgrade(*, existing_install: bool) -> None:
 
     if download_updates:
         save_config_file("download_sources", download_updates)
-
-
-def migrate_search_page_title(*, existing_install: bool, had_existing_value: bool) -> None:
-    """Keep the legacy homepage search title for existing installs only."""
-    if not existing_install or had_existing_value or os.getenv("SEARCH_PAGE_TITLE") is not None:
-        return
-
-    save_config_file("general", {"SEARCH_PAGE_TITLE": "Book Search & Download"})
 
 
 def migrate_mirror_settings() -> None:
@@ -762,61 +748,6 @@ def migrate_legacy_settings() -> None:
     if migrated_sources:
         save_config_file("download_sources", migrated_sources)
         logger.info("Migrated content-type routing settings: %s", list(migrated_sources.keys()))
-
-
-def migrate_download_to_browser_settings() -> None:
-    """Migrate the legacy download-to-browser toggle to content-type selection."""
-    downloads_config = load_config_file("downloads")
-    legacy_key = "DOWNLOAD_TO_BROWSER"
-    new_key = "DOWNLOAD_TO_BROWSER_CONTENT_TYPES"
-    config_path = _get_config_file_path("downloads")
-
-    legacy_value: object = None
-    legacy_present = False
-
-    if legacy_key in downloads_config:
-        legacy_value = downloads_config.get(legacy_key)
-        legacy_present = True
-    elif (
-        new_key not in downloads_config
-        and os.environ.get(new_key) is None
-        and legacy_key in os.environ
-    ):
-        legacy_value = os.environ.get(legacy_key)
-        legacy_present = True
-
-    if not legacy_present and legacy_key not in downloads_config:
-        return
-
-    updated_downloads = dict(downloads_config)
-    changed = False
-
-    if new_key not in updated_downloads and legacy_present:
-        enabled = False
-        if isinstance(legacy_value, bool):
-            enabled = legacy_value
-        elif isinstance(legacy_value, str):
-            enabled = legacy_value.strip().lower() in {"true", "1", "yes", "on"}
-        else:
-            enabled = bool(legacy_value)
-
-        updated_downloads[new_key] = ["book", "audiobook"] if enabled else []
-        changed = True
-
-    if legacy_key in updated_downloads:
-        updated_downloads.pop(legacy_key, None)
-        changed = True
-
-    if not changed:
-        return
-
-    try:
-        _ensure_config_dir("downloads")
-        with config_path.open("w") as f:
-            json.dump(updated_downloads, f, indent=2)
-        logger.info("Migrated download-to-browser setting to content-type selection")
-    except Exception:
-        logger.exception("Failed to migrate download-to-browser settings")
 
 
 def get_setting_value(field: FieldBase, tab_name: str) -> object:
