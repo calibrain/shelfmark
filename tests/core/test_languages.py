@@ -1,0 +1,177 @@
+"""Tests for the shared language resolution used by every release source."""
+
+import json
+from pathlib import Path
+
+import pytest
+
+from shelfmark.core.languages import (
+    LANGUAGE_DATA_PATH,
+    known_language_codes,
+    language_alias_map,
+    language_name,
+    normalize_language,
+)
+
+BASELINE = json.loads(
+    (Path(__file__).parent / "fixtures" / "language_alias_baseline.json").read_text(
+        encoding="utf-8"
+    )
+)
+
+
+class TestBaselineEquivalence:
+    """Every alias the per-source maps used to handle must still resolve the same.
+
+    These maps lived in prowlarr/source.py and audiobookbay/source.py before they
+    were consolidated here. The fixture is a frozen snapshot taken before the
+    move, so a regression shows up as a concrete alias rather than a vague
+    behaviour change.
+    """
+
+    @pytest.mark.parametrize(
+        ("alias", "expected"), sorted(BASELINE["prowlarr_three_letter"].items())
+    )
+    def test_prowlarr_three_letter_aliases_unchanged(self, alias, expected):
+        assert normalize_language(alias) == expected
+
+    @pytest.mark.parametrize(("alias", "expected"), sorted(BASELINE["audiobookbay_names"].items()))
+    def test_audiobookbay_names_unchanged(self, alias, expected):
+        assert normalize_language(alias) == expected
+
+
+class TestNormalizeLanguage:
+    def test_accepts_two_letter_codes(self):
+        assert normalize_language("en") == "en"
+        assert normalize_language("sv") == "sv"
+
+    def test_accepts_three_letter_codes_in_both_iso_639_2_forms(self):
+        # Bibliographic and terminological forms differ for these.
+        assert normalize_language("ger") == normalize_language("deu") == "de"
+        assert normalize_language("fre") == normalize_language("fra") == "fr"
+        assert normalize_language("per") == normalize_language("fas") == "fa"
+        assert normalize_language("ice") == normalize_language("isl") == "is"
+        assert normalize_language("may") == normalize_language("msa") == "ms"
+
+    def test_accepts_english_names(self):
+        assert normalize_language("Swedish") == "sv"
+        assert normalize_language("Scottish Gaelic") == "gd"
+
+    def test_is_case_and_whitespace_insensitive(self):
+        assert normalize_language("  ENG  ") == "en"
+        assert normalize_language("sWeDiSh") == "sv"
+
+    def test_falls_back_to_the_base_language_for_regional_variants(self):
+        assert normalize_language("pt-BR") == "pt"
+        assert normalize_language("en-GB") == "en"
+
+    def test_returns_none_for_placeholders(self):
+        for placeholder in ("unknown", "unk", "n/a", "na", "-", "--", "none", "null", "", "   "):
+            assert normalize_language(placeholder) is None, placeholder
+
+    def test_returns_none_for_unknown_values(self):
+        assert normalize_language("xyz") is None
+        assert normalize_language("Klingon") is None
+
+    def test_returns_none_for_none(self):
+        assert normalize_language(None) is None
+
+
+class TestLanguageData:
+    def test_every_alias_resolves_to_a_known_code(self):
+        codes = known_language_codes()
+        assert {c for c in language_alias_map().values()} <= codes
+
+    def test_codes_are_ascii(self):
+        # "zh-Hant" once used a U+2011 non-breaking hyphen, which silently
+        # defeats any comparison against the normal spelling.
+        entries = json.loads(LANGUAGE_DATA_PATH.read_text(encoding="utf-8"))
+        assert [e["code"] for e in entries if not e["code"].isascii()] == []
+
+    def test_codes_are_unique(self):
+        entries = json.loads(LANGUAGE_DATA_PATH.read_text(encoding="utf-8"))
+        codes = [e["code"] for e in entries]
+        assert len(codes) == len(set(codes))
+
+    def test_language_name_round_trips(self):
+        assert language_name("sv") == "Swedish"
+        assert language_name("ml") == "Malayalam"
+        assert language_name("zzz") is None
+        assert language_name(None) is None
+
+
+class TestMyAnonamouseCoverage:
+    """MyAnonamouse offers 62 languages and Prowlarr passes its code through
+    untransformed, so every one has to resolve here or the language is lost."""
+
+    # Observed in live MyAnonamouse data via Prowlarr.
+    OBSERVED = {"ENG": "en", "SWE": "sv", "MAL": "ml"}
+
+    @pytest.mark.parametrize(("tag", "expected"), sorted(OBSERVED.items()))
+    def test_observed_tags_resolve(self, tag, expected):
+        assert normalize_language(tag) == expected
+
+    def test_every_offered_language_resolves(self):
+        # Names as MyAnonamouse's own searchLanguages selector lists them.
+        offered = [
+            "English",
+            "Afrikaans",
+            "Arabic",
+            "Bengali",
+            "Bosnian",
+            "Bulgarian",
+            "Burmese",
+            "Catalan",
+            "Chinese",
+            "Croatian",
+            "Czech",
+            "Danish",
+            "Dutch",
+            "Estonian",
+            "Farsi",
+            "Finnish",
+            "French",
+            "German",
+            "Greek",
+            "Gujarati",
+            "Hebrew",
+            "Hindi",
+            "Hungarian",
+            "Icelandic",
+            "Indonesian",
+            "Irish",
+            "Italian",
+            "Japanese",
+            "Javanese",
+            "Kannada",
+            "Korean",
+            "Lithuanian",
+            "Latin",
+            "Latvian",
+            "Malay",
+            "Malayalam",
+            "Manx",
+            "Marathi",
+            "Norwegian",
+            "Polish",
+            "Portuguese",
+            "Punjabi",
+            "Romanian",
+            "Russian",
+            "Scottish Gaelic",
+            "Sanskrit",
+            "Serbian",
+            "Slovenian",
+            "Spanish",
+            "Swedish",
+            "Tagalog",
+            "Tamil",
+            "Telugu",
+            "Thai",
+            "Turkish",
+            "Ukrainian",
+            "Urdu",
+            "Vietnamese",
+        ]
+        unresolved = [name for name in offered if normalize_language(name) is None]
+        assert unresolved == []

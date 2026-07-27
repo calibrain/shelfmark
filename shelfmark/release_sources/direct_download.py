@@ -18,6 +18,7 @@ from bs4.element import NavigableString
 
 from shelfmark.config.env import DEBUG_SKIP_SOURCES, TMP_DIR
 from shelfmark.core.config import config
+from shelfmark.core.languages import language_alias_map
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import DownloadTask, SearchFilters, build_filename
 from shelfmark.core.utils import CONTENT_TYPES, get_aa_content_type_dir
@@ -267,7 +268,7 @@ def _fold_text(value: str) -> str:
 
 
 def _language_alias_to_code() -> dict[str, str]:
-    """Build alias→code map from bundled language metadata (lazy, cached)."""
+    """Alias to code map, delegating to the shared language data."""
     global _LANGUAGE_ALIAS_TO_CODE
     cached = _LANGUAGE_ALIAS_TO_CODE
     if cached is not None:
@@ -278,35 +279,7 @@ def _language_alias_to_code() -> dict[str, str]:
         if cached is not None:
             return cached
 
-        mapping: dict[str, str] = {}
-        data_path = Path(__file__).resolve().parents[2] / "data" / "book-languages.json"
-
-        try:
-            raw = json.loads(data_path.read_text(encoding="utf-8"))
-        except OSError, ValueError, TypeError:
-            _LANGUAGE_ALIAS_TO_CODE = {}
-            return _LANGUAGE_ALIAS_TO_CODE
-
-        if not isinstance(raw, list):
-            _LANGUAGE_ALIAS_TO_CODE = {}
-            return _LANGUAGE_ALIAS_TO_CODE
-
-        for item in raw:
-            if not isinstance(item, dict):
-                continue
-            code = _normalize_language_token(str(item.get("code", "")))
-            name = _normalize_language_token(str(item.get("language", "")))
-            if not code:
-                continue
-            mapping.setdefault(code, code)
-            mapping.setdefault(code.replace("-", "_"), code)
-            mapping.setdefault(code.split("-")[0], code)
-            mapping.setdefault(_fold_text(code), code)
-            if name:
-                mapping.setdefault(name, code)
-                mapping.setdefault(_fold_text(name), code)
-
-        _LANGUAGE_ALIAS_TO_CODE = mapping
+        _LANGUAGE_ALIAS_TO_CODE = language_alias_map()
         return _LANGUAGE_ALIAS_TO_CODE
 
 

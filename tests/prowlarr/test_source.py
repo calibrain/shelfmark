@@ -10,7 +10,6 @@ import pytest
 from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources.prowlarr.api import ProwlarrClient
 from shelfmark.release_sources.prowlarr.source import (
-    MAM_LANGUAGE_MAP,
     ProwlarrSource,
     _detect_content_type_from_categories,
     _extract_format,
@@ -769,24 +768,3 @@ class TestMamLanguageCoverage:
         }
         for tag, expected in cases.items():
             assert _extract_mam_language(f"Book [{tag} / M4B]") == expected, tag
-
-    def test_every_mapped_code_exists_in_the_shared_language_db(self):
-        import json
-        from pathlib import Path
-
-        db_path = Path(__file__).resolve().parents[2] / "data" / "book-languages.json"
-        known = {entry["code"] for entry in json.loads(db_path.read_text(encoding="utf-8"))}
-
-        assert set(MAM_LANGUAGE_MAP.values()) <= known
-
-    def test_language_db_codes_are_ascii(self):
-        # A U+2011 non-breaking hyphen in "zh-Hant" silently defeats any
-        # comparison against the normal ASCII spelling.
-        import json
-        from pathlib import Path
-
-        db_path = Path(__file__).resolve().parents[2] / "data" / "book-languages.json"
-        entries = json.loads(db_path.read_text(encoding="utf-8"))
-
-        non_ascii = [e["code"] for e in entries if not e["code"].isascii()]
-        assert non_ascii == []
