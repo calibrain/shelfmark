@@ -189,16 +189,24 @@ class ProwlarrClient:
         indexers = self.get_indexers(raise_on_error=raise_on_error)
         return [idx for idx in indexers if idx.get("enable", False)]
 
-    def get_enriched_indexer_ids(self, *, restrict_to: list[int] | None = None) -> list[int]:
+    def get_enriched_indexer_ids(
+        self,
+        *,
+        restrict_to: list[int] | None = None,
+        indexers: list[dict[str, Any]] | None = None,
+    ) -> list[int]:
         """Return enabled indexer IDs that benefit from extra Torznab handling.
 
         Args:
             restrict_to: Optional list of candidate indexer IDs to consider.
+            indexers: Optional already-fetched enabled indexer list, so callers
+                that need the full records for other reasons can avoid a second
+                round trip.
 
         """
         enriched_ids: list[int] = []
 
-        for idx in self.get_enabled_indexers_detailed():
+        for idx in indexers if indexers is not None else self.get_enabled_indexers_detailed():
             idx_id_int = coerce_int_like(idx.get("id"))
             if idx_id_int is None:
                 continue

@@ -1211,6 +1211,7 @@ How long to cache individual book details. Default: 600 (10 minutes). Max: 60480
 | `PROWLARR_API_KEY` | Found in Prowlarr: Settings > General > API Key | string (secret) | _none_ |
 | `PROWLARR_INDEXERS` | Select which indexers to search. 📚 = has book categories. Leave empty to search all. | string (comma-separated) | _empty list_ |
 | `PROWLARR_AUTO_EXPAND` | Automatically retry search without category filtering if no results are found | boolean | `false` |
+| `PROWLARR_COLLAPSE_DUPLICATES` | Collapse a release that several indexer entries returned down to a single row. Leave this off to see every entry that carried it, which is what makes results from filter-specific entries (freeleech and the like) visible. | boolean | `false` |
 | `PROWLARR_USE_SEED_PREFERENCES` | Apply per-indexer seed time and ratio preferences from Prowlarr when sending torrents to the download client | boolean | `false` |
 
 <details>
@@ -1259,6 +1260,15 @@ Select which indexers to search. 📚 = has book categories. Leave empty to sear
 **Auto-expand search on no results**
 
 Automatically retry search without category filtering if no results are found
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `PROWLARR_COLLAPSE_DUPLICATES`
+
+**Show one row per release**
+
+Collapse a release that several indexer entries returned down to a single row. Leave this off to see every entry that carried it, which is what makes results from filter-specific entries (freeleech and the like) visible.
 
 - **Type:** boolean
 - **Default:** `false`

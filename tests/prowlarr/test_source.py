@@ -11,13 +11,21 @@ from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources.prowlarr.api import ProwlarrClient
 from shelfmark.release_sources.prowlarr.source import (
     ProwlarrSource,
+    _build_indexer_priority,
+    _collapse_duplicate_indexer_results,
     _detect_content_type_from_categories,
     _extract_format,
     _fetch_indexer_seed_settings,
     _last_known_seed_settings,
     _parse_size,
+    _release_identity,
+    _result_dedup_key,
 )
-from shelfmark.release_sources.prowlarr.utils import get_protocol_display, sanitize_download_url
+from shelfmark.release_sources.prowlarr.utils import (
+    build_source_id,
+    get_protocol_display,
+    sanitize_download_url,
+)
 
 
 class _AvailableSource:
@@ -265,8 +273,8 @@ class FakeTorznabClient:
         self.queries.append(query)
         return self.search_results
 
-    def get_enriched_indexer_ids(self, restrict_to=None):
-        del restrict_to
+    def get_enriched_indexer_ids(self, restrict_to=None, indexers=None):
+        del restrict_to, indexers
         return []
 
     def get_indexer_seed_settings(self, restrict_to=None):
@@ -719,3 +727,416 @@ class TestFetchIndexerSeedSettingsFallback:
                 raise RuntimeError("indexers unavailable")
 
         assert _fetch_indexer_seed_settings(FailingClient(), None) == {}
+
+
+class _MultiIndexerClient:
+    """Torznab client where each indexer entry returns its own result set.
+
+    Models one tracker configured in Prowlarr as several entries differing by a
+    server-side search filter, so the same guid comes back from more than one.
+    """
+
+    def __init__(self, results_by_indexer: dict[int, list[dict]], priorities=None):
+        self.results_by_indexer = results_by_indexer
+        self.priorities = priorities or {}
+
+    def get_enabled_indexers_detailed(self, *, raise_on_error=False):
+        del raise_on_error
+        return [
+            {
+                "id": indexer_id,
+                "enable": True,
+                "priority": self.priorities.get(indexer_id, 25),
+                "capabilities": {
+                    "categories": [
+                        {"id": 7000, "subCategories": []},
+                        {"id": 3030, "subCategories": []},
+                    ]
+                },
+            }
+            for indexer_id in sorted(self.results_by_indexer)
+        ]
+
+    def torznab_search(
+        self,
+        *,
+        indexer_id: int,
+        query: str,
+        categories=None,
+        search_type="book",
+        limit=100,
+        offset=0,
+    ):
+        del query, categories, search_type, limit, offset
+        return self.results_by_indexer.get(indexer_id, [])
+
+    def get_enriched_indexer_ids(self, restrict_to=None, indexers=None):
+        del restrict_to, indexers
+        return []
+
+    def get_indexer_seed_settings(self, restrict_to=None):
+        del restrict_to
+        return {}
+
+
+def _mam_result(indexer_id: int, indexer: str, guid: str, *, freeleech: bool = False) -> dict:
+    return {
+        "guid": guid,
+        "title": "Dune",
+        "indexerId": indexer_id,
+        "indexer": indexer,
+        "protocol": "torrent",
+        "size": 1048576,
+        "seeders": 10,
+        "leechers": 1,
+        "categories": [{"id": 7020}],
+        "downloadVolumeFactor": 0.0 if freeleech else 1.0,
+        "infoUrl": f"https://tracker.example/{guid}",
+    }
+
+
+class TestIndexerAwareDeduplication:
+    """One tracker as several Prowlarr entries must not collapse to one row (#1137)."""
+
+    ONLY_ACTIVE = 10
+    FREELEECH = 25
+
+    def _search(self, monkeypatch, results_by_indexer, config_values=None, priorities=None):
+        import shelfmark.release_sources.prowlarr.source as prowlarr_source
+        from shelfmark.core.search_plan import build_release_search_plan
+
+        values = {"PROWLARR_INDEXERS": "", "PROWLARR_AUTO_EXPAND": False}
+        values.update(config_values or {})
+        monkeypatch.setattr(
+            prowlarr_source.config, "get", lambda key, default=None: values.get(key, default)
+        )
+
+        source = ProwlarrSource()
+        monkeypatch.setattr(
+            source, "_get_client", lambda: _MultiIndexerClient(results_by_indexer, priorities)
+        )
+
+        book = BookMetadata(
+            provider="hardcover", provider_id="123", title="Dune", authors=["Frank Herbert"]
+        )
+        plan = build_release_search_plan(book, languages=["en"])
+        return source.search(book, plan)
+
+    def test_same_guid_from_two_indexer_entries_both_survive(self, monkeypatch):
+        shared_guid = "https://tracker.example/torrent/555"
+        releases = self._search(
+            monkeypatch,
+            {
+                self.ONLY_ACTIVE: [_mam_result(self.ONLY_ACTIVE, "MyAnonamouse", shared_guid)],
+                self.FREELEECH: [
+                    _mam_result(
+                        self.FREELEECH, "MyAnonamouse - Freeleech", shared_guid, freeleech=True
+                    )
+                ],
+            },
+        )
+
+        assert len(releases) == 2
+        assert {r.indexer for r in releases} == {"MyAnonamouse", "MyAnonamouse - Freeleech"}
+        assert [r.extra["freeleech"] for r in releases].count(True) == 1
+
+    def test_surviving_rows_have_distinct_source_ids(self, monkeypatch):
+        shared_guid = "https://tracker.example/torrent/555"
+        releases = self._search(
+            monkeypatch,
+            {
+                self.ONLY_ACTIVE: [_mam_result(self.ONLY_ACTIVE, "MyAnonamouse", shared_guid)],
+                self.FREELEECH: [
+                    _mam_result(self.FREELEECH, "MyAnonamouse - Freeleech", shared_guid)
+                ],
+            },
+        )
+
+        source_ids = [r.source_id for r in releases]
+        assert len(source_ids) == 2
+        assert len(set(source_ids)) == 2
+
+    def test_source_ids_resolve_to_their_own_indexer_entry(self, monkeypatch):
+        from shelfmark.release_sources.prowlarr.cache import get_release
+
+        shared_guid = "https://tracker.example/torrent/555"
+        releases = self._search(
+            monkeypatch,
+            {
+                self.ONLY_ACTIVE: [_mam_result(self.ONLY_ACTIVE, "MyAnonamouse", shared_guid)],
+                self.FREELEECH: [
+                    _mam_result(self.FREELEECH, "MyAnonamouse - Freeleech", shared_guid)
+                ],
+            },
+        )
+
+        assert len(releases) == 2
+        cached_indexer_ids = []
+        for release in releases:
+            cached = get_release(release.source_id)
+            assert cached is not None
+            assert cached["indexerId"] == release.extra["indexer_id"]
+            cached_indexer_ids.append(cached["indexerId"])
+
+        assert sorted(cached_indexer_ids) == [self.ONLY_ACTIVE, self.FREELEECH]
+
+    def test_repeat_of_same_result_from_one_indexer_still_collapses(self, monkeypatch):
+        duplicate = _mam_result(self.ONLY_ACTIVE, "MyAnonamouse", "https://tracker.example/t/1")
+        releases = self._search(monkeypatch, {self.ONLY_ACTIVE: [duplicate, dict(duplicate)]})
+
+        assert len(releases) == 1
+
+
+class TestBuildSourceId:
+    """source_id keys the release cache, so it must survive shared guids."""
+
+    def test_same_guid_from_two_indexer_entries_gets_two_ids(self):
+        guid = "https://tracker.example/torrent/555"
+
+        assert build_source_id({"guid": guid, "indexerId": 10}) != build_source_id(
+            {"guid": guid, "indexerId": 25}
+        )
+
+    def test_same_indexer_and_guid_is_stable(self):
+        result = {"guid": "https://tracker.example/torrent/555", "indexerId": 10}
+
+        assert build_source_id(result) == build_source_id(dict(result))
+
+    def test_falls_back_to_the_bare_guid_without_an_indexer_id(self):
+        guid = "https://tracker.example/torrent/555"
+
+        assert build_source_id({"guid": guid}) == guid
+
+    def test_falls_back_to_indexer_and_title_without_a_guid(self):
+        source_id = build_source_id({"indexerId": 10, "indexer": "MAM", "title": "Dune"})
+
+        assert source_id.startswith("10:MAM:")
+
+
+class TestCollapseDuplicatesSetting:
+    """Opt-in one-row-per-release collapse, resolved by Prowlarr's priority."""
+
+    ONLY_ACTIVE = 10
+    FREELEECH = 25
+
+    def _search_collapsed(self, monkeypatch, priorities):
+        shared_guid = "https://tracker.example/torrent/555"
+        return TestIndexerAwareDeduplication()._search(
+            monkeypatch,
+            {
+                self.ONLY_ACTIVE: [_mam_result(self.ONLY_ACTIVE, "MyAnonamouse", shared_guid)],
+                self.FREELEECH: [
+                    _mam_result(self.FREELEECH, "MyAnonamouse - Freeleech", shared_guid)
+                ],
+            },
+            config_values={"PROWLARR_COLLAPSE_DUPLICATES": True},
+            priorities=priorities,
+        )
+
+    def test_collapse_keeps_the_better_prowlarr_priority(self, monkeypatch):
+        releases = self._search_collapsed(monkeypatch, {self.FREELEECH: 20, self.ONLY_ACTIVE: 24})
+
+        assert len(releases) == 1
+        assert releases[0].indexer == "MyAnonamouse - Freeleech"
+
+    def test_collapse_honours_the_reverse_priority(self, monkeypatch):
+        releases = self._search_collapsed(monkeypatch, {self.FREELEECH: 30, self.ONLY_ACTIVE: 24})
+
+        assert len(releases) == 1
+        assert releases[0].indexer == "MyAnonamouse"
+
+    def test_equal_priority_keeps_the_first_queried(self, monkeypatch):
+        releases = self._search_collapsed(monkeypatch, {self.FREELEECH: 25, self.ONLY_ACTIVE: 25})
+
+        assert len(releases) == 1
+        assert releases[0].indexer == "MyAnonamouse"
+
+    def test_collapse_off_by_default_keeps_both_rows(self, monkeypatch):
+        releases = TestIndexerAwareDeduplication()._search(
+            monkeypatch,
+            {
+                self.ONLY_ACTIVE: [
+                    _mam_result(self.ONLY_ACTIVE, "MyAnonamouse", "https://tracker.example/t/9")
+                ],
+                self.FREELEECH: [
+                    _mam_result(self.FREELEECH, "MAM - Freeleech", "https://tracker.example/t/9")
+                ],
+            },
+            priorities={self.FREELEECH: 20, self.ONLY_ACTIVE: 24},
+        )
+
+        assert len(releases) == 2
+
+
+class TestBuildIndexerPriority:
+    """The priority NUMBER from Prowlarr is the rank; the id is only the key."""
+
+    def test_reads_the_priority_number_per_indexer(self):
+        priority = _build_indexer_priority([{"id": 25, "priority": 20}, {"id": 10, "priority": 24}])
+
+        assert priority == {25: 20, 10: 24}
+
+    def test_a_lower_number_is_preferred(self):
+        priority = _build_indexer_priority([{"id": 25, "priority": 20}, {"id": 10, "priority": 24}])
+
+        assert priority[25] < priority[10]
+
+    def test_coerces_string_ids_and_priorities(self):
+        assert _build_indexer_priority([{"id": "25", "priority": "20"}]) == {25: 20}
+
+    def test_skips_records_without_a_usable_id_or_priority(self):
+        assert (
+            _build_indexer_priority([{"priority": 20}, {"id": "abc", "priority": 20}, {"id": 7}])
+            == {}
+        )
+
+    def test_empty_input_yields_no_preferences(self):
+        assert _build_indexer_priority([]) == {}
+
+
+class TestDedupEdgeCases:
+    """Malformed and partial results must never silently lose a row."""
+
+    def test_unidentifiable_results_are_all_kept(self, monkeypatch):
+        blank = {"indexerId": 10, "indexer": "MAM", "protocol": "torrent"}
+        releases = TestIndexerAwareDeduplication()._search(
+            monkeypatch, {10: [dict(blank), dict(blank)]}
+        )
+
+        assert len(releases) == 2
+
+    def test_dedup_key_is_none_when_nothing_identifies_the_result(self):
+        assert _result_dedup_key({"indexerId": 10}) is None
+        assert _result_dedup_key({"guid": "   ", "title": "  "}) is None
+
+    def test_dedup_falls_back_to_title_within_one_indexer(self):
+        first = {"indexerId": 10, "title": "Dune"}
+        second = {"indexerId": 10, "title": "Dune"}
+        assert _result_dedup_key(first) == _result_dedup_key(second)
+
+    def test_same_title_from_two_indexers_is_not_deduped(self):
+        assert _result_dedup_key({"indexerId": 10, "title": "Dune"}) != _result_dedup_key(
+            {"indexerId": 25, "title": "Dune"}
+        )
+
+    def test_identity_ignores_whitespace_only_fields(self):
+        assert _release_identity({"guid": "  ", "downloadUrl": "https://x/1"}) == "https://x/1"
+
+    def test_identity_accepts_a_numeric_guid(self):
+        assert _release_identity({"guid": 12345}) == "12345"
+
+    def test_identity_is_none_without_a_strong_identifier(self):
+        assert _release_identity({"title": "Dune", "indexerId": 10}) is None
+
+
+class TestCollapseEdgeCases:
+    """Collapse discards rows, so it must only ever merge on a strong identifier."""
+
+    def test_unidentifiable_results_are_never_collapsed(self):
+        blank = {"indexerId": 10, "title": "Dune"}
+        kept = _collapse_duplicate_indexer_results([dict(blank), dict(blank)], {})
+
+        assert len(kept) == 2
+
+    def test_same_title_different_torrents_are_not_collapsed(self):
+        results = [
+            {"indexerId": 10, "guid": "guid-a", "title": "Dune"},
+            {"indexerId": 25, "guid": "guid-b", "title": "Dune"},
+        ]
+
+        assert len(_collapse_duplicate_indexer_results(results, {})) == 2
+
+    def test_collapse_preserves_the_position_of_the_row_it_replaces(self):
+        results = [
+            {"indexerId": 10, "guid": "shared"},
+            {"indexerId": 99, "guid": "other"},
+            {"indexerId": 25, "guid": "shared"},
+        ]
+        kept = _collapse_duplicate_indexer_results(results, {25: 0, 10: 1})
+
+        assert [r["indexerId"] for r in kept] == [25, 99]
+
+    def test_results_without_an_indexer_id_still_collapse_on_guid(self):
+        results = [{"guid": "shared"}, {"guid": "shared"}]
+
+        assert len(_collapse_duplicate_indexer_results(results, {})) == 1
+
+
+class TestIndexerPrioritySorting:
+    """Results are listed by the indexer priority configured in Prowlarr."""
+
+    ONLY_ACTIVE = 10
+    FREELEECH = 25
+    OTHER = 99
+
+    def _search(self, monkeypatch, priorities):
+        return TestIndexerAwareDeduplication()._search(
+            monkeypatch,
+            {
+                self.ONLY_ACTIVE: [_mam_result(self.ONLY_ACTIVE, "MyAnonamouse", "https://t/a")],
+                self.FREELEECH: [
+                    _mam_result(self.FREELEECH, "MyAnonamouse - Freeleech", "https://t/b")
+                ],
+                self.OTHER: [_mam_result(self.OTHER, "Some Other Tracker", "https://t/c")],
+            },
+            priorities=priorities,
+        )
+
+    def test_results_follow_the_priority_numbers(self, monkeypatch):
+        releases = self._search(
+            monkeypatch, {self.FREELEECH: 20, self.ONLY_ACTIVE: 24, self.OTHER: 50}
+        )
+
+        assert [r.extra["indexer_id"] for r in releases] == [
+            self.FREELEECH,
+            self.ONLY_ACTIVE,
+            self.OTHER,
+        ]
+
+    def test_reversing_the_numbers_reverses_the_list(self, monkeypatch):
+        releases = self._search(
+            monkeypatch, {self.FREELEECH: 50, self.ONLY_ACTIVE: 24, self.OTHER: 20}
+        )
+
+        assert [r.extra["indexer_id"] for r in releases] == [
+            self.OTHER,
+            self.ONLY_ACTIVE,
+            self.FREELEECH,
+        ]
+
+    def test_equal_priorities_keep_query_order(self, monkeypatch):
+        releases = self._search(
+            monkeypatch, {self.FREELEECH: 25, self.ONLY_ACTIVE: 25, self.OTHER: 25}
+        )
+
+        assert [r.extra["indexer_id"] for r in releases] == [
+            self.ONLY_ACTIVE,
+            self.FREELEECH,
+            self.OTHER,
+        ]
+
+
+class TestIndexerPrioritySortOption:
+    """The UI needs the priority on the row to offer an explicit sort on it."""
+
+    def test_releases_carry_their_prowlarr_priority(self, monkeypatch):
+        releases = TestIndexerPrioritySorting()._search(monkeypatch, {10: 24, 25: 20, 99: 50})
+
+        by_indexer = {r.extra["indexer_id"]: r.extra.get("indexer_priority") for r in releases}
+        assert by_indexer == {10: 24, 25: 20, 99: 50}
+
+    def test_priority_is_absent_when_prowlarr_reports_none(self, monkeypatch):
+        releases = TestIndexerPrioritySorting()._search(monkeypatch, {})
+
+        assert all(r.extra.get("indexer_priority") == 25 for r in releases)
+
+    def test_sort_option_is_offered_lowest_first(self):
+        from shelfmark.release_sources import serialize_column_config
+
+        source = ProwlarrSource()
+        serialized = serialize_column_config(source.get_column_config())
+        options = {o["label"]: o for o in serialized["extra_sort_options"]}
+
+        assert options["Indexer priority"]["sort_key"] == "extra.indexer_priority"
+        assert options["Indexer priority"]["default_direction"] == "asc"
+        assert options["Peers"]["default_direction"] == "desc"

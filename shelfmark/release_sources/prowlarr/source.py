@@ -33,6 +33,7 @@ from shelfmark.release_sources import (
 from shelfmark.release_sources.prowlarr.api import IndexerSeedSettings, ProwlarrClient
 from shelfmark.release_sources.prowlarr.cache import cache_release
 from shelfmark.release_sources.prowlarr.utils import (
+    build_source_id,
     coerce_float_like,
     coerce_int_like,
     get_protocol,
@@ -43,6 +44,9 @@ logger = setup_logger(__name__)
 _SIZE_UNIT_BASE = 1024
 _TWO_FORMATS = 2
 _PROWLARR_SOURCE_ERRORS = (AttributeError, OSError, RuntimeError, TypeError, ValueError)
+
+# Prowlarr indexer priority is 1-50 and lower is preferred; unknown sorts last.
+_UNRANKED_INDEXER_RANK = 51
 
 # Errors that can surface from ProwlarrClient.get_indexer_seed_settings(). The
 # client raises requests exceptions (subclasses of OSError via IOError lineage
@@ -67,6 +71,118 @@ def _raise_invalid_indexer_selection_type(selected: object) -> NoReturn:
 def _coerce_indexer_id(value: object) -> int | None:
     """Best-effort coercion for indexer identifiers from config/API payloads."""
     return coerce_int_like(value)
+
+
+def _identity_text(value: object) -> str | None:
+    """Trimmed text for an identity field, or None when there is nothing usable."""
+    if isinstance(value, str):
+        return value.strip() or None
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        return str(value)
+    return None
+
+
+def _release_identity(result: dict) -> str | None:
+    """Identify the underlying release, independent of which indexer surfaced it.
+
+    Strong identifiers only. Title is deliberately excluded because matching on
+    it here would merge two genuinely different releases that happen to share a
+    name, and every caller of this either drops or overwrites a row on a match.
+    Returns None when nothing identifies the result.
+    """
+    for field in ("guid", "downloadUrl", "magnetUrl", "infoUrl"):
+        identity = _identity_text(result.get(field))
+        if identity is not None:
+            return identity
+    return None
+
+
+def _result_dedup_key(result: dict) -> tuple[int | None, str] | None:
+    """Dedup key for a raw Prowlarr result, or None if it cannot be identified.
+
+    One tracker is often configured in Prowlarr as several indexer entries that
+    differ only by a server-side search filter, say a "freeleech only" entry
+    alongside an unfiltered one. Those entries return the same guid for the same
+    torrent, so keying on the guid alone throws away the filtered entry's copy
+    and with it the only signal that the release matched the filter. Including
+    the indexer id keeps the entries distinct.
+
+    Title is an acceptable last resort here, unlike in _release_identity, because
+    the indexer id is part of the key: it only ever collapses a literal repeat
+    from one indexer, never two rows from different entries.
+    """
+    identity = _release_identity(result) or _identity_text(result.get("title"))
+    if identity is None:
+        return None
+    return (_coerce_indexer_id(result.get("indexerId")), identity)
+
+
+def _build_indexer_priority(indexers: list[dict]) -> dict[int, int]:
+    """Map indexer id to the priority configured in Prowlarr. Lower is preferred.
+
+    Users already rank their indexers in Prowlarr, and on trackers configured as
+    several entries that ranking is usually the meaningful one: a "freeleech
+    only" entry is typically given a better priority than the unfiltered entry
+    beside it. Reusing it avoids asking for the same ordering a second time.
+    """
+    priority: dict[int, int] = {}
+    for indexer in indexers:
+        indexer_id = _coerce_indexer_id(indexer.get("id"))
+        if indexer_id is None:
+            continue
+        rank = coerce_int_like(indexer.get("priority"))
+        if rank is not None:
+            priority[indexer_id] = rank
+
+    return priority
+
+
+def _rank_for_indexer_id(indexer_id: object, priority: dict[int, int]) -> int:
+    """Preference rank for an indexer id. Lower wins, unknown ranks last."""
+    coerced = _coerce_indexer_id(indexer_id)
+    if coerced is None:
+        return _UNRANKED_INDEXER_RANK
+    return priority.get(coerced, _UNRANKED_INDEXER_RANK)
+
+
+def _indexer_rank(result: dict, priority: dict[int, int]) -> int:
+    """Preference rank of the indexer that surfaced a raw result."""
+    return _rank_for_indexer_id(result.get("indexerId"), priority)
+
+
+def _release_indexer_rank(release: Release, priority: dict[int, int]) -> int:
+    """Preference rank of the indexer that surfaced a converted release."""
+    return _rank_for_indexer_id(release.extra.get("indexer_id"), priority)
+
+
+def _collapse_duplicate_indexer_results(
+    results: list[dict], priority: dict[int, int]
+) -> list[dict]:
+    """Reduce a release to a single row, keeping the preferred indexer entry.
+
+    Opt-in behaviour for users who want one row per torrent. Ties keep the
+    result that was queried first, and the winner holds the loser's position so
+    the overall result order stays stable.
+    """
+    position_by_identity: dict[str, int] = {}
+    kept: list[dict] = []
+
+    for result in results:
+        identity = _release_identity(result)
+        if identity is None:
+            kept.append(result)
+            continue
+
+        existing_position = position_by_identity.get(identity)
+        if existing_position is None:
+            position_by_identity[identity] = len(kept)
+            kept.append(result)
+            continue
+
+        if _indexer_rank(result, priority) < _indexer_rank(kept[existing_position], priority):
+            kept[existing_position] = result
+
+    return kept
 
 
 def _parse_size(size_bytes: int | None) -> str | None:
@@ -387,8 +503,7 @@ def _prowlarr_result_to_release(
         formats_display = _formats_display(formats)
         language_detected = _extract_mam_language(str(raw_title or ""))
 
-    # Build the source_id from GUID or generate from indexer + title
-    source_id = result.get("guid") or f"{indexer}:{hash(raw_title)}"
+    source_id = build_source_id(result)
 
     # Cache the raw Prowlarr result so handler can look it up by source_id
     cache_release(source_id, result)
@@ -612,6 +727,11 @@ class ProwlarrSource(ReleaseSource):
             ],
             extra_sort_options=[
                 SortOption(label="Peers", sort_key="seeders"),
+                SortOption(
+                    label="Indexer priority",
+                    sort_key="extra.indexer_priority",
+                    default_direction="asc",
+                ),
             ],
             grid_template="minmax(0,2fr) minmax(140px,1fr) 50px 50px 90px 80px",
             leading_cell=LeadingCellConfig(
@@ -817,8 +937,12 @@ class ProwlarrSource(ReleaseSource):
         try:
             auto_expand_enabled = config.get("PROWLARR_AUTO_EXPAND", False)
             deadline = time.monotonic() + PROWLARR_SEARCH_TIMEOUT_SECONDS
+            enabled_indexers = client.get_enabled_indexers_detailed()
+            indexer_priority = _build_indexer_priority(enabled_indexers)
             # Some indexers benefit from title+author queries and extra format detection.
-            enriched_indexer_ids = client.get_enriched_indexer_ids(restrict_to=indexer_ids)
+            enriched_indexer_ids = client.get_enriched_indexer_ids(
+                restrict_to=indexer_ids, indexers=enabled_indexers
+            )
             enriched_indexer_ids_set = set(enriched_indexer_ids)
             indexer_seed_settings = (
                 _fetch_indexer_seed_settings(client, indexer_ids)
@@ -859,7 +983,7 @@ class ProwlarrSource(ReleaseSource):
 
                 return results
 
-            seen_keys: set[str] = set()
+            seen_keys: set[tuple[int | None, str]] = set()
             all_results: list[dict] = []
 
             for idx, variant in enumerate(variants, start=1):
@@ -887,17 +1011,21 @@ class ProwlarrSource(ReleaseSource):
                     self.last_search_type = "expanded"
 
                 for r in raw_results:
-                    key = (
-                        r.get("guid")
-                        or r.get("downloadUrl")
-                        or r.get("magnetUrl")
-                        or r.get("infoUrl")
-                        or f"{r.get('indexerId')}:{r.get('title')}"
-                    )
-                    if key in seen_keys:
-                        continue
-                    seen_keys.add(key)
+                    key = _result_dedup_key(r)
+                    if key is not None:
+                        if key in seen_keys:
+                            continue
+                        seen_keys.add(key)
                     all_results.append(r)
+
+            if config.get("PROWLARR_COLLAPSE_DUPLICATES", False):
+                before_collapse = len(all_results)
+                all_results = _collapse_duplicate_indexer_results(all_results, indexer_priority)
+                if len(all_results) != before_collapse:
+                    logger.debug(
+                        "Prowlarr: collapsed %s duplicate result(s) across indexer entries",
+                        before_collapse - len(all_results),
+                    )
 
             results: list[Release] = []
             enriched_source_ids: set[str] = set()
@@ -917,13 +1045,19 @@ class ProwlarrSource(ReleaseSource):
                     content_type,
                     enable_format_detection=is_enriched,
                 )
+                if idx_id_int is not None and idx_id_int in indexer_priority:
+                    release.extra["indexer_priority"] = indexer_priority[idx_id_int]
                 results.append(release)
 
                 if is_enriched:
                     enriched_source_ids.add(release.source_id)
 
-            # Sort results: enriched indexers first, then others
-            results.sort(key=lambda r: 0 if r.source_id in enriched_source_ids else 1)
+            results.sort(
+                key=lambda r: (
+                    _release_indexer_rank(r, indexer_priority),
+                    0 if r.source_id in enriched_source_ids else 1,
+                )
+            )
 
             if results:
                 torrent_count = sum(1 for r in results if r.protocol == ReleaseProtocol.TORRENT)
