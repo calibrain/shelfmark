@@ -131,3 +131,46 @@ def test_frontend_dist_resolves_from_repo_root(main_module):
 
     assert main_module.PROJECT_ROOT == expected_project_root
     assert main_module.FRONTEND_DIST == expected_project_root / "frontend-dist"
+
+
+def test_config_endpoint_serves_languages_without_resolution_aliases(main_module, client):
+    """book_languages is a client contract, not a dump of the language data file.
+
+    data/book-languages.json also carries the aliases used to resolve a source's
+    spelling of a language to a code. Those are server-side only: the frontend
+    Language type is {code, language}, and shipping the aliases inflated every
+    config response by around 40%.
+    """
+    _set_session(client, user_id="reader-1", db_user_id=1, is_admin=False)
+
+    with (
+        patch("shelfmark.config.env._is_config_dir_writable", return_value=True),
+        patch("shelfmark.core.onboarding.is_onboarding_complete", return_value=True),
+    ):
+        resp = client.get("/api/config")
+
+    assert resp.status_code == 200
+    languages = resp.get_json()["book_languages"]
+
+    assert languages, "no languages served"
+    offending = [entry for entry in languages if set(entry) != {"code", "language"}]
+    assert offending == [], f"unexpected keys leaked to clients: {offending[:3]}"
+
+
+def test_language_data_file_is_only_read_by_the_shared_module(main_module):
+    """Reading data/book-languages.json anywhere else reintroduces the drift the
+    shared module exists to prevent, and bypasses the alias handling."""
+    del main_module
+
+    repo_root = Path(__file__).resolve().parents[2]
+    allowed = {Path("shelfmark/core/languages.py")}
+
+    offenders = []
+    for path in (repo_root / "shelfmark").rglob("*.py"):
+        relative = path.relative_to(repo_root)
+        if relative in allowed:
+            continue
+        if "book-languages" in path.read_text(encoding="utf-8"):
+            offenders.append(str(relative))
+
+    assert offenders == [], f"should use shelfmark.core.languages instead: {offenders}"
