@@ -360,6 +360,7 @@ class DownloadClient(ABC):
 # Client registry: protocol -> list of client classes
 _CLIENTS: dict[str, list[type[DownloadClient]]] = {}
 _BUILTIN_CLIENT_MODULES = (
+    "shelfmark.download.clients.alldebrid",
     "shelfmark.download.clients.deluge",
     "shelfmark.download.clients.nzbget",
     "shelfmark.download.clients.qbittorrent",

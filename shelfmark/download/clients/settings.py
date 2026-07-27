@@ -520,6 +520,23 @@ def _test_sabnzbd_connection(current_values: dict[str, Any] | None = None) -> di
         return {"success": True, "message": f"Connected to SABnzbd {version}"}
 
 
+def _test_alldebrid_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Test the AllDebrid API connection using current form values."""
+    from shelfmark.core.config import config
+    from shelfmark.download.clients.alldebrid import AllDebridClient
+
+    current_values = current_values or {}
+    api_key = _resolve_string_setting(current_values, config.get, "ALLDEBRID_API_KEY")
+
+    if not api_key:
+        return {"success": False, "message": "AllDebrid API Key is required"}
+
+    client = AllDebridClient()
+    client._api_key = api_key
+    success, message = client.test_connection()
+    return {"success": success, "message": message}
+
+
 # ==================== Download Clients Tab ====================
 
 
@@ -544,12 +561,28 @@ def prowlarr_clients_settings() -> list[SettingsField]:
             description="Choose which torrent client to use",
             options=[
                 {"value": "", "label": "None"},
+                {"value": "alldebrid", "label": "AllDebrid"},
                 {"value": "qbittorrent", "label": "qBittorrent"},
                 {"value": "transmission", "label": "Transmission"},
                 {"value": "deluge", "label": "Deluge"},
                 {"value": "rtorrent", "label": "rTorrent"},
             ],
             default="",
+        ),
+        # --- AllDebrid Settings ---
+        PasswordField(
+            key="ALLDEBRID_API_KEY",
+            label="API Key",
+            description="AllDebrid API Key (apiv4) from your AllDebrid account settings",
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "alldebrid"},
+        ),
+        ActionButton(
+            key="test_alldebrid",
+            label="Test Connection",
+            description="Verify your AllDebrid configuration",
+            style="primary",
+            callback=_test_alldebrid_connection,
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "alldebrid"},
         ),
         # --- qBittorrent Settings ---
         TextField(
