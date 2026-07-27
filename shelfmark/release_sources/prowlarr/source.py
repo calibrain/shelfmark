@@ -153,6 +153,38 @@ MAM_LANGUAGE_MAP = {
     "hrv": "hr",
     "slv": "sl",
     "srp": "sr",
+    # Remaining languages MyAnonamouse offers. Both the bibliographic (639-2/B)
+    # and terminological (639-2/T) forms are listed where they differ, matching
+    # how ger/deu and fre/fra are handled above.
+    "afr": "af",
+    "ben": "bn",
+    "bos": "bs",
+    "bur": "my",
+    "mya": "my",
+    "est": "et",
+    "per": "fa",
+    "fas": "fa",
+    "guj": "gu",
+    "ice": "is",
+    "isl": "is",
+    "gle": "ga",
+    "jav": "jv",
+    "kan": "kn",
+    "lat": "la",
+    "lav": "lv",
+    "lit": "lt",
+    "may": "ms",
+    "msa": "ms",
+    "mal": "ml",
+    "glv": "gv",
+    "mar": "mr",
+    "pan": "pa",
+    "san": "sa",
+    "gla": "gd",
+    "tgl": "fil",
+    "tam": "ta",
+    "tel": "te",
+    "urd": "ur",
 }
 
 # Backend safeguard: cap total Prowlarr search time per request.

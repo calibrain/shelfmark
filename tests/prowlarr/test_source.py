@@ -10,9 +10,11 @@ import pytest
 from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources.prowlarr.api import ProwlarrClient
 from shelfmark.release_sources.prowlarr.source import (
+    MAM_LANGUAGE_MAP,
     ProwlarrSource,
     _detect_content_type_from_categories,
     _extract_format,
+    _extract_mam_language,
     _fetch_indexer_seed_settings,
     _last_known_seed_settings,
     _parse_size,
@@ -719,3 +721,72 @@ class TestFetchIndexerSeedSettingsFallback:
                 raise RuntimeError("indexers unavailable")
 
         assert _fetch_indexer_seed_settings(FailingClient(), None) == {}
+
+
+class TestMamLanguageCoverage:
+    """MyAnonamouse offers 62 languages; an unmapped code is dropped entirely,
+    which would leave {Language} empty and different-language editions colliding."""
+
+    def test_unmapped_language_is_dropped_not_passed_through(self):
+        # Documents why coverage matters: there is no raw fallback.
+        assert _extract_mam_language("Some Book [XYZ / EPUB]") is None
+
+    def test_maps_the_common_three_letter_codes(self):
+        cases = {
+            "ENG": "en",
+            "SWE": "sv",
+            "GER": "de",
+            "DEU": "de",
+            "FRE": "fr",
+            "FRA": "fr",
+            "CZE": "cs",
+            "CES": "cs",
+        }
+        for tag, expected in cases.items():
+            assert _extract_mam_language(f"Book [{tag} / EPUB]") == expected, tag
+
+    def test_maps_languages_added_for_mam_parity(self):
+        cases = {
+            "LAT": "la",
+            "PER": "fa",
+            "FAS": "fa",
+            "TAM": "ta",
+            "URD": "ur",
+            "EST": "et",
+            "ICE": "is",
+            "ISL": "is",
+            "GLE": "ga",
+            "TGL": "fil",
+            "BEN": "bn",
+            "BOS": "bs",
+            "SAN": "sa",
+            "GLA": "gd",
+            "GLV": "gv",
+            "MAY": "ms",
+            "MSA": "ms",
+            "BUR": "my",
+            "MYA": "my",
+        }
+        for tag, expected in cases.items():
+            assert _extract_mam_language(f"Book [{tag} / M4B]") == expected, tag
+
+    def test_every_mapped_code_exists_in_the_shared_language_db(self):
+        import json
+        from pathlib import Path
+
+        db_path = Path(__file__).resolve().parents[2] / "data" / "book-languages.json"
+        known = {entry["code"] for entry in json.loads(db_path.read_text(encoding="utf-8"))}
+
+        assert set(MAM_LANGUAGE_MAP.values()) <= known
+
+    def test_language_db_codes_are_ascii(self):
+        # A U+2011 non-breaking hyphen in "zh-Hant" silently defeats any
+        # comparison against the normal ASCII spelling.
+        import json
+        from pathlib import Path
+
+        db_path = Path(__file__).resolve().parents[2] / "data" / "book-languages.json"
+        entries = json.loads(db_path.read_text(encoding="utf-8"))
+
+        non_ascii = [e["code"] for e in entries if not e["code"].isascii()]
+        assert non_ascii == []

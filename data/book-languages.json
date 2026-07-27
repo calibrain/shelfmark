@@ -25,7 +25,7 @@
     { "language": "Greek", "code": "el" },
     { "language": "Lithuanian", "code": "lt" },
     { "language": "Bangla", "code": "bn" },
-    { "language": "Traditional Chinese", "code": "zh‑Hant" },
+    { "language": "Traditional Chinese", "code": "zh-Hant" },
     { "language": "Afrikaans", "code": "af" },
     { "language": "Catalan", "code": "ca" },
     { "language": "Danish", "code": "da" },
@@ -68,5 +68,12 @@
     { "language": "Albanian", "code": "sq" },
     { "language": "Uyghur", "code": "ug" },
     { "language": "Armenian", "code": "hy" },
-    { "language": "Shan", "code": "shn" }
+    { "language": "Shan", "code": "shn" },
+    { "language": "Bosnian", "code": "bs" },
+    { "language": "Burmese", "code": "my" },
+    { "language": "Estonian", "code": "et" },
+    { "language": "Icelandic", "code": "is" },
+    { "language": "Manx", "code": "gv" },
+    { "language": "Scottish Gaelic", "code": "gd" },
+    { "language": "Sanskrit", "code": "sa" }
 ]
