@@ -129,6 +129,16 @@ def language_alias_map() -> dict[str, str]:
     return dict(alias_to_code)
 
 
+def supported_book_languages() -> list[dict[str, str]]:
+    """The selectable languages, as ``{"language": ..., "code": ...}``.
+
+    Aliases are an implementation detail of resolution, so they are left out of
+    what the settings dropdown and the API hand to clients.
+    """
+    _, code_to_name = _load()
+    return [{"language": name, "code": code} for code, name in code_to_name.items()]
+
+
 def known_language_codes() -> frozenset[str]:
     """Every ISO 639-1 code the bundled language data defines."""
     _, code_to_name = _load()

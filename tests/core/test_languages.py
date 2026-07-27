@@ -11,6 +11,7 @@ from shelfmark.core.languages import (
     language_alias_map,
     language_name,
     normalize_language,
+    supported_book_languages,
 )
 
 BASELINE = json.loads(
@@ -80,7 +81,7 @@ class TestNormalizeLanguage:
 class TestLanguageData:
     def test_every_alias_resolves_to_a_known_code(self):
         codes = known_language_codes()
-        assert {c for c in language_alias_map().values()} <= codes
+        assert set(language_alias_map().values()) <= codes
 
     def test_codes_are_ascii(self):
         # "zh-Hant" once used a U+2011 non-breaking hyphen, which silently
@@ -175,3 +176,17 @@ class TestMyAnonamouseCoverage:
         ]
         unresolved = [name for name in offered if normalize_language(name) is None]
         assert unresolved == []
+
+
+class TestSupportedBookLanguages:
+    """What the settings dropdown and /api/config expose to clients."""
+
+    def test_exposes_only_the_fields_clients_declare(self):
+        # The frontend Language type is {code, language}. Aliases are an
+        # implementation detail and would bloat every /api/config response.
+        entries = supported_book_languages()
+        assert entries
+        assert all(set(e) == {"code", "language"} for e in entries)
+
+    def test_covers_every_known_code(self):
+        assert {e["code"] for e in supported_book_languages()} == set(known_language_codes())

@@ -1,6 +1,5 @@
 """Core settings registration and derived configuration values."""
 
-import json
 from pathlib import Path
 from typing import Any
 
@@ -15,6 +14,7 @@ from shelfmark.config.download_settings_handlers import (
     check_books_destination,
 )
 from shelfmark.config.email_settings import check_email_connection
+from shelfmark.core.languages import supported_book_languages
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import (
     ActionButton,
@@ -143,11 +143,8 @@ for key in ["CONFIG_DIR", "LOG_DIR", "TMP_DIR", "INGEST_DIR", "DEBUG", "DOCKERMO
     if hasattr(env, key):
         logger.debug("  %s: %s", key, getattr(env, key))
 
-# Load supported book languages from data file
-# Path is relative to the package root, not this file
-_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
-with (_DATA_DIR / "book-languages.json").open() as file:
-    _SUPPORTED_BOOK_LANGUAGE = json.load(file)
+# Selectable book languages, without the resolution aliases clients do not need.
+_SUPPORTED_BOOK_LANGUAGE = supported_book_languages()
 
 # Directory settings
 BASE_DIR = Path(__file__).resolve().parent.parent.parent
