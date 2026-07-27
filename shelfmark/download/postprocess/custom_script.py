@@ -229,6 +229,7 @@ def _build_custom_script_payload(
             "series_name": context.task.series_name,
             "series_position": context.task.series_position,
             "subtitle": context.task.subtitle,
+            "language": context.task.language,
             "original_download_path": context.task.original_download_path,
         },
         "output": {

@@ -19,6 +19,7 @@ KNOWN_TOKENS = [
     "primarytitle",
     "originalname",
     "partnumber",
+    "language",
     "subtitle",
     "author",
     "series",
@@ -32,6 +33,10 @@ BRACE_PATTERN = re.compile(r"\{([^}]+)\}")
 
 # Characters that are invalid in filenames on various filesystems
 INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
+
+# Values a release source may report when it simply does not know the language.
+# Rendering these would produce folders like "Project Hail Mary (unknown)".
+LANGUAGE_PLACEHOLDERS = frozenset({"", "-", "--", "unknown", "unk", "n/a", "na", "none", "null"})
 
 
 def _sanitize(name: str | None, max_length: int = 245) -> str:
@@ -64,6 +69,24 @@ def format_series_position(position: str | float | None) -> str:
         return str(int(position))
 
     return str(position)
+
+
+def normalize_language_code(language: str | None) -> str:
+    """Normalize a release language code for use in naming templates.
+
+    Lowercased so that "SV" and "sv" cannot become two folders on a
+    case-sensitive filesystem while silently merging on a case-insensitive one.
+    Placeholder values render empty, which lets `{ (Language)}` disappear
+    entirely rather than labelling a folder "(unknown)".
+    """
+    if not language:
+        return ""
+
+    normalized = " ".join(str(language).split()).strip().casefold()
+    if normalized in LANGUAGE_PLACEHOLDERS:
+        return ""
+
+    return normalized
 
 
 def derive_primary_title(title: str | None, subtitle: str | None) -> str:

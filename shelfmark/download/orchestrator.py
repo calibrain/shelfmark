@@ -251,6 +251,7 @@ def queue_release(
         series_name = release_data.get("series_name") or extra.get("series_name")
         series_position = release_data.get("series_position") or extra.get("series_position")
         subtitle = release_data.get("subtitle") or extra.get("subtitle")
+        language = release_data.get("language") or extra.get("language")
 
         books_output_mode = (
             str(config.get("BOOKS_OUTPUT_MODE", "folder", user_id=user_id) or "folder")
@@ -285,6 +286,7 @@ def queue_release(
             series_name=series_name,
             series_position=series_position,
             subtitle=subtitle,
+            language=language,
             search_mode=search_mode,
             output_mode=output_mode,
             output_args=output_args,
@@ -420,6 +422,7 @@ def serialize_task_for_retry(task: DownloadTask) -> dict[str, Any]:
         "series_name": getattr(task, "series_name", None),
         "series_position": getattr(task, "series_position", None),
         "subtitle": getattr(task, "subtitle", None),
+        "language": getattr(task, "language", None),
         "search_mode": search_mode,
         "output_mode": getattr(task, "output_mode", None),
         "output_args": dict(raw_output_args) if isinstance(raw_output_args, dict) else {},
@@ -477,6 +480,7 @@ def _restore_task_from_retry_payload(payload: object) -> DownloadTask | None:
         series_name=normalize_optional_text(payload.get("series_name")),
         series_position=_optional_number(payload.get("series_position")),
         subtitle=normalize_optional_text(payload.get("subtitle")),
+        language=normalize_optional_text(payload.get("language")),
         search_mode=search_mode,
         output_mode=normalize_optional_text(payload.get("output_mode")),
         output_args=dict(output_args) if isinstance(output_args, dict) else {},

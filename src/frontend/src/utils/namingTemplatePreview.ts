@@ -49,6 +49,13 @@ export const NAMING_TEMPLATE_TOKENS: NamingTemplateToken[] = [
     group: 'Core',
   },
   {
+    token: 'Language',
+    label: 'Language',
+    description: 'Release language code, so translations do not share a folder',
+    value: 'en',
+    group: 'Core',
+  },
+  {
     token: 'User',
     label: 'User',
     description: 'Requesting user',
@@ -98,6 +105,7 @@ const KNOWN_TOKENS = [
   'primarytitle',
   'originalname',
   'partnumber',
+  'language',
   'subtitle',
   'author',
   'series',

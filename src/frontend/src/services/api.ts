@@ -500,6 +500,7 @@ export type DownloadReleasePayload = {
   series_name?: string;
   series_position?: number;
   subtitle?: string;
+  language?: string; // Release language code, for the {Language} naming variable
   search_author?: string;
   search_mode?: 'direct' | 'universal';
 };
