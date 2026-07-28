@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from shelfmark.core.languages import LANGUAGE_PLACEHOLDERS, normalize_language
 from shelfmark.core.logger import setup_logger
 
 if TYPE_CHECKING:
@@ -33,10 +34,6 @@ BRACE_PATTERN = re.compile(r"\{([^}]+)\}")
 
 # Characters that are invalid in filenames on various filesystems
 INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
-
-# Values a release source may report when it simply does not know the language.
-# Rendering these would produce folders like "Project Hail Mary (unknown)".
-LANGUAGE_PLACEHOLDERS = frozenset({"", "-", "--", "unknown", "unk", "n/a", "na", "none", "null"})
 
 
 def _sanitize(name: str | None, max_length: int = 245) -> str:
@@ -72,15 +69,24 @@ def format_series_position(position: str | float | None) -> str:
 
 
 def normalize_language_code(language: str | None) -> str:
-    """Normalize a release language code for use in naming templates.
+    """Resolve a release language to the single spelling used in a path.
 
-    Lowercased so that "SV" and "sv" cannot become two folders on a
-    case-sensitive filesystem while silently merging on a case-insensitive one.
-    Placeholder values render empty, which lets `{ (Language)}` disappear
-    entirely rather than labelling a folder "(unknown)".
+    Sources report the same language in different shapes: "en", "eng", "English".
+    All of them have to collapse to one code, or the editions they identify end
+    up in separate folders, which is the collision this token exists to prevent.
+    Placeholder values render empty so `{ (Language)}` disappears entirely
+    rather than labelling a folder "(unknown)".
+
+    A language the bundled data does not know is kept, casefolded, rather than
+    dropped: it still separates editions, and it cannot collide with a resolved
+    code precisely because nothing resolves it.
     """
     if not language:
         return ""
+
+    resolved = normalize_language(language)
+    if resolved is not None:
+        return resolved
 
     normalized = " ".join(str(language).split()).strip().casefold()
     if normalized in LANGUAGE_PLACEHOLDERS:

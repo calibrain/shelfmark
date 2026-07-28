@@ -62,10 +62,6 @@ class TestNormalizeLanguage:
         assert normalize_language("  ENG  ") == "en"
         assert normalize_language("sWeDiSh") == "sv"
 
-    def test_falls_back_to_the_base_language_for_regional_variants(self):
-        assert normalize_language("pt-BR") == "pt"
-        assert normalize_language("en-GB") == "en"
-
     def test_returns_none_for_placeholders(self):
         for placeholder in ("unknown", "unk", "n/a", "na", "-", "--", "none", "null", "", "   "):
             assert normalize_language(placeholder) is None, placeholder
@@ -190,3 +186,48 @@ class TestSupportedBookLanguages:
 
     def test_covers_every_known_code(self):
         assert {e["code"] for e in supported_book_languages()} == set(known_language_codes())
+
+
+class TestLegacyTraditionalChineseCode:
+    """Traditional Chinese was stored with a U+2011 non-breaking hyphen.
+
+    The canonical code is now the ASCII spelling, but anything persisted
+    earlier still carries U+2011, so both have to resolve to the same language
+    or those users lose their selection (reported on PR #1142).
+    """
+
+    LEGACY = "zh\u2011Hant"
+    CANONICAL = "zh-Hant"
+
+    def test_the_legacy_spelling_still_resolves(self):
+        assert normalize_language(self.LEGACY) == self.CANONICAL
+
+    def test_both_spellings_are_the_same_language(self):
+        assert normalize_language(self.LEGACY) == normalize_language(self.CANONICAL)
+
+    def test_the_legacy_spelling_really_does_use_a_different_character(self):
+        # Guards the test itself: if this ever became a plain hyphen the two
+        # cases above would pass for the wrong reason.
+        assert self.LEGACY != self.CANONICAL
+        assert not self.LEGACY.isascii()
+
+    @pytest.mark.parametrize("dash", ["-", "\u2010", "\u2011", "\u2012", "\u2013", "\u2014"])
+    def test_any_dash_variant_resolves(self, dash):
+        assert normalize_language(f"zh{dash}Hant") == self.CANONICAL
+
+
+class TestCodesDoNotShadowEachOther:
+    """A code must never resolve to a different language than itself.
+
+    'zh' and 'zh-Hant' are distinct entries; registering the base of a
+    hyphenated code as an alias made 'zh' resolve correctly only because
+    Chinese happens to appear first in the data file.
+    """
+
+    def test_chinese_does_not_resolve_to_traditional_chinese(self):
+        assert normalize_language("zh") == "zh"
+        assert normalize_language("zh-Hant") == "zh-Hant"
+
+    def test_every_code_resolves_to_itself(self):
+        for code in known_language_codes():
+            assert normalize_language(code) == code, f"{code} resolved elsewhere"

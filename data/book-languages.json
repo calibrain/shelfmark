@@ -25,7 +25,7 @@
     { "language": "Greek", "code": "el", "aliases": ["ell", "gre"] },
     { "language": "Lithuanian", "code": "lt", "aliases": ["lit"] },
     { "language": "Bangla", "code": "bn", "aliases": ["ben", "bengali"] },
-    { "language": "Traditional Chinese", "code": "zh-Hant" },
+    { "language": "Traditional Chinese", "code": "zh-Hant", "aliases": ["zh‑Hant"] },
     { "language": "Afrikaans", "code": "af", "aliases": ["afr"] },
     { "language": "Catalan", "code": "ca", "aliases": ["cat"] },
     { "language": "Danish", "code": "da", "aliases": ["dan"] },

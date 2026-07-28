@@ -26,9 +26,16 @@ _CODE_TO_NAME: dict[str, str] | None = None
 _LOCK = threading.Lock()
 
 
+# Dash-like characters that show up in codes copied from web pages. Folding them
+# to a plain hyphen keeps "zh-Hant" and "zh‑Hant" (U+2011) the same language,
+# which matters because the latter is what earlier releases persisted.
+_DASH_VARIANTS = dict.fromkeys(map(ord, "‐‑‒–—―−﹘﹣－"), "-")
+
+
 def _fold(value: str) -> str:
-    """Casefold and strip accents so 'Español' and 'espanol' both match."""
-    decomposed = unicodedata.normalize("NFKD", value)
+    """Casefold, strip accents, and normalize dashes, so 'Español' and
+    'espanol', or 'zh-Hant' and 'zh‑Hant', all match."""
+    decomposed = unicodedata.normalize("NFKD", value).translate(_DASH_VARIANTS)
     stripped = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
     return " ".join(stripped.split()).casefold()
 
@@ -66,12 +73,7 @@ def _load() -> tuple[dict[str, str], dict[str, str]]:
 
             code_to_name.setdefault(code, name or code)
 
-            candidates = [code, name, *(item.get("aliases") or [])]
-            # A regional code such as pt-BR also answers to its base language.
-            if "-" in code:
-                candidates.append(code.split("-", 1)[0])
-
-            for candidate in candidates:
+            for candidate in (code, name, *(item.get("aliases") or [])):
                 folded = _fold(str(candidate))
                 if folded and folded not in LANGUAGE_PLACEHOLDERS:
                     alias_to_code.setdefault(folded, code)
@@ -97,17 +99,7 @@ def normalize_language(value: object) -> str | None:
         return None
 
     alias_to_code, _ = _load()
-    code = alias_to_code.get(folded)
-    if code is not None:
-        return code
-
-    # A regional variant we have no entry for still identifies its base
-    # language, so pt-BR resolves to pt rather than being dropped.
-    base, separator, _region = folded.partition("-")
-    if separator and base:
-        return alias_to_code.get(base)
-
-    return None
+    return alias_to_code.get(folded)
 
 
 def language_name(code: str | None) -> str | None:

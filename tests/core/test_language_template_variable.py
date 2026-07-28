@@ -6,6 +6,8 @@ treats a folder as exactly one library item, so the two editions become a single
 book with both files as tracks (calibrain/shelfmark#1138).
 """
 
+import pytest
+
 from shelfmark.core.models import DownloadTask
 from shelfmark.core.naming import (
     KNOWN_TOKENS,
@@ -105,9 +107,6 @@ class TestNormalizeLanguageCode:
     def test_strips_whitespace(self):
         assert normalize_language_code("  sv  ") == "sv"
 
-    def test_preserves_regional_subtags(self):
-        assert normalize_language_code("pt-BR") == "pt-br"
-
     def test_placeholders_render_empty(self):
         for placeholder in ("unknown", "unk", "n/a", "na", "-", "--", "none", "null", ""):
             assert normalize_language_code(placeholder) == "", placeholder
@@ -157,3 +156,41 @@ class TestLanguageSurvivesRetry:
 
         assert restored is not None
         assert restored.language is None
+
+
+class TestEverySpellingCollapsesToOneFolder:
+    """Sources report the same language differently; if the token rendered each
+    spelling verbatim they would land in separate folders, which is the exact
+    collision this token exists to prevent (reported on PR #1142)."""
+
+    TEMPLATE = "{Author}/{Title}{ (Language)}/{Title}"
+
+    def _folder(self, language):
+        task = DownloadTask(
+            task_id="t", source="prowlarr", title="Dune", author="Frank Herbert", language=language
+        )
+        return parse_naming_template(
+            self.TEMPLATE, build_metadata_dict(task), allow_path_separators=True
+        )
+
+    @pytest.mark.parametrize(
+        "spellings",
+        [
+            ("en", "eng", "English", "english", "ENG", "  Eng  "),
+            ("sv", "swe", "Swedish"),
+            ("de", "ger", "deu", "German"),
+            ("ml", "mal", "Malayalam"),
+            ("fa", "per", "fas", "Farsi", "Persian"),
+        ],
+    )
+    def test_all_spellings_of_a_language_share_one_folder(self, spellings):
+        rendered = {self._folder(spelling) for spelling in spellings}
+        assert len(rendered) == 1, f"{spellings} produced {sorted(rendered)}"
+
+    def test_a_language_we_cannot_resolve_is_kept_rather_than_dropped(self):
+        # It still separates editions, and cannot collide with a resolved code
+        # precisely because nothing resolves to it.
+        assert "klingon" in self._folder("Klingon")
+
+    def test_different_languages_still_get_different_folders(self):
+        assert self._folder("English") != self._folder("Swedish")
