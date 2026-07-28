@@ -163,6 +163,7 @@ class SortOption:
 
     label: str  # Display label in the sort dropdown
     sort_key: str  # Field to sort by on the Release object
+    default_direction: Literal["asc", "desc"] = "desc"  # Which way "best first" runs
 
 
 @dataclass
@@ -261,7 +262,12 @@ def serialize_column_config(config: ReleaseColumnConfig) -> dict[str, Any]:
     # Include extra sort options (sort entries not tied to a column)
     if config.extra_sort_options:
         result["extra_sort_options"] = [
-            {"label": opt.label, "sort_key": opt.sort_key} for opt in config.extra_sort_options
+            {
+                "label": opt.label,
+                "sort_key": opt.sort_key,
+                "default_direction": opt.default_direction,
+            }
+            for opt in config.extra_sort_options
         ]
 
     # Include action button if specified (replaces default expand search)

@@ -159,6 +159,7 @@ def _test_qbittorrent_connection(current_values: dict[str, Any] | None = None) -
     raw_url = _resolve_string_setting(current_values, config.get, "QBITTORRENT_URL")
     username = _resolve_string_setting(current_values, config.get, "QBITTORRENT_USERNAME")
     password = _resolve_string_setting(current_values, config.get, "QBITTORRENT_PASSWORD")
+    api_key = _resolve_string_setting(current_values, config.get, "QBITTORRENT_API_KEY")
 
     if not raw_url:
         return {"success": False, "message": "qBittorrent URL is required"}
@@ -174,6 +175,7 @@ def _test_qbittorrent_connection(current_values: dict[str, Any] | None = None) -
             host=url,
             username=username,
             password=password,
+            api_key=api_key or None,
             VERIFY_WEBUI_CERTIFICATE=get_ssl_verify(url),
         )
         client.auth_log_in()
@@ -181,9 +183,18 @@ def _test_qbittorrent_connection(current_values: dict[str, Any] | None = None) -
     except ImportError:
         return {"success": False, "message": "qbittorrent-api package not installed"}
     except _QBITTORRENT_SETTINGS_ERRORS as e:
+        if isinstance(e, _QBittorrentLoginFailed):
+            # LoginFailed carries no message of its own, so name the rejected credential.
+            rejected = "API key" if api_key else "username or password"
+            return {"success": False, "message": f"qBittorrent rejected the {rejected}"}
         return {"success": False, "message": f"Connection failed: {e!s}"}
     else:
-        return {"success": True, "message": f"Connected to qBittorrent (API v{api_version})"}
+        # Both credentials can be set at once, so name the one that actually authenticated.
+        used = " using the API key" if api_key else ""
+        return {
+            "success": True,
+            "message": f"Connected to qBittorrent (API v{api_version}){used}",
+        }
 
 
 def _test_transmission_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
@@ -570,6 +581,12 @@ def prowlarr_clients_settings() -> list[SettingsField]:
             key="QBITTORRENT_PASSWORD",
             label="Password",
             description="qBittorrent Web UI password",
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "qbittorrent"},
+        ),
+        PasswordField(
+            key="QBITTORRENT_API_KEY",
+            label="API Key",
+            description="Found in qBittorrent: Options > Web UI > API Key (qBittorrent 5.2.0+). Used instead of the username and password when set.",
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "qbittorrent"},
         ),
         ActionButton(

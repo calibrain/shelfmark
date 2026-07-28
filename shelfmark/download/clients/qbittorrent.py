@@ -182,15 +182,15 @@ class QBittorrentClient(DownloadClient):
         params = {"hash": torrent_hash}
 
         try:
-            self._client.auth_log_in()
+            self._ensure_authenticated()
             response = self._client._session.get(url, params=params, timeout=10)
 
             # Re-authenticate and retry once on 403
-            if response.status_code == _HTTP_STATUS_FORBIDDEN:
+            if response.status_code == _HTTP_STATUS_FORBIDDEN and self._can_reauthenticate:
                 logger.debug(
                     "qBittorrent returned 403 for properties; re-authenticating and retrying"
                 )
-                self._client.auth_log_in()
+                self._ensure_authenticated()
                 response = self._client._session.get(url, params=params, timeout=10)
 
             if response.status_code == _HTTP_STATUS_FORBIDDEN:
@@ -244,6 +244,7 @@ class QBittorrentClient(DownloadClient):
 
         username = config_text(config.get("QBITTORRENT_USERNAME", ""))
         password = config_text(config.get("QBITTORRENT_PASSWORD", ""))
+        self._api_key = config_text(config.get("QBITTORRENT_API_KEY", ""))
 
         # qbittorrent-api accepts either a full URL or host:port; prefer the normalized URL
         # for consistency.
@@ -251,11 +252,27 @@ class QBittorrentClient(DownloadClient):
             host=self._base_url,
             username=username,
             password=password,
+            api_key=self._api_key or None,
             VERIFY_WEBUI_CERTIFICATE=get_ssl_verify(self._base_url),
         )
         self._category = config_text(config.get("QBITTORRENT_CATEGORY", "books"))
         self._download_dir = config_text(config.get("QBITTORRENT_DOWNLOAD_DIR", ""))
         self._tags = _normalize_tags(config.get("QBITTORRENT_TAG", []))
+
+    @property
+    def _can_reauthenticate(self) -> bool:
+        """Whether a 403 is worth retrying; a bearer token cannot be refreshed like a session."""
+        return not self._api_key
+
+    def _ensure_authenticated(self) -> None:
+        """Authenticate the underlying HTTP session before it is used directly.
+
+        API keys (qBittorrent 5.2.0+) are sent as a bearer header on every request and
+        have no login endpoint, so there is no session to establish up front.
+        """
+        if self._api_key:
+            return
+        self._client.auth_log_in()
 
     def _get_torrents_info(
         self, torrent_hash: str | None = None, category: str | None = None
@@ -276,8 +293,7 @@ class QBittorrentClient(DownloadClient):
         url = f"{self._base_url}/api/v2/torrents/info"
 
         def do_request(params: dict[str, str]) -> requests.Response:
-            # Ensure session is authenticated before using it directly
-            self._client.auth_log_in()
+            self._ensure_authenticated()
             return self._client._session.get(url, params=params, timeout=10)
 
         def parse_response(
@@ -285,9 +301,9 @@ class QBittorrentClient(DownloadClient):
             *,
             request_params: dict[str, str],
         ) -> tuple[list[SimpleNamespace], str | None]:
-            if response.status_code == _HTTP_STATUS_FORBIDDEN:
+            if response.status_code == _HTTP_STATUS_FORBIDDEN and self._can_reauthenticate:
                 logger.debug("qBittorrent returned 403; re-authenticating and retrying")
-                self._client.auth_log_in()
+                self._ensure_authenticated()
                 response = self._client._session.get(url, params=request_params, timeout=10)
 
             if response.status_code == _HTTP_STATUS_FORBIDDEN:
@@ -409,7 +425,7 @@ class QBittorrentClient(DownloadClient):
     def test_connection(self) -> tuple[bool, str]:
         """Test connection to qBittorrent."""
         try:
-            self._client.auth_log_in()
+            self._ensure_authenticated()
             api_version = self._client.app.web_api_version
         except _QBITTORRENT_CLIENT_ERRORS as e:
             return False, f"Connection failed: {e!s}"
@@ -728,11 +744,11 @@ class QBittorrentClient(DownloadClient):
         import os
 
         def get_with_auth(url: str, params: dict[str, str]) -> requests.Response:
-            self._client.auth_log_in()
+            self._ensure_authenticated()
             resp = self._client._session.get(url, params=params, timeout=10)
-            if resp.status_code == _HTTP_STATUS_FORBIDDEN:
+            if resp.status_code == _HTTP_STATUS_FORBIDDEN and self._can_reauthenticate:
                 logger.debug("qBittorrent returned 403; re-authenticating and retrying")
-                self._client.auth_log_in()
+                self._ensure_authenticated()
                 resp = self._client._session.get(url, params=params, timeout=10)
             return resp
 

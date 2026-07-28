@@ -32,6 +32,28 @@ def coerce_int_like(value: object) -> int | None:
     return int(normalized)
 
 
+def build_source_id(result: dict) -> str:
+    """Build the Release.source_id for a raw Prowlarr result.
+
+    Qualified by the indexer id because one tracker is often configured in
+    Prowlarr as several indexer entries that differ only by a server-side search
+    filter, and those entries return the same guid for the same torrent. Without
+    the qualifier the entries collide in the release cache and a grab routes
+    through whichever entry happened to cache last.
+    """
+    guid = result.get("guid")
+    if guid:
+        base = str(guid)
+    else:
+        indexer = result.get("indexer", "Unknown")
+        base = f"{indexer}:{hash(result.get('title', 'Unknown'))}"
+
+    indexer_id = coerce_int_like(result.get("indexerId"))
+    if indexer_id is None:
+        return base
+    return f"{indexer_id}:{base}"
+
+
 def coerce_float_like(value: object) -> float | None:
     """Return a float for float-like config/API values, else None."""
     if isinstance(value, bool):

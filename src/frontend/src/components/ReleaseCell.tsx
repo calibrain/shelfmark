@@ -382,7 +382,11 @@ export const ReleaseCell = ({
           className={`flex items-center ${alignClass} gap-1.5 truncate text-xs text-gray-600 dark:text-gray-300`}
         >
           <span className={`h-2 w-2 shrink-0 rounded-full ${dotColor}`} title={protocolLabel} />
-          <span className="truncate">{displayValue}</span>
+          {/* Titled because one tracker can appear as several indexer entries whose
+              names share a prefix, and truncation would make the rows look identical */}
+          <span className="truncate" title={displayValue}>
+            {displayValue}
+          </span>
           {peers && <span className="shrink-0 text-gray-400 dark:text-gray-500">{peers}</span>}
         </div>
       );

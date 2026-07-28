@@ -191,6 +191,18 @@ def prowlarr_config_settings() -> list[SettingsField]:
             show_when={"field": "PROWLARR_ENABLED", "value": True},
         ),
         CheckboxField(
+            key="PROWLARR_COLLAPSE_DUPLICATES",
+            label="Show one row per release",
+            default=True,
+            description=(
+                "Collapse a release that several indexer entries returned down to a single row, "
+                "keeping the entry with the best Prowlarr priority. Turn this off to see every "
+                "entry that carried it, which is what makes results from filter-specific entries "
+                "(freeleech and the like) visible."
+            ),
+            show_when={"field": "PROWLARR_ENABLED", "value": True},
+        ),
+        CheckboxField(
             key="PROWLARR_USE_SEED_PREFERENCES",
             label="Use Prowlarr seed preferences",
             default=False,

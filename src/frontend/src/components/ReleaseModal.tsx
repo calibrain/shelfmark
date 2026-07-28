@@ -956,7 +956,7 @@ const ReleaseModalSession = ({
     const fromExtra = (columnConfig.extra_sort_options || []).map((opt) => ({
       label: opt.label,
       sortKey: opt.sort_key,
-      defaultDirection: 'desc' as const, // Extra sort options are typically numeric (e.g., peers)
+      defaultDirection: opt.default_direction ?? ('desc' as const),
     }));
     return [...fromColumns, ...fromExtra];
   }, [sortableColumns, columnConfig.extra_sort_options]);

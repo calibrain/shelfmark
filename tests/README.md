@@ -169,6 +169,7 @@ uv run pytest tests/ --cov=shelfmark -m "not integration"
 ```python
 from unittest.mock import MagicMock, patch
 
+
 class TestMyFeature:
     def test_something(self, monkeypatch):
         # Mock config values
@@ -187,6 +188,7 @@ class TestMyFeature:
 ```python
 import pytest
 from .conftest import APIClient, DownloadTracker
+
 
 @pytest.mark.e2e
 class TestMyEndpoint:
