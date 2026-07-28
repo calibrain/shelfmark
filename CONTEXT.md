@@ -1,6 +1,6 @@
 # Context
 
-A glossary of the canonical terms in the Shelfmark fork's library effort. Devoid of implementation detail — for schema, see the tickets under `.scratch/library/`; for decisions, see `docs/adr/`.
+A glossary of the canonical terms in the Shelfmark fork's library effort. Devoid of implementation detail — for schema and implementation history, see the linked GitHub Issues; for decisions, see `docs/adr/`.
 
 ## Book
 

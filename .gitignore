@@ -239,3 +239,4 @@ pyrightconfig.json
 .playwright-mcp/
 frontend-dist/
 node_modules/
+.scratch/

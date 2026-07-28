@@ -1,30 +1,45 @@
-# Issue tracker: Local Markdown
+# Issue Tracker: GitHub Issues and Discussions
 
-Issues and specs (you may know a spec as a PRD) for this repo live as markdown files in `.scratch/`.
+GitHub is the shared source of truth for tracker work in this repository. Use the `gh` CLI from this checkout; it infers `muneebabbas/shelfmark` from `origin`.
 
 ## Conventions
 
-- One feature per directory: `.scratch/<feature-slug>/`
-- The spec is `.scratch/<feature-slug>/spec.md`
-- Implementation issues are one file per ticket at `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` — never a single combined tickets file
-- Triage state is recorded as a `Status:` line near the top of each issue file (see `triage-labels.md` for the role strings)
-- Comments and conversation history append to the bottom of the file under a `## Comments` heading
+- **GitHub Issues** hold actionable work: bugs, feature requests, specs, implementation tickets, and wayfinder maps.
+- **GitHub Discussions** hold open-ended questions, design exploration, announcements, and community conversation that is not yet actionable work.
+- Create an Issue when it has a clear outcome, owner, or lifecycle. Start a Discussion when the goal is to gather perspectives; create linked Issues for work that emerges.
+- Use the canonical triage labels in `triage-labels.md` to show an Issue's state.
+- Link related Issues and Discussions rather than duplicating their decisions in repository files.
 
-## When a skill says "publish to the issue tracker"
+## GitHub Issue Operations
 
-Create a new file under `.scratch/<feature-slug>/` (creating the directory if needed).
+- **Create**: `gh issue create --title "..." --body "..."`
+- **Read**: `gh issue view <number> --comments`
+- **List**: `gh issue list --state open`
+- **Comment**: `gh issue comment <number> --body "..."`
+- **Label**: `gh issue edit <number> --add-label "..."` or `--remove-label "..."`
+- **Close**: `gh issue close <number> --comment "..."`
 
-## When a skill says "fetch the relevant ticket"
+## GitHub Discussion Operations
 
-Read the file at the referenced path. The user will normally pass the path or the issue number directly.
+- Use the GitHub web UI for creating and categorizing Discussions.
+- Use `gh api graphql` to read or automate Discussion operations when the web UI is insufficient.
+- When a Discussion produces actionable work, create an Issue that links back to the Discussion and records the agreed outcome.
 
-## Wayfinding operations
+## When a Skill Says "Publish to the Issue Tracker"
 
-Used by `/wayfinder`. The **map** is a file with one **child** file per ticket.
+Create a GitHub Issue. Publish exploratory conversation as a GitHub Discussion only when it is not yet actionable.
 
-- **Map**: `.scratch/<effort>/map.md` — the Notes / Decisions-so-far / Fog body.
-- **Child ticket**: `.scratch/<effort>/issues/NN-<slug>.md`, numbered from `01`, with the question in the body. A `Type:` line records the ticket type (`research`/`prototype`/`grilling`/`task`); a `Status:` line records `claimed`/`resolved`.
-- **Blocking**: a `Blocked by: NN, NN` line near the top. A ticket is unblocked when every file it lists is `resolved`.
-- **Frontier**: scan `.scratch/<effort>/issues/` for files that are open, unblocked, and unclaimed; first by number wins.
-- **Claim**: set `Status: claimed` and save before any work.
-- **Resolve**: append the answer under an `## Answer` heading, set `Status: resolved`, then append a context pointer (gist + link) to the map's Decisions-so-far in `map.md`.
+## When a Skill Says "Fetch the Relevant Ticket"
+
+Run `gh issue view <number> --comments`. For a Discussion, use its GitHub URL or query it with `gh api graphql`.
+
+## Wayfinding Operations
+
+Used by `/wayfinder`. The **map** is one GitHub Issue with child Issues as tickets. Discussions may inform a map, but are not map tickets.
+
+- **Map**: create one Issue labelled `wayfinder:map`, containing the Destination, Notes, Decisions so far, Not yet specified, and Out of scope sections.
+- **Child ticket**: create an Issue labelled `wayfinder:<type>` (`research`, `prototype`, `grilling`, or `task`) and add it as a GitHub sub-issue of the map. If sub-issues are unavailable, add it to a task list in the map and put `Part of #<map>` in the child body.
+- **Blocking**: use GitHub's native issue dependencies. If unavailable, put `Blocked by: #<number>, #<number>` at the top of the child body.
+- **Frontier**: choose the first open map child that has no open blockers and no assignee.
+- **Claim**: assign the ticket to the driving developer with `gh issue edit <number> --add-assignee @me` before doing work.
+- **Resolve**: post the answer as an Issue comment, close the ticket, then add a linked one-line gist to the map's Decisions so far.
