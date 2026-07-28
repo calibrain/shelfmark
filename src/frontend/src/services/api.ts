@@ -278,15 +278,18 @@ export const searchMetadata = async (
   contentType: string = 'ebook',
   provider?: string,
 ): Promise<MetadataSearchResult> => {
-  const hasFields = Object.values(fields).some((v) => v !== '' && v !== false);
+  const normalizedQuery = query.trim();
+  const hasFields = Object.values(fields).some(
+    (value) => value !== false && (typeof value !== 'string' || value.trim() !== ''),
+  );
 
-  if (!query && !hasFields) {
+  if (!normalizedQuery && !hasFields) {
     return { books: [], page: 1, totalFound: 0, hasMore: false };
   }
 
   const params = new URLSearchParams();
-  if (query) {
-    params.set('query', query);
+  if (normalizedQuery) {
+    params.set('query', normalizedQuery);
   }
   params.set('limit', String(limit));
   params.set('sort', sort);
@@ -298,7 +301,7 @@ export const searchMetadata = async (
 
   // Add custom search field values
   Object.entries(fields).forEach(([key, value]) => {
-    if (value !== '' && value !== false) {
+    if (value !== false && (typeof value !== 'string' || value.trim() !== '')) {
       params.set(key, String(value));
     }
   });

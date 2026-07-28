@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { ActivitySidebar } from './components/activity';
 import { ConfigSetupBanner } from './components/ConfigSetupBanner';
@@ -24,16 +24,15 @@ import { useRequests } from './hooks/useRequests';
 import { primeSettingsCache } from './hooks/useSettings';
 import { useToast } from './hooks/useToast';
 import { primeUsersCache } from './hooks/useUsersFetch';
-import { BookAddModal } from './library/BookAddModal';
 import { BookDetailPage } from './library/BookDetailPage';
 import { LibraryNavigation } from './library/LibraryNavigation';
 import { LibraryPage } from './library/LibraryPage';
+import { SearchPage } from './library/SearchPage';
 import { LoginPage } from './pages/LoginPage';
 import {
   cancelDownload,
   downloadRelease,
   getConfig,
-  addLibraryBook,
   retryDownload,
   type DownloadReleasePayload,
 } from './services/api';
@@ -62,7 +61,6 @@ const getErrorMessage = (error: unknown, fallback: string): string =>
 
 function App() {
   const location = useLocation();
-  const navigate = useNavigate();
   const { toasts, showToast, removeToast } = useToast();
   const { socket } = useSocket();
   const { status: currentStatus, forceRefresh: fetchStatus } = useRealtimeStatus({
@@ -119,7 +117,6 @@ function App() {
   } | null>(null);
   const [downloadsSidebarOpen, setDownloadsSidebarOpen] = useState(false);
   const [libraryNavigationOpen, setLibraryNavigationOpen] = useState(false);
-  const [bookAddOpen, setBookAddOpen] = useState(false);
   const [sidebarPinnedOpen, setSidebarPinnedOpen] = useState(getInitialPinnedPreference);
   const [headerHeight, setHeaderHeight] = useState(0);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -402,10 +399,6 @@ function App() {
       <LibraryNavigation
         isOpen={libraryNavigationOpen}
         onClose={() => setLibraryNavigationOpen(false)}
-        onAddNew={() => {
-          setLibraryNavigationOpen(false);
-          setBookAddOpen(true);
-        }}
         onSettings={() => {
           setLibraryNavigationOpen(false);
           handleSettingsClick();
@@ -430,6 +423,7 @@ function App() {
           <Routes>
             <Route path="/" element={<Navigate to="/library" replace />} />
             <Route path="/library" element={<LibraryPage />} />
+            <Route path="/search" element={<SearchPage />} />
             <Route
               path="/library/:bookId"
               element={
@@ -503,22 +497,6 @@ function App() {
         onRequestDismiss={handleRequestDismiss}
         onPinnedOpenChange={setSidebarPinnedOpen}
         pinnedTopOffset={headerHeight}
-      />
-      <BookAddModal
-        isOpen={bookAddOpen}
-        onClose={() => setBookAddOpen(false)}
-        onAdd={async (book) => {
-          if (!book.provider || !book.provider_id) {
-            throw new Error('This book cannot be added to the library');
-          }
-          const result = await addLibraryBook(book.provider, book.provider_id);
-          void navigate(`/library/${result.book_id}`, {
-            state: {
-              // Router state is intentionally consumed by BookDetailPage, so refreshes and links stay quiet.
-              autoFindReleases: !result.files_exist_globally && !result.in_flight_globally,
-            },
-          });
-        }}
       />
       <SettingsModal
         isOpen={settingsOpen}
