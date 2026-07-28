@@ -1211,7 +1211,7 @@ How long to cache individual book details. Default: 600 (10 minutes). Max: 60480
 | `PROWLARR_API_KEY` | Found in Prowlarr: Settings > General > API Key | string (secret) | _none_ |
 | `PROWLARR_INDEXERS` | Select which indexers to search. 📚 = has book categories. Leave empty to search all. | string (comma-separated) | _empty list_ |
 | `PROWLARR_AUTO_EXPAND` | Automatically retry search without category filtering if no results are found | boolean | `false` |
-| `PROWLARR_COLLAPSE_DUPLICATES` | Collapse a release that several indexer entries returned down to a single row. Leave this off to see every entry that carried it, which is what makes results from filter-specific entries (freeleech and the like) visible. | boolean | `false` |
+| `PROWLARR_COLLAPSE_DUPLICATES` | Collapse a release that several indexer entries returned down to a single row, keeping the entry with the best Prowlarr priority. Turn this off to see every entry that carried it, which is what makes results from filter-specific entries (freeleech and the like) visible. | boolean | `true` |
 | `PROWLARR_USE_SEED_PREFERENCES` | Apply per-indexer seed time and ratio preferences from Prowlarr when sending torrents to the download client | boolean | `false` |
 
 <details>
@@ -1268,10 +1268,10 @@ Automatically retry search without category filtering if no results are found
 
 **Show one row per release**
 
-Collapse a release that several indexer entries returned down to a single row. Leave this off to see every entry that carried it, which is what makes results from filter-specific entries (freeleech and the like) visible.
+Collapse a release that several indexer entries returned down to a single row, keeping the entry with the best Prowlarr priority. Turn this off to see every entry that carried it, which is what makes results from filter-specific entries (freeleech and the like) visible.
 
 - **Type:** boolean
-- **Default:** `false`
+- **Default:** `true`
 
 #### `PROWLARR_USE_SEED_PREFERENCES`
 
@@ -1407,7 +1407,7 @@ Delay between requests in seconds to avoid rate limiting (0-10).
 | `IRC_USE_TLS` | Enable TLS/SSL encryption for the IRC connection. Disable for servers that don't support TLS. | boolean | `true` |
 | `IRC_CHANNEL` | Channel name without the # prefix. Used for all searches unless a separate audiobook channel is configured below. | string | _none_ |
 | `IRC_NICK` | Your IRC nickname (required). Must be unique on the IRC network. | string | _none_ |
-| `IRC_SEARCH_BOT` | The search bot to address queries to (required). | string | _none_ |
+| `IRC_SEARCH_BOT` | The search bot to address queries to (required). Searches are sent as "@<bot> <query>". | string | _none_ |
 | `IRC_AUDIOBOOK_CHANNEL` | Optional. Channel name (without the # prefix) to use for audiobook searches. Leave blank to use the main channel above for audiobooks too. | string | _none_ |
 | `IRC_AUDIOBOOK_SEARCH_BOT` | Optional. Search bot for the audiobook channel. Leave blank to reuse the main search bot above. Only used when an audiobook channel is set. | string | _none_ |
 | `IRC_CACHE_TTL` | How long to keep cached search results before they expire. | string (choice) | `2592000` |
@@ -1467,7 +1467,7 @@ Your IRC nickname (required). Must be unique on the IRC network.
 
 **Search bot**
 
-The search bot to address queries to (required). Searches are sent as "@<bot> <query>". Without it, queries would be posted unaddressed to the channel.
+The search bot to address queries to (required). Searches are sent as "@<bot> <query>".
 
 - **Type:** string
 - **Default:** _none_
@@ -1531,7 +1531,8 @@ How long to keep cached search results before they expire.
 | `RTORRENT_URL` | XML-RPC URL of your rTorrent instance | string | _none_ |
 | `RTORRENT_USERNAME` | HTTP Basic auth username (if authentication enabled) | string | _none_ |
 | `RTORRENT_PASSWORD` | HTTP Basic auth password | string (secret) | _none_ |
-| `RTORRENT_LABEL` | Label to assign to book downloads in rTorrent | string | `cwabd` |
+| `RTORRENT_LABEL` | Label to assign to ebook downloads in rTorrent | string | `cwabd` |
+| `RTORRENT_AUDIOBOOK_LABEL` | Label to assign to audiobook downloads in rTorrent (falls back to Book Label if not set) | string | _none_ |
 | `RTORRENT_DOWNLOAD_DIR` | Server-side directory where torrents are downloaded (optional, uses rTorrent default if not specified) | string | _none_ |
 | `PROWLARR_TORRENT_ACTION` | Remove deletes the torrent from your client immediately after import (stops seeding, files are kept); Keep leaves it in the client to continue seeding | string (choice) | `keep` |
 | `PROWLARR_USENET_CLIENT` | Choose which usenet client to use | string (choice) | _empty string_ |
@@ -1770,10 +1771,19 @@ HTTP Basic auth password
 
 **Book Label**
 
-Label to assign to book downloads in rTorrent
+Label to assign to ebook downloads in rTorrent
 
 - **Type:** string
 - **Default:** `cwabd`
+
+#### `RTORRENT_AUDIOBOOK_LABEL`
+
+**Audiobook Label**
+
+Label to assign to audiobook downloads in rTorrent (falls back to Book Label if not set)
+
+- **Type:** string
+- **Default:** _none_
 
 #### `RTORRENT_DOWNLOAD_DIR`
 
@@ -2051,6 +2061,7 @@ Default sort order for Google Books search results.
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
 | `DIRECT_DOWNLOAD_ENABLED` | Show Direct Download in release-source lists and allow Direct mode searches. Add your own mirror URLs in the Mirrors tab before using it. | boolean | `false` |
+| `DIRECT_DOWNLOAD_LANGUAGE_FROM_PATH` | When language metadata is missing or unknown, parse the distant path (file path shown in search results) for language tags like [BD FR] or [En]. Also enables local language filtering so lgli files without AA language metadata are not excluded before the distant path can be checked. | boolean | `false` |
 | `AA_DONATOR_KEY` | Enables fast download access on AA. Get this from your donator account page. | string (secret) | _none_ |
 | `FAST_SOURCES_DISPLAY` | Always tried first, no waiting or bypass required. | JSON array | _see UI for defaults_ |
 | `SOURCE_PRIORITY` | Fallback sources, may have waiting. Requires bypasser. Drag to reorder. | JSON array | _see UI for defaults_ |
@@ -2074,6 +2085,15 @@ Default sort order for Google Books search results.
 **Enable Direct Download Source**
 
 Show Direct Download in release-source lists and allow Direct mode searches. Add your own mirror URLs in the Mirrors tab before using it.
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `DIRECT_DOWNLOAD_LANGUAGE_FROM_PATH`
+
+**Detect Language From Distant Path**
+
+When language metadata is missing or unknown, parse the distant path (file path shown in search results) for language tags like [BD FR] or [En]. Also enables local language filtering so lgli files without AA language metadata are not excluded before the distant path can be checked.
 
 - **Type:** boolean
 - **Default:** `false`

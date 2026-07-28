@@ -1018,7 +1018,7 @@ class ProwlarrSource(ReleaseSource):
                         seen_keys.add(key)
                     all_results.append(r)
 
-            if config.get("PROWLARR_COLLAPSE_DUPLICATES", False):
+            if config.get("PROWLARR_COLLAPSE_DUPLICATES", True):
                 before_collapse = len(all_results)
                 all_results = _collapse_duplicate_indexer_results(all_results, indexer_priority)
                 if len(all_results) != before_collapse:

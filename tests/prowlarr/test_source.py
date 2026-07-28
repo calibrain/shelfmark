@@ -796,7 +796,14 @@ def _mam_result(indexer_id: int, indexer: str, guid: str, *, freeleech: bool = F
 
 
 class TestIndexerAwareDeduplication:
-    """One tracker as several Prowlarr entries must not collapse to one row (#1137)."""
+    """One tracker as several Prowlarr entries must not collapse to one row (#1137).
+
+    These assert the split itself, so they turn PROWLARR_COLLAPSE_DUPLICATES off:
+    it ships on, which keeps the release list as it was before #1137 for everyone
+    who has not asked for the per-entry rows.
+    """
+
+    SPLIT = {"PROWLARR_COLLAPSE_DUPLICATES": False}
 
     ONLY_ACTIVE = 10
     FREELEECH = 25
@@ -834,6 +841,7 @@ class TestIndexerAwareDeduplication:
                     )
                 ],
             },
+            config_values=self.SPLIT,
         )
 
         assert len(releases) == 2
@@ -850,6 +858,7 @@ class TestIndexerAwareDeduplication:
                     _mam_result(self.FREELEECH, "MyAnonamouse - Freeleech", shared_guid)
                 ],
             },
+            config_values=self.SPLIT,
         )
 
         source_ids = [r.source_id for r in releases]
@@ -868,6 +877,7 @@ class TestIndexerAwareDeduplication:
                     _mam_result(self.FREELEECH, "MyAnonamouse - Freeleech", shared_guid)
                 ],
             },
+            config_values=self.SPLIT,
         )
 
         assert len(releases) == 2
@@ -914,7 +924,7 @@ class TestBuildSourceId:
 
 
 class TestCollapseDuplicatesSetting:
-    """Opt-in one-row-per-release collapse, resolved by Prowlarr's priority."""
+    """One-row-per-release collapse, on by default, resolved by Prowlarr's priority."""
 
     ONLY_ACTIVE = 10
     FREELEECH = 25
@@ -951,8 +961,8 @@ class TestCollapseDuplicatesSetting:
         assert len(releases) == 1
         assert releases[0].indexer == "MyAnonamouse"
 
-    def test_collapse_off_by_default_keeps_both_rows(self, monkeypatch):
-        releases = TestIndexerAwareDeduplication()._search(
+    def _search_shared_guid(self, monkeypatch, config_values):
+        return TestIndexerAwareDeduplication()._search(
             monkeypatch,
             {
                 self.ONLY_ACTIVE: [
@@ -962,10 +972,33 @@ class TestCollapseDuplicatesSetting:
                     _mam_result(self.FREELEECH, "MAM - Freeleech", "https://tracker.example/t/9")
                 ],
             },
+            config_values=config_values,
             priorities={self.FREELEECH: 20, self.ONLY_ACTIVE: 24},
         )
 
+    def test_collapse_is_on_when_the_setting_is_untouched(self, monkeypatch):
+        """An upgrading user who sets nothing keeps the single row they had before #1137."""
+        releases = self._search_shared_guid(monkeypatch, None)
+
+        assert len(releases) == 1
+        assert releases[0].indexer == "MAM - Freeleech"
+
+    def test_opting_out_keeps_every_indexer_entry(self, monkeypatch):
+        releases = self._search_shared_guid(monkeypatch, {"PROWLARR_COLLAPSE_DUPLICATES": False})
+
         assert len(releases) == 2
+
+    def test_the_settings_field_and_the_search_fallback_agree(self):
+        """The field default is what governs in production; the search fallback only
+        applies to an unregistered key. They have to say the same thing.
+        """
+        from shelfmark.release_sources.prowlarr.settings import prowlarr_config_settings
+
+        field = next(
+            f for f in prowlarr_config_settings() if f.key == "PROWLARR_COLLAPSE_DUPLICATES"
+        )
+
+        assert field.default is True
 
 
 class TestBuildIndexerPriority:
