@@ -40,6 +40,15 @@ class TestBaselineEquivalence:
     def test_audiobookbay_names_unchanged(self, alias, expected):
         assert normalize_language(alias) == expected
 
+    @pytest.mark.parametrize(
+        ("alias", "expected"), sorted(BASELINE["direct_download_derived"].items())
+    )
+    def test_direct_download_derived_aliases_unchanged(self, alias, expected):
+        # Direct Download built its aliases from the data file rather than a
+        # literal map, so consolidating silently dropped the spellings it
+        # derived -- notably the underscore form of a hyphenated code.
+        assert normalize_language(alias) == expected
+
 
 class TestNormalizeLanguage:
     def test_accepts_two_letter_codes(self):
@@ -231,3 +240,17 @@ class TestCodesDoNotShadowEachOther:
     def test_every_code_resolves_to_itself(self):
         for code in known_language_codes():
             assert normalize_language(code) == code, f"{code} resolved elsewhere"
+
+
+class TestSubtagSeparators:
+    """The U+2011 in the old Traditional Chinese code renders close enough to
+    both a hyphen and an underscore that either is a plausible thing to type."""
+
+    @pytest.mark.parametrize("separator", ["-", "_", "‐", "‑", "–", "—"])
+    def test_any_separator_spelling_resolves(self, separator):
+        assert normalize_language(f"zh{separator}Hant") == "zh-Hant"
+
+    def test_separators_do_not_merge_unrelated_codes(self):
+        # Folding a separator must not make one language answer to another.
+        assert normalize_language("zh") == "zh"
+        assert normalize_language("en_GB") is None

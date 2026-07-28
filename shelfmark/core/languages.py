@@ -26,16 +26,17 @@ _CODE_TO_NAME: dict[str, str] | None = None
 _LOCK = threading.Lock()
 
 
-# Dash-like characters that show up in codes copied from web pages. Folding them
-# to a plain hyphen keeps "zh-Hant" and "zh‑Hant" (U+2011) the same language,
-# which matters because the latter is what earlier releases persisted.
-_DASH_VARIANTS = dict.fromkeys(map(ord, "‐‑‒–—―−﹘﹣－"), "-")
+# Separators that stand in for the hyphen in a subtag. The dashes turn up in
+# codes copied from web pages -- "zh‑Hant" used U+2011, which renders close
+# enough to both a hyphen and an underscore to go unnoticed -- and the
+# underscore is the spelling Direct Download accepted before this module existed.
+_SUBTAG_SEPARATORS = dict.fromkeys(map(ord, "‐‑‒–—―−﹘﹣－_"), "-")
 
 
 def _fold(value: str) -> str:
-    """Casefold, strip accents, and normalize dashes, so 'Español' and
-    'espanol', or 'zh-Hant' and 'zh‑Hant', all match."""
-    decomposed = unicodedata.normalize("NFKD", value).translate(_DASH_VARIANTS)
+    """Casefold, strip accents, and normalize subtag separators, so 'Español'
+    and 'espanol', or 'zh-Hant', 'zh‑Hant' and 'zh_Hant', all match."""
+    decomposed = unicodedata.normalize("NFKD", value).translate(_SUBTAG_SEPARATORS)
     stripped = "".join(ch for ch in decomposed if not unicodedata.combining(ch))
     return " ".join(stripped.split()).casefold()
 
