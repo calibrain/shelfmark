@@ -414,6 +414,7 @@ export interface LeadingCellConfig {
 export interface ExtraSortOption {
   label: string; // Display label in the sort dropdown
   sort_key: string; // Field to sort by on the Release object
+  default_direction?: 'asc' | 'desc'; // Which way "best first" runs (defaults to desc)
 }
 
 export interface SourceActionButton {

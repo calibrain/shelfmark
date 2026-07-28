@@ -5,6 +5,7 @@ These tests mock the qbittorrentapi library to test the client logic
 without requiring a running qBittorrent instance.
 """
 
+from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -177,6 +178,76 @@ class TestQBittorrentClientTestConnection:
 
             assert success is False
             assert "401" in message or "failed" in message.lower()
+
+
+class TestQBittorrentClientApiKeyAuth:
+    """Tests for API key authentication (qBittorrent 5.2.0+)."""
+
+    API_KEY = "qbt_0123456789abcdefghijklmnopqr"
+
+    @contextmanager
+    def _build_client(self, monkeypatch, api_key, mock_client_instance=None):
+        """Construct the client against a stubbed qbittorrentapi, yielding it and the stub."""
+        config_values = {
+            "QBITTORRENT_URL": "http://localhost:8080",
+            "QBITTORRENT_USERNAME": "admin",
+            "QBITTORRENT_PASSWORD": "password",
+            "QBITTORRENT_API_KEY": api_key,
+            "QBITTORRENT_CATEGORY": "test",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.qbittorrent.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        mock_client_class = MagicMock(return_value=mock_client_instance or MagicMock())
+
+        with patch.dict("sys.modules", {"qbittorrentapi": MagicMock(Client=mock_client_class)}):
+            import importlib
+
+            import shelfmark.download.clients.qbittorrent as qb_module
+
+            importlib.reload(qb_module)
+            yield qb_module.QBittorrentClient(), mock_client_class
+
+    @pytest.mark.parametrize(
+        ("api_key", "expected_kwarg"),
+        [(API_KEY, API_KEY), ("", None)],
+    )
+    def test_api_key_forwarded_to_qbittorrentapi(self, monkeypatch, api_key, expected_kwarg):
+        """A configured key is handed to qbittorrent-api; without one it falls back to password."""
+        with self._build_client(monkeypatch, api_key) as (_client, mock_client_class):
+            assert mock_client_class.call_args.kwargs["api_key"] == expected_kwarg
+
+    @pytest.mark.parametrize(("api_key", "logs_in"), [(API_KEY, False), ("", True)])
+    def test_direct_requests_log_in_only_for_cookie_auth(self, monkeypatch, api_key, logs_in):
+        """Bearer auth is stateless, so only cookie auth needs a login before direct calls."""
+        mock_client_instance = MagicMock()
+        mock_client_instance._session.get.return_value = create_mock_session_response(
+            [MockTorrent(progress=0.5, state="downloading")], status_code=200
+        )
+
+        with self._build_client(monkeypatch, api_key, mock_client_instance) as (client, _):
+            status = client.get_status("abc123")
+
+            assert status.progress == 50.0
+            assert mock_client_instance.auth_log_in.called is logs_in
+
+    @pytest.mark.parametrize(("api_key", "expected_requests"), [(API_KEY, 1), ("", 2)])
+    def test_403_retried_only_when_a_login_can_refresh_it(
+        self, monkeypatch, api_key, expected_requests
+    ):
+        """A bearer token cannot be refreshed, so re-issuing a 403 would just waste a request."""
+        mock_client_instance = MagicMock()
+        mock_client_instance._session.get.return_value = create_mock_session_response(
+            [], status_code=403
+        )
+
+        with self._build_client(monkeypatch, api_key, mock_client_instance) as (client, _):
+            status = client.get_status("abc123")
+
+            assert status.state_value == "error"
+            assert mock_client_instance._session.get.call_count == expected_requests
 
 
 class TestQBittorrentClientGetStatus:

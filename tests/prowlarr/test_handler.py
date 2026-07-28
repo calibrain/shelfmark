@@ -18,7 +18,7 @@ from shelfmark.download.clients import (
 from shelfmark.release_sources import Release, ReleaseProtocol
 from shelfmark.release_sources.prowlarr.cache import cache_release, remove_release
 from shelfmark.release_sources.prowlarr.handler import ProwlarrHandler
-from shelfmark.release_sources.prowlarr.utils import get_protocol
+from shelfmark.release_sources.prowlarr.utils import build_source_id, get_protocol
 
 
 class ProgressRecorder:
@@ -1584,3 +1584,57 @@ class TestProwlarrHandlerPostProcessCleanup:
         assert args[1] == "nzbget"
         assert args[2] == "123"
         assert str(args[3]) == "delete failed"
+
+
+class TestRawReleaseMatchesTask:
+    """Refreshing a stale release has to find it by whichever id form the task holds."""
+
+    RAW = {
+        "guid": "https://tracker.example/torrent/555",
+        "infoUrl": "https://tracker.example/details/555",
+        "indexerId": 25,
+    }
+
+    def test_matches_the_indexer_qualified_source_id(self):
+        assert ProwlarrHandler._raw_release_matches_task(
+            self.RAW, "25:https://tracker.example/torrent/555"
+        )
+
+    def test_still_matches_a_bare_guid_from_a_task_queued_before_the_change(self):
+        assert ProwlarrHandler._raw_release_matches_task(
+            self.RAW, "https://tracker.example/torrent/555"
+        )
+
+    def test_still_matches_a_bare_info_url(self):
+        assert ProwlarrHandler._raw_release_matches_task(
+            self.RAW, "https://tracker.example/details/555"
+        )
+
+    def test_does_not_match_the_same_guid_from_a_different_indexer_entry(self):
+        assert not ProwlarrHandler._raw_release_matches_task(
+            self.RAW, "10:https://tracker.example/torrent/555"
+        )
+
+    def test_does_not_match_an_unrelated_release(self):
+        assert not ProwlarrHandler._raw_release_matches_task(self.RAW, "25:something-else")
+
+
+class TestRawReleaseMatchesTaskEdgeCases:
+    """Matching the wrong release here grabs the wrong torrent."""
+
+    def test_blank_task_id_never_matches(self):
+        raw = {"guid": "g", "infoUrl": "i", "indexerId": 25}
+
+        assert not ProwlarrHandler._raw_release_matches_task(raw, "")
+        assert not ProwlarrHandler._raw_release_matches_task(raw, "   ")
+        assert not ProwlarrHandler._raw_release_matches_task(raw, None)
+
+    def test_a_release_with_no_identifiers_does_not_match_a_blank_task_id(self):
+        assert not ProwlarrHandler._raw_release_matches_task({}, None)
+        assert not ProwlarrHandler._raw_release_matches_task({}, "")
+
+    def test_matches_a_qualified_id_built_from_a_guidless_release(self):
+        raw = {"indexerId": 25, "indexer": "MAM", "title": "Dune"}
+        built = build_source_id(raw)
+
+        assert ProwlarrHandler._raw_release_matches_task(raw, built)

@@ -34,6 +34,7 @@ from shelfmark.release_sources.prowlarr.api import IndexerSeedSettings, Prowlarr
 from shelfmark.release_sources.prowlarr.cache import cache_release, get_release, remove_release
 from shelfmark.release_sources.prowlarr.source import ProwlarrSource
 from shelfmark.release_sources.prowlarr.utils import (
+    build_source_id,
     coerce_int_like,
     get_preferred_download_url,
     get_protocol,
@@ -318,11 +319,25 @@ class ProwlarrHandler(ExternalClientHandler):
 
     @staticmethod
     def _raw_release_matches_task(raw_release: dict[str, Any], task_id: str) -> bool:
-        identities = (
-            normalize_optional_text(raw_release.get("guid")),
-            normalize_optional_text(raw_release.get("infoUrl")),
-        )
-        return any(identity == task_id for identity in identities)
+        wanted = normalize_optional_text(task_id)
+        if wanted is None:
+            return False
+
+        bare = [
+            identity
+            for identity in (
+                normalize_optional_text(raw_release.get("guid")),
+                normalize_optional_text(raw_release.get("infoUrl")),
+            )
+            if identity is not None
+        ]
+
+        identities = [*bare, build_source_id(raw_release)]
+        indexer_id = coerce_int_like(raw_release.get("indexerId"))
+        if indexer_id is not None:
+            identities.extend(f"{indexer_id}:{identity}" for identity in bare)
+
+        return wanted in identities
 
     def _refresh_download_request_after_add_failure(
         self,
