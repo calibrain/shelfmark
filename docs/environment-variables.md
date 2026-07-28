@@ -1501,6 +1501,7 @@ How long to keep cached search results before they expire.
 | `QBITTORRENT_URL` | Web UI URL of your qBittorrent instance | string | _none_ |
 | `QBITTORRENT_USERNAME` | qBittorrent Web UI username | string | _none_ |
 | `QBITTORRENT_PASSWORD` | qBittorrent Web UI password | string (secret) | _none_ |
+| `QBITTORRENT_API_KEY` | Found in qBittorrent: Options > Web UI > API Key (qBittorrent 5.2.0+). Used instead of the username and password when set. | string (secret) | _none_ |
 | `QBITTORRENT_CATEGORY` | Category to assign to book downloads in qBittorrent | string | `books` |
 | `QBITTORRENT_CATEGORY_AUDIOBOOK` | Category for audiobook downloads. Leave empty to use the book category. | string | _empty string_ |
 | `QBITTORRENT_DOWNLOAD_DIR` | Server-side directory where torrents are downloaded (optional, uses qBittorrent default if not specified) | string | _none_ |
@@ -1571,6 +1572,15 @@ qBittorrent Web UI username
 **Password**
 
 qBittorrent Web UI password
+
+- **Type:** string (secret)
+- **Default:** _none_
+
+#### `QBITTORRENT_API_KEY`
+
+**API Key**
+
+Found in qBittorrent: Options > Web UI > API Key (qBittorrent 5.2.0+). Used instead of the username and password when set.
 
 - **Type:** string (secret)
 - **Default:** _none_

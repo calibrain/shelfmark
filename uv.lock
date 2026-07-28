@@ -1390,7 +1390,7 @@ requires-dist = [
     { name = "python-socketio" },
     { name = "python-xlib", marker = "extra == 'browser'" },
     { name = "pyvirtualdisplay", marker = "extra == 'browser'" },
-    { name = "qbittorrent-api" },
+    { name = "qbittorrent-api", specifier = ">=2026.5.3" },
     { name = "rarfile" },
     { name = "requests", extras = ["socks"] },
     { name = "seleniumbase", marker = "extra == 'browser'", specifier = "==4.51.6" },
