@@ -364,6 +364,7 @@ _BUILTIN_CLIENT_MODULES = (
     "shelfmark.download.clients.deluge",
     "shelfmark.download.clients.nzbget",
     "shelfmark.download.clients.qbittorrent",
+    "shelfmark.download.clients.realdebrid",
     "shelfmark.download.clients.rtorrent",
     "shelfmark.download.clients.sabnzbd",
     "shelfmark.download.clients.transmission",

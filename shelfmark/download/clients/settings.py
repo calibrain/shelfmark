@@ -537,6 +537,23 @@ def _test_alldebrid_connection(current_values: dict[str, Any] | None = None) -> 
     return {"success": success, "message": message}
 
 
+def _test_realdebrid_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Test the Real-Debrid API connection using current form values."""
+    from shelfmark.core.config import config
+    from shelfmark.download.clients.realdebrid import RealDebridClient
+
+    current_values = current_values or {}
+    api_key = _resolve_string_setting(current_values, config.get, "REALDEBRID_API_KEY")
+
+    if not api_key:
+        return {"success": False, "message": "Real-Debrid API Key is required"}
+
+    client = RealDebridClient()
+    client._api_key = api_key
+    success, message = client.test_connection()
+    return {"success": success, "message": message}
+
+
 # ==================== Download Clients Tab ====================
 
 
@@ -563,6 +580,7 @@ def prowlarr_clients_settings() -> list[SettingsField]:
                 {"value": "", "label": "None"},
                 {"value": "alldebrid", "label": "AllDebrid"},
                 {"value": "qbittorrent", "label": "qBittorrent"},
+                {"value": "realdebrid", "label": "Real-Debrid"},
                 {"value": "transmission", "label": "Transmission"},
                 {"value": "deluge", "label": "Deluge"},
                 {"value": "rtorrent", "label": "rTorrent"},
@@ -583,6 +601,21 @@ def prowlarr_clients_settings() -> list[SettingsField]:
             style="primary",
             callback=_test_alldebrid_connection,
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "alldebrid"},
+        ),
+        # --- Real-Debrid Settings ---
+        PasswordField(
+            key="REALDEBRID_API_KEY",
+            label="API Key",
+            description="Real-Debrid API Key (Secret Token) from your Real-Debrid account settings",
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "realdebrid"},
+        ),
+        ActionButton(
+            key="test_realdebrid",
+            label="Test Connection",
+            description="Verify your Real-Debrid configuration",
+            style="primary",
+            callback=_test_realdebrid_connection,
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "realdebrid"},
         ),
         # --- qBittorrent Settings ---
         TextField(
