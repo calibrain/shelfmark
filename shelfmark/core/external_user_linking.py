@@ -149,7 +149,7 @@ def _find_existing_alias_user(
     ]
     if not candidates:
         return None
-    return sorted(candidates, key=lambda user: int(user.get("id") or 0))[0]
+    return min(candidates, key=lambda user: int(user.get("id") or 0), default=None)
 
 
 def _resolve_create_username(

@@ -48,4 +48,47 @@ describe('namingTemplatePreview', () => {
     expect(preview.unknownTokens).toEqual(['NotAThing']);
     expect(preview.value).toBe('Arthur Conan Doyle');
   });
+
+  it('offers Language as a core variable for both content types', () => {
+    const language = NAMING_TEMPLATE_TOKENS.find((token) => token.token === 'Language');
+
+    expect(language?.group).toBe('Core');
+    expect(language?.audiobookOnly).toBeFalsy();
+  });
+
+  it('separates translated editions into their own folder', () => {
+    const template = '{Author}/{Title}{ (Language)}';
+
+    const swedish = renderNamingTemplate(
+      template,
+      {
+        ...SAMPLE_NAMING_METADATA,
+        Author: 'Andy Weir',
+        Title: 'Project Hail Mary',
+        Language: 'sv',
+      },
+      { allowPathSeparators: true },
+    );
+    const english = renderNamingTemplate(
+      template,
+      { ...SAMPLE_NAMING_METADATA, Author: 'Andy Weir', Title: 'Project Hail Mary', Language: '' },
+      { allowPathSeparators: true },
+    );
+
+    expect(swedish.value).toBe('Andy Weir/Project Hail Mary (sv)');
+    expect(english.value).toBe('Andy Weir/Project Hail Mary');
+    expect(swedish.value).not.toBe(english.value);
+  });
+
+  it('keeps the picker and the known-token list in lockstep', () => {
+    // KNOWN_TOKENS is a hand-maintained duplicate of the Python list. A token
+    // added to the picker but not to it would render as an unknown variable.
+    for (const token of NAMING_TEMPLATE_TOKENS) {
+      const preview = renderNamingTemplate(`{${token.token}}`, SAMPLE_NAMING_METADATA, {
+        allowPathSeparators: true,
+      });
+
+      expect(preview.unknownTokens, `${token.token} is missing from KNOWN_TOKENS`).toEqual([]);
+    }
+  });
 });

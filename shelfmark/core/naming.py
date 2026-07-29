@@ -4,6 +4,7 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from shelfmark.core.languages import LANGUAGE_PLACEHOLDERS, normalize_language
 from shelfmark.core.logger import setup_logger
 
 if TYPE_CHECKING:
@@ -19,6 +20,7 @@ KNOWN_TOKENS = [
     "primarytitle",
     "originalname",
     "partnumber",
+    "language",
     "subtitle",
     "author",
     "series",
@@ -64,6 +66,33 @@ def format_series_position(position: str | float | None) -> str:
         return str(int(position))
 
     return str(position)
+
+
+def normalize_language_code(language: str | None) -> str:
+    """Resolve a release language to the single spelling used in a path.
+
+    Sources report the same language in different shapes: "en", "eng", "English".
+    All of them have to collapse to one code, or the editions they identify end
+    up in separate folders, which is the collision this token exists to prevent.
+    Placeholder values render empty so `{ (Language)}` disappears entirely
+    rather than labelling a folder "(unknown)".
+
+    A language the bundled data does not know is kept, casefolded, rather than
+    dropped: it still separates editions, and it cannot collide with a resolved
+    code precisely because nothing resolves it.
+    """
+    if not language:
+        return ""
+
+    resolved = normalize_language(language)
+    if resolved is not None:
+        return resolved
+
+    normalized = " ".join(str(language).split()).strip().casefold()
+    if normalized in LANGUAGE_PLACEHOLDERS:
+        return ""
+
+    return normalized
 
 
 def derive_primary_title(title: str | None, subtitle: str | None) -> str:

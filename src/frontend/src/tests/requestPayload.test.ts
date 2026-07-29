@@ -138,4 +138,29 @@ describe('requestPayload utilities', () => {
     );
     expect(getRequestSuccessMessage(payloadUntitled)).toBe('Request submitted: Untitled');
   });
+
+  it('takes the language from the release, not the book', () => {
+    // book.language is the metadata provider's canonical edition. Using it would
+    // label a Swedish release "en" and put both editions back in one folder.
+    const data = buildReleaseDataFromMetadataRelease(
+      { ...baseBook, language: 'en' },
+      { ...baseRelease, language: 'sv' },
+      'ebook',
+    );
+
+    expect(data.language).toBe('sv');
+  });
+
+  it('leaves language undefined when the release has none', () => {
+    const data = buildReleaseDataFromMetadataRelease(baseBook, baseRelease, 'ebook');
+
+    expect(data.language).toBeUndefined();
+  });
+
+  it('uses the book language when browsing a source directly', () => {
+    // In direct mode the book record IS the release record.
+    const data = buildReleaseDataFromDirectBook({ ...baseBook, language: 'de' });
+
+    expect(data.language).toBe('de');
+  });
 });

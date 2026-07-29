@@ -1098,6 +1098,9 @@ function App() {
         series_name: book.series_name,
         series_position: book.series_position,
         subtitle: book.subtitle,
+        // From the release, never the book: book.language is the provider's
+        // canonical edition, which would mislabel a translated release.
+        language: release.language ?? undefined,
       };
     },
     [],

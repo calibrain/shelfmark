@@ -12,6 +12,7 @@ from shelfmark.core.naming import (
     assign_part_numbers,
     build_library_path,
     derive_primary_title,
+    normalize_language_code,
     parse_naming_template,
     sanitize_filename,
 )
@@ -63,6 +64,7 @@ def build_metadata_dict(task: DownloadTask) -> dict:
         "Year": task.year,
         "Series": task.series_name,
         "SeriesPosition": task.series_position,
+        "Language": normalize_language_code(task.language),
         "User": task.username,
     }
 

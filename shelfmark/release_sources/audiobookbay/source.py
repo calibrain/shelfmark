@@ -9,6 +9,7 @@ if TYPE_CHECKING:
     from shelfmark.metadata_providers import BookMetadata
 
 from shelfmark.core.config import config
+from shelfmark.core.languages import normalize_language
 from shelfmark.core.logger import setup_logger
 from shelfmark.release_sources import (
     ColumnAlign,
@@ -43,41 +44,6 @@ def _coerce_positive_int(value: object, default: int) -> int:
 
 
 # Map language names to ISO 639-1 codes (matching frontend color maps)
-LANGUAGE_MAP = {
-    "english": "en",
-    "spanish": "es",
-    "french": "fr",
-    "german": "de",
-    "italian": "it",
-    "portuguese": "pt",
-    "russian": "ru",
-    "japanese": "ja",
-    "chinese": "zh",
-    "dutch": "nl",
-    "swedish": "sv",
-    "norwegian": "no",
-    "danish": "da",
-    "finnish": "fi",
-    "polish": "pl",
-    "czech": "cs",
-    "hungarian": "hu",
-    "korean": "ko",
-    "arabic": "ar",
-    "hebrew": "he",
-    "turkish": "tr",
-    "greek": "el",
-    "hindi": "hi",
-    "thai": "th",
-    "vietnamese": "vi",
-    "indonesian": "id",
-    "ukrainian": "uk",
-    "romanian": "ro",
-    "bulgarian": "bg",
-    "catalan": "ca",
-    "croatian": "hr",
-    "slovenian": "sl",
-    "serbian": "sr",
-}
 
 
 def _split_title_and_author(raw_title: str) -> tuple[str, str | None]:
@@ -119,8 +85,9 @@ def _map_language(language: str) -> str | None:
     if not language:
         return None
 
-    lang_lower = language.lower().strip()
-    return LANGUAGE_MAP.get(lang_lower, lang_lower)
+    # Fall back to the raw value so an unrecognised language is still shown
+    # rather than silently dropped from the release row.
+    return normalize_language(language) or language.lower().strip()
 
 
 def _parse_bitrate_to_kbps(bitrate: str | None) -> int | None:

@@ -119,6 +119,7 @@ class DownloadTask:
     series_name: str | None = None
     series_position: float | None = None  # Float for novellas (e.g., 1.5)
     subtitle: str | None = None  # Book subtitle for naming templates
+    language: str | None = None  # Release language code for the {Language} template variable
 
     # Hardlinking support
     original_download_path: str | None = None  # Path in download client (for hardlinking)
