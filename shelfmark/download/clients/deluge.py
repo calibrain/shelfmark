@@ -227,10 +227,10 @@ class DelugeClient(DownloadClient):
 
         return self._rpc_call("daemon.info")
 
-    def _try_set_label(self, torrent_id: str, label: str) -> None:
+    def _try_set_label(self, torrent_id: str, label: str) -> bool:
         """Best-effort label assignment (requires Deluge Label plugin)."""
         if not label:
-            return
+            return False
 
         try:
             # label.add will error if the plugin is unavailable or the label exists.
@@ -240,6 +240,9 @@ class DelugeClient(DownloadClient):
             self._rpc_call("label.set_torrent", torrent_id, label)
         except _DELUGE_CLIENT_ERRORS as e:
             logger.debug("Could not set Deluge label '%s' for %s: %s", label, torrent_id, e)
+            return False
+        else:
+            return True
 
     @staticmethod
     def is_configured() -> bool:
@@ -420,6 +423,15 @@ class DelugeClient(DownloadClient):
             self._log_error("remove", e)
             return False
         else:
+            return False
+
+    def set_category(self, download_id: str, category: str) -> bool:
+        """Assign a label to a torrent using Deluge's Label plugin."""
+        try:
+            self._ensure_connected()
+            return self._try_set_label(download_id, category)
+        except _DELUGE_CLIENT_ERRORS as e:
+            self._log_error("set_category", e)
             return False
 
     def get_download_path(self, download_id: str) -> str | None:

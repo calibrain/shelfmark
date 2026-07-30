@@ -854,13 +854,22 @@ def prowlarr_clients_settings() -> list[SettingsField]:
         SelectField(
             key="PROWLARR_TORRENT_ACTION",
             label="Torrent Completion Action",
-            description="Remove deletes the torrent from your client immediately after import (stops seeding, files are kept); Keep leaves it in the client to continue seeding",
+            description="Choose whether to keep, remove, or move the torrent to another category or label after import",
             options=[
                 {"value": "keep", "label": "Keep"},
                 {"value": "remove", "label": "Remove"},
+                {"value": "change_category", "label": "Change Category"},
             ],
             default="keep",
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "notEmpty": True},
+        ),
+        TextField(
+            key="PROWLARR_TORRENT_POST_IMPORT_CATEGORY",
+            label="Post-Import Category",
+            description="Category or label to assign after a successful import",
+            placeholder="imported",
+            default="",
+            show_when={"field": "PROWLARR_TORRENT_ACTION", "value": "change_category"},
         ),
         # --- Usenet Client Selection ---
         HeadingField(

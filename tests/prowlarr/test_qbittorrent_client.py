@@ -59,6 +59,20 @@ def create_mock_session_response(torrents, status_code=200):
     return mock_response
 
 
+def test_set_category_creates_and_assigns_category():
+    from shelfmark.download.clients.qbittorrent import QBittorrentClient
+
+    client = QBittorrentClient.__new__(QBittorrentClient)
+    client._client = MagicMock()
+
+    assert client.set_category("abc123", "imported") is True
+    client._client.torrents_create_category.assert_called_once_with(name="imported")
+    client._client.torrents_set_category.assert_called_once_with(
+        torrent_hashes="abc123",
+        category="imported",
+    )
+
+
 class TestQBittorrentClientIsConfigured:
     """Tests for QBittorrentClient.is_configured()."""
 

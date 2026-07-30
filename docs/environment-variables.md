@@ -1534,7 +1534,8 @@ How long to keep cached search results before they expire.
 | `RTORRENT_LABEL` | Label to assign to ebook downloads in rTorrent | string | `cwabd` |
 | `RTORRENT_AUDIOBOOK_LABEL` | Label to assign to audiobook downloads in rTorrent (falls back to Book Label if not set) | string | _none_ |
 | `RTORRENT_DOWNLOAD_DIR` | Server-side directory where torrents are downloaded (optional, uses rTorrent default if not specified) | string | _none_ |
-| `PROWLARR_TORRENT_ACTION` | Remove deletes the torrent from your client immediately after import (stops seeding, files are kept); Keep leaves it in the client to continue seeding | string (choice) | `keep` |
+| `PROWLARR_TORRENT_ACTION` | Choose whether to keep, remove, or move the torrent to another category or label after import | string (choice) | `keep` |
+| `PROWLARR_TORRENT_POST_IMPORT_CATEGORY` | Category or label to assign after a successful import | string | _empty string_ |
 | `PROWLARR_USENET_CLIENT` | Choose which usenet client to use | string (choice) | _empty string_ |
 | `NZBGET_URL` | URL of your NZBGet instance | string | _none_ |
 | `NZBGET_USERNAME` | NZBGet control username | string | `nzbget` |
@@ -1798,11 +1799,20 @@ Server-side directory where torrents are downloaded (optional, uses rTorrent def
 
 **Torrent Completion Action**
 
-Remove deletes the torrent from your client immediately after import (stops seeding, files are kept); Keep leaves it in the client to continue seeding
+Choose whether to keep, remove, or move the torrent to another category or label after import
 
 - **Type:** string (choice)
 - **Default:** `keep`
-- **Options:** `keep` (Keep), `remove` (Remove)
+- **Options:** `keep` (Keep), `remove` (Remove), `change_category` (Change Category)
+
+#### `PROWLARR_TORRENT_POST_IMPORT_CATEGORY`
+
+**Post-Import Category**
+
+Category or label to assign after a successful import
+
+- **Type:** string
+- **Default:** _empty string_
 
 #### `PROWLARR_USENET_CLIENT`
 

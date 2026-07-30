@@ -1456,6 +1456,61 @@ class TestProwlarrHandlerFileStaging:
 
 
 class TestProwlarrHandlerPostProcessCleanup:
+    def test_torrent_change_category_sets_post_import_category(self):
+        handler = ProwlarrHandler()
+        task = DownloadTask(task_id="torrent-category", source="prowlarr", title="Test")
+
+        mock_client = MagicMock()
+        mock_client.name = "qbittorrent"
+        mock_client.set_category.return_value = True
+        handler._cleanup_refs[task.task_id] = (mock_client, "abc123", "torrent")
+
+        config_values = {
+            "PROWLARR_TORRENT_ACTION": "change_category",
+            "PROWLARR_TORRENT_POST_IMPORT_CATEGORY": "imported",
+        }
+        with patch(
+            "shelfmark.download.clients.base_handler.config.get",
+            side_effect=lambda key, default="": config_values.get(key, default),
+        ):
+            handler.post_process_cleanup(task, success=True)
+
+        mock_client.set_category.assert_called_once_with("abc123", "imported")
+        mock_client.remove.assert_not_called()
+
+    def test_torrent_keep_does_not_change_category(self):
+        handler = ProwlarrHandler()
+        task = DownloadTask(task_id="torrent-no-category", source="prowlarr", title="Test")
+
+        mock_client = MagicMock()
+        handler._cleanup_refs[task.task_id] = (mock_client, "abc123", "torrent")
+
+        with patch("shelfmark.download.clients.base_handler.config.get", return_value="keep"):
+            handler.post_process_cleanup(task, success=True)
+
+        mock_client.set_category.assert_not_called()
+        mock_client.remove.assert_not_called()
+
+    def test_torrent_change_category_ignores_empty_category(self):
+        handler = ProwlarrHandler()
+        task = DownloadTask(task_id="torrent-empty-category", source="prowlarr", title="Test")
+
+        mock_client = MagicMock()
+        handler._cleanup_refs[task.task_id] = (mock_client, "abc123", "torrent")
+
+        config_values = {
+            "PROWLARR_TORRENT_ACTION": "change_category",
+            "PROWLARR_TORRENT_POST_IMPORT_CATEGORY": "",
+        }
+        with patch(
+            "shelfmark.download.clients.base_handler.config.get",
+            side_effect=lambda key, default="": config_values.get(key, default),
+        ):
+            handler.post_process_cleanup(task, success=True)
+
+        mock_client.set_category.assert_not_called()
+        mock_client.remove.assert_not_called()
+
     def test_usenet_move_triggers_client_cleanup(self):
         handler = ProwlarrHandler()
         task = DownloadTask(task_id="cleanup-test", source="prowlarr", title="Test")

@@ -47,7 +47,13 @@ class _RTorrentLoadProtocol(Protocol):
     def start(self, target: str, url: str, commands: str) -> object: ...
 
 
+class _RTorrentCustom1Protocol(Protocol):
+    def set(self, download_id: str, value: str) -> object: ...
+
+
 class _RTorrentDownloadProtocol(Protocol):
+    custom1: _RTorrentCustom1Protocol
+
     def multicall2(self, *args: object) -> list[list[Any]]: ...
 
     def delete_tied(self, download_id: str) -> object: ...
@@ -347,6 +353,18 @@ class RTorrentClient(DownloadClient):
         except _RTORRENT_CLIENT_ERRORS as e:
             error_type = type(e).__name__
             logger.exception("rTorrent remove failed (%s)", error_type)
+            return False
+        else:
+            return True
+
+    def set_category(self, download_id: str, category: str) -> bool:
+        """Assign a label to a torrent using rTorrent's custom1 field."""
+        try:
+            self._rpc.d.custom1.set(download_id, category)
+            logger.info("Set rTorrent label for %s to '%s'", download_id, category)
+        except _RTORRENT_CLIENT_ERRORS as e:
+            error_type = type(e).__name__
+            logger.exception("rTorrent set_category failed (%s)", error_type)
             return False
         else:
             return True

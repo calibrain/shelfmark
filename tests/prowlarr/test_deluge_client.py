@@ -15,6 +15,17 @@ def make_config_getter(values):
     return getter
 
 
+def test_set_category_uses_label_plugin(monkeypatch):
+    from shelfmark.download.clients.deluge import DelugeClient
+
+    client = DelugeClient.__new__(DelugeClient)
+    monkeypatch.setattr(client, "_ensure_connected", MagicMock())
+    monkeypatch.setattr(client, "_try_set_label", MagicMock(return_value=True))
+
+    assert client.set_category("abc123", "imported") is True
+    client._try_set_label.assert_called_once_with("abc123", "imported")
+
+
 class TestDelugeClientAddDownload:
     """Tests for DelugeClient.add_download()."""
 

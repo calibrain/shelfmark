@@ -68,6 +68,19 @@ def create_mock_transmission_rpc_module():
     return mock_module
 
 
+def test_set_category_replaces_labels():
+    from shelfmark.download.clients.transmission import TransmissionClient
+
+    client = TransmissionClient.__new__(TransmissionClient)
+    client._client = MagicMock()
+
+    assert client.set_category("abc123", "imported") is True
+    client._client.change_torrent.assert_called_once_with(
+        ids="abc123",
+        labels=["imported"],
+    )
+
+
 class TestTransmissionClientIsConfigured:
     """Tests for TransmissionClient.is_configured()."""
 

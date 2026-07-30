@@ -27,6 +27,16 @@ def create_mock_xmlrpc_module():
     return mock_module
 
 
+def test_set_category_updates_custom1_label():
+    from shelfmark.download.clients.rtorrent import RTorrentClient
+
+    client = RTorrentClient.__new__(RTorrentClient)
+    client._rpc = MagicMock()
+
+    assert client.set_category("abc123", "imported") is True
+    client._rpc.d.custom1.set.assert_called_once_with("abc123", "imported")
+
+
 class TestRTorrentClientIsConfigured:
     """Tests for RTorrentClient.is_configured()."""
 

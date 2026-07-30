@@ -325,6 +325,19 @@ class DownloadClient(ABC):
 
         """
 
+    def set_category(self, download_id: str, category: str) -> bool:
+        """Update a download's category or label when supported by the client.
+
+        Args:
+            download_id: The client-specific download ID.
+            category: Category or label to assign.
+
+        Returns:
+            True if the category was updated, otherwise False.
+
+        """
+        return False
+
     @abstractmethod
     def get_download_path(self, download_id: str) -> str | None:
         """Get the path where files were downloaded.

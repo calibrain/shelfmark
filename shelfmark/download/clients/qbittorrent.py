@@ -673,6 +673,26 @@ class QBittorrentClient(DownloadClient):
         else:
             return True
 
+    def set_category(self, download_id: str, category: str) -> bool:
+        """Assign a category to a torrent in qBittorrent."""
+        try:
+            try:
+                self._client.torrents_create_category(name=category)
+            except _QBITTORRENT_CLIENT_ERRORS as e:
+                if "Conflict" not in type(e).__name__ and "409" not in str(e):
+                    logger.debug("Could not create category '%s': %s", category, e)
+
+            self._client.torrents_set_category(
+                torrent_hashes=download_id,
+                category=category,
+            )
+            logger.info("Set qBittorrent category for %s to '%s'", download_id, category)
+        except _QBITTORRENT_CLIENT_ERRORS as e:
+            self._log_error("set_category", e)
+            return False
+        else:
+            return True
+
     def get_download_path(self, download_id: str) -> str | None:
         """Get the path where torrent files are located.
 

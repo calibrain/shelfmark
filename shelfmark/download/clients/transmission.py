@@ -390,6 +390,17 @@ class TransmissionClient(DownloadClient):
         else:
             return True
 
+    def set_category(self, download_id: str, category: str) -> bool:
+        """Replace a torrent's labels with the post-import label."""
+        try:
+            self._client.change_torrent(ids=download_id, labels=[category])
+            logger.info("Set Transmission label for %s to '%s'", download_id, category)
+        except _TRANSMISSION_CLIENT_ERRORS as e:
+            self._log_error("set_category", e)
+            return False
+        else:
+            return True
+
     def get_download_path(self, download_id: str) -> str | None:
         """Get the path where torrent files are located.
 

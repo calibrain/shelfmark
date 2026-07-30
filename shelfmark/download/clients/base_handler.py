@@ -284,16 +284,44 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 )
 
         elif protocol == "torrent":
-            if config.get("PROWLARR_TORRENT_ACTION", "keep") != "remove":
+            torrent_action = config.get("PROWLARR_TORRENT_ACTION", "keep")
+            if torrent_action == "remove":
+                try:
+                    client.remove(download_id, delete_files=False)
+                except _CLIENT_CLEANUP_ERRORS as e:
+                    logger.warning(
+                        "Failed to remove torrent %s from %s: %s",
+                        download_id,
+                        getattr(client, "name", "client"),
+                        e,
+                    )
                 return
+
+            if torrent_action != "change_category":
+                return
+
+            post_import_category = normalize_optional_text(
+                config.get("PROWLARR_TORRENT_POST_IMPORT_CATEGORY", "")
+            )
+            if post_import_category is None:
+                return
+
             try:
-                client.remove(download_id, delete_files=False)
+                category_updated = client.set_category(download_id, post_import_category)
             except _CLIENT_CLEANUP_ERRORS as e:
                 logger.warning(
-                    "Failed to remove torrent %s from %s: %s",
+                    "Failed to set post-import category for torrent %s in %s: %s",
                     download_id,
                     getattr(client, "name", "client"),
                     e,
+                )
+                return
+
+            if not category_updated:
+                logger.warning(
+                    "Failed to set post-import category for torrent %s in %s",
+                    download_id,
+                    getattr(client, "name", "client"),
                 )
 
     def _remove_usenet_download(
