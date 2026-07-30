@@ -83,10 +83,7 @@ def _normalize_preferences(data: Mapping[str, Any]) -> tuple[dict[str, Any], str
         return {}, "notification_transport must be 'apprise' or null"
     if transport is not None and transport not in _NOTIFICATION_TRANSPORTS:
         return {}, "notification_transport must be 'apprise' or null"
-    if (
-        transport != "apprise"
-        and preferences.get("notification_destination") is not None
-    ):
+    if transport != "apprise" and preferences.get("notification_destination") is not None:
         return {}, "notification_destination is only supported for Apprise"
     return preferences, None
 
