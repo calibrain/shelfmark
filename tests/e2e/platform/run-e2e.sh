@@ -35,6 +35,13 @@ COMPOSE=(docker compose --env-file "$ENV_FILE" -f docker-compose.e2e.yml)
 
 STATE_DIR="$PLATFORM_DIR/.state"
 LOG_FILE="$STATE_DIR/shelfmark.$PROFILE.log"
+# The app persists its configuration under /config. Start from an empty mount so
+# no developer or prior E2E configuration can affect this hermetic run.
+mkdir -p "$STATE_DIR"
+# Selenium creates temporary files as root in the app container. Clean mounts
+# from a root container so repeated host runs do not depend on host permissions.
+docker run --rm --volume "$STATE_DIR:/state" alpine:3.20 \
+  rm -rf /state/config /state/books /state/downloads /state/tmp
 mkdir -p "$STATE_DIR/config" "$STATE_DIR/books" "$STATE_DIR/downloads" "$STATE_DIR/tmp"
 
 cleanup() {
@@ -57,10 +64,13 @@ else
   "${COMPOSE[@]}" up -d --build
 fi
 
+E2E_HOST_ADDRESS="$("${COMPOSE[@]}" port shelfmark 8084)"
+E2E_HOST_PORT="${E2E_HOST_ADDRESS##*:}"
+
 echo "==> [$PROFILE] waiting for shelfmark health"
 HEALTHY=0
 for _ in $(seq 1 60); do
-  if curl -fsS http://localhost:8084/api/health >/dev/null 2>&1; then HEALTHY=1; break; fi
+  if curl -fsS "http://127.0.0.1:$E2E_HOST_PORT/api/health" >/dev/null 2>&1; then HEALTHY=1; break; fi
   sleep 2
 done
 
@@ -75,9 +85,24 @@ if [[ "$HEALTHY" != "1" && "$PROFILE" != "tor" ]]; then
   exit 1
 fi
 
+# The direct-source contract needs one canonical Library Book without querying
+# an external metadata provider. Its ID is handed to pytest after the app owns
+# and initializes the database.
+E2E_DIRECT_SOURCE_BOOK_ID="$("${COMPOSE[@]}" exec -T shelfmark /app/.venv/bin/python -c '
+import sqlite3
+connection = sqlite3.connect("/config/users.db")
+connection.execute(
+    "INSERT OR IGNORE INTO books (metadata_provider, provider_book_id, title, author) VALUES (?, ?, ?, ?)",
+    ("e2e", "direct-source", "Mistborn", "Brandon Sanderson"),
+)
+connection.commit()
+print(connection.execute("SELECT id FROM books WHERE metadata_provider = ? AND provider_book_id = ?", ("e2e", "direct-source")).fetchone()[0])
+')"
+
 # Hand context to the pytest suite.
 export E2E_PROFILE="$PROFILE"
-export E2E_BASE_URL="http://localhost:8084"
+export E2E_BASE_URL="http://127.0.0.1:$E2E_HOST_PORT"
+export E2E_DIRECT_SOURCE_BOOK_ID
 export E2E_BOOKS_DIR="$STATE_DIR/books"
 export E2E_TMP_DIR="$STATE_DIR/tmp"
 export E2E_SHELFMARK_LOG="$LOG_FILE"

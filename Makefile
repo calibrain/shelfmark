@@ -1,4 +1,4 @@
-.PHONY: help install install-ci install-python-dev dev build preview frontend-typecheck frontend-lint frontend-format frontend-format-fix frontend-checks frontend-test clean up down docker-build refresh restart build-serve python-lint python-lint-fix python-format python-format-fix python-typecheck python-dead-code python-checks python-test python-test-cov e2e-platform e2e-platform-profile e2e-platform-matrix e2e-platform-full e2e-platform-build checks fix
+.PHONY: help install install-ci install-python-dev dev build preview frontend-typecheck frontend-lint frontend-format frontend-format-fix frontend-checks frontend-test clean up down docker-build refresh restart build-serve python-lint python-lint-fix python-format python-format-fix python-typecheck python-dead-code python-checks python-test python-test-cov e2e e2e-platform e2e-platform-profile e2e-platform-matrix e2e-platform-full e2e-platform-build checks fix
 
 # Frontend directory
 FRONTEND_DIR := src/frontend
@@ -38,6 +38,7 @@ help:
 	@echo "  python-checks - Run all Python static analysis checks"
 	@echo "  python-test - Run unit tests"
 	@echo "  python-test-cov - Run unit tests with coverage report"
+	@echo "  e2e          - Run hermetic baseline HTTP API e2e coverage"
 	@echo "  e2e-platform - Run e2e docker platform (baseline profile)"
 	@echo "  e2e-platform-profile PROFILE=<name> - Run e2e platform for one profile"
 	@echo "  e2e-platform-matrix - Run e2e platform across all config profiles"
@@ -134,6 +135,10 @@ python-test-cov:
 # E2E docker platform: hermetic stack (mock AA/Cloudflare/bypasser/DNS/proxy/Tor)
 # exercised across config profiles. See tests/e2e/platform/README.md.
 E2E_PLATFORM_DIR := tests/e2e/platform
+
+e2e:
+	@echo "Running hermetic baseline HTTP API e2e coverage..."
+	cd $(E2E_PLATFORM_DIR) && ./run-e2e.sh env/baseline.env -k baseline_api_contract
 
 e2e-platform:
 	@echo "Running e2e platform (baseline profile)..."

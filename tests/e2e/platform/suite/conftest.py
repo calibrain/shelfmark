@@ -49,6 +49,14 @@ class PlatformClient:
         kw.setdefault("timeout", self.timeout)
         return self.session.post(f"{self.base_url}{path}", **kw)
 
+    def put(self, path: str, **kw) -> requests.Response:
+        kw.setdefault("timeout", self.timeout)
+        return self.session.put(f"{self.base_url}{path}", **kw)
+
+    def delete(self, path: str, **kw) -> requests.Response:
+        kw.setdefault("timeout", self.timeout)
+        return self.session.delete(f"{self.base_url}{path}", **kw)
+
     # --- domain helpers -------------------------------------------------- #
     def wait_for_health(self, max_wait: int = 90) -> bool:
         deadline = time.time() + max_wait

@@ -2815,7 +2815,7 @@ def api_releases() -> Response | tuple[Response, int]:
             return jsonify({"error": "Library is unavailable"}), 503
 
         actor_user_id = get_session_db_user_id(session)
-        is_admin = bool(session.get("is_admin", False))
+        is_admin = get_auth_mode() == "none" or bool(session.get("is_admin", False))
         if not is_admin and (
             actor_user_id is None
             or not library_service.is_in_library(user_id=actor_user_id, book_id=library_book_id)
