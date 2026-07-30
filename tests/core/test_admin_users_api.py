@@ -38,7 +38,7 @@ def _admin_client(app):
 
 def test_admin_can_manage_username_password_email_role_and_library_capability(app, user_db):
     user = user_db.create_user(
-        username="alice", password_hash="old", library_capability="request-only"
+        username="alice", password_hash="old", library_capability="download-capable"
     )
     with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="builtin"):
         response = _admin_client(app).put(
@@ -48,15 +48,63 @@ def test_admin_can_manage_username_password_email_role_and_library_capability(ap
                 "password": "new-password",
                 "email": "new@example.com",
                 "role": "admin",
-                "library_capability": "download-capable",
+                "library_capability": "request-only",
             },
         )
     assert response.status_code == 200
     assert response.json["username"] == "alice-reader"
     assert response.json["role"] == "admin"
     assert response.json["email"] == "new@example.com"
-    assert response.json["library_capability"] == "download-capable"
+    assert response.json["library_capability"] == "request-only"
     assert "settings" not in response.json
+
+
+@pytest.mark.parametrize(
+    ("payload", "expected_capability"),
+    [
+        ({"username": "default", "password": "password"}, "download-capable"),
+        (
+            {
+                "username": "requester",
+                "password": "password",
+                "library_capability": "request-only",
+            },
+            "request-only",
+        ),
+    ],
+)
+def test_admin_create_user_persists_library_capability(app, user_db, payload, expected_capability):
+    with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="builtin"):
+        response = _admin_client(app).post("/api/admin/users", json=payload)
+
+    assert response.status_code == 201
+    assert response.json["library_capability"] == expected_capability
+    assert (
+        user_db.get_user(user_id=response.json["id"])["library_capability"] == expected_capability
+    )
+
+
+@pytest.mark.parametrize("method", ["post", "put"])
+def test_admin_rejects_invalid_library_capability(app, user_db, method):
+    user = user_db.create_user(username="alice")
+    with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="builtin"):
+        if method == "post":
+            response = _admin_client(app).post(
+                "/api/admin/users",
+                json={
+                    "username": "invalid",
+                    "password": "password",
+                    "library_capability": "invalid",
+                },
+            )
+        else:
+            response = _admin_client(app).put(
+                f"/api/admin/users/{user['id']}",
+                json={"library_capability": "invalid"},
+            )
+
+    assert response.status_code == 400
+    assert response.json == {"error": "Invalid library_capability"}
 
 
 def test_admin_can_edit_email_for_externally_authenticated_user(app, user_db):

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 import type { AdminUser } from '../../../services/api';
+import type { LibraryCapability } from '../../../types';
 import type {
   PasswordFieldConfig,
   SelectFieldConfig,
@@ -35,6 +36,9 @@ const LIBRARY_CAPABILITY_OPTIONS: SelectOption[] = [
   { value: 'download-capable', label: 'Download capable' },
   { value: 'request-only', label: 'Request only' },
 ];
+
+const normalizeLibraryCapability = (value: string): LibraryCapability =>
+  value === 'request-only' ? 'request-only' : 'download-capable';
 
 const createTextField = (
   key: string,
@@ -365,6 +369,13 @@ export const UserCreateCard = ({
 }: UserCreateCardProps) => {
   const usernameField = createTextField('username', 'Username', form.username, 'username', true);
   const roleField = createRoleField(form.role, CREATE_ROLE_OPTIONS);
+  const capabilityField: SelectFieldConfig = {
+    type: 'SelectField',
+    key: 'library_capability',
+    label: 'Library Capability',
+    value: form.library_capability,
+    options: LIBRARY_CAPABILITY_OPTIONS,
+  };
   const displayNameField = createTextField(
     'display_name',
     'Display Name',
@@ -405,6 +416,12 @@ export const UserCreateCard = ({
           onChange({ ...form, username: value }),
         )}
         {renderSelectField(roleField, form.role, (value) => onChange({ ...form, role: value }))}
+        {renderSelectField(capabilityField, form.library_capability, (value) =>
+          onChange({
+            ...form,
+            library_capability: normalizeLibraryCapability(value),
+          }),
+        )}
         {renderTextField(displayNameField, form.display_name, (value) =>
           onChange({ ...form, display_name: value }),
         )}
@@ -537,7 +554,7 @@ const UserEditFields = ({
         {renderSelectField(capabilityField, user.library_capability, (value) =>
           onUserChange({
             ...user,
-            library_capability: value === 'request-only' ? 'request-only' : 'download-capable',
+            library_capability: normalizeLibraryCapability(value),
           }),
         )}
         <FieldWrapper field={activeField}>

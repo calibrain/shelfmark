@@ -11,6 +11,7 @@ import type {
   RequestRecord,
   MetadataProvidersResponse,
   MetadataSearchConfig,
+  LibraryCapability,
 } from '../types';
 import type {
   ActionResult,
@@ -863,7 +864,7 @@ export interface AdminUser {
   is_active: boolean;
   oidc_subject: string | null;
   created_at: string;
-  library_capability: 'download-capable' | 'request-only';
+  library_capability: LibraryCapability;
   edit_capabilities: AdminUserEditCapabilities;
 }
 
@@ -891,6 +892,7 @@ export const createAdminUser = async (data: {
   email?: string;
   display_name?: string;
   role?: string;
+  library_capability?: AdminUser['library_capability'];
 }): Promise<AdminUser> => {
   return fetchJSON<AdminUser>(`${API_BASE}/admin/users`, {
     method: 'POST',

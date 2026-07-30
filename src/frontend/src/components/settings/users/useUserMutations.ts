@@ -51,6 +51,7 @@ export const useUserMutations = ({
         email: createForm.email || undefined,
         display_name: createForm.display_name || undefined,
         role: createForm.role || undefined,
+        library_capability: createForm.library_capability,
       });
       resetCreateForm();
       await fetchUsers({ force: true });
