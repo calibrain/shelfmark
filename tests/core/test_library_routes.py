@@ -259,6 +259,28 @@ def test_list_books_ignores_all_scope_for_non_admin(app, user_db):
     assert bob_book_id not in [book["book_id"] for book in response.json["books"]]
 
 
+def test_list_books_no_auth_mode_keeps_instance_wide_view(
+    app, user_db, library_service, download_history_service
+):
+    alice = user_db.create_user(username="alice")
+    book_id = client_post_book(app, alice, "hardcover", "alice-1")
+    no_auth_app = Flask(__name__)
+    no_auth_app.config["SECRET_KEY"] = "test-secret"
+    no_auth_app.config["TESTING"] = True
+    register_library_routes(
+        no_auth_app,
+        user_db,
+        library_service=library_service,
+        download_history_service=download_history_service,
+        resolve_auth_mode=_no_auth_mode,
+        resolve_metadata_book=lambda _provider, _provider_book_id: None,
+    )
+
+    response = no_auth_app.test_client().get("/api/library/books")
+
+    assert [book["book_id"] for book in response.json["books"]] == [book_id]
+
+
 def test_book_detail_403_for_non_member(app, user_db):
     alice = user_db.create_user(username="alice")
     bob = user_db.create_user(username="bob")

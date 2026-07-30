@@ -341,7 +341,9 @@ def register_library_routes(
             return gate
 
         query = request.args.get("q", type=str) or None
-        include_all_libraries = actor.is_admin and request.args.get("scope") == "all"
+        include_all_libraries = actor.is_admin and (
+            actor.owner_scope is None or request.args.get("scope") == "all"
+        )
         try:
             books = library_service.list_library_books(
                 user_id=actor.owner_scope,
