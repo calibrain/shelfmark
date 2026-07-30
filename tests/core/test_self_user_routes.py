@@ -106,6 +106,23 @@ def test_self_settings_validates_notification_shape(app, user_db):
     assert response.json["error"] == "notification_transport must be 'apprise' or null"
 
 
+def test_self_settings_accepts_email_notification_payload_from_ui(app, user_db):
+    user = user_db.create_user(username="alice", email="alice@example.com")
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
+        response = _client(app, user).put(
+            "/api/users/me",
+            json={
+                "notifications_enabled": True,
+                "notification_transport": None,
+                "notification_destination": None,
+            },
+        )
+    assert response.status_code == 200
+    assert response.json["notifications_enabled"] is True
+    assert response.json["notification_transport"] is None
+    assert response.json["notification_destination"] is None
+
+
 def test_enabled_notifications_require_valid_destination_and_transport_switch_clears_old_value(
     app, user_db
 ):
