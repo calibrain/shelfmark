@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useDependencyEffect } from '../hooks/useMountEffect';
@@ -54,29 +54,34 @@ const FormatBadges = ({ formats }: { formats: LibraryBookSummary['formats_on_dis
   );
 };
 
-export const LibraryPage = () => {
+export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
   const [books, setBooks] = useState<LibraryBookSummary[]>([]);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FileFilter>('all');
+  const [scope, setScope] = useState<'mine' | 'all'>('mine');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const latestRequest = useRef(0);
 
   const load = async () => {
+    const requestId = ++latestRequest.current;
     setLoading(true);
     setError(null);
     try {
-      const response = await getLibraryBooks();
-      setBooks(response.books);
+      const response = await getLibraryBooks(scope);
+      if (requestId === latestRequest.current) setBooks(response.books);
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : 'Failed to load your library');
+      if (requestId === latestRequest.current) {
+        setError(caught instanceof Error ? caught.message : 'Failed to load your library');
+      }
     } finally {
-      setLoading(false);
+      if (requestId === latestRequest.current) setLoading(false);
     }
   };
 
   useDependencyEffect(() => {
     void load();
-  }, []);
+  }, [scope]);
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleBooks = books.filter((book) => {
@@ -94,13 +99,40 @@ export const LibraryPage = () => {
           <p className="text-xs font-semibold tracking-widest text-violet-600 uppercase dark:text-violet-300">
             Library
           </p>
-          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-(--text)">Your books</h1>
+          <h1 className="mt-1 text-3xl font-semibold tracking-tight text-(--text)">
+            {scope === 'all' ? "All users' books" : 'Your books'}
+          </h1>
           <p className="mt-2 text-sm opacity-65">
-            {books.length} saved {books.length === 1 ? 'work' : 'works'}
+            {books.length} {scope === 'all' ? 'total' : 'saved'}{' '}
+            {books.length === 1 ? 'work' : 'works'}
             {missingFiles ? `, ${missingFiles} waiting to be found.` : '.'}
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:items-end">
+          {isAdmin && (
+            <div className="flex rounded-md border border-(--border-muted) p-0.5 text-xs">
+              <button
+                type="button"
+                aria-pressed={scope === 'mine'}
+                className={`rounded px-2.5 py-1.5 ${
+                  scope === 'mine' ? 'bg-(--hover-surface) font-semibold' : 'opacity-65'
+                }`}
+                onClick={() => setScope('mine')}
+              >
+                Your books
+              </button>
+              <button
+                type="button"
+                aria-pressed={scope === 'all'}
+                className={`rounded px-2.5 py-1.5 ${
+                  scope === 'all' ? 'bg-(--hover-surface) font-semibold' : 'opacity-65'
+                }`}
+                onClick={() => setScope('all')}
+              >
+                Show all users' books
+              </button>
+            </div>
+          )}
           <input
             aria-label="Search library"
             value={query}
@@ -147,9 +179,13 @@ export const LibraryPage = () => {
       )}
       {!loading && !error && !books.length && (
         <div className="rounded-xl border border-dashed border-(--border-muted) p-8 text-center">
-          <h2 className="font-semibold text-(--text)">Your library is empty</h2>
+          <h2 className="font-semibold text-(--text)">
+            {scope === 'all' ? "No users' books yet" : 'Your library is empty'}
+          </h2>
           <p className="mt-2 text-sm opacity-65">
-            Find a book in search, then add it to your library.
+            {scope === 'all'
+              ? 'Books added by any user will appear here.'
+              : 'Find a book in search, then add it to your library.'}
           </p>
         </div>
       )}
