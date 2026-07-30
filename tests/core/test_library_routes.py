@@ -306,9 +306,17 @@ def test_admin_add_and_remove_remain_scoped_to_own_library(app, user_db):
     alice = user_db.create_user(username="alice")
     admin = user_db.create_user(username="admin", role="admin")
     alice_book_id = client_post_book(app, alice, "hardcover", "alice-1")
-    admin_book_id = client_post_book(app, admin, "hardcover", "admin-1")
     admin_client = _authed_client(app, admin, is_admin=True)
+    add_response = admin_client.post(
+        "/api/library/books",
+        json={"metadata_provider": "hardcover", "provider_book_id": "admin-1"},
+    )
+    admin_book_id = int(add_response.json["book_id"])
 
+    assert add_response.status_code == 200
+    assert [book["book_id"] for book in admin_client.get("/api/library/books").json["books"]] == [
+        admin_book_id
+    ]
     assert admin_client.delete(f"/api/library/books/{alice_book_id}").status_code == 404
     assert admin_client.delete(f"/api/library/books/{admin_book_id}").status_code == 200
 

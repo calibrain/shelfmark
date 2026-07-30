@@ -7,7 +7,7 @@ describe('library scope requests', () => {
     vi.unstubAllGlobals();
   });
 
-  it('requests the instance-wide library only when an administrator selects all books', async () => {
+  it('serializes an all-library scope request', async () => {
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ books: [] })));
     vi.stubGlobal('fetch', fetch);
 
