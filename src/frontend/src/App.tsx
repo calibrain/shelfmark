@@ -407,7 +407,7 @@ function App() {
         <main className="relative mx-auto w-full max-w-7xl px-4 py-3 sm:px-6 sm:py-6 lg:px-8">
           <Routes>
             <Route path="/" element={<Navigate to="/library" replace />} />
-            <Route path="/library" element={<LibraryPage />} />
+            <Route path="/library" element={<LibraryPage isAdmin={isAdmin} />} />
             <Route path="/search" element={<SearchPage />} />
             <Route
               path="/settings"

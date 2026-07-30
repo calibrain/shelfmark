@@ -241,7 +241,7 @@ class LibraryService:
         is_admin: bool,
         query: str | None = None,
     ) -> list[dict[str, Any]]:
-        """Return library books for a user, or all users when admin.
+        """Return library books for a user, or all users when explicitly authorized.
 
         Per #04 sub-decision 9: no pagination for MVP. Per sub-decision 10:
         ``?q=`` is a case-insensitive LIKE on title/author. Ordered by

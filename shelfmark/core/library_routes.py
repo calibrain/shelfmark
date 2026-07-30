@@ -8,7 +8,7 @@ Flask Blueprint — none exists in the codebase today.
 Ownership rules enforce #04 sub-decisions:
 - File serving gates on ``user_library`` membership (NOT ``download_history.user_id``)
   (sub-decision 7) — closes the existing cross-user byte-exposure leak.
-- Admin scoping: instance-wide read, scoped-to-self mutations (sub-decision 2).
+- Admin scoping: self-scoped by default, with an explicit instance-wide read.
 
 """
 
@@ -45,7 +45,7 @@ _LIBRARY_PROVIDER_ERRORS = (OSError, RuntimeError, TypeError, ValueError, sqlite
 class _ActorContext(NamedTuple):
     db_user_id: int
     is_admin: bool
-    owner_scope: int | None  # None → admin sees all
+    owner_scope: int | None
 
 
 def _book_attachment_name(*, book: dict[str, Any] | None, book_id: int, download_path: str) -> str:
@@ -113,11 +113,10 @@ def _resolve_library_actor(
         return None, (jsonify({"error": "Forbidden"}), 403)
 
     is_admin = bool(session.get("is_admin"))
-    owner_scope = None if is_admin else db_user_id
     return _ActorContext(
         db_user_id=db_user_id,
         is_admin=is_admin,
-        owner_scope=owner_scope,
+        owner_scope=db_user_id,
     ), None
 
 
@@ -342,10 +341,13 @@ def register_library_routes(
             return gate
 
         query = request.args.get("q", type=str) or None
+        include_all_libraries = actor.is_admin and (
+            actor.owner_scope is None or request.args.get("scope") == "all"
+        )
         try:
             books = library_service.list_library_books(
                 user_id=actor.owner_scope,
-                is_admin=actor.is_admin,
+                is_admin=include_all_libraries,
                 query=query,
             )
         except _OPERATIONAL_ERRORS as exc:

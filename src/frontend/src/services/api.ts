@@ -485,8 +485,11 @@ export const getLibraryBook = async (bookId: number): Promise<BookDetailResponse
   return fetchJSON<BookDetailResponse>(`${API.libraryBooks}/${encodeURIComponent(String(bookId))}`);
 };
 
-export const getLibraryBooks = async (): Promise<LibraryBooksResponse> => {
-  return fetchJSON<LibraryBooksResponse>(API.libraryBooks);
+export const getLibraryBooks = async (
+  scope: 'mine' | 'all' = 'mine',
+): Promise<LibraryBooksResponse> => {
+  const url = scope === 'all' ? `${API.libraryBooks}?scope=all` : API.libraryBooks;
+  return fetchJSON<LibraryBooksResponse>(url);
 };
 
 export const unlinkLibraryRelease = async (bookId: number, historyId: number): Promise<void> => {
