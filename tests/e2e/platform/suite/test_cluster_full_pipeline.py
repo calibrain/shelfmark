@@ -74,7 +74,7 @@ def test_real_chrome_solves_cloudflare_end_to_end(client) -> None:
         pytest.skip("E2E_BOOKS_DIR not visible to the test runner")
     before = _book_files(books)
 
-    resp = client.direct_search(BOOK)
+    resp = client.direct_search(book_id=os.environ["E2E_MOBY_DICK_BOOK_ID"])
     assert resp.status_code == 200, f"AA search failed: {resp.status_code} {resp.text[:300]}"
     releases = client.releases_from(resp)
     assert releases, "AA search returned no releases for Moby Dick"

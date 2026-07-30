@@ -85,8 +85,8 @@ if [[ "$HEALTHY" != "1" && "$PROFILE" != "tor" ]]; then
   exit 1
 fi
 
-# The direct-source contract needs one canonical Library Book without querying
-# an external metadata provider. Its ID is handed to pytest after the app owns
+# The release-search suite needs canonical Library Books without querying an
+# external metadata provider. Their IDs are handed to pytest after the app owns
 # and initializes the database.
 E2E_DIRECT_SOURCE_BOOK_ID="$("${COMPOSE[@]}" exec -T shelfmark /app/.venv/bin/python -c '
 import sqlite3
@@ -98,11 +98,22 @@ connection.execute(
 connection.commit()
 print(connection.execute("SELECT id FROM books WHERE metadata_provider = ? AND provider_book_id = ?", ("e2e", "direct-source")).fetchone()[0])
 ')"
+E2E_MOBY_DICK_BOOK_ID="$("${COMPOSE[@]}" exec -T shelfmark /app/.venv/bin/python -c '
+import sqlite3
+connection = sqlite3.connect("/config/users.db")
+connection.execute(
+    "INSERT OR IGNORE INTO books (metadata_provider, provider_book_id, title, author) VALUES (?, ?, ?, ?)",
+    ("e2e", "moby-dick", "Moby Dick", "Herman Melville"),
+)
+connection.commit()
+print(connection.execute("SELECT id FROM books WHERE metadata_provider = ? AND provider_book_id = ?", ("e2e", "moby-dick")).fetchone()[0])
+')"
 
 # Hand context to the pytest suite.
 export E2E_PROFILE="$PROFILE"
 export E2E_BASE_URL="http://127.0.0.1:$E2E_HOST_PORT"
 export E2E_DIRECT_SOURCE_BOOK_ID
+export E2E_MOBY_DICK_BOOK_ID
 export E2E_BOOKS_DIR="$STATE_DIR/books"
 export E2E_TMP_DIR="$STATE_DIR/tmp"
 export E2E_SHELFMARK_LOG="$LOG_FILE"
