@@ -19,7 +19,7 @@ export const SettingsPage = ({
   onRefreshAuth,
 }: SettingsPageProps) => {
   const [searchParams, setSearchParams] = useSearchParams();
-  const section = resolveSettingsSection(searchParams.get('section'), isAdmin);
+  const section = resolveSettingsSection(searchParams.get('section'), isAdmin, authMode);
   const selectSection = (nextSection: 'personal' | 'admin') =>
     setSearchParams(new URLSearchParams(getSettingsPath(nextSection).split('?')[1]));
 
@@ -27,7 +27,7 @@ export const SettingsPage = ({
     <section className="py-4 sm:py-6">
       <header className="mb-6 border-b border-(--border-muted) pb-4">
         <h1 className="text-2xl font-semibold">Settings</h1>
-        {isAdmin && (
+        {isAdmin && authMode !== 'none' && (
           <nav className="mt-4 flex gap-2" aria-label="Settings section">
             {(['personal', 'admin'] as const).map((candidate) => (
               <button
