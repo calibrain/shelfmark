@@ -1,2 +1,2 @@
-export { SelfSettingsPage } from './SelfSettingsModal';
+export { SelfSettingsPage } from './SelfSettingsPage';
 export { AdminSettingsPage } from './AdminSettingsPage';

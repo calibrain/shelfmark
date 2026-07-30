@@ -20,7 +20,7 @@ const stringValue = (value: unknown, fallback = ''): string =>
 const stringArrayValue = (value: unknown): string[] =>
   Array.isArray(value) && value.every((entry) => typeof entry === 'string') ? value : [];
 
-const SettingsTabSync = ({
+const SecurityAccessCheck = ({
   selectedTab,
   setSecurityAccessError,
 }: {
@@ -166,7 +166,11 @@ export const AdminSettingsPage = ({
   if (error) return <p className="py-12 text-center text-sm text-red-600">{error}</p>;
 
   const tabSync = selectedTab ? (
-    <SettingsTabSync selectedTab={selectedTab} setSecurityAccessError={setSecurityAccessError} />
+    <SecurityAccessCheck
+      key={selectedTab}
+      selectedTab={selectedTab}
+      setSecurityAccessError={setSecurityAccessError}
+    />
   ) : null;
   if (isMobile) {
     return (

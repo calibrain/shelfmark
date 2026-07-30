@@ -14,7 +14,7 @@ describe('settings routes', () => {
     expect(resolveSettingsSection(null, true)).toBe('personal');
   });
 
-  it('uses stable paths for sidebar, account-menu, and Kindle entry points', () => {
+  it('uses stable paths for settings entry points', () => {
     expect(getSettingsPath()).toBe('/settings');
     expect(getSettingsPath('personal')).toBe('/settings?section=personal');
     expect(getSettingsPath('admin')).toBe('/settings?section=admin');
