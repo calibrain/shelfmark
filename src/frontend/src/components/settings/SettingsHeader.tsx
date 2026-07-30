@@ -2,7 +2,7 @@ interface SettingsHeaderProps {
   title: string;
   showBack?: boolean;
   onBack?: () => void;
-  onClose: () => void;
+  onClose?: () => void;
 }
 
 export const SettingsHeader = ({
@@ -35,22 +35,24 @@ export const SettingsHeader = ({
       </button>
     )}
     <h2 className="flex-1 text-lg font-semibold">{title}</h2>
-    <button
-      type="button"
-      onClick={onClose}
-      className="hover-action rounded-full p-2 transition-colors"
-      aria-label="Close settings"
-    >
-      <svg
-        className="h-5 w-5"
-        xmlns="http://www.w3.org/2000/svg"
-        fill="none"
-        viewBox="0 0 24 24"
-        strokeWidth={1.5}
-        stroke="currentColor"
+    {onClose && (
+      <button
+        type="button"
+        onClick={onClose}
+        className="hover-action rounded-full p-2 transition-colors"
+        aria-label="Close settings"
       >
-        <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
-      </svg>
-    </button>
+        <svg
+          className="h-5 w-5"
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+          strokeWidth={1.5}
+          stroke="currentColor"
+        >
+          <path strokeLinecap="round" strokeLinejoin="round" d="M6 18L18 6M6 6l12 12" />
+        </svg>
+      </button>
+    )}
   </header>
 );

@@ -1,2 +1,2 @@
-export { SettingsModal } from './SettingsModal';
-export { SelfSettingsModal } from './SelfSettingsModal';
+export { SelfSettingsPage } from './SelfSettingsPage';
+export { AdminSettingsPage } from './AdminSettingsPage';

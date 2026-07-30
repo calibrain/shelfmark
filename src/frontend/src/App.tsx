@@ -1,5 +1,5 @@
 import { useCallback, useMemo, useRef, useState } from 'react';
-import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
+import { Navigate, Route, Routes, useLocation, useNavigate } from 'react-router-dom';
 
 import { ActivitySidebar } from './components/activity';
 import { ConfigSetupBanner } from './components/ConfigSetupBanner';
@@ -7,7 +7,6 @@ import { Footer } from './components/Footer';
 import { Header } from './components/Header';
 import { OnboardingModal } from './components/OnboardingModal';
 import { ReleaseModal } from './components/ReleaseModal';
-import { SelfSettingsModal, SettingsModal } from './components/settings';
 import { ToastContainer } from './components/ToastContainer';
 import { useSocket } from './contexts/SocketContext';
 import { DEFAULT_LANGUAGES, DEFAULT_SUPPORTED_FORMATS } from './data/languages';
@@ -21,14 +20,13 @@ import { useMediaQuery } from './hooks/useMediaQuery';
 import { useDependencyEffect } from './hooks/useMountEffect';
 import { useRealtimeStatus } from './hooks/useRealtimeStatus';
 import { useRequests } from './hooks/useRequests';
-import { primeSettingsCache } from './hooks/useSettings';
 import { useToast } from './hooks/useToast';
-import { primeUsersCache } from './hooks/useUsersFetch';
 import { BookDetailPage } from './library/BookDetailPage';
 import { LibraryNavigation } from './library/LibraryNavigation';
 import { LibraryPage } from './library/LibraryPage';
 import { SearchPage } from './library/SearchPage';
 import { LoginPage } from './pages/LoginPage';
+import { SettingsPage } from './pages/SettingsPage';
 import {
   cancelDownload,
   downloadRelease,
@@ -41,6 +39,7 @@ import { buildLoginRedirectPath, getReturnToFromSearch } from './utils/authRedir
 import { canUseManualReleaseQuery, isRequestOnlyLibraryUser } from './utils/releaseCapabilities';
 import { buildReleaseDataFromMetadataRelease } from './utils/releasePayload';
 import { bookFromRequestRecord } from './utils/requestFulfil';
+import { getSettingsPath } from './utils/settingsRoute';
 
 // oxlint-disable-next-line import/no-unassigned-import
 import './styles.css';
@@ -61,6 +60,7 @@ const getErrorMessage = (error: unknown, fallback: string): string =>
 
 function App() {
   const location = useLocation();
+  const navigate = useNavigate();
   const { toasts, showToast, removeToast } = useToast();
   const { socket } = useSocket();
   const { status: currentStatus, forceRefresh: fetchStatus } = useRealtimeStatus({
@@ -119,9 +119,6 @@ function App() {
   const [libraryNavigationOpen, setLibraryNavigationOpen] = useState(false);
   const [sidebarPinnedOpen, setSidebarPinnedOpen] = useState(getInitialPinnedPreference);
   const [headerHeight, setHeaderHeight] = useState(0);
-  const [settingsOpen, setSettingsOpen] = useState(false);
-  const [selfSettingsOpen, setSelfSettingsOpen] = useState(false);
-  const [configBannerOpen, setConfigBannerOpen] = useState(false);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const headerObserverRef = useRef<ResizeObserver | null>(null);
   const isDesktopViewport = useMediaQuery('(min-width: 1024px)');
@@ -207,20 +204,12 @@ function App() {
   }, []);
 
   const handleSettingsClick = useCallback(() => {
-    if (!config?.settings_enabled) {
-      setConfigBannerOpen(true);
-    } else if (isAdmin) {
-      void primeUsersCache();
-      void primeSettingsCache();
-      setSettingsOpen(true);
-    } else {
-      setSelfSettingsOpen(true);
-    }
-  }, [config?.settings_enabled, isAdmin]);
+    void navigate(getSettingsPath(isAdmin ? 'admin' : 'personal'));
+  }, [isAdmin, navigate]);
 
   const handlePersonalSettingsClick = useCallback(() => {
-    setSelfSettingsOpen(true);
-  }, []);
+    void navigate(getSettingsPath('personal'));
+  }, [navigate]);
 
   const handleReleaseDownload = useCallback(
     async (book: Book, release: Release, releaseContentType: ContentType) => {
@@ -399,10 +388,6 @@ function App() {
       <LibraryNavigation
         isOpen={libraryNavigationOpen}
         onClose={() => setLibraryNavigationOpen(false)}
-        onSettings={() => {
-          setLibraryNavigationOpen(false);
-          handleSettingsClick();
-        }}
       />
       <div
         className={`library-app-shell flex flex-col${usePinnedMainScrollContainer ? ' min-h-0 overflow-y-auto overscroll-y-contain' : ' flex-1'}`}
@@ -425,6 +410,18 @@ function App() {
             <Route path="/library" element={<LibraryPage />} />
             <Route path="/search" element={<SearchPage />} />
             <Route
+              path="/settings"
+              element={
+                <SettingsPage
+                  isAdmin={isAdmin}
+                  authMode={authMode}
+                  onShowToast={showToast}
+                  onSettingsSaved={() => void loadConfig()}
+                  onRefreshAuth={refreshAuth}
+                />
+              }
+            />
+            <Route
               path="/library/:bookId"
               element={
                 <BookDetailPage
@@ -432,7 +429,7 @@ function App() {
                   canFindReleases={isAdmin || libraryCapability === 'download-capable'}
                   isRequestOnly={isRequestOnlyLibraryUser(isAdmin, libraryCapability)}
                   onFindReleases={setReleaseBook}
-                  onOpenSettings={handleSettingsClick}
+                  onOpenSettings={handlePersonalSettingsClick}
                   onShowToast={showToast}
                 />
               }
@@ -498,29 +495,7 @@ function App() {
         onPinnedOpenChange={setSidebarPinnedOpen}
         pinnedTopOffset={headerHeight}
       />
-      <SettingsModal
-        isOpen={settingsOpen}
-        authMode={authMode}
-        onClose={() => setSettingsOpen(false)}
-        onShowToast={showToast}
-        onSettingsSaved={() => void loadConfig()}
-        onRefreshAuth={refreshAuth}
-      />
-      <SelfSettingsModal
-        isOpen={selfSettingsOpen}
-        onClose={() => setSelfSettingsOpen(false)}
-        onShowToast={showToast}
-        onSettingsSaved={() => void loadConfig()}
-      />
       {config && <ConfigSetupBanner settingsEnabled={config.settings_enabled} />}
-      <ConfigSetupBanner
-        isOpen={configBannerOpen}
-        onClose={() => setConfigBannerOpen(false)}
-        onContinue={() => {
-          setConfigBannerOpen(false);
-          handleSettingsClick();
-        }}
-      />
       <OnboardingModal
         isOpen={onboardingOpen}
         onClose={() => setOnboardingOpen(false)}
