@@ -56,7 +56,6 @@ class TestConfigEndpoint:
         assert isinstance(data["book_languages"], list)
         assert isinstance(data["settings_enabled"], bool)
         assert isinstance(data["onboarding_complete"], bool)
-        assert isinstance(data["search_mode"], str)
         assert isinstance(data["default_release_source"], str)
 
     def test_config_returns_supported_formats(self, protected_api_client: APIClient):

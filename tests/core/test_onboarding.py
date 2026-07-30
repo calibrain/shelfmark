@@ -90,7 +90,6 @@ def test_save_onboarding_settings_enables_selected_release_sources(monkeypatch):
 
     result = onboarding.save_onboarding_settings(
         {
-            "SEARCH_MODE": "universal",
             "METADATA_PROVIDER": "hardcover",
             "HARDCOVER_API_KEY": "hardcover-api-key",
             onboarding.ONBOARDING_RELEASE_SOURCES_KEY: [
@@ -135,7 +134,7 @@ def test_save_onboarding_settings_enables_selected_release_sources(monkeypatch):
     assert any(
         payload.get("DEFAULT_RELEASE_SOURCE") == "direct_download"
         and payload.get("DEFAULT_RELEASE_SOURCE_AUDIOBOOK") == "audiobookbay"
-        for payload in grouped_calls["search_mode"]
+        for payload in grouped_calls["discovery"]
     )
     assert not any(
         onboarding.ONBOARDING_RELEASE_SOURCES_KEY in payload for _, payload in save_calls
@@ -158,7 +157,7 @@ def test_save_onboarding_settings_skips_hidden_fields(monkeypatch):
 
     result = onboarding.save_onboarding_settings(
         {
-            "SEARCH_MODE": "direct",
+            onboarding.ONBOARDING_RELEASE_SOURCES_KEY: ["direct_download"],
             "USE_CF_BYPASS": True,
             "USING_EXTERNAL_BYPASSER": False,
             "EXT_BYPASSER_URL": "http://should-not-save.example",

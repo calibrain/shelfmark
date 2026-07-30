@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from shelfmark.core.models import DownloadTask, SearchMode
+from shelfmark.core.models import DownloadTask
 
 # =============================================================================
 # Fixtures
@@ -32,7 +32,6 @@ def sample_task():
         title="The Way of Kings",
         author="Brandon Sanderson",
         format="epub",
-        search_mode=SearchMode.UNIVERSAL,
     )
 
 
@@ -45,7 +44,6 @@ def sample_direct_task():
         title="The Way of Kings",
         author="Brandon Sanderson",
         format="epub",
-        search_mode=SearchMode.DIRECT,
     )
 
 
@@ -939,69 +937,6 @@ class TestCustomScriptExecution:
         assert payload["paths"]["target"] == str(result_path)
         assert payload["paths"]["final_paths"] == [str(result_path)]
 
-    def test_runs_custom_script_for_booklore_output_with_json_payload(
-        self, temp_dirs, sample_direct_task
-    ):
-        """Runs the custom script hook after a successful Booklore upload."""
-        from shelfmark.download.postprocess.router import (
-            post_process_download as _post_process_download,
-        )
-
-        temp_file = temp_dirs["staging"] / "book.epub"
-        temp_file.write_bytes(b"content")
-
-        sample_direct_task.task_id = "direct-booklore"
-
-        status_cb = MagicMock()
-        cancel_flag = Event()
-
-        with (
-            patch("shelfmark.core.config.config") as mock_config,
-            patch("shelfmark.config.env.TMP_DIR", temp_dirs["staging"]),
-            patch("shelfmark.download.outputs.booklore.booklore_login", return_value="token"),
-            patch("shelfmark.download.outputs.booklore.booklore_upload_file"),
-            patch("shelfmark.download.outputs.booklore.booklore_refresh_library"),
-            patch("subprocess.run") as mock_run,
-        ):
-            mock_config.USE_BOOK_TITLE = False
-            mock_config.CUSTOM_SCRIPT = "/path/to/script.sh"
-            _sync_core_config(mock_config, mock_config)
-
-            mock_config.get = MagicMock(
-                side_effect=lambda key, default=None, **_kwargs: {
-                    "BOOKS_OUTPUT_MODE": "booklore",
-                    "BOOKLORE_HOST": "http://booklore:6060",
-                    "BOOKLORE_USERNAME": "user",
-                    "BOOKLORE_PASSWORD": "pass",
-                    "BOOKLORE_LIBRARY_ID": 1,
-                    "BOOKLORE_PATH_ID": 2,
-                    "CUSTOM_SCRIPT_JSON_PAYLOAD": True,
-                }.get(key, default)
-            )
-            _sync_core_config(mock_config, mock_config)
-
-            mock_run.return_value = MagicMock(stdout="", returncode=0)
-
-            result = _post_process_download(
-                temp_file=temp_file,
-                task=sample_direct_task,
-                cancel_flag=cancel_flag,
-                status_callback=status_cb,
-            )
-
-        assert result == "booklore://direct-booklore"
-
-        payload_json = mock_run.call_args.kwargs.get("input")
-        assert payload_json
-        assert "stdin" not in mock_run.call_args.kwargs
-        payload = json.loads(payload_json)
-        assert payload["version"] == 1
-        assert payload["phase"] == "post_upload"
-        assert payload["output"]["mode"] == "booklore"
-        assert payload["output"]["details"]["booklore"]["library_id"] == 1
-        assert payload["output"]["details"]["booklore"]["path_id"] == 2
-        assert payload["paths"]["target"].endswith("/book.epub")
-
     def test_runs_custom_script_with_relative_path_mode(self, temp_dirs, sample_direct_task):
         """Runs custom script with a destination-relative path when configured."""
         from shelfmark.download.postprocess.router import (
@@ -1062,7 +997,6 @@ class TestCustomScriptExecution:
             title="My Book",
             author="An Author",
             format="mp3",
-            search_mode=SearchMode.DIRECT,
             content_type="audiobook",
         )
 

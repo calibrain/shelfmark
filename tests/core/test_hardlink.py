@@ -467,7 +467,7 @@ class TestHardlinkWithLibraryMode:
     @pytest.fixture
     def sample_task(self):
         """Create a sample DownloadTask for testing."""
-        from shelfmark.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask
 
         return DownloadTask(
             task_id="test123",
@@ -475,7 +475,6 @@ class TestHardlinkWithLibraryMode:
             title="The Way of Kings",
             author="Brandon Sanderson",
             format="epub",
-            search_mode=SearchMode.UNIVERSAL,
         )
 
     def test_transfer_file_hardlink(self, tmp_path, sample_task):
@@ -689,7 +688,7 @@ class TestHardlinkDecisionLogic:
 
     @pytest.fixture
     def sample_task(self):
-        from shelfmark.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask
 
         return DownloadTask(
             task_id="test123",
@@ -697,7 +696,6 @@ class TestHardlinkDecisionLogic:
             title="Test Book",
             author="Test Author",
             format="epub",
-            search_mode=SearchMode.UNIVERSAL,
         )
 
     def test_hardlink_enabled_same_filesystem(self, tmp_path, sample_task):
@@ -852,7 +850,7 @@ class TestTorrentOptimization:
 
     @pytest.fixture
     def sample_task(self):
-        from shelfmark.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask
 
         return DownloadTask(
             task_id="test123",
@@ -860,7 +858,6 @@ class TestTorrentOptimization:
             title="Test Book",
             author="Test Author",
             format="epub",
-            search_mode=SearchMode.UNIVERSAL,
         )
 
     def testis_torrent_source_true(self, tmp_path, sample_task):
@@ -1038,7 +1035,7 @@ class TestTorrentSourceCleanupProtection:
         Library mode hardlinks to /library/Brandon Sanderson/The Way of Kings.epub
         Original MUST remain for seeding.
         """
-        from shelfmark.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask
         from shelfmark.download.postprocess.router import (
             post_process_download as _post_process_download,
         )
@@ -1059,7 +1056,6 @@ class TestTorrentSourceCleanupProtection:
             title="The Way of Kings",
             author="Brandon Sanderson",
             format="epub",
-            search_mode=SearchMode.UNIVERSAL,
             original_download_path=str(torrent_file),  # Handler sets this for torrents
         )
 
@@ -1088,7 +1084,7 @@ class TestTorrentSourceCleanupProtection:
 
         Same flow as epub but with .mobi format.
         """
-        from shelfmark.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask
         from shelfmark.download.postprocess.router import (
             post_process_download as _post_process_download,
         )
@@ -1107,7 +1103,6 @@ class TestTorrentSourceCleanupProtection:
             title="Dune",
             author="Frank Herbert",
             format="mobi",
-            search_mode=SearchMode.UNIVERSAL,
             original_download_path=str(torrent_file),
         )
 
@@ -1134,7 +1129,7 @@ class TestTorrentSourceCleanupProtection:
         Library mode hardlinks all mp3s to /library/Andy Weir/Project Hail Mary - 01.mp3, etc.
         ALL original files must remain for seeding.
         """
-        from shelfmark.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask
         from shelfmark.download.postprocess.router import (
             post_process_download as _post_process_download,
         )
@@ -1165,7 +1160,6 @@ class TestTorrentSourceCleanupProtection:
             author="Andy Weir",
             format="mp3",
             content_type="audiobook",
-            search_mode=SearchMode.UNIVERSAL,
             original_download_path=str(torrent_dir),
         )
 
@@ -1194,7 +1188,7 @@ class TestTorrentSourceCleanupProtection:
 
         Simulates: User downloads comic via torrent.
         """
-        from shelfmark.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask
         from shelfmark.download.postprocess.router import (
             post_process_download as _post_process_download,
         )
@@ -1214,7 +1208,6 @@ class TestTorrentSourceCleanupProtection:
             author="DC Comics",
             format="cbz",
             content_type="comic_book",
-            search_mode=SearchMode.UNIVERSAL,
             original_download_path=str(torrent_file),
         )
 
@@ -1236,7 +1229,7 @@ class TestTorrentSourceCleanupProtection:
         For external usenet downloads, Shelfmark treats the client path as read-only and
         avoids deleting anything itself. Client-side cleanup is handled separately.
         """
-        from shelfmark.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask
         from shelfmark.download.postprocess.router import (
             post_process_download as _post_process_download,
         )
@@ -1255,7 +1248,6 @@ class TestTorrentSourceCleanupProtection:
             title="Test Book",
             author="Test Author",
             format="epub",
-            search_mode=SearchMode.UNIVERSAL,
             original_download_path=None,
         )
 
@@ -1276,7 +1268,7 @@ class TestTorrentSourceCleanupProtection:
         Simulates: User downloads directly from Anna's Archive.
         No torrent client involved, no seeding needed.
         """
-        from shelfmark.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask
         from shelfmark.download.postprocess.router import (
             post_process_download as _post_process_download,
         )
@@ -1295,7 +1287,6 @@ class TestTorrentSourceCleanupProtection:
             title="Direct Book",
             author="Direct Author",
             format="epub",
-            search_mode=SearchMode.DIRECT,
             original_download_path=None,
         )
 
@@ -1317,7 +1308,7 @@ class TestTorrentSourceCleanupProtection:
         When user disables hardlinking but downloads via torrent,
         the file must still be preserved for seeding (via copy).
         """
-        from shelfmark.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask
         from shelfmark.download.postprocess.router import (
             post_process_download as _post_process_download,
         )
@@ -1336,7 +1327,6 @@ class TestTorrentSourceCleanupProtection:
             title="Test Book",
             author="Test Author",
             format="epub",
-            search_mode=SearchMode.UNIVERSAL,
             original_download_path=str(torrent_file),
         )
 
@@ -1363,7 +1353,7 @@ class TestTorrentSourceCleanupProtection:
         When torrent is on different filesystem than library,
         hardlink fails and should fall back to copy (not move).
         """
-        from shelfmark.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask
         from shelfmark.download.postprocess.pipeline import transfer_file_to_library
 
         # Simulate by directly calling transfer_file_to_library with use_hardlink=False
@@ -1382,7 +1372,6 @@ class TestTorrentSourceCleanupProtection:
             title="Test",
             author="Author",
             format="epub",
-            search_mode=SearchMode.UNIVERSAL,
             original_download_path=str(torrent_file),
         )
 
@@ -1405,7 +1394,7 @@ class TestTorrentSourceCleanupProtection:
 
     def testis_torrent_source_detection(self, tmp_path):
         """Unit test: is_torrent_source correctly identifies torrent paths."""
-        from shelfmark.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask
         from shelfmark.download.postprocess.pipeline import is_torrent_source
 
         torrent_path = tmp_path / "downloads" / "book.epub"
@@ -1422,7 +1411,6 @@ class TestTorrentSourceCleanupProtection:
             title="Test",
             author="Author",
             format="epub",
-            search_mode=SearchMode.UNIVERSAL,
         )
 
         # No original path = not a torrent source
@@ -1438,7 +1426,7 @@ class TestTorrentSourceCleanupProtection:
     def testis_torrent_source_falls_back_to_normalized_paths(self, tmp_path, monkeypatch):
         """If resolve() fails, path comparison should still fall back safely."""
         import shelfmark.download.postprocess.transfer as transfer_module
-        from shelfmark.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask
         from shelfmark.download.postprocess.pipeline import is_torrent_source
 
         torrent_path = tmp_path / "downloads" / "book.epub"
@@ -1450,7 +1438,6 @@ class TestTorrentSourceCleanupProtection:
             title="Test",
             author="Author",
             format="epub",
-            search_mode=SearchMode.UNIVERSAL,
             original_download_path=str(torrent_path),
         )
 
@@ -1468,7 +1455,7 @@ class TestEdgeCases:
 
     def test_empty_directory_returns_none(self, tmp_path):
         """Empty source directory returns None."""
-        from shelfmark.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask
         from shelfmark.download.postprocess.pipeline import transfer_directory_to_library
 
         task = DownloadTask(
@@ -1477,7 +1464,6 @@ class TestEdgeCases:
             title="Test",
             author="Author",
             format="epub",
-            search_mode=SearchMode.UNIVERSAL,
         )
 
         library = tmp_path / "library"
@@ -1505,7 +1491,7 @@ class TestEdgeCases:
 
     def test_nonexistent_source_for_hardlink(self, tmp_path):
         """Missing source file prevents hardlink creation."""
-        from shelfmark.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask
         from shelfmark.download.postprocess.router import (
             post_process_download as _post_process_download,
         )
@@ -1516,7 +1502,6 @@ class TestEdgeCases:
             title="Test",
             author="Author",
             format="epub",
-            search_mode=SearchMode.UNIVERSAL,
             original_download_path=str(tmp_path / "nonexistent.epub"),
         )
 
@@ -1547,7 +1532,7 @@ class TestEdgeCases:
 
     def test_permission_denied_library_path(self, tmp_path):
         """Handles permission denied on library path."""
-        from shelfmark.core.models import DownloadTask, SearchMode
+        from shelfmark.core.models import DownloadTask
         from shelfmark.download.postprocess.router import (
             post_process_download as _post_process_download,
         )
@@ -1558,7 +1543,6 @@ class TestEdgeCases:
             title="Test",
             author="Author",
             format="epub",
-            search_mode=SearchMode.UNIVERSAL,
         )
 
         staged = tmp_path / "staging" / "book.epub"

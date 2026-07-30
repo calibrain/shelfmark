@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from shelfmark.core.models import DownloadTask, SearchMode
+from shelfmark.core.models import DownloadTask
 
 
 def _build_config(
@@ -76,7 +76,6 @@ def test_direct_download_rename_moves_file(tmp_path):
         title="The Way of Kings",
         author="Brandon Sanderson",
         format="epub",
-        search_mode=SearchMode.DIRECT,
     )
 
     statuses = []
@@ -124,7 +123,6 @@ def test_original_name_rename_single_file_for_direct_and_torrent(tmp_path, sourc
         title="Ignored Title",
         author="Ignored Author",
         format="epub",
-        search_mode=SearchMode.DIRECT if source_kind == "direct" else SearchMode.UNIVERSAL,
         original_download_path=str(input_path) if source_kind == "torrent" else None,
     )
 
@@ -174,7 +172,6 @@ def test_torrent_hardlink_preserves_source(tmp_path):
         title="The Way of Kings",
         author="Brandon Sanderson",
         format="epub",
-        search_mode=SearchMode.UNIVERSAL,
         original_download_path=str(original),
     )
 
@@ -217,7 +214,6 @@ def test_archive_extraction_rename_single_file_can_use_original_name(tmp_path):
         title="Ignored",
         author="Ignored",
         format="epub",
-        search_mode=SearchMode.DIRECT,
     )
 
     with (
@@ -262,7 +258,6 @@ def test_torrent_hardlink_enabled_archive_is_hardlinked_without_extraction(tmp_p
         title="Seed",
         author="Seeder",
         format="epub",
-        search_mode=SearchMode.UNIVERSAL,
         original_download_path=str(original),
     )
 
@@ -320,7 +315,6 @@ def test_multifile_rename_ignores_template_even_with_original_name(tmp_path):
         author="Ignored",
         format="mp3",
         content_type="audiobook",
-        search_mode=SearchMode.DIRECT,
     )
 
     with (
@@ -367,7 +361,6 @@ def test_torrent_hardlink_enabled_copy_fallback_does_not_extract_archives(tmp_pa
         title="Seed",
         author="Seeder",
         format="epub",
-        search_mode=SearchMode.UNIVERSAL,
         original_download_path=str(original),
     )
 
@@ -424,7 +417,6 @@ def test_torrent_hardlink_enabled_copy_fallback_directory_archive_kept_when_zip_
         title="Seed",
         author="Seeder",
         format="epub",
-        search_mode=SearchMode.UNIVERSAL,
         original_download_path=str(original_dir),
     )
 
@@ -480,7 +472,6 @@ def test_torrent_copy_when_hardlink_disabled(tmp_path):
         title="Seed",
         author="Seeder",
         format="epub",
-        search_mode=SearchMode.UNIVERSAL,
         original_download_path=str(original),
     )
 
@@ -525,7 +516,6 @@ def test_archive_extraction_flow(tmp_path):
         title="Archive Test",
         author="Tester",
         format="epub",
-        search_mode=SearchMode.DIRECT,
     )
 
     status_cb = lambda *_args: None
@@ -566,7 +556,6 @@ def test_archive_extraction_organize_creates_directories(tmp_path):
         title="Archive Test",
         author="Tester",
         format="epub",
-        search_mode=SearchMode.DIRECT,
     )
 
     status_cb = lambda *_args: None
@@ -607,7 +596,6 @@ def test_legacy_ingest_dir_still_routes_books_when_destination_is_unset(tmp_path
         title="Legacy Book",
         author="Legacy Author",
         format="epub",
-        search_mode=SearchMode.DIRECT,
     )
 
     values = {
@@ -665,7 +653,6 @@ def test_legacy_ingest_dir_still_routes_audiobooks_when_destinations_are_unset(t
         author="Legacy Narrator",
         format="mp3",
         content_type="audiobook",
-        search_mode=SearchMode.DIRECT,
     )
 
     values = {
@@ -725,7 +712,6 @@ def test_archive_extraction_organize_multifile_assigns_part_numbers(tmp_path):
         author="Tester",
         format="mp3",
         content_type="audiobook",
-        search_mode=SearchMode.DIRECT,
     )
 
     status_cb = lambda *_args: None
@@ -770,7 +756,6 @@ def test_archive_extraction_organize_multifile_can_use_original_name(tmp_path):
         author="Tester",
         format="mp3",
         content_type="audiobook",
-        search_mode=SearchMode.DIRECT,
     )
 
     status_cb = lambda *_args: None
@@ -806,116 +791,6 @@ def test_archive_extraction_organize_multifile_can_use_original_name(tmp_path):
     author_title_dir = ingest / "Tester" / "Archive Audio"
     files = sorted(path.name for path in author_title_dir.glob("*.mp3"))
     assert files == ["Part 1 of 2.mp3", "Part 2 of 2.mp3"]
-
-
-def test_booklore_mode_uploads_and_cleans_staging(tmp_path):
-    from shelfmark.download.postprocess.router import (
-        post_process_download as _post_process_download,
-    )
-
-    staging = tmp_path / "staging"
-    staging.mkdir()
-
-    temp_file = staging / "book.epub"
-    temp_file.write_text("content")
-
-    task = DownloadTask(
-        task_id="direct-booklore",
-        source="direct_download",
-        title="The Way of Kings",
-        author="Brandon Sanderson",
-        format="epub",
-        search_mode=SearchMode.DIRECT,
-    )
-
-    statuses = []
-    status_cb = lambda status, message: statuses.append((status, message))
-    uploaded_files = []
-
-    def _upload_stub(_config, _token, file_path):
-        uploaded_files.append(file_path)
-        assert file_path.exists()
-
-    booklore_values = {
-        "BOOKS_OUTPUT_MODE": "booklore",
-        "BOOKLORE_HOST": "http://booklore:6060",
-        "BOOKLORE_USERNAME": "booklore",
-        "BOOKLORE_PASSWORD": "secret",
-        "BOOKLORE_LIBRARY_ID": 1,
-        "BOOKLORE_PATH_ID": 2,
-    }
-
-    with (
-        patch("shelfmark.core.config.config") as mock_config,
-        patch("shelfmark.download.outputs.booklore.booklore_login", return_value="token"),
-        patch("shelfmark.download.outputs.booklore.booklore_upload_file", side_effect=_upload_stub),
-        patch("shelfmark.config.env.TMP_DIR", staging),
-    ):
-        mock_config.get = MagicMock(
-            side_effect=lambda key, default=None, **_kwargs: booklore_values.get(key, default)
-        )
-
-        result = _post_process_download(temp_file, task, Event(), status_cb)
-
-    assert result is not None
-    assert uploaded_files
-    assert not temp_file.exists()
-    assert list(staging.iterdir()) == []
-    assert any("Grimmory" in (message or "") for _, message in statuses)
-
-
-def test_booklore_mode_rejects_unsupported_files(tmp_path):
-    from shelfmark.download.postprocess.router import (
-        post_process_download as _post_process_download,
-    )
-
-    staging = tmp_path / "staging"
-    staging.mkdir()
-
-    temp_file = staging / "book.djvu"
-    temp_file.write_text("content")
-
-    task = DownloadTask(
-        task_id="direct-booklore-unsupported",
-        source="direct_download",
-        title="Unsupported Book",
-        author="Tester",
-        format="djvu",
-        search_mode=SearchMode.DIRECT,
-    )
-
-    status_cb = MagicMock()
-
-    booklore_values = {
-        "BOOKS_OUTPUT_MODE": "booklore",
-        "BOOKLORE_HOST": "http://booklore:6060",
-        "BOOKLORE_USERNAME": "booklore",
-        "BOOKLORE_PASSWORD": "secret",
-        "BOOKLORE_LIBRARY_ID": 1,
-        "BOOKLORE_PATH_ID": 2,
-    }
-
-    with (
-        patch("shelfmark.core.config.config") as mock_config,
-        patch("shelfmark.download.outputs.booklore.booklore_login") as mock_login,
-        patch("shelfmark.download.outputs.booklore.booklore_upload_file") as mock_upload,
-        patch("shelfmark.config.env.TMP_DIR", staging),
-    ):
-        mock_config.get = MagicMock(
-            side_effect=lambda key, default=None, **_kwargs: booklore_values.get(key, default)
-        )
-
-        result = _post_process_download(temp_file, task, Event(), status_cb)
-
-    assert result is None
-    assert mock_login.call_count == 0
-    assert mock_upload.call_count == 0
-    assert not temp_file.exists()
-    assert list(staging.iterdir()) == []
-
-    errors = [call for call in status_cb.call_args_list if call.args[0] == "error"]
-    assert errors
-    assert "Grimmory does not support" in errors[-1].args[1]
 
 
 @pytest.mark.parametrize("organization", ["none", "rename", "organize"])
@@ -967,7 +842,6 @@ def test_postprocess_folder_blackbox_matrix(
         author=author,
         format=extension,
         content_type=content_type,
-        search_mode=SearchMode.DIRECT,
         original_download_path=None,
     )
 
@@ -1104,7 +978,6 @@ def test_postprocess_torrent_blackbox_matrix(
         author=author,
         format=extension,
         content_type=content_type,
-        search_mode=SearchMode.UNIVERSAL,
         original_download_path=str(input_path),
     )
 
@@ -1173,7 +1046,6 @@ def test_custom_script_external_source_stages_copy_and_preserves_source(tmp_path
         title="Seed",
         author="Seeder",
         format="epub",
-        search_mode=SearchMode.UNIVERSAL,
         original_download_path=None,
     )
 
@@ -1256,7 +1128,6 @@ def test_external_directory_multiple_archives_extracts_all_and_keeps_source(
         author="Ignored",
         format=extension,
         content_type=content_type,
-        search_mode=SearchMode.DIRECT,
         original_download_path=None,
     )
 
@@ -1338,7 +1209,6 @@ def test_external_directory_prefers_files_over_archives_and_keeps_source(
         author="Ignored",
         format=extension,
         content_type=content_type,
-        search_mode=SearchMode.DIRECT,
         original_download_path=None,
     )
 

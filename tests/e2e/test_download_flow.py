@@ -407,7 +407,7 @@ class TestDirectSourceReleaseFlow:
         download_tracker.track(source_id)
         download_resp = protected_api_client.post(
             "/api/releases/download",
-            json={**first_result, "content_type": "ebook", "search_mode": "direct"},
+            json={**first_result, "content_type": "ebook"},
         )
 
         if not _is_duplicate_queue_error(download_resp):

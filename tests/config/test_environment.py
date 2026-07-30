@@ -380,7 +380,6 @@ class TestSettingsValidation:
         with patch(
             "shelfmark.config.settings.load_config_file",
             return_value={
-                "BOOKS_OUTPUT_MODE": "folder",
                 "TEMPLATE_RENAME": "{Author}/{Title}",
             },
         ):

@@ -2,7 +2,7 @@ import errno
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from shelfmark.core.models import DownloadTask, SearchMode
+from shelfmark.core.models import DownloadTask
 from shelfmark.download.postprocess.pipeline import collect_directory_files, validate_destination
 
 
@@ -44,7 +44,6 @@ def test_collect_directory_files_ignores_permission_errors(tmp_path):
         source="direct_download",
         title="Test",
         format="epub",
-        search_mode=SearchMode.UNIVERSAL,
     )
 
     def fake_walk(top, onerror=None):
@@ -75,7 +74,6 @@ def test_collect_directory_files_permission_denied_root(tmp_path):
         source="direct_download",
         title="Test",
         format="epub",
-        search_mode=SearchMode.UNIVERSAL,
     )
 
     with patch(

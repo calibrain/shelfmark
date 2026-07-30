@@ -217,7 +217,6 @@ class TestReleaseDownloadEndpointGuardrails:
             "source_id": "release-xyz",
             "title": "Release Title",
             "priority": 3,
-            "search_mode": "direct",
             "library_book_id": library_book_id,
         }
 
@@ -571,7 +570,6 @@ class TestRetryDownloadEndpointGuardrails:
             "title": "Persisted Direct Task",
             "user_id": user["id"],
             "username": user["username"],
-            "search_mode": "direct",
         }
         main_module.download_history_service.record_download(
             task_id="persisted-direct-retry-1",
