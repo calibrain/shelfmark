@@ -24,6 +24,7 @@ def _is_valid_email(value: str) -> bool:
     parsed = parseaddr(value)[1]
     return bool(parsed) and "@" in parsed
 
+
 _CREATE_TABLES_SQL = """
 CREATE TABLE IF NOT EXISTS users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,

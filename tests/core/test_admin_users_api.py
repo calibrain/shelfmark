@@ -61,7 +61,10 @@ def test_admin_can_manage_username_password_email_role_and_library_capability(ap
 
 def test_admin_can_edit_email_for_externally_authenticated_user(app, user_db):
     user = user_db.create_user(
-        username="alice", email="old@example.com", identity_email="source@example.com", auth_source="oidc"
+        username="alice",
+        email="old@example.com",
+        identity_email="source@example.com",
+        auth_source="oidc",
     )
     with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="builtin"):
         response = _admin_client(app).put(

@@ -531,10 +531,8 @@ const UserEditFields = ({
           displayNameDisabledReason,
         )}
 
-        {renderTextField(
-          emailField,
-          user.email || '',
-          (value) => onUserChange({ ...user, email: value || null }),
+        {renderTextField(emailField, user.email || '', (value) =>
+          onUserChange({ ...user, email: value || null }),
         )}
         {renderSelectField(capabilityField, user.library_capability, (value) =>
           onUserChange({

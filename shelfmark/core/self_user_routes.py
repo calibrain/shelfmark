@@ -142,7 +142,9 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
             value = data["email"]
             if value is None:
                 email = None
-            elif isinstance(value, str) and (not value.strip() or is_valid_email_destination(value.strip())):
+            elif isinstance(value, str) and (
+                not value.strip() or is_valid_email_destination(value.strip())
+            ):
                 email = value.strip() or None
             else:
                 return jsonify({"error": "email must be a valid email address or null"}), 400
@@ -155,7 +157,10 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
         preferences, error = _normalize_preferences(data)
         if error:
             return jsonify({"error": error}), 400
-        if "notification_transport" in preferences and "notification_destination" not in preferences:
+        if (
+            "notification_transport" in preferences
+            and "notification_destination" not in preferences
+        ):
             # A destination belongs to one transport; selecting another clears the old one.
             preferences["notification_destination"] = None
         effective_preferences = user_db.get_personal_preferences(user_id)
@@ -164,9 +169,9 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
             effective_transport = effective_preferences["notification_transport"]
             effective_destination = effective_preferences["notification_destination"]
             if effective_transport == "apprise":
-                valid_destination = isinstance(effective_destination, str) and is_valid_apprise_destination(
-                    effective_destination
-                )
+                valid_destination = isinstance(
+                    effective_destination, str
+                ) and is_valid_apprise_destination(effective_destination)
             else:
                 valid_destination = isinstance(email, str) and is_valid_email_destination(email)
             if not valid_destination:

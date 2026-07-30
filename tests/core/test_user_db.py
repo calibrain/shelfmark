@@ -112,9 +112,7 @@ def test_initialize_migrates_legacy_email_notification_to_canonical_user_email(d
     conn.execute(
         "INSERT INTO users (id, username, email, auth_source) VALUES (1, 'reader', 'source@example.com', 'oidc')"
     )
-    conn.execute(
-        "INSERT INTO user_preferences VALUES (1, NULL, 1, 'email', 'notify@example.com')"
-    )
+    conn.execute("INSERT INTO user_preferences VALUES (1, NULL, 1, 'email', 'notify@example.com')")
     conn.commit()
     conn.close()
 
@@ -146,8 +144,12 @@ def test_initialize_disables_malformed_and_absent_legacy_email_notifications(db_
             notification_destination TEXT
         );
     """)
-    conn.execute("INSERT INTO users (id, username, email) VALUES (1, 'reader', 'reader@example.com')")
-    conn.execute("INSERT INTO users (id, username, email) VALUES (2, 'missing', 'missing@example.com')")
+    conn.execute(
+        "INSERT INTO users (id, username, email) VALUES (1, 'reader', 'reader@example.com')"
+    )
+    conn.execute(
+        "INSERT INTO users (id, username, email) VALUES (2, 'missing', 'missing@example.com')"
+    )
     conn.execute("INSERT INTO user_preferences VALUES (1, NULL, 1, 'email', 'not an email')")
     conn.execute("INSERT INTO user_preferences VALUES (2, NULL, 1, 'email', NULL)")
     conn.commit()

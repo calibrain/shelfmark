@@ -711,7 +711,10 @@ def send_personal_test_notification(user_db: Any, user_id: int) -> dict[str, Any
             "message": "Enable personal notifications with a valid destination first",
         }
     if not isinstance(target_destination, str):
-        return {"success": False, "message": "Enable personal notifications with a valid destination first"}
+        return {
+            "success": False,
+            "message": "Enable personal notifications with a valid destination first",
+        }
     return _deliver(
         target_transport,
         target_destination,
