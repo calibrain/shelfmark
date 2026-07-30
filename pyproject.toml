@@ -54,11 +54,14 @@ addopts = [
     "--tb=short",
     "-n",
     "auto",
+    "-m",
+    "not integration and not e2e and not live",
 ]
 markers = [
     "integration: marks tests that require running services (deselect with '-m \"not integration\"')",
     "slow: marks tests as slow (deselect with '-m \"not slow\"')",
     "e2e: marks end-to-end tests that require the full application stack",
+    "live: marks tests that require an externally configured instance or client",
 ]
 
 [tool.ruff]

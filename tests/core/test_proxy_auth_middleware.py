@@ -9,8 +9,6 @@ from uuid import uuid4
 
 import pytest
 
-pytestmark = pytest.mark.e2e
-
 
 def _as_response(result: Any):
     if isinstance(result, tuple) and len(result) == 2:
