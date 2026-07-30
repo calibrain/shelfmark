@@ -125,11 +125,11 @@ python-checks: python-lint python-format python-typecheck python-dead-code
 
 python-test:
 	@echo "Running tests..."
-	uv run pytest tests/ -x --tb=short -m "not integration and not e2e"
+	uv run pytest tests/ -x --tb=short
 
 python-test-cov:
 	@echo "Running tests with coverage..."
-	uv run pytest tests/ -x --tb=short -m "not integration and not e2e" --cov --cov-report=term-missing
+	uv run pytest tests/ -x --tb=short --cov --cov-report=term-missing
 
 # E2E docker platform: hermetic stack (mock AA/Cloudflare/bypasser/DNS/proxy/Tor)
 # exercised across config profiles. See tests/e2e/platform/README.md.

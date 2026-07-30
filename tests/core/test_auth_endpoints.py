@@ -14,8 +14,6 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-pytestmark = pytest.mark.e2e
-
 
 def _as_response(result: Any):
     """Normalize Flask view return values to a Response-like object."""
