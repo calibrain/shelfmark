@@ -476,7 +476,7 @@ const UserEditFields = ({
   deleting = false,
 }: UserEditFieldsProps) => {
   const capabilities = user.edit_capabilities;
-  const { authSource, canSetPassword, canEditEmail, canEditDisplayName } = capabilities;
+  const { canSetPassword, canEditDisplayName } = capabilities;
   const usernameField = createTextField('username', 'Username', user.username, 'username', true);
 
   const displayNameField = createTextField(
@@ -517,14 +517,6 @@ const UserEditFields = ({
     ? 'Display name is managed by the identity provider.'
     : undefined;
 
-  let emailDisabledReason: string | undefined;
-  if (!canEditEmail) {
-    emailDisabledReason =
-      authSource === 'cwa'
-        ? 'Email is synced from Calibre-Web.'
-        : 'Email is managed by your identity provider.';
-  }
-
   return (
     <>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
@@ -539,12 +531,8 @@ const UserEditFields = ({
           displayNameDisabledReason,
         )}
 
-        {renderTextField(
-          emailField,
-          user.email || '',
-          (value) => onUserChange({ ...user, email: value || null }),
-          !canEditEmail,
-          emailDisabledReason,
+        {renderTextField(emailField, user.email || '', (value) =>
+          onUserChange({ ...user, email: value || null }),
         )}
         {renderSelectField(capabilityField, user.library_capability, (value) =>
           onUserChange({

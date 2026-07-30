@@ -617,13 +617,16 @@ def notify_user(
         return
 
     preferences = user_db.get_personal_preferences(normalized_user_id)
+    user = user_db.get_user(user_id=normalized_user_id)
     if not preferences["notifications_enabled"]:
         return
     transport = preferences.get("notification_transport")
     destination = preferences.get("notification_destination")
-    if transport not in {"email", "apprise"} or not isinstance(destination, str):
+    if transport == "apprise" and isinstance(destination, str):
+        _submit_delivery(transport, destination, event, context, normalized_user_id)
         return
-    _submit_delivery(transport, destination, event, context, normalized_user_id)
+    if isinstance(user, dict) and isinstance(user.get("email"), str):
+        _submit_delivery("email", user["email"], event, context, normalized_user_id)
 
 
 def _dispatch_async(
@@ -687,30 +690,34 @@ def _deliver(
 
 def send_personal_test_notification(user_db: Any, user_id: int) -> dict[str, Any]:
     preferences = user_db.get_personal_preferences(user_id)
+    user = user_db.get_user(user_id=user_id)
     transport = preferences.get("notification_transport")
     destination = preferences.get("notification_destination")
-    if (
-        not preferences.get("notifications_enabled")
-        or transport not in {"email", "apprise"}
-        or not isinstance(destination, str)
-    ):
+    if not preferences.get("notifications_enabled"):
         return {
             "success": False,
             "message": "Enable personal notifications with a valid destination first",
         }
-    valid = (
-        is_valid_email_destination(destination)
-        if transport == "email"
-        else is_valid_apprise_destination(destination)
-    )
+    if transport == "apprise":
+        valid = isinstance(destination, str) and is_valid_apprise_destination(destination)
+        target_transport, target_destination = transport, destination
+    else:
+        email = user.get("email") if isinstance(user, dict) else None
+        valid = isinstance(email, str) and is_valid_email_destination(email)
+        target_transport, target_destination = "email", email
     if not valid:
         return {
             "success": False,
             "message": "Enable personal notifications with a valid destination first",
         }
+    if not isinstance(target_destination, str):
+        return {
+            "success": False,
+            "message": "Enable personal notifications with a valid destination first",
+        }
     return _deliver(
-        transport,
-        destination,
+        target_transport,
+        target_destination,
         NotificationEvent.REQUEST_CREATED,
         NotificationContext(
             event=NotificationEvent.REQUEST_CREATED,

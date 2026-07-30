@@ -221,7 +221,8 @@ class TestProvisionOIDCUser:
         user_info["email"] = "newemail@example.com"
         user_info["display_name"] = "John D."
         user = provision_oidc_user(user_db, user_info, is_admin=False)
-        assert user["email"] == "newemail@example.com"
+        assert user["email"] == "john@example.com"
+        assert user["identity_email"] == "newemail@example.com"
         assert user["display_name"] == "John D."
         assert user["auth_source"] == "oidc"
 

@@ -65,7 +65,11 @@ def find_unique_user_by_email(user_db: UserDB, email: str | None) -> dict[str, A
     if not key:
         return None
 
-    matches = [u for u in user_db.list_users() if _email_key(u.get("email")) == key]
+    matches = [
+        u
+        for u in user_db.list_users()
+        if _email_key(u.get("email")) == key or _email_key(u.get("identity_email")) == key
+    ]
     return matches[0] if len(matches) == 1 else None
 
 
@@ -117,7 +121,7 @@ def _build_updates(
     if sync_role:
         updates["role"] = _normalize_role(role)
     if email is not UNSET:
-        updates["email"] = _normalize_email(email)
+        updates["identity_email"] = _normalize_email(email)
     if display_name is not UNSET:
         updates["display_name"] = _normalize_display_name(display_name)
     if subject_field == "oidc_subject" and subject:
@@ -290,6 +294,7 @@ def upsert_external_user(
     }
     if email is not UNSET:
         create_kwargs["email"] = normalized_email
+        create_kwargs["identity_email"] = normalized_email
     if display_name is not UNSET:
         create_kwargs["display_name"] = normalized_display_name
     if subject_field == "oidc_subject" and subject:

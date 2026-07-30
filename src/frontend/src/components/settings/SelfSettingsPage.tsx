@@ -26,6 +26,18 @@ interface SelfSettingsForm {
   notification_destination: string;
 }
 
+export const buildSelfSettingsPayload = (
+  values: SelfSettingsForm,
+): Parameters<typeof updateSelfSettings>[0] => ({
+  display_name: values.display_name || null,
+  email: values.email || null,
+  kindle_address: values.kindle_address || null,
+  notifications_enabled: values.notifications_enabled,
+  notification_transport: values.notification_transport === 'apprise' ? 'apprise' : null,
+  notification_destination:
+    values.notification_transport === 'apprise' ? values.notification_destination || null : null,
+});
+
 const readOnlyField = (key: string, label: string, value: string): TextFieldConfig => ({
   type: 'TextField',
   key,
@@ -116,15 +128,10 @@ export const SelfSettingsPage = ({ onShowToast, onSettingsSaved }: SelfSettingsP
     if (!hasChanges) return;
     setIsSaving(true);
     try {
-      const saved = await updateSelfSettings({
-        display_name: values.display_name || null,
-        kindle_address: values.kindle_address || null,
-        notifications_enabled: values.notifications_enabled,
-        notification_transport: values.notification_transport,
-        notification_destination: values.notification_destination || null,
-      });
+      const saved = await updateSelfSettings(buildSelfSettingsPayload(values));
       setOriginalValues({
         ...values,
+        email: saved.email || '',
         display_name: saved.display_name || '',
         kindle_address: saved.kindle_address || '',
       });
@@ -181,12 +188,11 @@ export const SelfSettingsPage = ({ onShowToast, onSettingsSaved }: SelfSettingsP
                   disabled
                 />
               </FieldWrapper>
-              <FieldWrapper field={readOnlyField('email', 'Account email', values.email)}>
+              <FieldWrapper field={textField('email', 'Email', values.email)}>
                 <TextField
-                  field={readOnlyField('email', 'Account email', values.email)}
+                  field={textField('email', 'Email', values.email)}
                   value={values.email}
-                  onChange={() => undefined}
-                  disabled
+                  onChange={(value) => update('email', value)}
                 />
               </FieldWrapper>
               <FieldWrapper field={textField('display_name', 'Display name', values.display_name)}>
@@ -248,23 +254,25 @@ export const SelfSettingsPage = ({ onShowToast, onSettingsSaved }: SelfSettingsP
               >
                 {isTestingNotification ? 'Sending test...' : 'Test saved destination'}
               </button>
-              <FieldWrapper
-                field={textField(
-                  'notification_destination',
-                  values.notification_transport === 'email' ? 'Email address' : 'Apprise URL',
-                  values.notification_destination,
-                )}
-              >
-                <TextField
+              {values.notification_transport === 'apprise' && (
+                <FieldWrapper
                   field={textField(
                     'notification_destination',
-                    values.notification_transport === 'email' ? 'Email address' : 'Apprise URL',
+                    'Apprise URL',
                     values.notification_destination,
                   )}
-                  value={values.notification_destination}
-                  onChange={(value) => update('notification_destination', value)}
-                />
-              </FieldWrapper>
+                >
+                  <TextField
+                    field={textField(
+                      'notification_destination',
+                      'Apprise URL',
+                      values.notification_destination,
+                    )}
+                    value={values.notification_destination}
+                    onChange={(value) => update('notification_destination', value)}
+                  />
+                </FieldWrapper>
+              )}
             </section>
             <section className="border-t border-(--border-muted) pt-5">
               <FieldWrapper field={THEME_FIELD}>

@@ -79,20 +79,12 @@ def _normalize_preferences(data: Mapping[str, Any]) -> tuple[dict[str, Any], str
             return {}, f"{field} must be a string or null"
 
     transport = preferences.get("notification_transport")
+    if transport == "email":
+        return {}, "notification_transport must be 'apprise' or null"
     if transport is not None and transport not in _NOTIFICATION_TRANSPORTS:
-        return {}, "notification_transport must be 'email' or 'apprise'"
-    if preferences.get("notifications_enabled"):
-        if transport is None:
-            return {}, "notification_transport is required when notifications are enabled"
-        destination = preferences.get("notification_destination")
-        validator = (
-            is_valid_email_destination if transport == "email" else is_valid_apprise_destination
-        )
-        if not isinstance(destination, str) or not validator(destination):
-            return (
-                {},
-                f"A valid {transport} notification destination is required when notifications are enabled",
-            )
+        return {}, "notification_transport must be 'apprise' or null"
+    if transport != "apprise" and "notification_destination" in preferences:
+        return {}, "notification_destination is only supported for Apprise"
     return preferences, None
 
 
@@ -137,21 +129,31 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
         if not isinstance(data, dict):
             return jsonify({"error": "Request body must be a JSON object"}), 400
 
-        allowed_fields = {"display_name", *_PERSONAL_PREFERENCE_FIELDS}
+        allowed_fields = {"display_name", "email", *_PERSONAL_PREFERENCE_FIELDS}
         unknown_fields = sorted(set(data) - allowed_fields)
         if unknown_fields:
             return jsonify(
                 {"error": f"Unsupported self-settings fields: {', '.join(unknown_fields)}"}
             ), 400
 
+        email = user.get("email")
+        display_name = user.get("display_name")
+        if "email" in data:
+            value = data["email"]
+            if value is None:
+                email = None
+            elif isinstance(value, str) and (
+                not value.strip() or is_valid_email_destination(value.strip())
+            ):
+                email = value.strip() or None
+            else:
+                return jsonify({"error": "email must be a valid email address or null"}), 400
+
         if "display_name" in data:
             value = data["display_name"]
             if value is not None and not isinstance(value, str):
                 return jsonify({"error": "display_name must be a string or null"}), 400
             display_name = value.strip() or None if isinstance(value, str) else None
-            if display_name != user.get("display_name"):
-                user_db.update_user(user_id, display_name=display_name)
-
         preferences, error = _normalize_preferences(data)
         if error:
             return jsonify({"error": error}), 400
@@ -166,21 +168,25 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
         if effective_preferences["notifications_enabled"]:
             effective_transport = effective_preferences["notification_transport"]
             effective_destination = effective_preferences["notification_destination"]
-            validator = (
-                is_valid_email_destination
-                if effective_transport == "email"
-                else is_valid_apprise_destination
-            )
-            if (
-                effective_transport not in _NOTIFICATION_TRANSPORTS
-                or not isinstance(effective_destination, str)
-                or not validator(effective_destination)
-            ):
+            if effective_transport == "apprise":
+                valid_destination = isinstance(
+                    effective_destination, str
+                ) and is_valid_apprise_destination(effective_destination)
+            else:
+                valid_destination = isinstance(email, str) and is_valid_email_destination(email)
+            if not valid_destination:
                 return jsonify(
                     {
                         "error": "A valid notification destination is required when notifications are enabled"
                     }
                 ), 400
+        user_updates: dict[str, Any] = {}
+        if email != user.get("email"):
+            user_updates["email"] = email
+        if "display_name" in data and display_name != user.get("display_name"):
+            user_updates["display_name"] = display_name
+        if user_updates:
+            user_db.update_user(user_id, **user_updates)
         if preferences:
             user_db.update_personal_preferences(user_id, **preferences)
 
