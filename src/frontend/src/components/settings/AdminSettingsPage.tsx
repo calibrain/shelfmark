@@ -201,7 +201,7 @@ export const AdminSettingsPage = ({
     );
   }
   return (
-    <div className="mx-auto flex min-h-[calc(100vh-10rem)] max-w-6xl overflow-hidden rounded-xl border border-(--border-muted)">
+    <div className="mx-auto flex min-h-[calc(100vh-10rem)] max-w-6xl overflow-hidden">
       {tabSync}
       <SettingsSidebar
         tabs={tabs}
