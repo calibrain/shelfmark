@@ -12,11 +12,15 @@ class _Executor:
 
 
 class _UserDB:
-    def __init__(self, preferences):
+    def __init__(self, preferences, email="reader@example.com"):
         self.preferences = preferences
+        self.email = email
 
     def get_personal_preferences(self, _user_id):
         return self.preferences
+
+    def get_user(self, user_id):
+        return {"id": user_id, "email": self.email}
 
 
 def _context(event):
@@ -25,14 +29,14 @@ def _context(event):
     )
 
 
-def test_personal_delivery_uses_saved_enabled_email_destination(monkeypatch):
+def test_personal_delivery_uses_canonical_email(monkeypatch):
     executor = _Executor()
     monkeypatch.setattr(notifications_module, "_executor", executor)
     user_db = _UserDB(
         {
             "notifications_enabled": True,
-            "notification_transport": "email",
-            "notification_destination": "reader@example.com",
+            "notification_transport": None,
+            "notification_destination": None,
         }
     )
     notifications_module.notify_user(

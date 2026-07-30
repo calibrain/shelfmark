@@ -60,7 +60,7 @@ def test_self_settings_exposes_only_identity_and_personal_preferences(app, user_
     }
 
 
-def test_self_settings_updates_personal_values_but_rejects_account_access_fields(app, user_db):
+def test_self_settings_updates_email_and_personal_values_but_rejects_account_access_fields(app, user_db):
     user = user_db.create_user(username="alice", email="alice@example.com")
     client = _client(app, user)
     with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
@@ -68,6 +68,7 @@ def test_self_settings_updates_personal_values_but_rejects_account_access_fields
             "/api/users/me",
             json={
                 "display_name": "Alice",
+                "email": "new@example.com",
                 "kindle_address": "alice@kindle.com",
                 "notifications_enabled": True,
                 "notification_transport": "apprise",
@@ -75,13 +76,27 @@ def test_self_settings_updates_personal_values_but_rejects_account_access_fields
             },
         )
         rejected = client.put(
-            "/api/users/me", json={"email": "new@example.com", "password": "secret"}
+            "/api/users/me", json={"password": "secret"}
         )
     assert response.status_code == 200
     assert response.json["display_name"] == "Alice"
     assert user_db.get_personal_preferences(user["id"])["kindle_address"] == "alice@kindle.com"
     assert rejected.status_code == 400
-    assert "email, password" in rejected.json["error"]
+    assert "password" in rejected.json["error"]
+    assert user_db.get_user(user_id=user["id"])["email"] == "new@example.com"
+
+
+def test_self_settings_validates_email_and_requires_it_for_email_notifications(app, user_db):
+    user = user_db.create_user(username="alice", email="alice@example.com")
+    client = _client(app, user)
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
+        invalid = client.put("/api/users/me", json={"email": "not an email"})
+        rejected = client.put(
+            "/api/users/me", json={"email": None, "notifications_enabled": True}
+        )
+    assert invalid.status_code == 400
+    assert invalid.json["error"] == "email must be a valid email address or null"
+    assert rejected.status_code == 400
     assert user_db.get_user(user_id=user["id"])["email"] == "alice@example.com"
 
 
@@ -90,7 +105,7 @@ def test_self_settings_validates_notification_shape(app, user_db):
     with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
         response = _client(app, user).put("/api/users/me", json={"notification_transport": "sms"})
     assert response.status_code == 400
-    assert response.json["error"] == "notification_transport must be 'email' or 'apprise'"
+    assert response.json["error"] == "notification_transport must be 'apprise' or null"
 
 
 def test_enabled_notifications_require_valid_destination_and_transport_switch_clears_old_value(
@@ -104,7 +119,6 @@ def test_enabled_notifications_require_valid_destination_and_transport_switch_cl
             json={
                 "notifications_enabled": True,
                 "notification_transport": "email",
-                "notification_destination": "bad",
             },
         )
         saved = client.put(
@@ -114,7 +128,7 @@ def test_enabled_notifications_require_valid_destination_and_transport_switch_cl
                 "notification_destination": "ntfys://ntfy.sh/alice",
             },
         )
-        switched = client.put("/api/users/me", json={"notification_transport": "email"})
+        switched = client.put("/api/users/me", json={"notification_transport": None})
     assert rejected.status_code == 400
     assert saved.status_code == 200
     assert switched.json["notification_destination"] is None

@@ -36,7 +36,7 @@ def _admin_client(app):
     return client
 
 
-def test_admin_can_manage_username_password_role_and_library_capability(app, user_db):
+def test_admin_can_manage_username_password_email_role_and_library_capability(app, user_db):
     user = user_db.create_user(
         username="alice", password_hash="old", library_capability="request-only"
     )
@@ -46,6 +46,7 @@ def test_admin_can_manage_username_password_role_and_library_capability(app, use
             json={
                 "username": "alice-reader",
                 "password": "new-password",
+                "email": "new@example.com",
                 "role": "admin",
                 "library_capability": "download-capable",
             },
@@ -53,8 +54,22 @@ def test_admin_can_manage_username_password_role_and_library_capability(app, use
     assert response.status_code == 200
     assert response.json["username"] == "alice-reader"
     assert response.json["role"] == "admin"
+    assert response.json["email"] == "new@example.com"
     assert response.json["library_capability"] == "download-capable"
     assert "settings" not in response.json
+
+
+def test_admin_can_edit_email_for_externally_authenticated_user(app, user_db):
+    user = user_db.create_user(
+        username="alice", email="old@example.com", identity_email="source@example.com", auth_source="oidc"
+    )
+    with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="builtin"):
+        response = _admin_client(app).put(
+            f"/api/admin/users/{user['id']}", json={"email": "new@example.com"}
+        )
+    assert response.status_code == 200
+    assert response.json["email"] == "new@example.com"
+    assert user_db.get_user(user_id=user["id"])["identity_email"] == "source@example.com"
 
 
 def test_admin_cannot_edit_personal_preferences_through_user_api(app, user_db):

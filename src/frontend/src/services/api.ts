@@ -937,7 +937,7 @@ export const getSelfSettings = async (): Promise<SelfSettings> => {
 };
 
 export const updateSelfSettings = async (
-  data: Partial<Omit<SelfSettings, 'username' | 'email'>>,
+  data: Partial<Omit<SelfSettings, 'username'>>,
 ): Promise<SelfSettings> => {
   return fetchJSON<SelfSettings>(`${API_BASE}/users/me`, {
     method: 'PUT',

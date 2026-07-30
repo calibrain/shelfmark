@@ -27,6 +27,7 @@ from shelfmark.core.auth_modes import (
 from shelfmark.core.config import config as app_config
 from shelfmark.core.cwa_user_sync import sync_cwa_users_from_rows
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.notifications import is_valid_email_destination
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -68,7 +69,7 @@ def _get_user_edit_capabilities(
         "authSource": auth_source,
         "canSetPassword": auth_source == AUTH_SOURCE_BUILTIN,
         "canEditRole": can_edit_role,
-        "canEditEmail": auth_source in {AUTH_SOURCE_BUILTIN, AUTH_SOURCE_PROXY},
+        "canEditEmail": True,
         "canEditDisplayName": auth_source != AUTH_SOURCE_OIDC,
     }
 
@@ -77,6 +78,7 @@ def _sanitize_user(user: dict) -> dict:
     """Remove sensitive fields from user dict before returning to client."""
     sanitized = dict(user)
     sanitized.pop("password_hash", None)
+    sanitized.pop("identity_email", None)
     return sanitized
 
 
@@ -208,6 +210,8 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
         if not username:
             return jsonify({"error": "Username is required"}), 400
+        if email is not None and not is_valid_email_destination(email):
+            return jsonify({"error": "email must be a valid email address or null"}), 400
         if not password or len(password) < MIN_PASSWORD_LENGTH:
             return jsonify(
                 {"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters"}
@@ -342,9 +346,16 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             user_fields["username"] = username
         if "is_active" in user_fields and not isinstance(user_fields["is_active"], bool):
             return jsonify({"error": "is_active must be a boolean"}), 400
+        if "email" in user_fields:
+            value = user_fields["email"]
+            if value is None:
+                pass
+            elif not isinstance(value, str) or not is_valid_email_destination(value.strip()):
+                return jsonify({"error": "email must be a valid email address or null"}), 400
+            else:
+                user_fields["email"] = value.strip() or None
 
         role_changed = "role" in user_fields and user_fields["role"] != user.get("role")
-        email_changed = "email" in user_fields and user_fields["email"] != user.get("email")
         display_name_changed = "display_name" in user_fields and user_fields[
             "display_name"
         ] != user.get("display_name")
@@ -362,22 +373,6 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
                 {
                     "error": f"Cannot change role for {auth_source.upper()} users",
                     "message": "Role is managed by the external authentication source.",
-                }
-            ), 400
-
-        if email_changed and not capabilities["canEditEmail"]:
-            if auth_source == AUTH_SOURCE_CWA:
-                return jsonify(
-                    {
-                        "error": "Cannot change email for CWA users",
-                        "message": "Email is synced from Calibre-Web.",
-                    }
-                ), 400
-
-            return jsonify(
-                {
-                    "error": "Cannot change email for OIDC users",
-                    "message": "Email is managed by your identity provider.",
                 }
             ), 400
 

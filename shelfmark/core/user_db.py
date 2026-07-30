@@ -5,6 +5,7 @@ import os
 import sqlite3
 import threading
 from datetime import UTC, datetime
+from email.utils import parseaddr
 from pathlib import Path
 from typing import Any, ClassVar
 
@@ -18,11 +19,17 @@ from shelfmark.core.request_validation import (
 
 logger = setup_logger(__name__)
 
+
+def _is_valid_email(value: str) -> bool:
+    parsed = parseaddr(value)[1]
+    return bool(parsed) and "@" in parsed
+
 _CREATE_TABLES_SQL = """
 CREATE TABLE IF NOT EXISTS users (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     username      TEXT UNIQUE NOT NULL,
     email         TEXT,
+    identity_email TEXT,
     display_name  TEXT,
     password_hash TEXT,
     oidc_subject  TEXT UNIQUE,
@@ -250,6 +257,7 @@ class UserDB:
                 self._reset_legacy_requests(conn)
                 conn.executescript(_CREATE_TABLES_SQL)
                 self._migrate_auth_source_column(conn)
+                self._migrate_identity_email_and_notifications(conn)
                 self._migrate_library_capability_column(conn)
                 self._migrate_download_history_queued_at(conn)
                 self._migrate_download_history_retry_payload(conn)
@@ -270,11 +278,54 @@ class UserDB:
             conn.execute("ALTER TABLE users ADD COLUMN auth_source TEXT NOT NULL DEFAULT 'builtin'")
 
         # Backfill OIDC-origin users created before auth_source existed.
-        conn.execute("UPDATE users SET auth_source = 'oidc' WHERE oidc_subject IS NOT NULL")
+        if "oidc_subject" in column_names:
+            conn.execute("UPDATE users SET auth_source = 'oidc' WHERE oidc_subject IS NOT NULL")
         # Defensive cleanup for any legacy null/blank values.
         conn.execute(
             "UPDATE users SET auth_source = 'builtin' WHERE auth_source IS NULL OR auth_source = ''"
         )
+
+    def _migrate_identity_email_and_notifications(self, conn: sqlite3.Connection) -> None:
+        """Separate source identity email from the user's notification contact email."""
+        user_columns = {str(column["name"]) for column in conn.execute("PRAGMA table_info(users)")}
+        if "email" not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN email TEXT")
+        if "identity_email" not in user_columns:
+            conn.execute("ALTER TABLE users ADD COLUMN identity_email TEXT")
+        conn.execute(
+            "UPDATE users SET identity_email = email "
+            "WHERE identity_email IS NULL AND auth_source IN ('oidc', 'cwa', 'proxy')"
+        )
+        rows = conn.execute(
+            """
+            SELECT user_preferences.user_id, notification_destination, users.auth_source
+            FROM user_preferences JOIN users ON users.id = user_preferences.user_id
+            WHERE notification_transport = 'email'
+            """
+        ).fetchall()
+        for row in rows:
+            destination = row["notification_destination"]
+            if isinstance(destination, str) and _is_valid_email(destination):
+                if row["auth_source"] in {"oidc", "cwa", "proxy"}:
+                    conn.execute(
+                        "UPDATE users SET identity_email = COALESCE(identity_email, email) WHERE id = ?",
+                        (row["user_id"],),
+                    )
+                conn.execute(
+                    "UPDATE users SET email = ? WHERE id = ?",
+                    (destination.strip(), row["user_id"]),
+                )
+                conn.execute(
+                    "UPDATE user_preferences SET notification_transport = NULL, "
+                    "notification_destination = NULL WHERE user_id = ?",
+                    (row["user_id"],),
+                )
+            else:
+                conn.execute(
+                    "UPDATE user_preferences SET notifications_enabled = 0, "
+                    "notification_transport = NULL, notification_destination = NULL WHERE user_id = ?",
+                    (row["user_id"],),
+                )
 
     def _migrate_library_capability_column(self, conn: sqlite3.Connection) -> None:
         """Ensure each user has one explicit Library Capability."""
@@ -429,6 +480,7 @@ class UserDB:
         self,
         username: str,
         email: str | None = None,
+        identity_email: str | None = None,
         display_name: str | None = None,
         password_hash: str | None = None,
         oidc_subject: str | None = None,
@@ -448,13 +500,14 @@ class UserDB:
             try:
                 cursor = conn.execute(
                     """INSERT INTO users (
-                           username, email, display_name, password_hash, oidc_subject, auth_source, role,
+                            username, email, identity_email, display_name, password_hash, oidc_subject, auth_source, role,
                            library_capability
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         username,
                         email,
+                        identity_email,
                         display_name,
                         password_hash,
                         oidc_subject,
@@ -507,6 +560,7 @@ class UserDB:
         {
             "username",
             "email",
+            "identity_email",
             "display_name",
             "password_hash",
             "oidc_subject",
@@ -519,6 +573,7 @@ class UserDB:
     _USER_UPDATE_STATEMENTS: ClassVar[dict[str, str]] = {
         "username": "UPDATE users SET username = ? WHERE id = ?",
         "email": "UPDATE users SET email = ? WHERE id = ?",
+        "identity_email": "UPDATE users SET identity_email = ? WHERE id = ?",
         "display_name": "UPDATE users SET display_name = ? WHERE id = ?",
         "password_hash": "UPDATE users SET password_hash = ? WHERE id = ?",
         "oidc_subject": "UPDATE users SET oidc_subject = ? WHERE id = ?",
@@ -618,7 +673,9 @@ class UserDB:
                 (user_id,),
             ).fetchone()
             if row:
-                return dict(row)
+                preferences = dict(row)
+                preferences["notifications_enabled"] = bool(preferences["notifications_enabled"])
+                return preferences
             return {
                 "kindle_address": None,
                 "notifications_enabled": False,

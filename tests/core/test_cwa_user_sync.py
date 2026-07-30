@@ -91,7 +91,8 @@ def test_upsert_updates_existing_cwa_user_by_username_before_email(user_db):
     assert user["id"] == cwa_user["id"]
     assert user["username"] == "reader"
     assert user["auth_source"] == "cwa"
-    assert user["email"] == "new@example.com"
+    assert user["email"] == "old@example.com"
+    assert user["identity_email"] == "new@example.com"
     assert user["role"] == "admin"
 
 
