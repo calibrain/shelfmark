@@ -111,6 +111,30 @@ class TestReleaseDownloadEndpointGuardrails:
         assert response.status_code == 403
         assert response.get_json() == {"error": "Download capability required"}
 
+    def test_request_only_user_cannot_queue_releases(self, main_module, client):
+        user = _create_user(main_module, prefix="requester")
+        main_module.user_db.update_user(user["id"], library_capability="request-only")
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(main_module.backend, "queue_release") as mock_queue_release:
+                response = client.post(
+                    "/api/releases/download",
+                    json={
+                        "source": "direct_download",
+                        "source_id": "request-only-release",
+                        "title": "Request-only Release",
+                    },
+                )
+
+        assert response.status_code == 403
+        assert response.get_json() == {"error": "Download capability required"}
+        mock_queue_release.assert_not_called()
+
     def test_release_search_requires_book_in_users_library(self, main_module, client):
         owner = _create_user(main_module, prefix="owner")
         other_user = _create_user(main_module, prefix="other")
@@ -279,6 +303,7 @@ class TestReleaseDownloadEndpointGuardrails:
     def test_admin_can_queue_release_on_behalf_of_another_user(self, main_module, client):
         target_user = _create_user(main_module, prefix="target")
         admin_user = _create_user(main_module, prefix="admin", role="admin")
+        main_module.user_db.update_user(admin_user["id"], library_capability="request-only")
         captured: dict[str, object] = {}
 
         def fake_queue_release(release_data, priority, user_id=None, username=None):

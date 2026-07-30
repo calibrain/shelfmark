@@ -1,4 +1,5 @@
 import type { AdminUser } from '../../../services/api';
+import type { LibraryCapability } from '../../../types';
 
 export interface CreateUserFormState {
   username: string;
@@ -7,6 +8,7 @@ export interface CreateUserFormState {
   password_confirm: string;
   display_name: string;
   role: string;
+  library_capability: LibraryCapability;
 }
 
 export const INITIAL_CREATE_FORM: CreateUserFormState = {
@@ -16,6 +18,7 @@ export const INITIAL_CREATE_FORM: CreateUserFormState = {
   password_confirm: '',
   display_name: '',
   role: 'user',
+  library_capability: 'download-capable',
 };
 
 export type UsersPanelRoute =

@@ -13,6 +13,7 @@ from flask import Flask
 from shelfmark.core.download_history_service import DownloadHistoryService
 from shelfmark.core.library_routes import register_library_routes
 from shelfmark.core.library_service import LibraryService
+from shelfmark.core.request_routes import register_request_routes
 from shelfmark.core.user_db import UserDB
 
 
@@ -83,6 +84,12 @@ def app(
         download_history_service=download_history_service,
         resolve_auth_mode=_always_builtin_auth_mode,
         resolve_metadata_book=_resolve_metadata_book,
+    )
+    register_request_routes(
+        test_app,
+        user_db,
+        resolve_auth_mode=_always_builtin_auth_mode,
+        queue_release=lambda *_args, **_kwargs: (True, None),
     )
     return test_app
 
@@ -169,6 +176,23 @@ def test_add_book_returns_idempotent_payload_and_caches_metadata(app, user_db):
     assert first["in_my_library"] is True
     assert first["files_exist_globally"] is False
     assert first["in_flight_globally"] is False
+
+
+def test_request_only_user_can_add_a_book_and_request_it_when_no_files_exist(app, user_db):
+    requester = user_db.create_user(username="requester", library_capability="request-only")
+    client = _authed_client(app, requester)
+
+    added = client.post(
+        "/api/library/books",
+        json={"metadata_provider": "hardcover", "provider_book_id": "request-only-book"},
+    )
+    created = client.post("/api/requests", json={"book_id": added.json["book_id"]})
+
+    assert added.status_code == 200
+    assert added.json["files_exist_globally"] is False
+    assert created.status_code == 201
+    assert created.json["book_id"] == added.json["book_id"]
+    assert created.json["status"] == "pending"
 
 
 def test_add_book_returns_503_when_metadata_provider_unavailable(user_db, db_path):

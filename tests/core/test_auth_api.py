@@ -204,6 +204,27 @@ class TestLoginSemantics:
         assert body["display_name"] == "Alice Example"
         assert body["library_capability"] == library_capability
 
+    def test_auth_check_reports_request_only_after_user_reauthenticates(
+        self, main_module, client, temp_user_db, monkeypatch
+    ):
+        monkeypatch.setattr(main_module, "user_db", temp_user_db)
+        user = temp_user_db.create_user(
+            username="alice",
+            password_hash=generate_password_hash("secret"),
+        )
+        temp_user_db.update_user(user["id"], library_capability="request-only")
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            login_response = client.post(
+                "/api/auth/login",
+                json={"username": "alice", "password": "secret", "remember_me": False},
+            )
+            response = client.get("/api/auth/check")
+
+        assert login_response.status_code == 200
+        assert response.status_code == 200
+        assert response.get_json()["library_capability"] == "request-only"
+
     def test_logout_proxy_includes_logout_url_and_clears_session(self, main_module, client):
         with client.session_transaction() as sess:
             sess["user_id"] = "alice"
