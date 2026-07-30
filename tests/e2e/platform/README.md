@@ -11,7 +11,7 @@ to reintroduce silently. The biggest one — Tor/Cloudflare/bypasser (37 issues 
 67 fix PRs) — had almost no automated coverage; this platform changes that.
 
 ```
-  pytest suite (host :8084)
+  pytest suite (runner-assigned localhost port)
         │
         ▼
   shelfmark (under test) ── egress depends on the active profile:
@@ -29,6 +29,9 @@ to reintroduce silently. The biggest one — Tor/Cloudflare/bypasser (37 issues 
 ## Quick start
 
 ```bash
+# focused HTTP API regression contract
+make e2e
+
 # one profile
 make e2e-platform                       # baseline
 make e2e-platform-profile PROFILE=bypasser-external
@@ -46,9 +49,11 @@ E2E_NO_BUILD=1 tests/e2e/platform/run-e2e.sh env/dns-doh.env
 KEEP_UP=1 tests/e2e/platform/run-e2e.sh env/dns-blocked.env
 ```
 
-Requirements: Docker + Compose v2, and `uv` (for the pytest runner). The runner
-builds the Shelfmark image from the repo `Dockerfile`, boots the profile's stack,
-waits for `/api/health`, runs the suite, and tears down. `run-matrix.sh` builds the
+Requirements: Docker + Compose v2, `make`, and `uv` (for the pytest runner). The runner
+builds the Shelfmark image from the repo `Dockerfile`, assigns an unused loopback
+port, boots the profile's stack, waits for `/api/health`, runs the suite, and tears
+it down. It resets all mounted E2E state before boot, including root-owned browser
+temporary files, so it does not reuse a local configuration. `run-matrix.sh` builds the
 image **once** and reuses it across profiles (`E2E_NO_BUILD=1`) so the slow
 xvfb/chromium layer isn't rebuilt per profile.
 

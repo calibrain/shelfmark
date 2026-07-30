@@ -46,7 +46,7 @@ def test_health_ok(client) -> None:
 @pytest.mark.profiles(*EGRESS_PROFILES)
 def test_source_reachable_under_active_profile(client, active_profile) -> None:
     """The book source must be reachable regardless of egress configuration."""
-    resp = client.direct_search("Mistborn")
+    resp = client.direct_search()
     assert resp.status_code == 200, (
         f"[{active_profile}] direct search failed: {resp.status_code} {resp.text[:300]}"
     )
@@ -87,7 +87,7 @@ def test_egress_actually_traverses_proxy(client, active_profile) -> None:
     container = PROXY_CONTAINER[active_profile]
 
     # Generate egress that *must* go through the proxy.
-    resp = client.direct_search("Mistborn")
+    resp = client.direct_search()
     assert resp.status_code == 200 and client.releases_from(resp), (
         f"[{active_profile}] search failed under proxy: {resp.status_code} {resp.text[:200]}"
     )

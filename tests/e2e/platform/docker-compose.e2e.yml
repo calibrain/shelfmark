@@ -87,7 +87,7 @@ services:
       # --- tor (cluster 1/6) ---
       USING_TOR: "${SM_USING_TOR:-false}"
     ports:
-      - "8084:8084"
+      - "127.0.0.1::8084"
     volumes:
       - ./.state/config:/config
       - ./.state/books:/books

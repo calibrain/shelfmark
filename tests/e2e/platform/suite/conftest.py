@@ -49,6 +49,14 @@ class PlatformClient:
         kw.setdefault("timeout", self.timeout)
         return self.session.post(f"{self.base_url}{path}", **kw)
 
+    def put(self, path: str, **kw) -> requests.Response:
+        kw.setdefault("timeout", self.timeout)
+        return self.session.put(f"{self.base_url}{path}", **kw)
+
+    def delete(self, path: str, **kw) -> requests.Response:
+        kw.setdefault("timeout", self.timeout)
+        return self.session.delete(f"{self.base_url}{path}", **kw)
+
     # --- domain helpers -------------------------------------------------- #
     def wait_for_health(self, max_wait: int = 90) -> bool:
         deadline = time.time() + max_wait
@@ -62,19 +70,23 @@ class PlatformClient:
         return False
 
     def direct_search(
-        self, query: str, *, inject: str | None = None, **params
+        self, *, book_id: str | None = None, inject: str | None = None, **params
     ) -> requests.Response:
         """Source-native (hermetic) release search — no external metadata provider.
 
-        Hits GET /api/releases?source=direct_download&query=... which drives
-        direct_download.search_books against the mock Anna's Archive.
+        Hits GET /api/releases with the runner-seeded canonical Library Book,
+        which drives direct_download.search_books against the mock Anna's Archive.
 
-        Fault injection rides *inside* the query text (the app builds the AA URL
-        itself and only forwards the query as ``q=``); the mock origin parses the
-        ``E2EINJECT:<name>`` token. See mock_services.aa_search.
+        Fault injection uses the supported administrator ``manual_query`` override;
+        the mock origin parses the ``E2EINJECT:<name>`` token. See mock_services.aa_search.
         """
-        effective_query = f"E2EINJECT:{inject} {query}" if inject else query
-        qp = {"source": "direct_download", "query": effective_query, **params}
+        qp = {
+            "library_book_id": book_id or os.environ["E2E_DIRECT_SOURCE_BOOK_ID"],
+            "source": "direct_download",
+            **params,
+        }
+        if inject:
+            qp["manual_query"] = f"E2EINJECT:{inject}"
         return self.get("/api/releases", params=qp, timeout=60)
 
     def releases_from(self, resp: requests.Response) -> list[dict]:

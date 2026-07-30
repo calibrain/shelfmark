@@ -19,7 +19,7 @@ pytestmark = pytest.mark.profiles("baseline")
 
 def test_search_returns_parsed_releases(client) -> None:
     """Happy path: the parser turns the AA results table into releases."""
-    resp = client.direct_search("Mistborn")
+    resp = client.direct_search()
     assert resp.status_code == 200, resp.text
     releases = client.releases_from(resp)
     assert releases, "expected at least one parsed release from the AA results table"
@@ -33,7 +33,7 @@ def test_layout_drift_fails_loudly_not_silently(client) -> None:
 
     Regression guard for #878/#879/#880 and the layout-change PRs.
     """
-    resp = client.direct_search("Mistborn", inject="layout_drift")
+    resp = client.direct_search(inject="layout_drift")
     releases = client.releases_from(resp)
     # Acceptable behaviours: an explicit error status, OR a 200 with an error
     # field. NOT acceptable: 200 + empty releases with no signal.
@@ -56,7 +56,7 @@ def test_layout_drift_fails_loudly_not_silently(client) -> None:
 def test_no_files_string_alongside_real_results(client) -> None:
     """A real results table that also contains the literal 'No files found.'
     must still yield releases (false-positive guard)."""
-    resp = client.direct_search("Mistborn", inject="no_files")
+    resp = client.direct_search(inject="no_files")
     assert resp.status_code == 200, resp.text
     assert client.releases_from(resp), (
         "'No files found.' substring caused a false-positive empty result"
@@ -65,6 +65,6 @@ def test_no_files_string_alongside_real_results(client) -> None:
 
 def test_genuinely_empty_results_handled_cleanly(client) -> None:
     """A true 'No files found.' page yields zero releases without a 500."""
-    resp = client.direct_search("Mistborn", inject="empty")
+    resp = client.direct_search(inject="empty")
     assert resp.status_code in (200, 404), resp.status_code
     assert client.releases_from(resp) == []

@@ -44,11 +44,7 @@ def _cf_gated_search_has_no_releases(client) -> bool:
     which is the point of this negative control.
     """
     try:
-        resp = client.get(
-            "/api/releases",
-            params={"source": "direct_download", "query": "Mistborn"},
-            timeout=30,
-        )
+        resp = client.direct_search()
     except requests.exceptions.Timeout:
         return True  # could not complete -> definitively no releases obtained
     assert resp.status_code in (200, 404, 500, 503), (

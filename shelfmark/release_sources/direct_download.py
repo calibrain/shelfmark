@@ -1899,6 +1899,7 @@ class DirectDownloadSource(ReleaseSource):
         # Execute searches with deduplication
         seen_ids: set = set()
         all_results: list[BrowseRecord] = []
+        search_errors: list[Exception] = []
 
         for title, langs in searches:
             query = f"{title} {author}".strip()
@@ -1914,8 +1915,9 @@ class DirectDownloadSource(ReleaseSource):
                         all_results.append(bi)
             except SearchUnavailableError:
                 raise
-            except Exception:
+            except Exception as exc:
                 logger.exception("Search error")
+                search_errors.append(exc)
 
         if not all_results and any(langs for _, langs in searches):
             logger.debug(
@@ -1934,8 +1936,14 @@ class DirectDownloadSource(ReleaseSource):
                             all_results.append(bi)
                 except SearchUnavailableError:
                     raise
-                except Exception:
+                except Exception as exc:
                     logger.exception("Search error")
+                    search_errors.append(exc)
+
+        if not all_results and search_errors:
+            raise SearchUnavailableError(
+                "Download source returned an unrecognized search-results page."
+            )
 
         return [_browse_record_to_release(record) for record in all_results]
 

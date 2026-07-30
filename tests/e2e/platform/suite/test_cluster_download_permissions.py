@@ -34,7 +34,7 @@ def _staging_leftovers() -> list[Path]:
 def test_no_bypass_download_fails_cleanly(client) -> None:
     """Without a bypasser, AA is undownloadable — the app must report a clear
     terminal error (the #1028 shape), not hang or crash."""
-    resp = client.direct_search("Mistborn")
+    resp = client.direct_search()
     releases = client.releases_from(resp)
     assert releases, "search should still return parsed releases even if undownloadable"
 

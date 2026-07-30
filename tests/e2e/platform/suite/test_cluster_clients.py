@@ -46,10 +46,8 @@ def _prowlarr_search(client, query: str):
     return client.get(
         "/api/releases",
         params={
-            "provider": "manual",
-            "book_id": "e2e-manual-1",
+            "library_book_id": os.environ["E2E_MOBY_DICK_BOOK_ID"],
             "source": "prowlarr",
-            "title": query,
             "manual_query": query,
         },
         timeout=60,

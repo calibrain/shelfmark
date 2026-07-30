@@ -75,7 +75,11 @@ jobs:
           enable-cache: true
       - name: Sync dependencies
         run: make install-python-dev
+      - name: Run baseline HTTP API e2e
+        if: matrix.profile == 'baseline'
+        run: make e2e
       - name: Run e2e platform (${{ matrix.profile }})
+        if: matrix.profile != 'baseline'
         run: tests/e2e/platform/run-e2e.sh env/${{ matrix.profile }}.env
       - name: Dump shelfmark logs on failure
         if: failure()
