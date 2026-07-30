@@ -26,6 +26,18 @@ interface SelfSettingsForm {
   notification_destination: string;
 }
 
+export const buildSelfSettingsPayload = (
+  values: SelfSettingsForm,
+): Parameters<typeof updateSelfSettings>[0] => ({
+  display_name: values.display_name || null,
+  email: values.email || null,
+  kindle_address: values.kindle_address || null,
+  notifications_enabled: values.notifications_enabled,
+  notification_transport: values.notification_transport === 'apprise' ? 'apprise' : null,
+  notification_destination:
+    values.notification_transport === 'apprise' ? values.notification_destination || null : null,
+});
+
 const readOnlyField = (key: string, label: string, value: string): TextFieldConfig => ({
   type: 'TextField',
   key,
@@ -116,15 +128,7 @@ export const SelfSettingsPage = ({ onShowToast, onSettingsSaved }: SelfSettingsP
     if (!hasChanges) return;
     setIsSaving(true);
     try {
-      const saved = await updateSelfSettings({
-        display_name: values.display_name || null,
-        email: values.email || null,
-        kindle_address: values.kindle_address || null,
-        notifications_enabled: values.notifications_enabled,
-        notification_transport: values.notification_transport === 'apprise' ? 'apprise' : null,
-        notification_destination:
-          values.notification_transport === 'apprise' ? values.notification_destination || null : null,
-      });
+      const saved = await updateSelfSettings(buildSelfSettingsPayload(values));
       setOriginalValues({
         ...values,
         email: saved.email || '',

@@ -72,6 +72,14 @@ def test_admin_can_edit_email_for_externally_authenticated_user(app, user_db):
     assert user_db.get_user(user_id=user["id"])["identity_email"] == "source@example.com"
 
 
+def test_admin_can_clear_email_with_an_empty_value(app, user_db):
+    user = user_db.create_user(username="alice", email="old@example.com")
+    with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="builtin"):
+        response = _admin_client(app).put(f"/api/admin/users/{user['id']}", json={"email": "  "})
+    assert response.status_code == 200
+    assert response.json["email"] is None
+
+
 def test_admin_cannot_edit_personal_preferences_through_user_api(app, user_db):
     user = user_db.create_user(username="alice")
     with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="builtin"):

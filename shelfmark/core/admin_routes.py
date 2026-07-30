@@ -348,12 +348,12 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             return jsonify({"error": "is_active must be a boolean"}), 400
         if "email" in user_fields:
             value = user_fields["email"]
-            if value is None:
-                pass
+            if value is None or (isinstance(value, str) and not value.strip()):
+                user_fields["email"] = None
             elif not isinstance(value, str) or not is_valid_email_destination(value.strip()):
                 return jsonify({"error": "email must be a valid email address or null"}), 400
             else:
-                user_fields["email"] = value.strip() or None
+                user_fields["email"] = value.strip()
 
         role_changed = "role" in user_fields and user_fields["role"] != user.get("role")
         display_name_changed = "display_name" in user_fields and user_fields[

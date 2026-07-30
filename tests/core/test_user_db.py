@@ -129,7 +129,7 @@ def test_initialize_migrates_legacy_email_notification_to_canonical_user_email(d
     assert user_db.get_personal_preferences(1)["notification_destination"] is None
 
 
-def test_initialize_disables_malformed_or_missing_legacy_email_notification(db_path):
+def test_initialize_disables_malformed_and_absent_legacy_email_notifications(db_path):
     conn = sqlite3.connect(db_path)
     conn.executescript("""
         CREATE TABLE users (
@@ -147,7 +147,9 @@ def test_initialize_disables_malformed_or_missing_legacy_email_notification(db_p
         );
     """)
     conn.execute("INSERT INTO users (id, username, email) VALUES (1, 'reader', 'reader@example.com')")
+    conn.execute("INSERT INTO users (id, username, email) VALUES (2, 'missing', 'missing@example.com')")
     conn.execute("INSERT INTO user_preferences VALUES (1, NULL, 1, 'email', 'not an email')")
+    conn.execute("INSERT INTO user_preferences VALUES (2, NULL, 1, 'email', NULL)")
     conn.commit()
     conn.close()
 
@@ -158,6 +160,38 @@ def test_initialize_disables_malformed_or_missing_legacy_email_notification(db_p
     assert preferences["notifications_enabled"] is False
     assert preferences["notification_transport"] is None
     assert preferences["notification_destination"] is None
+    assert user_db.get_personal_preferences(2)["notifications_enabled"] is False
+
+
+def test_initialize_preserves_duplicate_legacy_email_notification_destinations(db_path):
+    conn = sqlite3.connect(db_path)
+    conn.executescript("""
+        CREATE TABLE users (
+            id INTEGER PRIMARY KEY,
+            username TEXT UNIQUE NOT NULL,
+            email TEXT,
+            oidc_subject TEXT
+        );
+        CREATE TABLE user_preferences (
+            user_id INTEGER PRIMARY KEY,
+            kindle_address TEXT,
+            notifications_enabled INTEGER NOT NULL DEFAULT 0,
+            notification_transport TEXT,
+            notification_destination TEXT
+        );
+    """)
+    conn.execute("INSERT INTO users (id, username) VALUES (1, 'first')")
+    conn.execute("INSERT INTO users (id, username) VALUES (2, 'second')")
+    conn.execute("INSERT INTO user_preferences VALUES (1, NULL, 1, 'email', 'shared@example.com')")
+    conn.execute("INSERT INTO user_preferences VALUES (2, NULL, 1, 'email', 'shared@example.com')")
+    conn.commit()
+    conn.close()
+
+    user_db = UserDB(db_path)
+    user_db.initialize()
+
+    assert user_db.get_user(user_id=1)["email"] == "shared@example.com"
+    assert user_db.get_user(user_id=2)["email"] == "shared@example.com"
 
 
 def test_book_request_lifecycle(user_db):
