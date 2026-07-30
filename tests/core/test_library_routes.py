@@ -220,15 +220,43 @@ def test_list_books_scoped_to_own_library(app, user_db):
     assert bob_book in bob_ids and alice_book not in bob_ids
 
 
-def test_list_books_admin_sees_all_libraries(app, user_db):
+def test_list_books_admin_defaults_to_own_library(app, user_db):
     alice = user_db.create_user(username="alice", role="user")
     admin = user_db.create_user(username="admin", role="admin")
-    client_post_book(app, alice, "hardcover", "a-1")
-    alice_book_id = _first_book_id_for_user(app, alice)
+    alice_book_id = client_post_book(app, alice, "hardcover", "a-1")
+    admin_book_id = client_post_book(app, admin, "hardcover", "admin-1")
 
-    admin_client = _authed_client(app, admin, is_admin=True)
-    resp = admin_client.get("/api/library/books").json
-    assert any(b["book_id"] == alice_book_id for b in resp["books"])
+    response = _authed_client(app, admin, is_admin=True).get("/api/library/books")
+
+    assert [book["book_id"] for book in response.json["books"]] == [admin_book_id]
+    assert alice_book_id not in [book["book_id"] for book in response.json["books"]]
+
+
+def test_list_books_admin_can_request_all_libraries(app, user_db):
+    alice = user_db.create_user(username="alice", role="user")
+    admin = user_db.create_user(username="admin", role="admin")
+    alice_book_id = client_post_book(app, alice, "hardcover", "a-1")
+    admin_book_id = client_post_book(app, admin, "hardcover", "admin-1")
+
+    response = _authed_client(app, admin, is_admin=True).get("/api/library/books?scope=all")
+
+    assert {book["book_id"] for book in response.json["books"]} == {alice_book_id, admin_book_id}
+    assert all(
+        set(book) == {"book_id", "title", "author", "cover_url", "formats_on_disk", "added_at"}
+        for book in response.json["books"]
+    )
+
+
+def test_list_books_ignores_all_scope_for_non_admin(app, user_db):
+    alice = user_db.create_user(username="alice", role="user")
+    bob = user_db.create_user(username="bob", role="user")
+    alice_book_id = client_post_book(app, alice, "hardcover", "alice-1")
+    bob_book_id = client_post_book(app, bob, "hardcover", "bob-1")
+
+    response = _authed_client(app, alice).get("/api/library/books?scope=all")
+
+    assert [book["book_id"] for book in response.json["books"]] == [alice_book_id]
+    assert bob_book_id not in [book["book_id"] for book in response.json["books"]]
 
 
 def test_book_detail_403_for_non_member(app, user_db):
@@ -272,6 +300,17 @@ def test_delete_book_scoped_to_own_library(app, user_db):
     resp = _authed_client(app, alice).delete(f"/api/library/books/{book_id}")
     assert resp.status_code == 200
     assert resp.json["status"] == "removed"
+
+
+def test_admin_add_and_remove_remain_scoped_to_own_library(app, user_db):
+    alice = user_db.create_user(username="alice")
+    admin = user_db.create_user(username="admin", role="admin")
+    alice_book_id = client_post_book(app, alice, "hardcover", "alice-1")
+    admin_book_id = client_post_book(app, admin, "hardcover", "admin-1")
+    admin_client = _authed_client(app, admin, is_admin=True)
+
+    assert admin_client.delete(f"/api/library/books/{alice_book_id}").status_code == 404
+    assert admin_client.delete(f"/api/library/books/{admin_book_id}").status_code == 200
 
 
 def test_download_file_gates_on_library_membership(app, user_db, library_service, db_path):
