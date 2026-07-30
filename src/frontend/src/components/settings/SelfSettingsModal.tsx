@@ -1,7 +1,5 @@
 import { useCallback, useState } from 'react';
 
-import { useBodyScrollLock } from '../../hooks/useBodyScrollLock';
-import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useMountEffect } from '../../hooks/useMountEffect';
 import { getSelfSettings, testPersonalNotification, updateSelfSettings } from '../../services/api';
 import type { CheckboxFieldConfig, SelectFieldConfig, TextFieldConfig } from '../../types/settings';
@@ -13,9 +11,7 @@ import {
 import { CheckboxField, SelectField, TextField } from './fields';
 import { FieldWrapper } from './shared';
 
-interface SelfSettingsModalProps {
-  isOpen: boolean;
-  onClose: () => void;
+interface SelfSettingsPageProps {
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
   onSettingsSaved?: () => void;
 }
@@ -70,12 +66,7 @@ const notificationTransportField: SelectFieldConfig = {
   value: 'email',
 };
 
-export const SelfSettingsModal = ({
-  isOpen,
-  onClose,
-  onShowToast,
-  onSettingsSaved,
-}: SelfSettingsModalProps) => {
+export const SelfSettingsPage = ({ onShowToast, onSettingsSaved }: SelfSettingsPageProps) => {
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [isTestingNotification, setIsTestingNotification] = useState(false);
@@ -118,12 +109,6 @@ export const SelfSettingsModal = ({
   useMountEffect(() => {
     void load();
   });
-  useBodyScrollLock(isOpen);
-  useEscapeKey(isOpen, () => {
-    if (!isSaving) onClose();
-  });
-
-  if (!isOpen) return null;
   const hasChanges = JSON.stringify(values) !== JSON.stringify(originalValues);
   const update = (field: keyof typeof values, value: string | boolean) =>
     setValues((current) => ({ ...current, [field]: value }));
@@ -170,174 +155,150 @@ export const SelfSettingsModal = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-      <button
-        type="button"
-        className="absolute inset-0 bg-black/60"
-        onClick={onClose}
-        tabIndex={-1}
-        aria-label="Close settings"
-      />
-      <div
-        className="relative flex h-[85vh] max-h-[750px] w-full max-w-2xl flex-col overflow-hidden rounded-xl border border-(--border-muted) bg-(--bg) shadow-2xl"
-        role="dialog"
-        aria-modal="true"
-        aria-label="My settings"
-      >
-        <header className="flex items-center justify-between border-b border-(--border-muted) px-6 py-4">
-          <h3 className="text-sm font-medium">My Settings</h3>
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSaving}
-            className="text-sm opacity-60 hover:opacity-100"
-          >
-            Close
-          </button>
-        </header>
-        <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
-          {isLoading && <p className="text-sm opacity-60">Loading settings...</p>}
-          {!isLoading && error && (
-            <div className="space-y-3">
-              <p className="text-sm text-red-600">{error}</p>
-              <button type="button" onClick={() => void load()} className="text-sm underline">
-                Retry
-              </button>
-            </div>
-          )}
-          {!isLoading && !error && (
-            <>
-              <section className="space-y-4">
-                <h4 className="text-sm font-medium">Account</h4>
-                <FieldWrapper field={readOnlyField('username', 'Username', values.username)}>
-                  <TextField
-                    field={readOnlyField('username', 'Username', values.username)}
-                    value={values.username}
-                    onChange={() => undefined}
-                    disabled
-                  />
-                </FieldWrapper>
-                <FieldWrapper field={readOnlyField('email', 'Account email', values.email)}>
-                  <TextField
-                    field={readOnlyField('email', 'Account email', values.email)}
-                    value={values.email}
-                    onChange={() => undefined}
-                    disabled
-                  />
-                </FieldWrapper>
-                <FieldWrapper
+    <section className="mx-auto max-w-2xl space-y-5">
+      <header className="border-b border-(--border-muted) pb-4">
+        <h2 className="text-lg font-semibold">Personal settings</h2>
+      </header>
+      <div className="space-y-5">
+        {isLoading && <p className="text-sm opacity-60">Loading settings...</p>}
+        {!isLoading && error && (
+          <div className="space-y-3">
+            <p className="text-sm text-red-600">{error}</p>
+            <button type="button" onClick={() => void load()} className="text-sm underline">
+              Retry
+            </button>
+          </div>
+        )}
+        {!isLoading && !error && (
+          <>
+            <section className="space-y-4">
+              <h4 className="text-sm font-medium">Account</h4>
+              <FieldWrapper field={readOnlyField('username', 'Username', values.username)}>
+                <TextField
+                  field={readOnlyField('username', 'Username', values.username)}
+                  value={values.username}
+                  onChange={() => undefined}
+                  disabled
+                />
+              </FieldWrapper>
+              <FieldWrapper field={readOnlyField('email', 'Account email', values.email)}>
+                <TextField
+                  field={readOnlyField('email', 'Account email', values.email)}
+                  value={values.email}
+                  onChange={() => undefined}
+                  disabled
+                />
+              </FieldWrapper>
+              <FieldWrapper field={textField('display_name', 'Display name', values.display_name)}>
+                <TextField
                   field={textField('display_name', 'Display name', values.display_name)}
-                >
-                  <TextField
-                    field={textField('display_name', 'Display name', values.display_name)}
-                    value={values.display_name}
-                    onChange={(value) => update('display_name', value)}
-                  />
-                </FieldWrapper>
-              </section>
-              <section className="space-y-4 border-t border-(--border-muted) pt-5">
-                <h4 className="text-sm font-medium">Delivery</h4>
-                <FieldWrapper
+                  value={values.display_name}
+                  onChange={(value) => update('display_name', value)}
+                />
+              </FieldWrapper>
+            </section>
+            <section className="space-y-4 border-t border-(--border-muted) pt-5">
+              <h4 className="text-sm font-medium">Delivery</h4>
+              <FieldWrapper
+                field={textField(
+                  'kindle_address',
+                  'Send-to-Kindle recipient',
+                  values.kindle_address,
+                  'Used only for Send to Kindle. Any email recipient address is allowed.',
+                )}
+              >
+                <TextField
                   field={textField(
                     'kindle_address',
                     'Send-to-Kindle recipient',
                     values.kindle_address,
-                    'Used only for Send to Kindle. Any email recipient address is allowed.',
                   )}
-                >
-                  <TextField
-                    field={textField(
-                      'kindle_address',
-                      'Send-to-Kindle recipient',
-                      values.kindle_address,
-                    )}
-                    value={values.kindle_address}
-                    onChange={(value) => update('kindle_address', value)}
-                  />
-                </FieldWrapper>
-              </section>
-              <section className="space-y-4 border-t border-(--border-muted) pt-5">
-                <h4 className="text-sm font-medium">Personal Notifications</h4>
-                <FieldWrapper field={notificationEnabledField}>
-                  <CheckboxField
-                    field={notificationEnabledField}
-                    value={values.notifications_enabled}
-                    onChange={(value) => update('notifications_enabled', value)}
-                  />
-                </FieldWrapper>
-                <FieldWrapper field={notificationTransportField}>
-                  <SelectField
-                    field={notificationTransportField}
-                    value={values.notification_transport}
-                    onChange={(value) =>
-                      setValues((current) => ({
-                        ...current,
-                        notification_transport: value === 'apprise' ? 'apprise' : 'email',
-                        notification_destination: '',
-                      }))
-                    }
-                  />
-                </FieldWrapper>
-                <button
-                  type="button"
-                  onClick={() => void testNotification()}
-                  disabled={!values.notifications_enabled || hasChanges || isTestingNotification}
-                  className="rounded-lg border border-(--border-muted) px-3 py-2 text-sm disabled:opacity-60"
-                >
-                  {isTestingNotification ? 'Sending test...' : 'Test saved destination'}
-                </button>
-                <FieldWrapper
+                  value={values.kindle_address}
+                  onChange={(value) => update('kindle_address', value)}
+                />
+              </FieldWrapper>
+            </section>
+            <section className="space-y-4 border-t border-(--border-muted) pt-5">
+              <h4 className="text-sm font-medium">Personal Notifications</h4>
+              <FieldWrapper field={notificationEnabledField}>
+                <CheckboxField
+                  field={notificationEnabledField}
+                  value={values.notifications_enabled}
+                  onChange={(value) => update('notifications_enabled', value)}
+                />
+              </FieldWrapper>
+              <FieldWrapper field={notificationTransportField}>
+                <SelectField
+                  field={notificationTransportField}
+                  value={values.notification_transport}
+                  onChange={(value) =>
+                    setValues((current) => ({
+                      ...current,
+                      notification_transport: value === 'apprise' ? 'apprise' : 'email',
+                      notification_destination: '',
+                    }))
+                  }
+                />
+              </FieldWrapper>
+              <button
+                type="button"
+                onClick={() => void testNotification()}
+                disabled={!values.notifications_enabled || hasChanges || isTestingNotification}
+                className="rounded-lg border border-(--border-muted) px-3 py-2 text-sm disabled:opacity-60"
+              >
+                {isTestingNotification ? 'Sending test...' : 'Test saved destination'}
+              </button>
+              <FieldWrapper
+                field={textField(
+                  'notification_destination',
+                  values.notification_transport === 'email' ? 'Email address' : 'Apprise URL',
+                  values.notification_destination,
+                )}
+              >
+                <TextField
                   field={textField(
                     'notification_destination',
                     values.notification_transport === 'email' ? 'Email address' : 'Apprise URL',
                     values.notification_destination,
                   )}
-                >
-                  <TextField
-                    field={textField(
-                      'notification_destination',
-                      values.notification_transport === 'email' ? 'Email address' : 'Apprise URL',
-                      values.notification_destination,
-                    )}
-                    value={values.notification_destination}
-                    onChange={(value) => update('notification_destination', value)}
-                  />
-                </FieldWrapper>
-              </section>
-              <section className="border-t border-(--border-muted) pt-5">
-                <FieldWrapper field={THEME_FIELD}>
-                  <SelectField
-                    field={THEME_FIELD}
-                    value={themeValue}
-                    onChange={(value) => {
-                      setThemeValue(value);
-                      setThemePreference(value);
-                    }}
-                  />
-                </FieldWrapper>
-              </section>
-            </>
-          )}
-        </div>
-        <footer className="flex justify-end gap-3 border-t border-(--border-muted) px-6 py-4">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={isSaving}
-            className="rounded-lg border border-(--border-muted) px-4 py-2 text-sm"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => void save()}
-            disabled={!hasChanges || isSaving || isLoading}
-            className="rounded-lg bg-sky-600 px-4 py-2 text-sm text-white disabled:opacity-60"
-          >
-            {isSaving ? 'Saving...' : 'Save Changes'}
-          </button>
-        </footer>
+                  value={values.notification_destination}
+                  onChange={(value) => update('notification_destination', value)}
+                />
+              </FieldWrapper>
+            </section>
+            <section className="border-t border-(--border-muted) pt-5">
+              <FieldWrapper field={THEME_FIELD}>
+                <SelectField
+                  field={THEME_FIELD}
+                  value={themeValue}
+                  onChange={(value) => {
+                    setThemeValue(value);
+                    setThemePreference(value);
+                  }}
+                />
+              </FieldWrapper>
+            </section>
+          </>
+        )}
       </div>
-    </div>
+      <footer className="flex justify-end gap-3 border-t border-(--border-muted) pt-4">
+        <button
+          type="button"
+          onClick={() => void load()}
+          disabled={isSaving}
+          className="rounded-lg border border-(--border-muted) px-4 py-2 text-sm"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => void save()}
+          disabled={!hasChanges || isSaving || isLoading}
+          className="rounded-lg bg-sky-600 px-4 py-2 text-sm text-white disabled:opacity-60"
+        >
+          {isSaving ? 'Saving...' : 'Save Changes'}
+        </button>
+      </footer>
+    </section>
   );
 };
