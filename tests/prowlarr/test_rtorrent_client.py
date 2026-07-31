@@ -33,8 +33,9 @@ def test_set_category_updates_custom1_label():
     client = RTorrentClient.__new__(RTorrentClient)
     client._rpc = MagicMock()
 
+    # rTorrent lookups are case sensitive and info hashes reach us lowercase.
     assert client.set_category("abc123", "imported") is True
-    client._rpc.d.custom1.set.assert_called_once_with("abc123", "imported")
+    client._rpc.d.custom1.set.assert_called_once_with("ABC123", "imported")
 
 
 class TestRTorrentClientIsConfigured:
@@ -779,8 +780,9 @@ class TestRTorrentClientRemove:
             result = client.remove("abc123def456", delete_files=False)
 
             assert result is True
-            mock_rpc.d.stop.assert_called_once_with("abc123def456")
-            mock_rpc.d.erase.assert_called_once_with("abc123def456")
+            # rTorrent lookups are case sensitive and info hashes reach us lowercase.
+            mock_rpc.d.stop.assert_called_once_with("ABC123DEF456")
+            mock_rpc.d.erase.assert_called_once_with("ABC123DEF456")
 
     def test_remove_with_files(self, monkeypatch):
         """Test torrent removal with file deletion."""
@@ -813,8 +815,8 @@ class TestRTorrentClientRemove:
             result = client.remove("abc123def456", delete_files=True)
 
             assert result is True
-            mock_rpc.d.delete_tied.assert_called_once_with("abc123def456")
-            mock_rpc.d.erase.assert_called_once_with("abc123def456")
+            mock_rpc.d.delete_tied.assert_called_once_with("ABC123DEF456")
+            mock_rpc.d.erase.assert_called_once_with("ABC123DEF456")
 
     def test_remove_failure(self, monkeypatch):
         """Test failed torrent removal."""

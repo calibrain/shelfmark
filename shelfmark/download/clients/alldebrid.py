@@ -11,7 +11,7 @@ import threading
 import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar, NoReturn
 from urllib.parse import quote
 
 import requests
@@ -33,6 +33,15 @@ logger = setup_logger(__name__)
 
 _API_BASE = "https://api.alldebrid.com/v4"
 _AGENT = "shelfmark"
+
+_ALLDEBRID_CLIENT_ERRORS = (
+    AttributeError,
+    OSError,
+    requests.exceptions.RequestException,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
 
 # AllDebrid magnet status codes (from API v4.1 documentation).
 _STATUS_DOWNLOADING = frozenset({0, 1, 2, 3})
@@ -93,12 +102,18 @@ def _flatten_magnet_files(
                 _flatten_magnet_files(entry["e"], prefix=f"{prefix}{name}/"),
             )
         elif entry.get("l"):
-            flat.append({
-                "filename": f"{prefix}{name}",
-                "size": entry.get("s", 0),
-                "link": entry["l"],
-            })
+            flat.append(
+                {
+                    "filename": f"{prefix}{name}",
+                    "size": entry.get("s", 0),
+                    "link": entry["l"],
+                }
+            )
     return flat
+
+
+def _raise_runtime_error(message: str) -> NoReturn:
+    raise RuntimeError(message)
 
 
 @dataclass
@@ -129,7 +144,7 @@ class AllDebridClient(DownloadClient):
     protocol = "torrent"
     name = "alldebrid"
 
-    _downloads: dict[str, _DownloadState] = {}
+    _downloads: ClassVar[dict[str, _DownloadState]] = {}
     _downloads_lock = threading.Lock()
 
     def __init__(self) -> None:
@@ -172,12 +187,12 @@ class AllDebridClient(DownloadClient):
             if not user.get("isPremium", False):
                 return (
                     False,
-                    f"AllDebrid user '{username}' does not have "
-                    f"a Premium subscription",
+                    f"AllDebrid user '{username}' does not have a Premium subscription",
                 )
-            return True, f"Connected to AllDebrid as '{username}' (Premium)"
-        except Exception as e:
+        except _ALLDEBRID_CLIENT_ERRORS as e:
             return False, f"Connection failed: {e}"
+        else:
+            return True, f"Connected to AllDebrid as '{username}' (Premium)"
 
     def add_download(
         self,
@@ -210,23 +225,23 @@ class AllDebridClient(DownloadClient):
             if data.get("status") != "success":
                 code = data.get("error", {}).get("code", "UNKNOWN")
                 msg = f"AllDebrid upload failed: {code}"
-                raise RuntimeError(msg)
+                _raise_runtime_error(msg)
 
             magnets = data.get("data", {}).get("magnets", [])
             if not magnets:
                 msg = "No magnet returned from AllDebrid"
-                raise RuntimeError(msg)
+                _raise_runtime_error(msg)
 
             info = magnets[0]
             if info.get("error"):
                 code = info["error"].get("code", "UNKNOWN")
                 msg = f"AllDebrid magnet error: {code}"
-                raise RuntimeError(msg)
+                _raise_runtime_error(msg)
 
             magnet_id = str(info.get("id", ""))
             if not magnet_id:
                 msg = "No magnet ID returned from AllDebrid"
-                raise RuntimeError(msg)
+                _raise_runtime_error(msg)
 
             target_dir = TMP_DIR / f"alldebrid_{magnet_id}"
             target_dir.mkdir(parents=True, exist_ok=True)
@@ -245,11 +260,13 @@ class AllDebridClient(DownloadClient):
                 magnet_id,
                 name,
             )
-            return magnet_id
 
         except Exception:
             logger.exception("Failed to upload magnet to AllDebrid")
             raise
+
+        else:
+            return magnet_id
 
     def get_status(self, download_id: str) -> DownloadStatus:
         """Poll AllDebrid for magnet status and drive the download."""
@@ -301,12 +318,16 @@ class AllDebridClient(DownloadClient):
 
         except Exception as e:
             logger.exception(
-                "Error checking AllDebrid status for %s", download_id,
+                "Error checking AllDebrid status for %s",
+                download_id,
             )
             return DownloadStatus.error(str(e))
 
     def remove(
-        self, download_id: str, *, delete_files: bool = False,
+        self,
+        download_id: str,
+        *,
+        delete_files: bool = False,
     ) -> bool:
         """Delete the magnet from AllDebrid and clean up local files."""
         try:
@@ -318,7 +339,7 @@ class AllDebridClient(DownloadClient):
                 timeout=_STATUS_TIMEOUT,
                 verify=get_ssl_verify(url),
             )
-        except Exception as e:
+        except _ALLDEBRID_CLIENT_ERRORS as e:
             logger.warning("Failed to delete magnet from AllDebrid: %s", e)
 
         with self._downloads_lock:
@@ -386,10 +407,7 @@ class AllDebridClient(DownloadClient):
             return DownloadStatus(
                 progress=pct * 0.5,
                 state=DownloadState.DOWNLOADING,
-                message=(
-                    f"AllDebrid downloading torrent "
-                    f"({mag.get('filename', state.name)})"
-                ),
+                message=(f"AllDebrid downloading torrent ({mag.get('filename', state.name)})"),
                 complete=False,
                 file_path=None,
                 download_speed=mag.get("downloadSpeed", 0),
@@ -406,10 +424,7 @@ class AllDebridClient(DownloadClient):
             )
 
         # Terminal error from AllDebrid.
-        error_txt = (
-            mag.get("error", {}).get("message")
-            or f"AllDebrid status code {status_code}"
-        )
+        error_txt = mag.get("error", {}).get("message") or f"AllDebrid status code {status_code}"
         with state.lock:
             state.phase = "error"
             state.error_message = error_txt
@@ -419,12 +434,11 @@ class AllDebridClient(DownloadClient):
         """Spawn a background thread to unlock and download files."""
         with state.lock:
             already_running = state.phase in (
-                "unlocking", "downloading_http", "complete",
+                "unlocking",
+                "downloading_http",
+                "complete",
             )
-            thread_alive = (
-                state.download_thread is not None
-                and state.download_thread.is_alive()
-            )
+            thread_alive = state.download_thread is not None and state.download_thread.is_alive()
             if already_running or thread_alive:
                 return
             state.phase = "unlocking"
@@ -476,24 +490,23 @@ class AllDebridClient(DownloadClient):
                 body = resp.json()
                 if body.get("status") == "success":
                     direct = self._resolve_unlock_data(
-                        body.get("data", {}), headers,
+                        body.get("data", {}),
+                        headers,
                     )
                     if direct:
                         return direct
                 err_msg = body.get("error", {}).get(
-                    "message", "Unlock failed",
+                    "message",
+                    "Unlock failed",
                 )
-        except Exception as e:
+        except _ALLDEBRID_CLIENT_ERRORS as e:
             logger.debug("POST unlock exception: %s", e)
 
         # 3. GET unlock fallback with URL-encoded link.
         try:
             encoded = quote(link, safe="")
             get_url = (
-                f"{_API_BASE}/link/unlock"
-                f"?agent={_AGENT}"
-                f"&apikey={self._api_key}"
-                f"&link={encoded}"
+                f"{_API_BASE}/link/unlock?agent={_AGENT}&apikey={self._api_key}&link={encoded}"
             )
             resp = requests.get(
                 get_url,
@@ -508,13 +521,14 @@ class AllDebridClient(DownloadClient):
                     if direct:
                         return direct
                 err_msg = body.get("error", {}).get("message", err_msg)
-        except Exception as e:
+        except _ALLDEBRID_CLIENT_ERRORS as e:
             logger.debug("GET unlock exception: %s", e)
 
         # 4. Last-resort: append apikey to alldebrid.com/f/ links.
         if "alldebrid.com/f/" in link:
             logger.info(
-                "Using apikey fallback for AllDebrid file link: %s", link,
+                "Using apikey fallback for AllDebrid file link: %s",
+                link,
             )
             if "apikey=" not in link:
                 sep = "&" if "?" in link else "?"
@@ -522,7 +536,9 @@ class AllDebridClient(DownloadClient):
             return link
 
         logger.error(
-            "AllDebrid unlock failed for '%s': %s", link, err_msg,
+            "AllDebrid unlock failed for '%s': %s",
+            link,
+            err_msg,
         )
         msg = f"AllDebrid unlock failed: {err_msg}"
         raise RuntimeError(msg)
@@ -541,7 +557,8 @@ class AllDebridClient(DownloadClient):
         if "delayed" in data:
             delayed_id = data["delayed"]
             logger.info(
-                "AllDebrid link delayed (ID %s), polling...", delayed_id,
+                "AllDebrid link delayed (ID %s), polling...",
+                delayed_id,
             )
             delayed_url = f"{_API_BASE}/link/delayed"
             for _ in range(_DELAYED_POLL_MAX_ATTEMPTS):
@@ -558,13 +575,9 @@ class AllDebridClient(DownloadClient):
                         continue
                     body = resp.json()
                     d = body.get("data", {})
-                    if (
-                        body.get("status") == "success"
-                        and d.get("status") == 2
-                        and d.get("link")
-                    ):
+                    if body.get("status") == "success" and d.get("status") == 2 and d.get("link"):
                         return d["link"]
-                except Exception as e:
+                except _ALLDEBRID_CLIENT_ERRORS as e:
                     logger.debug("Delayed poll exception: %s", e)
 
         return data.get("link")
@@ -580,10 +593,7 @@ class AllDebridClient(DownloadClient):
         """
         try:
             files = self._fetch_file_list(state.magnet_id)
-            relevant = [
-                f for f in files
-                if f["filename"].lower().endswith(_BOOK_EXTENSIONS)
-            ]
+            relevant = [f for f in files if f["filename"].lower().endswith(_BOOK_EXTENSIONS)]
             if not relevant:
                 relevant = files
 
@@ -600,17 +610,20 @@ class AllDebridClient(DownloadClient):
 
                 logger.info(
                     "Downloading AllDebrid file %d/%d: %s",
-                    idx + 1, total, rel_path,
+                    idx + 1,
+                    total,
+                    rel_path,
                 )
 
                 buf = download_url(
-                    direct_link, referer="https://alldebrid.com/",
+                    direct_link,
+                    referer="https://alldebrid.com/",
                 )
                 if not buf:
                     msg = f"Failed to download from {direct_link}"
-                    raise RuntimeError(msg)
+                    _raise_runtime_error(msg)
 
-                with open(dest, "wb") as fh:
+                with dest.open("wb") as fh:
                     fh.write(buf.getvalue())
 
                 with state.lock:
@@ -622,12 +635,14 @@ class AllDebridClient(DownloadClient):
 
             logger.info(
                 "AllDebrid download complete for ID %s at %s",
-                state.magnet_id, state.target_dir,
+                state.magnet_id,
+                state.target_dir,
             )
 
         except Exception:
             logger.exception(
-                "Error in AllDebrid download for ID %s", state.magnet_id,
+                "Error in AllDebrid download for ID %s",
+                state.magnet_id,
             )
             with state.lock:
                 state.phase = "error"
@@ -636,7 +651,8 @@ class AllDebridClient(DownloadClient):
                 )
 
     def _fetch_file_list(
-        self, magnet_id: str,
+        self,
+        magnet_id: str,
     ) -> list[dict[str, Any]]:
         """Retrieve and flatten the file tree for a magnet."""
         url = f"{_API_BASE}/magnet/files"

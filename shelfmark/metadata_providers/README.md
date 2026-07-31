@@ -24,12 +24,12 @@ Dataclass representing a book from a metadata provider:
 ```python
 @dataclass
 class BookMetadata:
-    provider: str                    # Internal provider name (e.g., "hardcover")
-    provider_id: str                 # ID in that provider's system
+    provider: str  # Internal provider name (e.g., "hardcover")
+    provider_id: str  # ID in that provider's system
     title: str
 
     # Optional fields
-    provider_display_name: str       # Human-readable name (e.g., "Hardcover")
+    provider_display_name: str  # Human-readable name (e.g., "Hardcover")
     authors: List[str]
     isbn_10: str
     isbn_13: str
@@ -39,7 +39,7 @@ class BookMetadata:
     publish_year: int
     language: str
     genres: List[str]
-    source_url: str                  # Link to book on provider's site
+    source_url: str  # Link to book on provider's site
     display_fields: List[DisplayField]  # Provider-specific display data
 ```
 
@@ -50,9 +50,9 @@ Provider-specific metadata for UI cards (ratings, page counts, reader counts, et
 ```python
 @dataclass
 class DisplayField:
-    label: str       # e.g., "Rating", "Pages", "Readers"
-    value: str       # e.g., "4.5", "496", "8,041"
-    icon: str        # Icon name: "star", "book", "users", "editions"
+    label: str  # e.g., "Rating", "Pages", "Readers"
+    value: str  # e.g., "4.5", "496", "8,041"
+    icon: str  # Icon name: "star", "book", "users", "editions"
 ```
 
 ### MetadataSearchOptions
@@ -64,7 +64,7 @@ Unified search options that work across all providers:
 class MetadataSearchOptions:
     query: str
     search_type: SearchType = SearchType.GENERAL  # GENERAL, TITLE, AUTHOR, ISBN
-    language: str = None                          # ISO 639-1 code (e.g., "en")
+    language: str = None  # ISO 639-1 code (e.g., "en")
     sort: SortOrder = SortOrder.RELEVANCE
     limit: int = 40
     page: int = 1
@@ -88,10 +88,10 @@ All providers must implement this interface:
 
 ```python
 class MetadataProvider(ABC):
-    name: str                        # Internal identifier
-    display_name: str                # Human-readable name
-    requires_auth: bool              # True if API key required
-    supported_sorts: List[SortOrder] # Supported sort options
+    name: str  # Internal identifier
+    display_name: str  # Human-readable name
+    requires_auth: bool  # True if API key required
+    supported_sorts: List[SortOrder]  # Supported sort options
 
     @abstractmethod
     def search(self, options: MetadataSearchOptions) -> List[BookMetadata]:
@@ -121,9 +121,9 @@ class MetadataProvider(ABC):
 ```python
 from shelfmark.metadata_providers import register_provider
 
+
 @register_provider("my_provider")
-class MyProvider(MetadataProvider):
-    ...
+class MyProvider(MetadataProvider): ...
 ```
 
 ### Getting Providers
@@ -281,10 +281,12 @@ from shelfmark.config.env import (
     METADATA_CACHE_BOOK_TTL,
 )
 
+
 @cacheable(ttl=METADATA_CACHE_SEARCH_TTL, key_prefix="myprovider:search")
 def _search_cached(self, cache_key: str, options: MetadataSearchOptions):
     # Cached search implementation
     pass
+
 
 @cacheable(ttl=METADATA_CACHE_BOOK_TTL, key_prefix="myprovider:book")
 def get_book(self, book_id: str):
@@ -301,6 +303,7 @@ from shelfmark.metadata_providers.openlibrary import RateLimiter
 
 # 90 requests per 60 seconds
 rate_limiter = RateLimiter(max_requests=90, window_seconds=60)
+
 
 def make_request(self):
     rate_limiter.wait_if_needed()  # Blocks if rate limited

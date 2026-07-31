@@ -372,6 +372,7 @@ class DownloadClient(ABC):
 
 # Client registry: protocol -> list of client classes
 _CLIENTS: dict[str, list[type[DownloadClient]]] = {}
+ClientType = TypeVar("ClientType", bound=DownloadClient)
 _BUILTIN_CLIENT_MODULES = (
     "shelfmark.download.clients.alldebrid",
     "shelfmark.download.clients.deluge",
@@ -398,7 +399,7 @@ def _ensure_builtin_clients_registered() -> None:
 
 def register_client(
     protocol: str,
-) -> Callable[[type[DownloadClient]], type[DownloadClient]]:
+) -> Callable[[type[ClientType]], type[ClientType]]:
     """Register a download client for a protocol.
 
     Multiple clients can be registered for the same protocol.
@@ -414,7 +415,7 @@ def register_client(
 
     """
 
-    def decorator(cls: type[DownloadClient]) -> type[DownloadClient]:
+    def decorator(cls: type[ClientType]) -> type[ClientType]:
         if protocol not in _CLIENTS:
             _CLIENTS[protocol] = []
         _CLIENTS[protocol].append(cls)

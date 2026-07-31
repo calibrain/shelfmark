@@ -8,10 +8,9 @@ from __future__ import annotations
 
 import shutil
 import threading
-
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, ClassVar, NoReturn
 
 import requests
 
@@ -32,14 +31,25 @@ logger = setup_logger(__name__)
 
 _API_BASE = "https://api.real-debrid.com/rest/1.0"
 
+_REALDEBRID_CLIENT_ERRORS = (
+    AttributeError,
+    OSError,
+    requests.exceptions.RequestException,
+    RuntimeError,
+    TypeError,
+    ValueError,
+)
+
 # Real-Debrid torrent status values.
-_STATUS_DOWNLOADING = frozenset({
-    "magnet_conversion",
-    "waiting_files_selection",
-    "downloading",
-    "compressing",
-    "uploading",
-})
+_STATUS_DOWNLOADING = frozenset(
+    {
+        "magnet_conversion",
+        "waiting_files_selection",
+        "downloading",
+        "compressing",
+        "uploading",
+    }
+)
 _STATUS_READY = "downloaded"
 _STATUS_ERROR = frozenset({"error", "virus", "dead"})
 
@@ -74,6 +84,10 @@ _BOOK_EXTENSIONS = (
 )
 
 
+def _raise_runtime_error(message: str) -> NoReturn:
+    raise RuntimeError(message)
+
+
 @dataclass
 class _DownloadState:
     """Internal mutable state for an in-progress Real-Debrid download."""
@@ -103,7 +117,7 @@ class RealDebridClient(DownloadClient):
     protocol = "torrent"
     name = "realdebrid"
 
-    _downloads: dict[str, _DownloadState] = {}
+    _downloads: ClassVar[dict[str, _DownloadState]] = {}
     _downloads_lock = threading.Lock()
 
     def __init__(self) -> None:
@@ -146,9 +160,10 @@ class RealDebridClient(DownloadClient):
                     f"Real-Debrid user '{username}' does not have "
                     f"a Premium subscription (type: {account_type})",
                 )
-            return True, f"Connected to Real-Debrid as '{username}' (Premium)"
-        except Exception as e:
+        except _REALDEBRID_CLIENT_ERRORS as e:
             return False, f"Connection failed: {e}"
+        else:
+            return True, f"Connected to Real-Debrid as '{username}' (Premium)"
 
     def add_download(
         self,
@@ -182,7 +197,7 @@ class RealDebridClient(DownloadClient):
             torrent_id = str(data.get("id", ""))
             if not torrent_id:
                 msg = "No torrent ID returned from Real-Debrid"
-                raise RuntimeError(msg)
+                _raise_runtime_error(msg)
 
             # Select all files so Real-Debrid starts downloading the torrent
             select_url = f"{_API_BASE}/torrents/selectFiles/{torrent_id}"
@@ -212,11 +227,13 @@ class RealDebridClient(DownloadClient):
                 torrent_id,
                 name,
             )
-            return torrent_id
 
         except Exception:
             logger.exception("Failed to upload magnet to Real-Debrid")
             raise
+
+        else:
+            return torrent_id
 
     def get_status(self, download_id: str) -> DownloadStatus:
         """Poll Real-Debrid for torrent status and drive the download."""
@@ -260,12 +277,16 @@ class RealDebridClient(DownloadClient):
 
         except Exception as e:
             logger.exception(
-                "Error checking Real-Debrid status for %s", download_id,
+                "Error checking Real-Debrid status for %s",
+                download_id,
             )
             return DownloadStatus.error(str(e))
 
     def remove(
-        self, download_id: str, *, delete_files: bool = False,
+        self,
+        download_id: str,
+        *,
+        delete_files: bool = False,
     ) -> bool:
         """Delete the torrent from Real-Debrid and clean up local files."""
         try:
@@ -276,7 +297,7 @@ class RealDebridClient(DownloadClient):
                 timeout=_STATUS_TIMEOUT,
                 verify=get_ssl_verify(url),
             )
-        except Exception as e:
+        except _REALDEBRID_CLIENT_ERRORS as e:
             logger.warning("Failed to delete torrent from Real-Debrid: %s", e)
 
         with self._downloads_lock:
@@ -368,12 +389,11 @@ class RealDebridClient(DownloadClient):
         """Spawn a background thread to unrestrict and download files."""
         with state.lock:
             already_running = state.phase in (
-                "unrestricting", "downloading_http", "complete",
+                "unrestricting",
+                "downloading_http",
+                "complete",
             )
-            thread_alive = (
-                state.download_thread is not None
-                and state.download_thread.is_alive()
-            )
+            thread_alive = state.download_thread is not None and state.download_thread.is_alive()
             if already_running or thread_alive:
                 return
             state.phase = "unrestricting"
@@ -402,7 +422,7 @@ class RealDebridClient(DownloadClient):
         try:
             if not links:
                 msg = "No download links returned by Real-Debrid"
-                raise RuntimeError(msg)
+                _raise_runtime_error(msg)
 
             # Match selected files with links
             selected_files = [f for f in files if f.get("selected") == 1]
@@ -442,7 +462,7 @@ class RealDebridClient(DownloadClient):
                 filename = unl_data.get("filename")
                 if not direct_url:
                     msg = f"Failed to unrestrict Real-Debrid link: {link}"
-                    raise RuntimeError(msg)
+                    _raise_runtime_error(msg)
 
                 # Determine relative file path
                 if rel_idx < len(selected_files):
@@ -456,17 +476,20 @@ class RealDebridClient(DownloadClient):
 
                 logger.info(
                     "Downloading Real-Debrid file %d/%d: %s",
-                    idx + 1, total, rel_path,
+                    idx + 1,
+                    total,
+                    rel_path,
                 )
 
                 buf = download_url(
-                    direct_url, referer="https://real-debrid.com/",
+                    direct_url,
+                    referer="https://real-debrid.com/",
                 )
                 if not buf:
                     msg = f"Failed to download from {direct_url}"
-                    raise RuntimeError(msg)
+                    _raise_runtime_error(msg)
 
-                with open(dest, "wb") as fh:
+                with dest.open("wb") as fh:
                     fh.write(buf.getvalue())
 
                 with state.lock:
@@ -478,12 +501,14 @@ class RealDebridClient(DownloadClient):
 
             logger.info(
                 "Real-Debrid download complete for ID %s at %s",
-                state.torrent_id, state.target_dir,
+                state.torrent_id,
+                state.target_dir,
             )
 
         except Exception:
             logger.exception(
-                "Error in Real-Debrid download for ID %s", state.torrent_id,
+                "Error in Real-Debrid download for ID %s",
+                state.torrent_id,
             )
             with state.lock:
                 state.phase = "error"
