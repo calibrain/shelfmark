@@ -287,10 +287,7 @@ class LibraryService:
                     "SELECT DISTINCT task_id FROM download_history WHERE book_id = ? AND final_status = ?",
                     (normalized_book_id, _ACTIVE_DOWNLOAD_STATUS),
                 ).fetchall()
-                for row in active_rows:
-                    task_id = row["task_id"]
-                    if isinstance(task_id, str) and task_id:
-                        cancel_download(task_id)
+                self._cancel_active_downloads(active_rows, cancel_download)
 
                 paths = conn.execute(
                     "SELECT DISTINCT download_path FROM download_history "
@@ -312,6 +309,16 @@ class LibraryService:
                 return True
             finally:
                 conn.close()
+
+    @staticmethod
+    def _cancel_active_downloads(
+        rows: list[sqlite3.Row], cancel_download: Callable[[str], bool]
+    ) -> None:
+        for row in rows:
+            task_id = row["task_id"]
+            if not isinstance(task_id, str) or not task_id or not cancel_download(task_id):
+                msg = f"Could not cancel active download {task_id!r}"
+                raise RuntimeError(msg)
 
     @staticmethod
     def _detach_book_activity(conn: sqlite3.Connection, book_id: int, *, clear_paths: bool) -> None:

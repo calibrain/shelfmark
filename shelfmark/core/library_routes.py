@@ -242,7 +242,7 @@ def register_library_routes(
     download_history_service: DownloadHistoryService,
     resolve_auth_mode: Callable[[], str],
     resolve_metadata_book: Callable[[str, str], dict[str, Any] | None],
-    cancel_download: Callable[[str], bool] | None = None,
+    cancel_download: Callable[[str], bool],
 ) -> None:
     """Register library API routes.
 
@@ -476,7 +476,7 @@ def register_library_routes(
         try:
             removed = library_service.purge_book(
                 book_id=book_id,
-                cancel_download=cancel_download or (lambda _task_id: False),
+                cancel_download=cancel_download,
             )
         except _OPERATIONAL_ERRORS as exc:
             logger.warning("Library purge_book cleanup failed for book_id=%s: %s", book_id, exc)

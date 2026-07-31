@@ -59,6 +59,7 @@ def app(
     test_app.config["TESTING"] = True
     cancelled_tasks: list[str] = []
     test_app.extensions["cancelled_tasks"] = cancelled_tasks
+    test_app.extensions["cancel_should_fail"] = False
 
     def _resolve_metadata_book(provider: str, provider_book_id: str) -> dict[str, Any] | None:
         # Deterministic stub for tests; mirrors the live _resolve_metadata_book_for_library
@@ -86,7 +87,10 @@ def app(
         download_history_service=download_history_service,
         resolve_auth_mode=_always_builtin_auth_mode,
         resolve_metadata_book=_resolve_metadata_book,
-        cancel_download=lambda task_id: cancelled_tasks.append(task_id) is None,
+        cancel_download=lambda task_id: (
+            cancelled_tasks.append(task_id) is None
+            and not test_app.extensions["cancel_should_fail"]
+        ),
     )
     register_request_routes(
         test_app,
@@ -216,6 +220,7 @@ def test_add_book_returns_503_when_metadata_provider_unavailable(user_db, db_pat
         download_history_service=new_dhs,
         resolve_auth_mode=_always_builtin_auth_mode,
         resolve_metadata_book=_resolve_none,
+        cancel_download=lambda _task_id: True,
     )
     client = _authed_client(test_app, alice)
     resp = client.post(
@@ -301,6 +306,7 @@ def test_list_books_no_auth_mode_keeps_instance_wide_view(
         download_history_service=download_history_service,
         resolve_auth_mode=_no_auth_mode,
         resolve_metadata_book=lambda _provider, _provider_book_id: None,
+        cancel_download=lambda _task_id: True,
     )
 
     response = no_auth_app.test_client().get("/api/library/books")
@@ -498,6 +504,9 @@ def test_admin_purge_preview_is_protected_and_uses_display_name(app, user_db):
         _authed_client(app, alice).get(f"/api/library/books/{book_id}/purge-preview").status_code
         == 403
     )
+    assert (
+        _authed_client(app, alice).delete(f"/api/library/books/{book_id}/purge").status_code == 403
+    )
     response = _authed_client(app, admin, is_admin=True).get(
         f"/api/library/books/{book_id}/purge-preview"
     )
@@ -549,6 +558,30 @@ def test_admin_purge_cancels_active_work_deletes_artifact_and_detaches_activity(
     assert history["book_id"] is None
     assert history["download_path"] is None
     assert not library_service.download_linked_to_user(user_id=owner["id"], history_id=history_id)
+
+
+def test_admin_purge_fails_when_active_download_cannot_be_cancelled(app, user_db, library_service):
+    owner = user_db.create_user(username="owner")
+    admin = user_db.create_user(username="admin", role="admin")
+    book_id = client_post_book(app, owner, "hardcover", "cancel-failure")
+    _seed_history_row(
+        user_db,
+        task_id="cannot-cancel",
+        user_id=owner["id"],
+        username="owner",
+        book_id=book_id,
+        fmt="epub",
+        download_path="/tmp/cannot-cancel.epub",
+        final_status="active",
+    )
+    app.extensions["cancel_should_fail"] = True
+
+    response = _authed_client(app, admin, is_admin=True).delete(
+        f"/api/library/books/{book_id}/purge"
+    )
+
+    assert response.status_code == 500
+    assert library_service.get_book(book_id) is not None
 
 
 def test_download_file_gates_on_library_membership(app, user_db, library_service, db_path):
