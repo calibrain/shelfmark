@@ -260,6 +260,16 @@ class BookQueue:
         self.update_status(task_id, QueueStatus.CANCELLED)
         return True
 
+    def remove_completed_task(self, task_id: str) -> bool:
+        """Discard a completed task once its release has been deleted."""
+        with self._lock:
+            if self._status.get(task_id) != QueueStatus.COMPLETE:
+                return False
+            self._status.pop(task_id, None)
+            self._status_timestamps.pop(task_id, None)
+            self._task_data.pop(task_id, None)
+            return True
+
     def set_priority(self, task_id: str, new_priority: int) -> bool:
         """Change the priority of a queued task (lower = higher priority)."""
         with self._lock:

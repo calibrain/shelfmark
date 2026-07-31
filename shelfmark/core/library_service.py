@@ -264,6 +264,19 @@ class LibraryService:
         finally:
             conn.close()
 
+    def get_book_member_ids(self, book_id: int) -> list[int]:
+        """Return the current member IDs for targeted Book availability updates."""
+        normalized_book_id = self._book_identity(book_id)
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT user_id FROM user_library WHERE book_id = ? ORDER BY user_id",
+                (normalized_book_id,),
+            ).fetchall()
+            return [int(row["user_id"]) for row in rows]
+        finally:
+            conn.close()
+
     def purge_book(self, *, book_id: int, cancel_download: Callable[[str], bool]) -> bool:
         """Purge a canonical Book, its artifacts, and all member-facing state.
 

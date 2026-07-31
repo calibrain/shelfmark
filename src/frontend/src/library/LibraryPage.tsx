@@ -1,6 +1,7 @@
-import { useRef, useState } from 'react';
+import { useEffectEvent, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { useSocket } from '../contexts/SocketContext';
 import { useDependencyEffect } from '../hooks/useMountEffect';
 import { getLibraryBooks } from '../services/api';
 import { withBasePath } from '../utils/basePath';
@@ -55,6 +56,7 @@ const FormatBadges = ({ formats }: { formats: LibraryBookSummary['formats_on_dis
 };
 
 export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
+  const { socket } = useSocket();
   const [books, setBooks] = useState<LibraryBookSummary[]>([]);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<FileFilter>('all');
@@ -82,6 +84,17 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
   useDependencyEffect(() => {
     void load();
   }, [scope]);
+
+  const onAvailability = useEffectEvent(() => {
+    void load();
+  });
+
+  useDependencyEffect(() => {
+    socket?.on('library_book_availability', onAvailability);
+    return () => {
+      socket?.off('library_book_availability', onAvailability);
+    };
+  }, [socket]);
 
   const normalizedQuery = query.trim().toLocaleLowerCase();
   const visibleBooks = books.filter((book) => {

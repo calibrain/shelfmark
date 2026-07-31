@@ -7,6 +7,19 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { BookDetailPage } from '../library/BookDetailPage';
 
+const socketListeners = vi.hoisted(() => new Map<string, (payload: { book_id: number }) => void>());
+
+vi.mock('../contexts/SocketContext', () => ({
+  useSocket: () => ({
+    socket: {
+      on: (event: string, listener: (payload: { book_id: number }) => void) =>
+        socketListeners.set(event, listener),
+      off: (event: string) => socketListeners.delete(event),
+    },
+    connected: true,
+  }),
+}));
+
 const book = {
   book_id: 1,
   metadata_provider: 'hardcover',
@@ -41,6 +54,47 @@ describe('BookDetailPage request-only availability', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    socketListeners.clear();
+  });
+
+  it('reloads when availability changes for the open book only', async () => {
+    let currentBook: typeof book = { ...book, files: [] };
+    const fetchMock = vi.fn(() => Promise.resolve(new Response(JSON.stringify(currentBook))));
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/library/1']}>
+        <Routes>
+          <Route
+            path="/library/:bookId"
+            element={
+              <BookDetailPage
+                autoFindReleases={false}
+                canFindReleases
+                canDeleteReleases={false}
+                isRequestOnly={false}
+                isAdmin={false}
+                onFindReleases={() => undefined}
+                onOpenSettings={() => undefined}
+                onShowToast={() => undefined}
+              />
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: 'Shared Book' });
+    socketListeners.get('library_book_availability')?.({ book_id: 2 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    currentBook = book;
+    socketListeners.get('library_book_availability')?.({ book_id: 1 });
+
+    expect(
+      await screen.findAllByRole('button', { name: 'Download' }).then((buttons) => buttons[0]),
+    ).not.toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('shows existing file controls without release discovery', async () => {
@@ -129,6 +183,7 @@ describe('BookDetailPage release deletion', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    socketListeners.clear();
   });
 
   it('removes a release after an admin deletes it', async () => {

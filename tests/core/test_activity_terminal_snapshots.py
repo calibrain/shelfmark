@@ -40,6 +40,151 @@ def _read_download_history_row(main_module, task_id: str):
 
 
 class TestTerminalSnapshotCapture:
+    def test_complete_library_download_emits_availability_after_finalization(self, main_module):
+        owner = _create_user(main_module, prefix="snap-availability-owner")
+        member = _create_user(main_module, prefix="snap-availability-member")
+        outsider = _create_user(main_module, prefix="snap-availability-outsider")
+        book = main_module.library_service.upsert_book_from_metadata(
+            metadata_provider="hardcover",
+            provider_book_id=uuid.uuid4().hex,
+            title="Availability Snapshot",
+            author="Test Author",
+            subtitle=None,
+            publish_year=None,
+            isbn_13=None,
+            cover_url=None,
+            series_name=None,
+            series_position=None,
+            language=None,
+            metadata_json={},
+        )
+        main_module.library_service.add_to_library(user_id=owner["id"], book_id=book["id"])
+        main_module.library_service.add_to_library(user_id=member["id"], book_id=book["id"])
+        task_id = f"availability-{uuid.uuid4().hex[:8]}"
+        task = DownloadTask(
+            task_id=task_id,
+            source="direct_download",
+            title="Availability Snapshot",
+            user_id=owner["id"],
+            username=owner["username"],
+            library_book_id=book["id"],
+            download_path="/library/availability.epub",
+        )
+        assert main_module.backend.book_queue.add(task) is True
+
+        try:
+            with patch.object(main_module.ws_manager, "is_enabled", return_value=True):
+                with patch.object(main_module.ws_manager.socketio, "emit") as mock_emit:
+                    main_module.backend.book_queue.update_status(task_id, QueueStatus.COMPLETE)
+
+                    # The event is an invalidation signal only after files are queryable.
+                    files = main_module.library_service.get_files_on_disk(book["id"])
+                    assert [file["download_path"] for file in files] == [
+                        "/library/availability.epub"
+                    ]
+
+            payload = {"book_id": book["id"], "task_id": task_id, "availability": "available"}
+            mock_emit.assert_any_call("library_book_availability", payload, to="admins")
+            mock_emit.assert_any_call(
+                "library_book_availability", payload, to=f"user_{owner['id']}"
+            )
+            mock_emit.assert_any_call(
+                "library_book_availability", payload, to=f"user_{member['id']}"
+            )
+            assert all(
+                call.args[0] != "library_book_availability"
+                or call.kwargs["to"] != f"user_{outsider['id']}"
+                for call in mock_emit.call_args_list
+            )
+        finally:
+            main_module.backend.book_queue.cancel_download(task_id)
+
+    @pytest.mark.parametrize("status", [QueueStatus.ERROR, QueueStatus.CANCELLED])
+    def test_non_complete_library_download_does_not_emit_availability(self, main_module, status):
+        user = _create_user(main_module, prefix="snap-availability-terminal")
+        task_id = f"availability-{uuid.uuid4().hex[:8]}"
+        task = DownloadTask(
+            task_id=task_id,
+            source="direct_download",
+            title="Availability Terminal Snapshot",
+            user_id=user["id"],
+            username=user["username"],
+            library_book_id=1,
+        )
+        assert main_module.backend.book_queue.add(task) is True
+
+        try:
+            with patch.object(main_module.ws_manager, "is_enabled", return_value=True):
+                with patch.object(main_module.ws_manager.socketio, "emit") as mock_emit:
+                    main_module.backend.book_queue.update_status(task_id, status)
+
+            assert not any(
+                call.args[0] == "library_book_availability" for call in mock_emit.call_args_list
+            )
+        finally:
+            main_module.backend.book_queue.cancel_download(task_id)
+
+    def test_pathless_complete_library_download_does_not_emit_availability(self, main_module):
+        user = _create_user(main_module, prefix="snap-availability-pathless")
+        task_id = f"availability-{uuid.uuid4().hex[:8]}"
+        task = DownloadTask(
+            task_id=task_id,
+            source="direct_download",
+            title="Availability Pathless Snapshot",
+            user_id=user["id"],
+            username=user["username"],
+            library_book_id=1,
+        )
+        assert main_module.backend.book_queue.add(task) is True
+
+        try:
+            with patch.object(main_module.ws_manager, "is_enabled", return_value=True):
+                with patch.object(main_module.ws_manager.socketio, "emit") as mock_emit:
+                    main_module.backend.book_queue.update_status(task_id, QueueStatus.COMPLETE)
+
+            assert not any(
+                call.args[0] == "library_book_availability" for call in mock_emit.call_args_list
+            )
+        finally:
+            main_module.backend.book_queue.cancel_download(task_id)
+
+    def test_unrecorded_complete_library_download_does_not_emit_availability(self, main_module):
+        user = _create_user(main_module, prefix="snap-availability-unrecorded")
+        book = main_module.library_service.upsert_book_from_metadata(
+            metadata_provider="hardcover",
+            provider_book_id=uuid.uuid4().hex,
+            title="Unrecorded Availability Snapshot",
+            author="Test Author",
+            subtitle=None,
+            publish_year=None,
+            isbn_13=None,
+            cover_url=None,
+            series_name=None,
+            series_position=None,
+            language=None,
+            metadata_json={},
+        )
+        main_module.library_service.add_to_library(user_id=user["id"], book_id=book["id"])
+        task = DownloadTask(
+            task_id=f"unrecorded-{uuid.uuid4().hex[:8]}",
+            source="direct_download",
+            title="Unrecorded Availability Snapshot",
+            user_id=user["id"],
+            username=user["username"],
+            library_book_id=book["id"],
+            download_path="/library/unrecorded.epub",
+        )
+
+        with patch.object(main_module.ws_manager, "is_enabled", return_value=True):
+            with patch.object(main_module.ws_manager.socketio, "emit") as mock_emit:
+                main_module._record_download_terminal_snapshot(
+                    task.task_id, QueueStatus.COMPLETE, task
+                )
+
+        assert not any(
+            call.args[0] == "library_book_availability" for call in mock_emit.call_args_list
+        )
+
     def test_complete_transition_records_direct_snapshot(self, main_module):
         user = _create_user(main_module, prefix="snap-direct")
         task_id = f"direct-{uuid.uuid4().hex[:8]}"

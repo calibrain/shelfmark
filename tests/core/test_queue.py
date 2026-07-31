@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from shelfmark.core.models import DownloadTask
+from shelfmark.core.models import DownloadTask, QueueStatus
 from shelfmark.core.queue import BookQueue
 
 
@@ -51,3 +51,25 @@ def test_enqueue_existing_logs_queue_hook_failures():
     assert args[0] == "Queue hook failed while requeueing task %s: %s"
     assert args[1] == "task-2"
     assert str(args[2]) == "boom"
+
+
+def test_remove_completed_task_allows_a_deleted_release_to_be_queued_again():
+    queue = BookQueue()
+    assert queue.add(_make_task("completed")) is True
+    queue.update_status("completed", QueueStatus.COMPLETE)
+
+    # A matching release is rejected until deletion removes its completed task.
+    assert queue.add(_make_task("completed")) is False
+    assert queue.remove_completed_task("completed") is True
+    assert queue.get_task("completed") is None
+
+    assert queue.add(_make_task("completed")) is True
+    assert queue.get_task_status("completed") == QueueStatus.QUEUED
+
+
+def test_remove_completed_task_keeps_non_completed_tasks():
+    queue = BookQueue()
+    assert queue.add(_make_task("active")) is True
+
+    assert queue.remove_completed_task("active") is False
+    assert queue.get_task("active") is not None

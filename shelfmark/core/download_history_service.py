@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, SupportsIndex, SupportsInt, TypeGuard
@@ -23,6 +24,12 @@ logger = setup_logger(__name__)
 VALID_TERMINAL_STATUSES = frozenset(s.value for s in TERMINAL_QUEUE_STATUSES)
 ACTIVE_DOWNLOAD_STATUS = "active"
 VALID_ORIGINS = frozenset({"direct", "requested"})
+
+
+@dataclass(frozen=True)
+class FinalizeDownloadFilesResult:
+    fulfilled_requests: list[dict[str, Any]]
+    files_finalized: bool
 
 
 def _is_convertible_to_int(
@@ -386,7 +393,7 @@ class DownloadHistoryService:
         status_message: str | None = None,
         file_rows: list[dict[str, Any]] | None = None,
         retry_payload: dict[str, Any] | None = None,
-    ) -> list[dict[str, Any]]:
+    ) -> FinalizeDownloadFilesResult:
         """Finalize a release: delete the queue-time sentinel and insert one
         ``download_history`` row per transferred file plus one
         ``user_downloads`` link per row for the triggering user.
@@ -444,7 +451,7 @@ class DownloadHistoryService:
                         "(may have been missed at queue time)",
                         normalized_task_id,
                     )
-                    return []
+                    return FinalizeDownloadFilesResult(fulfilled_requests=[], files_finalized=False)
 
                 triggering_user_id = (
                     int(sentinel["user_id"]) if sentinel["user_id"] is not None else None
@@ -479,7 +486,7 @@ class DownloadHistoryService:
                         ),
                     )
                     conn.commit()
-                    return []
+                    return FinalizeDownloadFilesResult(fulfilled_requests=[], files_finalized=False)
 
                 # Drop the sentinel (and, defensively, any partial multi-file
                 # rows from a crashed previous finalize attempt for the same
@@ -598,14 +605,17 @@ class DownloadHistoryService:
                 for fulfilled_request in fulfilled_requests:
                     fulfilled_request["status"] = "fulfilled"
                     fulfilled_request["reviewed_at"] = effective_terminal_at
-                return (
-                    fulfilled_requests
-                    if (
-                        normalized_final_status == "complete"
-                        and book_id is not None
-                        and inserted_history_ids
-                    )
-                    else []
+                return FinalizeDownloadFilesResult(
+                    fulfilled_requests=(
+                        fulfilled_requests
+                        if (
+                            normalized_final_status == "complete"
+                            and book_id is not None
+                            and inserted_history_ids
+                        )
+                        else []
+                    ),
+                    files_finalized=bool(inserted_history_ids),
                 )
             finally:
                 conn.close()
