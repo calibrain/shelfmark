@@ -127,7 +127,9 @@ class TestActivityRoutes:
         _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module.backend, "queue_status", return_value=_sample_status_payload()):
+            with patch.object(
+                main_module.backend, "queue_status", return_value=_sample_status_payload()
+            ):
                 response = client.get("/api/activity/snapshot")
 
         assert response.status_code == 200

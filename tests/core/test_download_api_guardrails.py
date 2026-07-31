@@ -155,7 +155,9 @@ class TestReleaseDownloadEndpointGuardrails:
         assert response.status_code == 403
         assert response.get_json() == {"error": "Book is not in your library"}
 
-    def test_non_admin_cannot_queue_release_for_another_users_library_book(self, main_module, client):
+    def test_non_admin_cannot_queue_release_for_another_users_library_book(
+        self, main_module, client
+    ):
         owner = _create_user(main_module, prefix="owner")
         other_user = _create_user(main_module, prefix="other")
         library_book_id = _add_library_book(
@@ -203,12 +205,17 @@ class TestReleaseDownloadEndpointGuardrails:
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
-            with patch.object(main_module.backend, "queue_release", return_value=(True, None)) as mock_queue_release:
+            with patch.object(
+                main_module.backend, "queue_release", return_value=(True, None)
+            ) as mock_queue_release:
                 response = client.post("/api/releases/download", json=payload)
 
         assert response.status_code == 200
         assert response.get_json() == {"status": "queued", "priority": 0}
-        assert mock_queue_release.call_args.args[0] == {**payload, "library_book_id": library_book_id}
+        assert mock_queue_release.call_args.args[0] == {
+            **payload,
+            "library_book_id": library_book_id,
+        }
 
     def test_non_admin_cannot_override_book_derived_release_query(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
