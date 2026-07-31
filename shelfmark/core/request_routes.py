@@ -238,6 +238,8 @@ def register_request_routes(
             return _error("release_data is required", 400)
         if not isinstance(release_data, dict):
             return _error("release_data must be an object", 400)
+        if not release_data:
+            return _error("release_data must be a non-empty object", 400)
         admin = user_db.get_user(user_id=admin_id)
         if admin is None:
             return _error("Admin user identity unavailable", 403)

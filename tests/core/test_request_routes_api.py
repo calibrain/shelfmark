@@ -218,6 +218,27 @@ def test_admin_cannot_fulfil_requests_without_a_release(main_module, client):
     notify.assert_not_called()
 
 
+def test_admin_cannot_fulfil_requests_with_an_empty_release(main_module, client):
+    requester = _create_user(main_module)
+    admin = _create_user(main_module, role="admin", capability="download-capable")
+    book_id = _create_book(main_module, member_ids=[requester["id"]])
+    pending = main_module.user_db.create_library_request(user_id=requester["id"], book_id=book_id)
+    _set_session(client, user=admin)
+
+    with patch.object(
+        main_module.backend, "queue_release", return_value=(True, None)
+    ) as queue_release:
+        with _auth_mode():
+            response = client.post(
+                f"/api/admin/requests/books/{book_id}/fulfil", json={"release_data": {}}
+            )
+
+    assert response.status_code == 400
+    assert response.json == {"error": "release_data must be a non-empty object"}
+    assert main_module.user_db.get_request(pending["id"])["status"] == "pending"
+    queue_release.assert_not_called()
+
+
 def test_shared_release_queue_failure_keeps_all_requests_pending(main_module, client):
     first = _create_user(main_module)
     second = _create_user(main_module)
