@@ -560,7 +560,9 @@ def test_admin_purge_cancels_active_work_deletes_artifact_and_detaches_activity(
     assert not library_service.download_linked_to_user(user_id=owner["id"], history_id=history_id)
 
 
-def test_admin_purge_fails_when_active_download_cannot_be_cancelled(app, user_db, library_service):
+def test_admin_purge_continues_when_active_download_is_already_unavailable(
+    app, user_db, library_service
+):
     owner = user_db.create_user(username="owner")
     admin = user_db.create_user(username="admin", role="admin")
     book_id = client_post_book(app, owner, "hardcover", "cancel-failure")
@@ -580,8 +582,8 @@ def test_admin_purge_fails_when_active_download_cannot_be_cancelled(app, user_db
         f"/api/library/books/{book_id}/purge"
     )
 
-    assert response.status_code == 500
-    assert library_service.get_book(book_id) is not None
+    assert response.status_code == 200
+    assert library_service.get_book(book_id) is None
 
 
 def test_admin_purge_surfaces_artifact_cleanup_failures(app, user_db, library_service, tmp_path):

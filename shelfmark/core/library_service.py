@@ -323,9 +323,10 @@ class LibraryService:
     ) -> None:
         for row in rows:
             task_id = row["task_id"]
-            if not isinstance(task_id, str) or not task_id or not cancel_download(task_id):
-                msg = f"Could not cancel active download {task_id!r}"
-                raise RuntimeError(msg)
+            if isinstance(task_id, str) and task_id and not cancel_download(task_id):
+                # An active history row can outlive its queue task. Continue the
+                # purge so stale or stuck downloads do not block library cleanup.
+                logger.warning("Purge could not cancel unavailable download task %r", task_id)
 
     @staticmethod
     def _clear_deleted_paths(conn: sqlite3.Connection, book_id: int, paths: list[str]) -> None:
