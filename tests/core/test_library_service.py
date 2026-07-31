@@ -125,6 +125,9 @@ def test_add_to_library_links_existing_completed_files_only_when_membership_is_n
     finally:
         conn.close()
 
+    # Keep a second membership so this exercise remains about re-adding after a
+    # non-final removal; final removal now deletes the canonical Book.
+    assert library_service.add_to_library(user_id=owner["id"], book_id=book["id"]) is True
     assert library_service.add_to_library(user_id=member["id"], book_id=book["id"]) is True
 
     files = library_service.get_files_on_disk(book["id"])

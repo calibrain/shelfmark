@@ -428,6 +428,7 @@ function App() {
                   autoFindReleases={config?.library_auto_find_releases !== false}
                   canFindReleases={isAdmin || libraryCapability === 'download-capable'}
                   isRequestOnly={isRequestOnlyLibraryUser(isAdmin, libraryCapability)}
+                  isAdmin={isAdmin}
                   onFindReleases={setReleaseBook}
                   onOpenSettings={handlePersonalSettingsClick}
                   onShowToast={showToast}

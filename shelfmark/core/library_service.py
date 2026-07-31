@@ -13,7 +13,8 @@ import json
 import sqlite3
 import threading
 from datetime import UTC, datetime
-from typing import Any
+from pathlib import Path
+from typing import Any, Callable
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import (
@@ -215,7 +216,7 @@ class LibraryService:
                 conn.close()
 
     def remove_from_library(self, *, user_id: int, book_id: int) -> bool:
-        """Hard-delete the user's library row for a book. Returns True when deleted."""
+        """Remove a membership and clean up the canonical Book when it is last."""
         normalized_user_id = normalize_positive_int(user_id)
         normalized_book_id = self._book_identity(book_id)
         if normalized_user_id is None:
@@ -224,14 +225,106 @@ class LibraryService:
         with self._lock:
             conn = self._connect()
             try:
+                conn.execute("BEGIN IMMEDIATE")
                 cursor = conn.execute(
                     "DELETE FROM user_library WHERE user_id = ? AND book_id = ?",
                     (normalized_user_id, normalized_book_id),
                 )
+                if cursor.rowcount > 0:
+                    remaining = conn.execute(
+                        "SELECT 1 FROM user_library WHERE book_id = ? LIMIT 1",
+                        (normalized_book_id,),
+                    ).fetchone()
+                    if remaining is None:
+                        self._detach_book_activity(conn, normalized_book_id, clear_paths=False)
+                        conn.execute("DELETE FROM books WHERE id = ?", (normalized_book_id,))
                 conn.commit()
                 return cursor.rowcount > 0
             finally:
                 conn.close()
+
+    def get_book_members(self, book_id: int) -> list[dict[str, str | None]]:
+        """Return the current members of a Book without exposing contact details."""
+        normalized_book_id = self._book_identity(book_id)
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT users.display_name, users.username
+                FROM user_library
+                JOIN users ON users.id = user_library.user_id
+                WHERE user_library.book_id = ?
+                ORDER BY COALESCE(users.display_name, users.username), users.username
+                """,
+                (normalized_book_id,),
+            ).fetchall()
+            return [
+                {"display_name": row["display_name"], "username": row["username"]} for row in rows
+            ]
+        finally:
+            conn.close()
+
+    def purge_book(self, *, book_id: int, cancel_download: Callable[[str], bool]) -> bool:
+        """Purge a canonical Book, its artifacts, and all member-facing state.
+
+        The database mutation is held open until recorded paths have been removed,
+        so a cleanup error cannot be reported as a successful canonical purge.
+        """
+        normalized_book_id = self._book_identity(book_id)
+        with self._lock:
+            conn = self._connect()
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                if (
+                    conn.execute(
+                        "SELECT 1 FROM books WHERE id = ?", (normalized_book_id,)
+                    ).fetchone()
+                    is None
+                ):
+                    conn.rollback()
+                    return False
+                active_rows = conn.execute(
+                    "SELECT DISTINCT task_id FROM download_history WHERE book_id = ? AND final_status = ?",
+                    (normalized_book_id, _ACTIVE_DOWNLOAD_STATUS),
+                ).fetchall()
+                for row in active_rows:
+                    task_id = row["task_id"]
+                    if isinstance(task_id, str) and task_id:
+                        cancel_download(task_id)
+
+                paths = conn.execute(
+                    "SELECT DISTINCT download_path FROM download_history "
+                    "WHERE book_id = ? AND download_path IS NOT NULL",
+                    (normalized_book_id,),
+                ).fetchall()
+                for row in paths:
+                    path = row["download_path"]
+                    if isinstance(path, str) and path:
+                        Path(path).unlink(missing_ok=True)
+
+                self._detach_book_activity(conn, normalized_book_id, clear_paths=True)
+                conn.execute("DELETE FROM books WHERE id = ?", (normalized_book_id,))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+                raise
+            else:
+                return True
+            finally:
+                conn.close()
+
+    @staticmethod
+    def _detach_book_activity(conn: sqlite3.Connection, book_id: int, *, clear_paths: bool) -> None:
+        """Remove all visibility links before deleting a Book-owned activity association."""
+        conn.execute(
+            "DELETE FROM user_downloads WHERE history_id IN "
+            "(SELECT id FROM download_history WHERE book_id = ?)",
+            (book_id,),
+        )
+        if clear_paths:
+            conn.execute(
+                "UPDATE download_history SET download_path = NULL WHERE book_id = ?", (book_id,)
+            )
 
     def is_in_library(self, *, user_id: int, book_id: int) -> bool:
         normalized_user_id = normalize_positive_int(user_id)

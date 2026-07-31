@@ -1,4 +1,8 @@
-import type { BookDetailResponse, LibraryBooksResponse } from '../library/types';
+import type {
+  BookDetailResponse,
+  LibraryBooksResponse,
+  LibraryPurgePreview,
+} from '../library/types';
 import type {
   Book,
   StatusData,
@@ -491,6 +495,24 @@ export const getLibraryBooks = async (
 ): Promise<LibraryBooksResponse> => {
   const url = scope === 'all' ? `${API.libraryBooks}?scope=all` : API.libraryBooks;
   return fetchJSON<LibraryBooksResponse>(url);
+};
+
+export const removeLibraryBook = async (bookId: number): Promise<void> => {
+  await fetchJSON(`${API.libraryBooks}/${encodeURIComponent(String(bookId))}`, {
+    method: 'DELETE',
+  });
+};
+
+export const getLibraryPurgePreview = async (bookId: number): Promise<LibraryPurgePreview> => {
+  return fetchJSON<LibraryPurgePreview>(
+    `${API.libraryBooks}/${encodeURIComponent(String(bookId))}/purge-preview`,
+  );
+};
+
+export const purgeLibraryBook = async (bookId: number): Promise<void> => {
+  await fetchJSON(`${API.libraryBooks}/${encodeURIComponent(String(bookId))}/purge`, {
+    method: 'DELETE',
+  });
 };
 
 export const unlinkLibraryRelease = async (bookId: number, historyId: number): Promise<void> => {

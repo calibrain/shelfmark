@@ -242,6 +242,7 @@ def register_library_routes(
     download_history_service: DownloadHistoryService,
     resolve_auth_mode: Callable[[], str],
     resolve_metadata_book: Callable[[str, str], dict[str, Any] | None],
+    cancel_download: Callable[[str], bool] | None = None,
 ) -> None:
     """Register library API routes.
 
@@ -276,6 +277,15 @@ def register_library_routes(
     ) -> LibraryRouteResponse | None:
         return _require_library_membership(
             actor=actor, library_service=library_service, book_id=book_id, action=action
+        )
+
+    def _admin_or_403(
+        actor: _ActorContext, *, action: str, book_id: int
+    ) -> LibraryRouteResponse | None:
+        if actor.is_admin:
+            return None
+        return _error_response(
+            action=action, status_code=403, error="Admin required", book_id=book_id
         )
 
     @app.route("/api/library/books", methods=["POST"])
@@ -435,6 +445,47 @@ def register_library_routes(
         except _OPERATIONAL_ERRORS as exc:
             return jsonify({"error": str(exc)}), 500
         return jsonify({"status": "removed"})
+
+    @app.route("/api/library/books/<int:book_id>/purge-preview", methods=["GET"])
+    def api_library_book_purge_preview(book_id: int) -> Response | LibraryRouteResponse:
+        action = "purge_preview"
+        gate = _actor_gate(action)
+        if not isinstance(gate, _ActorContext):
+            return gate
+        admin_error = _admin_or_403(gate, action=action, book_id=book_id)
+        if admin_error is not None:
+            return admin_error
+        try:
+            if library_service.get_book(book_id) is None:
+                return _error_response(
+                    action=action, status_code=404, error="Book not found", book_id=book_id
+                )
+            return jsonify({"users": library_service.get_book_members(book_id)})
+        except _OPERATIONAL_ERRORS as exc:
+            return jsonify({"error": str(exc)}), 500
+
+    @app.route("/api/library/books/<int:book_id>/purge", methods=["DELETE"])
+    def api_library_purge_book(book_id: int) -> Response | LibraryRouteResponse:
+        action = "purge_book"
+        gate = _actor_gate(action)
+        if not isinstance(gate, _ActorContext):
+            return gate
+        admin_error = _admin_or_403(gate, action=action, book_id=book_id)
+        if admin_error is not None:
+            return admin_error
+        try:
+            removed = library_service.purge_book(
+                book_id=book_id,
+                cancel_download=cancel_download or (lambda _task_id: False),
+            )
+        except _OPERATIONAL_ERRORS as exc:
+            logger.warning("Library purge_book cleanup failed for book_id=%s: %s", book_id, exc)
+            return jsonify({"error": f"Failed to purge book: {exc}"}), 500
+        if not removed:
+            return _error_response(
+                action=action, status_code=404, error="Book not found", book_id=book_id
+            )
+        return jsonify({"status": "purged"})
 
     @app.route("/api/library/books/<int:book_id>/download", methods=["GET"])
     def api_library_download_file(book_id: int) -> Response | LibraryRouteResponse:

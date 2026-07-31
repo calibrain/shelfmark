@@ -1,14 +1,17 @@
 import { useCallback, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
-import { useDependencyEffect } from '../hooks/useMountEffect';
+import { useDependencyEffect, useMountEffect } from '../hooks/useMountEffect';
 import {
   cancelRequest,
   createLibraryRequest,
   downloadLibraryFile,
   getLibraryBook,
+  getLibraryPurgePreview,
   isApiResponseError,
   listLibraryRequests,
+  purgeLibraryBook,
+  removeLibraryBook,
   sendLibraryBookToKindle,
   unlinkLibraryRelease,
 } from '../services/api';
@@ -19,6 +22,7 @@ import {
   groupFilesByRelease,
   latestFilesByFormat,
   type BookDetailResponse,
+  type LibraryPurgePreview,
   type LibraryFile,
 } from './types';
 
@@ -26,6 +30,7 @@ interface BookDetailPageProps {
   autoFindReleases: boolean;
   canFindReleases: boolean;
   isRequestOnly: boolean;
+  isAdmin: boolean;
   onFindReleases: (book: Book) => void;
   onOpenSettings: () => void;
   onShowToast: (message: string, type: 'success' | 'error' | 'info') => void;
@@ -303,10 +308,124 @@ const AvailableFiles = ({
   );
 };
 
+const DeleteBookDialog = ({
+  book,
+  isAdmin,
+  onClose,
+  onDelete,
+}: {
+  book: BookDetailResponse;
+  isAdmin: boolean;
+  onClose: () => void;
+  onDelete: (purge: boolean) => Promise<void>;
+}) => {
+  const [deleteForAll, setDeleteForAll] = useState(!book.in_my_library);
+  const [preview, setPreview] = useState<LibraryPurgePreview | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
+
+  const toggleDeleteForAll = async (checked: boolean) => {
+    setDeleteForAll(checked);
+    setError(null);
+    if (!checked || preview) return;
+    try {
+      setPreview(await getLibraryPurgePreview(book.book_id));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to load affected users');
+    }
+  };
+
+  useMountEffect(() => {
+    if (book.in_my_library) return;
+    void getLibraryPurgePreview(book.book_id)
+      .then(setPreview)
+      .catch((caught: unknown) => {
+        setError(caught instanceof Error ? caught.message : 'Failed to load affected users');
+      });
+  });
+
+  const confirm = async () => {
+    setSubmitting(true);
+    try {
+      await onDelete(deleteForAll);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to delete book');
+      setSubmitting(false);
+    }
+  };
+
+  const canPurge = deleteForAll && preview !== null && !error;
+  return (
+    <div
+      aria-labelledby="delete-book-title"
+      aria-modal="true"
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+      role="dialog"
+    >
+      <div className="w-full max-w-md rounded-xl bg-(--bg) p-6 shadow-xl">
+        <h2 id="delete-book-title" className="text-lg font-semibold text-(--text)">
+          Remove {book.title || 'book'}?
+        </h2>
+        <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+          {book.in_my_library
+            ? 'This removes the book from your library.'
+            : 'This permanently removes the book for every user.'}
+        </p>
+        {isAdmin && book.in_my_library && (
+          <label className="mt-4 flex cursor-pointer items-start gap-2 text-sm text-(--text)">
+            <input
+              checked={deleteForAll}
+              type="checkbox"
+              onChange={(event) => void toggleDeleteForAll(event.target.checked)}
+            />
+            <span>Delete for all users</span>
+          </label>
+        )}
+        {deleteForAll && (
+          <div className="mt-4 rounded-lg bg-(--bg-soft) p-3 text-sm">
+            <p className="font-medium text-(--text)">Affected users</p>
+            {preview && (
+              <ul className="mt-2 list-disc pl-5 text-gray-600 dark:text-gray-300">
+                {preview.users.map((user) => (
+                  <li key={user.username}>{user.display_name || user.username}</li>
+                ))}
+              </ul>
+            )}
+            {!preview && !error && <p className="mt-2 text-gray-600">Loading users...</p>}
+          </div>
+        )}
+        {error && <p className="mt-3 text-sm text-rose-700 dark:text-rose-300">{error}</p>}
+        <div className="mt-6 flex justify-end gap-3">
+          <button
+            type="button"
+            className="hover-action rounded-md px-3 py-2 text-sm"
+            onClick={onClose}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="cursor-pointer rounded-md bg-rose-700 px-3 py-2 text-sm font-medium text-white hover:bg-rose-800 disabled:cursor-not-allowed disabled:opacity-50"
+            disabled={
+              submitting || (isAdmin && !book.in_my_library ? !canPurge : deleteForAll && !canPurge)
+            }
+            onClick={() => void confirm()}
+          >
+            {deleteForAll || !book.in_my_library
+              ? 'Delete for all users'
+              : 'Remove from my library'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 export const BookDetailPage = ({
   autoFindReleases,
   canFindReleases,
   isRequestOnly,
+  isAdmin,
   onFindReleases,
   onOpenSettings,
   onShowToast,
@@ -320,6 +439,7 @@ export const BookDetailPage = ({
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [autoOpenedFor, setAutoOpenedFor] = useState<number | null>(null);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const firstAddIntent = hasAutoFindReleasesIntent(location.state);
 
   const load = useCallback(async () => {
@@ -444,6 +564,15 @@ export const BookDetailPage = ({
             <p className="mt-3 text-xs text-gray-500">{metadata.join(' · ')}</p>
           )}
         </div>
+        {(book.in_my_library || isAdmin) && (
+          <button
+            type="button"
+            className="hover-action ml-auto self-end rounded-md px-2 py-1 text-sm font-medium text-rose-700 dark:text-rose-300"
+            onClick={() => setDeleteDialogOpen(true)}
+          >
+            Delete book
+          </button>
+        )}
       </header>
       {book.metadata_json?.display_fields?.length ? (
         <dl className="mt-6 flex flex-wrap gap-3">
@@ -506,6 +635,23 @@ export const BookDetailPage = ({
             "No description is available from this book's metadata provider."}
         </p>
       </article>
+      {deleteDialogOpen && (
+        <DeleteBookDialog
+          book={book}
+          isAdmin={isAdmin}
+          onClose={() => setDeleteDialogOpen(false)}
+          onDelete={async (purge) => {
+            if (purge || !book.in_my_library) {
+              await purgeLibraryBook(book.book_id);
+              onShowToast('Book deleted for all users', 'success');
+            } else {
+              await removeLibraryBook(book.book_id);
+              onShowToast('Book removed from your library', 'success');
+            }
+            await navigate('/library');
+          }}
+        />
+      )}
     </section>
   );
 };
