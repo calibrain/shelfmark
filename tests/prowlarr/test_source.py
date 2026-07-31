@@ -776,6 +776,8 @@ class TestMamLanguageCoverage:
         }
         for tag, expected in cases.items():
             assert _extract_mam_language(f"Book [{tag} / M4B]") == expected, tag
+
+
 class _MultiIndexerClient:
     """Torznab client where each indexer entry returns its own result set.
 

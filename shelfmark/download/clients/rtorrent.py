@@ -338,12 +338,14 @@ class RTorrentClient(DownloadClient):
 
         """
         try:
+            # rtorrent is somehow case sensitive and requires uppercase hashes for look
+            torrent_hash = download_id.upper()
             if delete_files:
-                self._rpc.d.delete_tied(download_id)
-                self._rpc.d.erase(download_id)
+                self._rpc.d.delete_tied(torrent_hash)
+                self._rpc.d.erase(torrent_hash)
             else:
-                self._rpc.d.stop(download_id)
-                self._rpc.d.erase(download_id)
+                self._rpc.d.stop(torrent_hash)
+                self._rpc.d.erase(torrent_hash)
 
             logger.info(
                 "Removed torrent from rTorrent: %s%s",
@@ -360,7 +362,8 @@ class RTorrentClient(DownloadClient):
     def set_category(self, download_id: str, category: str) -> bool:
         """Assign a label to a torrent using rTorrent's custom1 field."""
         try:
-            self._rpc.d.custom1.set(download_id, category)
+            # rtorrent is somehow case sensitive and requires uppercase hashes for look
+            self._rpc.d.custom1.set(download_id.upper(), category)
             logger.info("Set rTorrent label for %s to '%s'", download_id, category)
         except _RTORRENT_CLIENT_ERRORS as e:
             error_type = type(e).__name__

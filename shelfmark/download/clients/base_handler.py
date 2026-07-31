@@ -318,8 +318,10 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 return
 
             if not category_updated:
-                logger.warning(
-                    "Failed to set post-import category for torrent %s in %s",
+                # Clients that cannot label torrents (debrid services) return False here,
+                # and the ones that can already log the specific failure themselves.
+                logger.debug(
+                    "Post-import category not applied to torrent %s in %s",
                     download_id,
                     getattr(client, "name", "client"),
                 )

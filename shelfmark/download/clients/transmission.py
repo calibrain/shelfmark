@@ -390,11 +390,24 @@ class TransmissionClient(DownloadClient):
         else:
             return True
 
+    def _get_torrent_labels(self, download_id: str) -> list[str]:
+        """Return a torrent's current labels, preserving their order."""
+        torrent = self._client.get_torrent(download_id)
+        raw_labels = getattr(torrent, "labels", None) or []
+        return [str(label) for label in raw_labels if str(label)]
+
     def set_category(self, download_id: str, category: str) -> bool:
-        """Replace a torrent's labels with the post-import label."""
+        """Add the post-import label to a torrent, keeping labels set elsewhere."""
         try:
-            self._client.change_torrent(ids=download_id, labels=[category])
-            logger.info("Set Transmission label for %s to '%s'", download_id, category)
+            existing_labels = self._get_torrent_labels(download_id)
+            if category in existing_labels:
+                logger.debug(
+                    "Transmission torrent %s already has label '%s'", download_id, category
+                )
+                return True
+
+            self._client.change_torrent(ids=download_id, labels=[*existing_labels, category])
+            logger.info("Added Transmission label '%s' to %s", category, download_id)
         except _TRANSMISSION_CLIENT_ERRORS as e:
             self._log_error("set_category", e)
             return False
