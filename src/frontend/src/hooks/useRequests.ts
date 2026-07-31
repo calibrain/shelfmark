@@ -14,9 +14,8 @@ interface UseRequestsReturn {
   cancelRequest: (id: number) => Promise<void>;
   fulfilBookRequests: (
     bookId: number,
-    releaseData?: Record<string, unknown>,
+    releaseData: Record<string, unknown>,
     adminNote?: string,
-    manualApproval?: boolean,
   ) => Promise<void>;
   rejectRequest: (id: number, adminNote?: string) => Promise<void>;
 }
@@ -39,12 +38,7 @@ export const useRequests = ({ isAdmin }: UseRequestsOptions): UseRequestsReturn 
   }, []);
 
   const fulfilBookRequests = useCallback(
-    async (
-      bookId: number,
-      releaseData?: Record<string, unknown>,
-      adminNote?: string,
-      manualApproval?: boolean,
-    ) => {
+    async (bookId: number, releaseData: Record<string, unknown>, adminNote?: string) => {
       if (!isAdmin) {
         throw new Error('Admin access required');
       }
@@ -53,7 +47,6 @@ export const useRequests = ({ isAdmin }: UseRequestsOptions): UseRequestsReturn 
         await fulfilAdminBookRequests(bookId, {
           release_data: releaseData,
           admin_note: adminNote,
-          manual_approval: manualApproval,
         });
       } catch (err) {
         const message = toErrorMessage(err, 'Failed to fulfil request');

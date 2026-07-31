@@ -272,22 +272,11 @@ function App() {
     [refreshActivitySnapshot, rejectRequest, showToast],
   );
   const handleRequestApprove = useCallback(
-    async (
-      requestId: number,
-      record: RequestRecord,
-      options?: { browseOnly?: boolean; manualApproval?: boolean },
-    ) => {
+    async (requestId: number, record: RequestRecord) => {
       try {
         const bookId = Number(record.book_id);
         if (!Number.isInteger(bookId) || bookId < 1) {
           throw new Error('Request is missing its Book identity');
-        }
-        if (options?.manualApproval) {
-          await fulfilBookRequests(bookId);
-          await refreshActivitySnapshot();
-          await fetchStatus();
-          showToast('Book marked available', 'success');
-          return;
         }
         setFulfillingRequest({
           requestId,
@@ -298,7 +287,7 @@ function App() {
         showToast(getErrorMessage(error, 'Failed to approve request'), 'error');
       }
     },
-    [fetchStatus, fulfilBookRequests, refreshActivitySnapshot, showToast],
+    [showToast],
   );
   const handleBrowseFulfilDownload = useCallback(
     async (book: Book, release: Release, releaseContentType: ContentType) => {

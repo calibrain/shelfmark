@@ -10,7 +10,6 @@ import type { ActivityItem } from './activityTypes';
 
 interface RequestApproveOptions {
   browseOnly?: boolean;
-  manualApproval?: boolean;
 }
 
 type RequestApproveHandler = (
@@ -266,7 +265,6 @@ interface ReviewInlinePanelProps {
   hasAttachedRelease: boolean;
   missingAttachedReleaseMessage: string;
   approveLabel: string;
-  canMarkAsApprovedWithoutRelease: boolean;
   canBrowseAlternatives: boolean;
   fileTitle: string;
   fileSize: string;
@@ -284,7 +282,6 @@ const ReviewInlinePanel = ({
   hasAttachedRelease,
   missingAttachedReleaseMessage,
   approveLabel,
-  canMarkAsApprovedWithoutRelease,
   canBrowseAlternatives,
   fileTitle,
   fileSize,
@@ -320,19 +317,6 @@ const ReviewInlinePanel = ({
     setIsSubmitting(true);
     try {
       await reviewApproveHandler(reviewRecord.id, reviewRecord, { browseOnly: true });
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
-  const handleReviewManualApproval = async () => {
-    if (isSubmitting) {
-      return;
-    }
-
-    setIsSubmitting(true);
-    try {
-      await reviewApproveHandler(reviewRecord.id, reviewRecord, { manualApproval: true });
     } finally {
       setIsSubmitting(false);
     }
@@ -374,16 +358,6 @@ const ReviewInlinePanel = ({
         >
           {isSubmitting ? 'Working...' : approveLabel}
         </button>
-        {canMarkAsApprovedWithoutRelease && (
-          <button
-            type="button"
-            onClick={() => void handleReviewManualApproval()}
-            disabled={isSubmitting}
-            className="rounded-md border border-(--border-muted) px-2.5 py-1.5 text-xs transition-colors hover:bg-(--hover-surface) disabled:opacity-50"
-          >
-            {isSubmitting ? 'Working...' : 'Manually Mark as Approved'}
-          </button>
-        )}
         {canBrowseAlternatives && hasAttachedRelease && (
           <button
             type="button"
@@ -654,8 +628,6 @@ export const ActivityCard = ({
   if (requiresBrowseBeforeApprove) {
     approveLabel = isRetryAfterFailure ? 'Browse Releases To Retry' : 'Browse Releases To Approve';
   }
-  const canMarkAsApprovedWithoutRelease = requiresBrowseBeforeApprove && !hasAttachedRelease;
-
   const provider = toOptionalText(bookData.provider)?.toLowerCase();
   const providerId = toOptionalText(bookData.provider_id);
   const canBrowseAlternatives = Boolean(provider && providerId);
@@ -841,7 +813,6 @@ export const ActivityCard = ({
               hasAttachedRelease={hasAttachedRelease}
               missingAttachedReleaseMessage={missingAttachedReleaseMessage}
               approveLabel={approveLabel}
-              canMarkAsApprovedWithoutRelease={canMarkAsApprovedWithoutRelease}
               canBrowseAlternatives={canBrowseAlternatives}
               fileTitle={fileTitle}
               fileSize={fileSize}

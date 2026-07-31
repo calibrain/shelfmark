@@ -35,7 +35,6 @@ export const groupPendingRequestsByBook = (items: ActivityItem[]): RequestBookGr
 interface RequestBookGroupsProps {
   items: ActivityItem[];
   onFindRelease: (requestId: number, record: RequestRecord) => Promise<void> | void;
-  onMarkAvailable: (requestId: number, record: RequestRecord) => Promise<void> | void;
   onReject: (requestId: number) => Promise<void> | void;
 }
 
@@ -48,7 +47,6 @@ const CoverFallback = () => (
 const RequestBookGroupCard = ({
   group,
   onFindRelease,
-  onMarkAvailable,
   onReject,
 }: {
   group: RequestBookGroup;
@@ -124,13 +122,6 @@ const RequestBookGroupCard = ({
         >
           Find release
         </button>
-        <button
-          type="button"
-          onClick={() => void onMarkAvailable(leader.id, leader)}
-          className="rounded-md border border-(--border-muted) px-2.5 py-1.5 text-xs hover:bg-(--hover-surface)"
-        >
-          Mark available
-        </button>
         {selected && (
           <button
             type="button"
@@ -145,19 +136,13 @@ const RequestBookGroupCard = ({
   );
 };
 
-export const RequestBookGroups = ({
-  items,
-  onFindRelease,
-  onMarkAvailable,
-  onReject,
-}: RequestBookGroupsProps) => (
+export const RequestBookGroups = ({ items, onFindRelease, onReject }: RequestBookGroupsProps) => (
   <div className="space-y-3">
     {groupPendingRequestsByBook(items).map((group) => (
       <RequestBookGroupCard
         key={group.book.id}
         group={group}
         onFindRelease={onFindRelease}
-        onMarkAvailable={onMarkAvailable}
         onReject={onReject}
       />
     ))}

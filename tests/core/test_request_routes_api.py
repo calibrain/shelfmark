@@ -190,7 +190,7 @@ def test_admin_can_reject_pending_request(main_module, client):
     assert notify.call_args.args[3].title == "Canonical Request Book"
 
 
-def test_admin_fulfils_all_pending_requests_when_book_has_files(main_module, client):
+def test_admin_cannot_fulfil_requests_without_a_release(main_module, client):
     first = _create_user(main_module)
     second = _create_user(main_module)
     admin = _create_user(main_module, role="admin", capability="download-capable")
@@ -199,33 +199,23 @@ def test_admin_fulfils_all_pending_requests_when_book_has_files(main_module, cli
     second_request = main_module.user_db.create_library_request(
         user_id=second["id"], book_id=book_id
     )
-    history_id = _add_completed_file(main_module, book_id=book_id)
     _set_session(client, user=admin)
 
     with patch("shelfmark.core.request_routes.notify_user") as notify:
         with _auth_mode():
             response = client.post(f"/api/admin/requests/books/{book_id}/fulfil", json={})
 
-    assert response.status_code == 200
-    assert {request["id"] for request in response.json} == {
-        first_request["id"],
-        second_request["id"],
-    }
-    assert {request["status"] for request in response.json} == {"fulfilled"}
+    assert response.status_code == 400
+    assert response.json == {"error": "release_data is required"}
+    assert main_module.user_db.get_request(first_request["id"])["status"] == "pending"
+    assert main_module.user_db.get_request(second_request["id"])["status"] == "pending"
     conn = main_module.user_db._connect()
     try:
-        links = conn.execute(
-            "SELECT user_id, history_id FROM user_downloads WHERE history_id = ?", (history_id,)
-        ).fetchall()
+        links = conn.execute("SELECT user_id, history_id FROM user_downloads").fetchall()
     finally:
         conn.close()
-    assert {(row["user_id"], row["history_id"]) for row in links} == {
-        (first["id"], history_id),
-        (second["id"], history_id),
-    }
-    assert notify.call_count == 2
-    assert {call.args[2].value for call in notify.call_args_list} == {"request_fulfilled"}
-    assert {call.args[3].book_id for call in notify.call_args_list} == {book_id}
+    assert links == []
+    notify.assert_not_called()
 
 
 def test_shared_release_queue_failure_keeps_all_requests_pending(main_module, client):
