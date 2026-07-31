@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { ActivityItem } from '../components/activity/activityTypes';
 import { groupPendingRequestsByBook } from '../components/activity/RequestBookGroups';
+import { bookFromRequestRecord } from '../utils/requestFulfil';
 
 const requestItem = (id: number, bookId: number, username: string): ActivityItem => ({
   id: `request-${id}`,
@@ -58,5 +59,24 @@ describe('groupPendingRequestsByBook', () => {
       'alice',
       'bob',
     ]);
+  });
+});
+
+describe('bookFromRequestRecord', () => {
+  it('uses canonical Book identity to make a release searchable request modal', () => {
+    const item = requestItem(4, 4, 'alice');
+    if (!item.requestRecord) {
+      throw new Error('Expected request record');
+    }
+    const record = item.requestRecord;
+    record.metadata_provider = 'hardcover';
+    record.provider_book_id = 'provider-book-4';
+
+    expect(bookFromRequestRecord(record)).toMatchObject({
+      id: '4',
+      book_id: 4,
+      provider: 'hardcover',
+      provider_id: 'provider-book-4',
+    });
   });
 });

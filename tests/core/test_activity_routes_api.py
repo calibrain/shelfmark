@@ -103,6 +103,41 @@ def _hidden_item_keys(main_module, *, viewer_scope: str) -> set[str]:
 
 
 class TestActivityRoutes:
+    def test_snapshot_request_includes_canonical_book_release_identity(self, main_module, client):
+        requester = _create_user(main_module, prefix="requester")
+        admin = _create_user(main_module, prefix="admin", role="admin")
+        book = main_module.library_service.upsert_book_from_metadata(
+            metadata_provider="hardcover",
+            provider_book_id="provider-book-4",
+            title="Requestable Book",
+            author="Shelfmark",
+            subtitle=None,
+            publish_year=None,
+            isbn_13=None,
+            cover_url=None,
+            series_name=None,
+            series_position=None,
+            language="en",
+            metadata_json={},
+        )
+        main_module.library_service.add_to_library(user_id=requester["id"], book_id=book["id"])
+        request_row = main_module.user_db.create_library_request(
+            user_id=requester["id"], book_id=book["id"]
+        )
+        _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(
+                main_module.backend, "queue_status", return_value=_sample_status_payload()
+            ):
+                response = client.get("/api/activity/snapshot")
+
+        assert response.status_code == 200
+        request = next(row for row in response.json["requests"] if row["id"] == request_row["id"])
+        assert request["book_id"] == book["id"]
+        assert request["metadata_provider"] == "hardcover"
+        assert request["provider_book_id"] == "provider-book-4"
+
     def test_dismiss_and_history_flow(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)

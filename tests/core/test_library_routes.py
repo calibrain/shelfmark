@@ -327,6 +327,17 @@ def test_book_detail_returns_full_metadata_for_member(app, user_db):
     assert resp["metadata_json"] == {"provider": "hardcover", "provider_id": "42"}
 
 
+def test_book_detail_reports_non_membership_for_cross_library_admin(app, user_db):
+    owner = user_db.create_user(username="owner")
+    admin = user_db.create_user(username="admin", role="admin")
+    book_id = client_post_book(app, owner, "hardcover", "owner-book")
+
+    response = _authed_client(app, admin, is_admin=True).get(f"/api/library/books/{book_id}")
+
+    assert response.status_code == 200
+    assert response.json["in_my_library"] is False
+
+
 def test_book_detail_404_for_missing_book_id(app, user_db):
     alice = user_db.create_user(username="alice")
     resp = _authed_client(app, alice).get("/api/library/books/99999")

@@ -898,7 +898,8 @@ class UserDB:
         if include_book_details:
             query = """
                 SELECT download_requests.*, books.title AS book_title,
-                       books.author AS book_author, books.cover_url AS book_cover_url
+                       books.author AS book_author, books.cover_url AS book_cover_url,
+                       books.metadata_provider, books.provider_book_id
                 FROM download_requests
                 LEFT JOIN books ON books.id = download_requests.book_id
             """

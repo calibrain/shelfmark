@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { shouldAutoFindReleases } from '../library/BookDetailPage';
+import { bookMembershipLabel, shouldAutoFindReleases } from '../library/BookDetailPage';
 
 describe('BookDetailPage release discovery gating', () => {
   const base = {
@@ -24,5 +24,12 @@ describe('BookDetailPage release discovery gating', () => {
   it('does not reopen an already opened or in-flight automatic search', () => {
     expect(shouldAutoFindReleases({ ...base, alreadyOpened: true })).toBe(false);
     expect(shouldAutoFindReleases({ ...base, hasInFlight: true })).toBe(false);
+  });
+});
+
+describe('BookDetailPage membership label', () => {
+  it('does not claim an administrator is a member of another library', () => {
+    expect(bookMembershipLabel(false)).toBe('Not in your library');
+    expect(bookMembershipLabel(true)).toBe('In your library');
   });
 });
