@@ -52,6 +52,12 @@ export interface LibraryBooksResponse {
   books: LibraryBookSummary[];
 }
 
+export interface LibraryBookAvailabilityEvent {
+  book_id: number;
+  task_id: string;
+  availability: 'available';
+}
+
 export interface LibraryPurgePreview {
   users: Array<{ display_name: string | null; username: string }>;
 }

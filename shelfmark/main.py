@@ -1239,6 +1239,26 @@ def _emit_activity_update_for_task(*, payload: dict[str, Any], task: Any) -> Non
     )
 
 
+def _emit_library_book_availability(*, book_id: int, task_id: str) -> None:
+    if library_service is None:
+        return
+
+    payload = {"book_id": book_id, "task_id": task_id, "availability": "available"}
+    emit_ws_event(
+        ws_manager,
+        event_name="library_book_availability",
+        room="admins",
+        payload=payload,
+    )
+    for user_id in library_service.get_book_member_ids(book_id):
+        emit_ws_event(
+            ws_manager,
+            event_name="library_book_availability",
+            room=f"user_{user_id}",
+            payload=payload,
+        )
+
+
 def _build_download_file_rows(task: Any) -> list[dict[str, Any]]:
     """Build per-file row dicts for :meth:`finalize_download_files`.
 
@@ -1353,44 +1373,51 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
         return
 
     finalized_download = False
+    finalized_files = False
+    file_rows: list[dict[str, Any]] = []
     fulfilled_requests: list[dict[str, Any]] = []
     if download_history_service is not None:
         try:
             file_rows = _build_download_file_rows(task)
-            fulfilled_requests = download_history_service.finalize_download_files(
+            finalize_result = download_history_service.finalize_download_files(
                 task_id=task_id,
                 final_status=final_status,
                 status_message=normalize_optional_text(getattr(task, "status_message", None)),
                 file_rows=file_rows,
                 retry_payload=backend.serialize_task_for_retry(task),
             )
+            fulfilled_requests = finalize_result.fulfilled_requests
+            finalized_files = finalize_result.files_finalized
             finalized_download = True
         except _OPERATIONAL_ERRORS as exc:
             logger.warning("Failed to finalize download history for task %s: %s", task_id, exc)
 
     if finalized_download:
         book_id = normalize_positive_int(getattr(task, "library_book_id", None))
-        if (
-            final_status == QueueStatus.COMPLETE.value
-            and book_id is not None
-            and user_db is not None
-        ):
+        if final_status == QueueStatus.COMPLETE.value and book_id is not None and finalized_files:
+            try:
+                _emit_library_book_availability(book_id=book_id, task_id=task_id)
+            except _OPERATIONAL_ERRORS as exc:
+                logger.warning("Failed to emit availability for Book %s: %s", book_id, exc)
+
+        if final_status == QueueStatus.COMPLETE.value and book_id is not None and file_rows:
             try:
                 _emit_request_update_events(fulfilled_requests)
-                book = user_db.get_book_notification_context(book_id)
-                if book:
-                    for fulfilled in fulfilled_requests:
-                        notify_user(
-                            user_db,
-                            fulfilled["user_id"],
-                            NotificationEvent.REQUEST_FULFILLED,
-                            NotificationContext(
-                                event=NotificationEvent.REQUEST_FULFILLED,
-                                title=book["title"],
-                                author=book["author"],
-                                book_id=book_id,
-                            ),
-                        )
+                if user_db is not None:
+                    book = user_db.get_book_notification_context(book_id)
+                    if book:
+                        for fulfilled in fulfilled_requests:
+                            notify_user(
+                                user_db,
+                                fulfilled["user_id"],
+                                NotificationEvent.REQUEST_FULFILLED,
+                                NotificationContext(
+                                    event=NotificationEvent.REQUEST_FULFILLED,
+                                    title=book["title"],
+                                    author=book["author"],
+                                    book_id=book_id,
+                                ),
+                            )
             except _OPERATIONAL_ERRORS as exc:
                 logger.warning("Failed to fulfil Requests for Book %s: %s", book_id, exc)
         _emit_activity_update_for_task(

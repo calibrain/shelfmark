@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 
+import { useSocket } from '../contexts/SocketContext';
 import { useDependencyEffect, useMountEffect } from '../hooks/useMountEffect';
 import {
   cancelRequest,
@@ -22,6 +23,7 @@ import {
   groupFilesByRelease,
   latestFilesByFormat,
   type BookDetailResponse,
+  type LibraryBookAvailabilityEvent,
   type LibraryPurgePreview,
   type LibraryFile,
 } from './types';
@@ -435,6 +437,7 @@ export const BookDetailPage = ({
   const { bookId: rawBookId } = useParams();
   const location = useLocation();
   const navigate = useNavigate();
+  const { socket } = useSocket();
   const bookId = Number(rawBookId);
   const [book, setBook] = useState<BookDetailResponse | null>(null);
   const [request, setRequest] = useState<RequestRecord>();
@@ -476,6 +479,16 @@ export const BookDetailPage = ({
   useDependencyEffect(() => {
     void load();
   }, [load]);
+
+  useDependencyEffect(() => {
+    const onAvailability = (event: LibraryBookAvailabilityEvent) => {
+      if (event.book_id === bookId) void load();
+    };
+    socket?.on('library_book_availability', onAvailability);
+    return () => {
+      socket?.off('library_book_availability', onAvailability);
+    };
+  }, [bookId, load, socket]);
 
   useDependencyEffect(() => {
     if (

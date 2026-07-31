@@ -79,6 +79,16 @@ def test_add_to_library_is_idempotent(library_service, user_db):
     assert library_service.is_in_library(user_id=user["id"], book_id=book["id"])
 
 
+def test_get_book_member_ids_returns_current_members(library_service, user_db):
+    alice = user_db.create_user(username="alice")
+    bob = user_db.create_user(username="bob")
+    book = _insert_book(library_service)
+    library_service.add_to_library(user_id=bob["id"], book_id=book["id"])
+    library_service.add_to_library(user_id=alice["id"], book_id=book["id"])
+
+    assert library_service.get_book_member_ids(book["id"]) == [alice["id"], bob["id"]]
+
+
 def test_add_to_library_links_existing_completed_files_only_when_membership_is_new(
     library_service, user_db
 ):
