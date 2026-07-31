@@ -170,7 +170,12 @@ class LibraryService:
                 conn.close()
 
     def add_to_library(self, *, user_id: int, book_id: int) -> bool:
-        """Idempotently link a user to a book. Returns True when newly linked."""
+        """Link a user to a book and its already-complete files atomically.
+
+        Completed files are linked only when the membership is first created.
+        This preserves an explicit release unlink until the Book is removed and
+        deliberately re-added to the Library.
+        """
         normalized_user_id = normalize_positive_int(user_id)
         normalized_book_id = self._book_identity(book_id)
         if normalized_user_id is None:
@@ -186,8 +191,26 @@ class LibraryService:
                     """,
                     (normalized_user_id, normalized_book_id, _now_utc_iso()),
                 )
+                newly_linked = cursor.rowcount > 0
+                if newly_linked:
+                    conn.execute(
+                        """
+                        INSERT OR IGNORE INTO user_downloads (user_id, history_id, added_at)
+                        SELECT ?, id, ?
+                        FROM download_history
+                        WHERE book_id = ?
+                          AND final_status = ?
+                          AND download_path IS NOT NULL
+                        """,
+                        (
+                            normalized_user_id,
+                            _now_utc_iso(),
+                            normalized_book_id,
+                            _COMPLETE_DOWNLOAD_STATUS,
+                        ),
+                    )
                 conn.commit()
-                return cursor.rowcount > 0
+                return newly_linked
             finally:
                 conn.close()
 
@@ -580,31 +603,38 @@ class LibraryService:
             conn.close()
 
     def resolve_kindle_format(
-        self, *, book_id: int, requested_format: str | None = None
+        self, *, book_id: int, requested_format: str | None = None, user_id: int | None = None
     ) -> dict[str, Any] | None:
         """Resolve the file to send to Kindle per #05's priority algorithm.
 
         Returns ``{history_id, format, download_path, size}`` when a file
         is chosen, or ``None`` when no compatible file is on disk. The caller
-        (route) is responsible for the user-library membership gate and the
-        ``user_downloads`` ownership check — this method is book-scoped only.
+        ``user_id`` limits candidates to that member's linked files; ``None``
+        retains the instance-wide result used for administrators.
         """
         if requested_format:
             normalized_requested = normalize_optional_text(requested_format)
             if normalized_requested:
-                row = self._fetch_book_history_row_for_format(book_id, normalized_requested)
+                row = self._fetch_book_history_row_for_format(
+                    book_id, normalized_requested, user_id=user_id
+                )
                 if row is None:
                     return None
                 return self._format_history_row_for_kindle(row)
         for candidate_format in KINDLE_FORMAT_PRIORITY:
-            row = self._fetch_book_history_row_for_format(book_id, candidate_format)
+            row = self._fetch_book_history_row_for_format(
+                book_id, candidate_format, user_id=user_id
+            )
             if row is None:
                 continue
             return self._format_history_row_for_kindle(row)
         return None
 
-    def _fetch_book_history_row_for_format(self, book_id: int, fmt: str) -> sqlite3.Row | None:
+    def _fetch_book_history_row_for_format(
+        self, book_id: int, fmt: str, *, user_id: int | None
+    ) -> sqlite3.Row | None:
         normalized_book_id = self._book_identity(book_id)
+        normalized_user_id = normalize_positive_int(user_id)
         conn = self._connect()
         try:
             return conn.execute(
@@ -615,10 +645,23 @@ class LibraryService:
                   AND final_status = ?
                   AND download_path IS NOT NULL
                   AND LOWER(format) = LOWER(?)
+                  AND (
+                    ? IS NULL
+                    OR EXISTS (
+                        SELECT 1 FROM user_downloads
+                        WHERE user_id = ? AND history_id = download_history.id
+                    )
+                  )
                 ORDER BY terminal_at DESC
                 LIMIT 1
                 """,
-                (normalized_book_id, _COMPLETE_DOWNLOAD_STATUS, fmt),
+                (
+                    normalized_book_id,
+                    _COMPLETE_DOWNLOAD_STATUS,
+                    fmt,
+                    normalized_user_id,
+                    normalized_user_id,
+                ),
             ).fetchone()
         finally:
             conn.close()

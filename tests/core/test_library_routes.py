@@ -327,6 +327,58 @@ def test_book_detail_returns_full_metadata_for_member(app, user_db):
     assert resp["metadata_json"] == {"provider": "hardcover", "provider_id": "42"}
 
 
+def test_request_only_member_gets_existing_files_and_can_send_them_to_kindle(
+    app, user_db, tmp_path
+):
+    owner = user_db.create_user(username="owner")
+    requester = user_db.create_user(username="requester", library_capability="request-only")
+    user_db.update_personal_preferences(requester["id"], kindle_address="reader@example.test")
+    book_id = client_post_book(app, owner, "hardcover", "shared-book")
+    epub_path = tmp_path / "shared.epub"
+    epub_path.write_bytes(b"shared-book")
+    history_id = _seed_history_row(
+        user_db,
+        task_id="shared-release",
+        user_id=owner["id"],
+        username="owner",
+        book_id=book_id,
+        fmt="epub",
+        download_path=str(epub_path),
+    )
+
+    requester_client = _authed_client(app, requester)
+    added = requester_client.post(
+        "/api/library/books",
+        json={"metadata_provider": "hardcover", "provider_book_id": "shared-book"},
+    )
+    detail = requester_client.get(f"/api/library/books/{book_id}")
+
+    assert added.status_code == 200
+    assert added.json["files_exist_globally"] is True
+    assert detail.status_code == 200
+    assert len(detail.json["files"]) == 1
+    assert detail.json["files"][0]["history_id"] == history_id
+    assert detail.json["files"][0]["downloadable_by_me"] is True
+
+    downloaded = requester_client.get(
+        f"/api/library/books/{book_id}/download?history_id={history_id}"
+    )
+    assert downloaded.status_code == 200
+    assert downloaded.data == b"shared-book"
+
+    with patch(
+        "shelfmark.download.outputs.email.send_file_to_email", return_value="r***@example.test"
+    ):
+        sent = requester_client.post(f"/api/library/books/{book_id}/send-to-kindle")
+    assert sent.status_code == 200
+    assert sent.json["status"] == "sent"
+
+    unlinked = requester_client.delete(f"/api/library/books/{book_id}/downloads/{history_id}")
+    rejected = requester_client.post(f"/api/library/books/{book_id}/send-to-kindle")
+    assert unlinked.status_code == 200
+    assert rejected.status_code == 404
+
+
 def test_book_detail_reports_non_membership_for_cross_library_admin(app, user_db):
     owner = user_db.create_user(username="owner")
     admin = user_db.create_user(username="admin", role="admin")

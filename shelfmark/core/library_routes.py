@@ -517,27 +517,13 @@ def register_library_routes(
 
         try:
             resolved = library_service.resolve_kindle_format(
-                book_id=book_id, requested_format=requested_format
+                book_id=book_id,
+                requested_format=requested_format,
+                user_id=None if actor.is_admin else actor.db_user_id,
             )
         except _OPERATIONAL_ERRORS as exc:
             return jsonify({"error": str(exc)}), 500
         if resolved is None:
-            return _error_response(
-                action=action,
-                status_code=404,
-                error="No compatible file found",
-                book_id=book_id,
-            )
-
-        history_id = int(resolved["history_id"])
-        # Per sub-decision 16: file must be linked to the user via user_downloads.
-        # Sub-decision 7 gates on library membership, but Send-to-Kindle is stricter
-        # — only files the user has linked are sendable. The library membership gate
-        # above enforces "book is in the user's library"; this enforces "the user
-        # owns this release".
-        if not actor.is_admin and not library_service.download_linked_to_user(
-            user_id=actor.db_user_id, history_id=history_id
-        ):
             return _error_response(
                 action=action,
                 status_code=404,
