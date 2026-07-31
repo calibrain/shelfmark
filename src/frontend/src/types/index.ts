@@ -183,6 +183,8 @@ export interface RequestRecord {
   book_title?: string;
   book_author?: string | null;
   book_cover_url?: string | null;
+  metadata_provider?: string | null;
+  provider_book_id?: string | null;
   status: 'pending' | 'fulfilled' | 'rejected' | 'cancelled';
   delivery_state?:
     | 'none'

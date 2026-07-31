@@ -62,5 +62,7 @@ export const bookFromRequestRecord = (record: RequestRecord): Book => {
     author: toOptionalText(record.book_author) || book.author,
     preview: toOptionalText(record.book_cover_url) || book.preview,
     book_id: toOptionalNumber(record.book_id),
+    provider: toOptionalText(record.metadata_provider) || book.provider,
+    provider_id: toOptionalText(record.provider_book_id) || book.provider_id,
   };
 };

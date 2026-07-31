@@ -34,6 +34,7 @@ export interface BookDetailResponse {
     provider_display_name?: string | null;
     display_fields?: Array<{ label: string; value: string; icon?: string | null }>;
   };
+  in_my_library: boolean;
   files: LibraryFile[];
   in_flight: InFlightDownload[];
 }

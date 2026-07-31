@@ -79,6 +79,9 @@ export const shouldAutoFindReleases = ({
   !hasInFlight &&
   !alreadyOpened;
 
+export const bookMembershipLabel = (inMyLibrary: boolean): string =>
+  inMyLibrary ? 'In your library' : 'Not in your library';
+
 const RequestState = ({
   request,
   onRequest,
@@ -421,7 +424,7 @@ export const BookDetailPage = ({
         )}
         <div className="min-w-0 self-end">
           <p className="text-xs font-semibold tracking-[0.16em] text-emerald-700 uppercase dark:text-emerald-300">
-            In your library
+            {bookMembershipLabel(book.in_my_library)}
           </p>
           <h1 className="mt-2 text-3xl font-semibold tracking-tight text-(--text)">{book.title}</h1>
           {book.subtitle && (
