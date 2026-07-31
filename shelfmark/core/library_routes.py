@@ -46,6 +46,7 @@ class _ActorContext(NamedTuple):
     db_user_id: int
     is_admin: bool
     owner_scope: int | None
+    library_capability: str
 
 
 def _book_attachment_name(*, book: dict[str, Any] | None, book_id: int, download_path: str) -> str:
@@ -89,7 +90,12 @@ def _resolve_library_actor(
     """
     auth_mode = resolve_auth_mode()
     if auth_mode == "none":
-        return _ActorContext(db_user_id=0, is_admin=True, owner_scope=None), None
+        return _ActorContext(
+            db_user_id=0,
+            is_admin=True,
+            owner_scope=None,
+            library_capability="download-capable",
+        ), None
 
     raw_db_user_id = get_session_db_user_id(session)
     if raw_db_user_id is None:
@@ -117,6 +123,7 @@ def _resolve_library_actor(
         db_user_id=db_user_id,
         is_admin=is_admin,
         owner_scope=db_user_id,
+        library_capability=str(db_user["library_capability"]),
     ), None
 
 
@@ -392,21 +399,11 @@ def register_library_routes(
         except _OPERATIONAL_ERRORS as exc:
             return jsonify({"error": str(exc)}), 500
 
-        downloadable_history_ids: set[int] = set()
-        if not actor.is_admin:
-            for f in files:
-                history_id = normalize_positive_int(f.get("id"))
-                if history_id is None:
-                    continue
-                if library_service.download_linked_to_user(
-                    user_id=actor.db_user_id, history_id=history_id
-                ):
-                    downloadable_history_ids.add(history_id)
-        else:
-            for f in files:
-                history_id = normalize_positive_int(f.get("id"))
-                if history_id is not None:
-                    downloadable_history_ids.add(history_id)
+        downloadable_history_ids = {
+            history_id
+            for f in files
+            if (history_id := normalize_positive_int(f.get("id"))) is not None
+        }
 
         detail = _serialize_book_detail(
             book,
@@ -517,27 +514,13 @@ def register_library_routes(
 
         try:
             resolved = library_service.resolve_kindle_format(
-                book_id=book_id, requested_format=requested_format
+                book_id=book_id,
+                requested_format=requested_format,
+                user_id=None,
             )
         except _OPERATIONAL_ERRORS as exc:
             return jsonify({"error": str(exc)}), 500
         if resolved is None:
-            return _error_response(
-                action=action,
-                status_code=404,
-                error="No compatible file found",
-                book_id=book_id,
-            )
-
-        history_id = int(resolved["history_id"])
-        # Per sub-decision 16: file must be linked to the user via user_downloads.
-        # Sub-decision 7 gates on library membership, but Send-to-Kindle is stricter
-        # — only files the user has linked are sendable. The library membership gate
-        # above enforces "book is in the user's library"; this enforces "the user
-        # owns this release".
-        if not actor.is_admin and not library_service.download_linked_to_user(
-            user_id=actor.db_user_id, history_id=history_id
-        ):
             return _error_response(
                 action=action,
                 status_code=404,
@@ -640,6 +623,13 @@ def register_library_routes(
         membership_error = _membership_or_403(actor, book_id, action)
         if membership_error is not None:
             return membership_error
+        if actor.library_capability == "request-only":
+            return _error_response(
+                action=action,
+                status_code=403,
+                error="Unlinking releases is not allowed",
+                book_id=book_id,
+            )
 
         try:
             row = library_service.get_download_history_row(history_id)

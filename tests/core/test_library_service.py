@@ -79,6 +79,79 @@ def test_add_to_library_is_idempotent(library_service, user_db):
     assert library_service.is_in_library(user_id=user["id"], book_id=book["id"])
 
 
+def test_add_to_library_links_existing_completed_files_only_when_membership_is_new(
+    library_service, user_db
+):
+    owner = user_db.create_user(username="owner")
+    member = user_db.create_user(username="member")
+    book = _insert_book(library_service)
+    conn = user_db._connect()
+    try:
+        for task_id, download_path in [("release-a", "/lib/a.epub"), ("release-b", "/lib/b.pdf")]:
+            conn.execute(
+                """
+                INSERT INTO download_history (
+                    task_id, user_id, source, title, origin, final_status, download_path, book_id
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    task_id,
+                    owner["id"],
+                    "direct_download",
+                    "Example",
+                    "direct",
+                    "complete",
+                    download_path,
+                    book["id"],
+                ),
+            )
+        conn.execute(
+            """
+            INSERT INTO download_history (
+                task_id, user_id, source, title, origin, final_status, book_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "in-flight",
+                owner["id"],
+                "direct_download",
+                "Example",
+                "direct",
+                "active",
+                book["id"],
+            ),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    assert library_service.add_to_library(user_id=member["id"], book_id=book["id"]) is True
+
+    files = library_service.get_files_on_disk(book["id"])
+    assert all(
+        library_service.download_linked_to_user(user_id=member["id"], history_id=file["id"])
+        for file in files
+    )
+
+    assert (
+        library_service.unlink_download_from_user(
+            user_id=member["id"], book_id=book["id"], history_id=files[0]["id"]
+        )
+        is True
+    )
+    assert library_service.add_to_library(user_id=member["id"], book_id=book["id"]) is False
+    assert not library_service.download_linked_to_user(
+        user_id=member["id"], history_id=files[0]["id"]
+    )
+
+    assert library_service.remove_from_library(user_id=member["id"], book_id=book["id"]) is True
+    assert library_service.add_to_library(user_id=member["id"], book_id=book["id"]) is True
+    assert all(
+        library_service.download_linked_to_user(user_id=member["id"], history_id=file["id"])
+        for file in files
+    )
+
+
 def test_remove_from_library_hard_deletes_membership(library_service, user_db):
     user = user_db.create_user(username="alice")
     book = _insert_book(library_service)

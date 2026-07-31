@@ -132,6 +132,8 @@ const RequestState = ({
 
 const AvailableFiles = ({
   book,
+  canFindReleases,
+  canUnlinkReleases,
   onDownload,
   onFindReleases,
   onOpenSettings,
@@ -139,6 +141,8 @@ const AvailableFiles = ({
   onUnlinkRelease,
 }: {
   book: BookDetailResponse;
+  canFindReleases: boolean;
+  canUnlinkReleases: boolean;
   onDownload: (file: LibraryFile) => void;
   onFindReleases: () => void;
   onOpenSettings: () => void;
@@ -148,7 +152,8 @@ const AvailableFiles = ({
   const [kindleFormat, setKindleFormat] = useState('epub');
   const releases = groupFilesByRelease(book.files);
   const latestFiles = latestFilesByFormat(book.files);
-  const kindleFormats = latestFiles
+  const kindleFiles = latestFilesByFormat(book.files.filter((file) => file.downloadable_by_me));
+  const kindleFormats = kindleFiles
     .map((file) => file.format)
     .filter((format): format is string => format?.toLowerCase() === 'epub');
   const selectedKindleFormat = kindleFormats.includes(kindleFormat) ? kindleFormat : null;
@@ -162,13 +167,15 @@ const AvailableFiles = ({
             The newest downloaded file for each format.
           </p>
         </div>
-        <button
-          type="button"
-          className="hover-action cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-emerald-700 dark:text-emerald-300"
-          onClick={onFindReleases}
-        >
-          Find another release
-        </button>
+        {canFindReleases && (
+          <button
+            type="button"
+            className="hover-action cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-emerald-700 dark:text-emerald-300"
+            onClick={onFindReleases}
+          >
+            Find another release
+          </button>
+        )}
       </div>
       {latestFiles.length > 0 ? (
         <div className="mt-4 grid gap-6 lg:grid-cols-[minmax(0,1fr)_18rem]">
@@ -253,7 +260,7 @@ const AvailableFiles = ({
                   <p className="min-w-0 flex-1 text-sm font-medium text-(--text)">
                     {files[0].indexer_display_name || 'Unknown source'}
                   </p>
-                  {files.some((file) => file.downloadable_by_me) && (
+                  {canUnlinkReleases && files.some((file) => file.downloadable_by_me) && (
                     <button
                       type="button"
                       className="hover-action cursor-pointer rounded-md px-2 py-1 text-xs font-medium text-rose-700 dark:text-rose-300"
@@ -448,33 +455,29 @@ export const BookDetailPage = ({
           ))}
         </dl>
       ) : null}
-      {isRequestOnly ? (
+      {isRequestOnly && book.files.length === 0 ? (
         <section className="mt-10">
           <h2 className="font-semibold text-(--text)">Availability</h2>
-          {book.files.length > 0 ? (
-            <p className="mt-4 rounded-lg bg-(--bg-soft) px-4 py-4 text-sm text-gray-600 dark:text-gray-300">
-              Files are available for this book.
-            </p>
-          ) : (
-            <RequestState
-              request={request}
-              onRequest={() =>
-                void mutate(async () => {
-                  await createLibraryRequest(book.book_id);
-                }, 'Book requested')
-              }
-              onCancel={() =>
-                request &&
-                void mutate(async () => {
-                  await cancelRequest(request.id);
-                }, 'Request cancelled')
-              }
-            />
-          )}
+          <RequestState
+            request={request}
+            onRequest={() =>
+              void mutate(async () => {
+                await createLibraryRequest(book.book_id);
+              }, 'Book requested')
+            }
+            onCancel={() =>
+              request &&
+              void mutate(async () => {
+                await cancelRequest(request.id);
+              }, 'Request cancelled')
+            }
+          />
         </section>
       ) : (
         <AvailableFiles
           book={book}
+          canFindReleases={canFindReleases}
+          canUnlinkReleases={canFindReleases}
           onDownload={(file) =>
             void mutate(
               () => downloadLibraryFile(book.book_id, { historyId: file.history_id }),
