@@ -461,7 +461,8 @@ def register_library_routes(
                 )
             return jsonify({"users": library_service.get_book_members(book_id)})
         except _OPERATIONAL_ERRORS as exc:
-            return jsonify({"error": str(exc)}), 500
+            logger.warning("Library purge_preview failed for book_id=%s: %s", book_id, exc)
+            return jsonify({"error": "Internal server error"}), 500
 
     @app.route("/api/library/books/<int:book_id>/purge", methods=["DELETE"])
     def api_library_purge_book(book_id: int) -> Response | LibraryRouteResponse:
@@ -479,7 +480,7 @@ def register_library_routes(
             )
         except _OPERATIONAL_ERRORS as exc:
             logger.warning("Library purge_book cleanup failed for book_id=%s: %s", book_id, exc)
-            return jsonify({"error": f"Failed to purge book: {exc}"}), 500
+            return jsonify({"error": "Failed to purge book"}), 500
         if not removed:
             return _error_response(
                 action=action, status_code=404, error="Book not found", book_id=book_id
