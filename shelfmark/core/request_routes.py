@@ -235,15 +235,11 @@ def register_request_routes(
             return _error("Invalid payload", 400)
         release_data = data.get("release_data")
         if release_data is None:
-            fulfilled = user_db.fulfil_pending_book_requests(book_id=book_id, reviewed_by=admin_id)
-            if not fulfilled:
-                return _error("Book has no completed Files", 409)
-            for updated in fulfilled:
-                _emit_request_update(ws_manager, updated)
-                _notify_request(user_db, updated, NotificationEvent.REQUEST_FULFILLED)
-            return jsonify(fulfilled)
+            return _error("release_data is required", 400)
         if not isinstance(release_data, dict):
             return _error("release_data must be an object", 400)
+        if not release_data:
+            return _error("release_data must be a non-empty object", 400)
         admin = user_db.get_user(user_id=admin_id)
         if admin is None:
             return _error("Admin user identity unavailable", 403)

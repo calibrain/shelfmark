@@ -41,7 +41,6 @@ interface ActivitySidebarProps {
     record: RequestRecord,
     options?: {
       browseOnly?: boolean;
-      manualApproval?: boolean;
     },
   ) => Promise<void> | void;
   onRequestReject?: (requestId: number, adminNote?: string) => Promise<void> | void;
@@ -905,9 +904,6 @@ export const ActivitySidebar = ({
                   items={visibleItems}
                   onFindRelease={(requestId, record) =>
                     onRequestApprove?.(requestId, record, { browseOnly: true })
-                  }
-                  onMarkAvailable={(requestId, record) =>
-                    onRequestApprove?.(requestId, record, { manualApproval: true })
                   }
                   onReject={(requestId) => onRequestReject?.(requestId)}
                 />

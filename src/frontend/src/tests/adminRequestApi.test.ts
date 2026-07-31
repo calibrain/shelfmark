@@ -18,18 +18,6 @@ describe('admin request API client functions', () => {
     });
   });
 
-  it('builds manual-approval fulfil payload without release data', () => {
-    const body = buildFulfilAdminRequestBody({
-      manual_approval: true,
-      admin_note: 'Handled manually',
-    });
-
-    expect(body).toEqual({
-      manual_approval: true,
-      admin_note: 'Handled manually',
-    });
-  });
-
   it('builds reject payload shape', () => {
     const body = buildRejectAdminRequestBody({
       admin_note: 'No suitable release found',

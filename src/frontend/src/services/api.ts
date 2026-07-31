@@ -706,7 +706,7 @@ export const cancelRequest = async (id: number): Promise<RequestRecord> => {
 
 export const fulfilAdminBookRequests = async (
   bookId: number,
-  body: FulfilAdminRequestBody = {},
+  body: FulfilAdminRequestBody,
 ): Promise<RequestRecord[]> => {
   return fetchJSON<RequestRecord[]>(buildFulfilBookRequestsUrl(API.adminRequests, bookId), {
     method: 'POST',
