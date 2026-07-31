@@ -1248,7 +1248,7 @@ wheels = [
 
 [[package]]
 name = "seleniumbase"
-version = "4.51.7"
+version = "4.51.8"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
@@ -1312,9 +1312,9 @@ dependencies = [
     { name = "wheel" },
     { name = "wsproto" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f1/6a/7abf7cbb1a23822070cb448a93e0234cde5b1e204c20963f3d7cdd0d50eb/seleniumbase-4.51.7.tar.gz", hash = "sha256:d6cad446007e73a0e2365075ef2bdc3dfc01f4af4a6e081b59a85764a7c60c40", size = 669424, upload-time = "2026-07-24T18:18:13.359Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/54/92/dac65663cbab903d7d2be831f94587df7fa907ca905c0215ae3a8ab96792/seleniumbase-4.51.8.tar.gz", hash = "sha256:92d71030b9ebca772924b5caed7c44c865a5e149a539b2d733664a4e5bfd05db", size = 670520, upload-time = "2026-07-26T04:51:09.923Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f3/c5/a15276264bd3f8be7fedc6ddf0b06e0afba0bbfe946f1ad112a81436bd60/seleniumbase-4.51.7-py3-none-any.whl", hash = "sha256:df552b76c6e208bc2cd5562ed8756ec411e5215568f405b9f300935506d0fbb4", size = 675161, upload-time = "2026-07-24T18:18:10.863Z" },
+    { url = "https://files.pythonhosted.org/packages/f1/7c/6af2efd2f1edda88a0c4d83138586b9014bd155870bad90c4836200eb048/seleniumbase-4.51.8-py3-none-any.whl", hash = "sha256:1c240f6d6fe173c0e51828187a048f5907b1e3ff8c23a4d487f5c65e3730cb41", size = 676369, upload-time = "2026-07-26T04:51:07.017Z" },
 ]
 
 [[package]]
@@ -1393,7 +1393,7 @@ requires-dist = [
     { name = "qbittorrent-api", specifier = ">=2026.5.3" },
     { name = "rarfile" },
     { name = "requests", extras = ["socks"] },
-    { name = "seleniumbase", marker = "extra == 'browser'", specifier = "==4.51.7" },
+    { name = "seleniumbase", marker = "extra == 'browser'", specifier = "==4.51.8" },
     { name = "tqdm" },
     { name = "transmission-rpc" },
 ]
@@ -1472,14 +1472,14 @@ wheels = [
 
 [[package]]
 name = "tqdm"
-version = "4.69.1"
+version = "4.70.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama", marker = "sys_platform == 'win32'" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/dd/84/da0e5038228fa34dfd77c5026b173ed035d2a3ba31f1077590c013de2bff/tqdm-4.69.1.tar.gz", hash = "sha256:2be21080a0ce17e902c2f1baeb6a74bf551b67bbdfa4bc0109fad471d0b4cb0d", size = 793046, upload-time = "2026-07-24T14:22:02.08Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/21/3b/6c24bec5be5e743ffd99576daa5cc077722fc7d5bbc00bd133fa0c698dc6/tqdm-4.70.0.tar.gz", hash = "sha256:55b0b0dbd97462d06ebee91e4dac24ed4d4702be82b24f07e6c1d27e08cea220", size = 795438, upload-time = "2026-07-27T11:33:15.271Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/01/50/5817619a0fca56aff06383dbfde7ae017b3ca383915b3f1e4713164273cf/tqdm-4.69.1-py3-none-any.whl", hash = "sha256:0a654b96f7a2660cceb615b56f307ec2bef96c515409014a429a561981ab52b4", size = 675452, upload-time = "2026-07-24T14:22:00.048Z" },
+    { url = "https://files.pythonhosted.org/packages/f9/1c/01bfd571a64e7f270e6bab5e33777debe0edc56759233ce84f27dec92d14/tqdm-4.70.0-py3-none-any.whl", hash = "sha256:7f585706bfddbdebf89daac705b2dfcc16890130727d3197ca62c732b4310953", size = 80184, upload-time = "2026-07-27T11:33:13.167Z" },
 ]
 
 [[package]]
