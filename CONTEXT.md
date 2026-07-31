@@ -32,9 +32,13 @@ A single download activity (one qbittorrent/usenet job) may produce **multiple F
 
 `download_history.book_id` (nullable, `ON DELETE SET NULL`) links a File to a Book. Legacy / direct-mode / un-lined rows have `book_id IS NULL` and are invisible to library queries. Backfill strategy for existing rows is deferred to the implementation ticket.
 
-A user's library surfaces a File via the **`user_downloads(user_id, history_id)` link table** — the load-bearing column for file visibility in a user's library. Multiple users can link the same `download_history` row. Unlinking a release from a user's library is a hard `DELETE` of the `user_downloads` links for **every file row in the release** (looked up by `task_id`) — releases are unlinked atomically. The File and its `download_history` row are untouched. Library file serving gates on `user_library` Book-membership (any user with the Book in their library can download any of its files), not on `download_history.user_id`. The `download_history.user_id` column stays as an audit field for "the auth identity who triggered the download" — not exposed via the library API.
+A user's library surfaces a File via the **`user_downloads(user_id, history_id)` link table** — the load-bearing column for file visibility in a user's library. Multiple users can link the same `download_history` row. Library file serving gates on `user_library` Book-membership (any user with the Book in their library can download any of its files), not on `download_history.user_id`. The `download_history.user_id` column stays as an audit field for "the auth identity who triggered the download" — not exposed via the library API.
 
-`user_downloads` links are created at **finalize time** (when N file rows are concrete), not at queue time: one row per File for each Download recipient. A direct Download has its triggering user as the recipient; a shared Request fulfilment has every requester with a fulfilled Request for the Book. An in-flight release has no `user_downloads` links yet; unlinking mid-flight returns 404 (nothing linked yet).
+## Release Deletion
+
+A **Release Deletion** is an administrator-only, release-atomic destruction of every File in a release (all `download_history` rows sharing a `task_id`). It deletes the on-disk artifacts, removes every `user_downloads` link, and clears the retained history rows' `book_id` and `download_path`. The history rows remain as audit records, but their Files are unavailable and the release is no longer associated with the Book for any user. A later download may create and link a new release for that Book.
+
+`user_downloads` links are created at **finalize time** (when N file rows are concrete), not at queue time: one row per File for each Download recipient. A direct Download has its triggering user as the recipient; a shared Request fulfilment has every requester with a fulfilled Request for the Book.
 
 ## Orphan
 

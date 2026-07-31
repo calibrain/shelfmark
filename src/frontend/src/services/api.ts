@@ -515,7 +515,7 @@ export const purgeLibraryBook = async (bookId: number): Promise<void> => {
   });
 };
 
-export const unlinkLibraryRelease = async (bookId: number, historyId: number): Promise<void> => {
+export const deleteLibraryRelease = async (bookId: number, historyId: number): Promise<void> => {
   await fetchJSON(`${API.libraryBooks}/${bookId}/downloads/${historyId}`, { method: 'DELETE' });
 };
 

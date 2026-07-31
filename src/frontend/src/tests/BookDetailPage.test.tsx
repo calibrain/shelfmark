@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -60,6 +60,7 @@ describe('BookDetailPage request-only availability', () => {
               <BookDetailPage
                 autoFindReleases={false}
                 canFindReleases={false}
+                canDeleteReleases={false}
                 isRequestOnly
                 isAdmin={false}
                 onFindReleases={() => undefined}
@@ -77,7 +78,66 @@ describe('BookDetailPage request-only availability', () => {
     ).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Send EPUB to Kindle' })).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Find another release' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Unlink release' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete release' })).toBeNull();
+  });
+});
+
+describe('BookDetailPage release deletion', () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+  });
+
+  it('removes a release after an admin deletes it', async () => {
+    const user = userEvent.setup();
+    const deletedBook = {
+      ...book,
+      files: [],
+    };
+    let currentBook = book;
+    const fetchMock = vi.fn((_url: string, options?: RequestInit) => {
+      if (options?.method === 'DELETE') {
+        currentBook = deletedBook;
+        return Promise.resolve(new Response(JSON.stringify({ status: 'deleted' })));
+      }
+      return Promise.resolve(new Response(JSON.stringify(currentBook)));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/library/1']}>
+        <Routes>
+          <Route
+            path="/library/:bookId"
+            element={
+              <BookDetailPage
+                autoFindReleases={false}
+                canFindReleases
+                canDeleteReleases
+                isRequestOnly={false}
+                isAdmin
+                onFindReleases={() => undefined}
+                onOpenSettings={() => undefined}
+                onShowToast={() => undefined}
+              />
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: 'Shared Book' });
+    await user.click(screen.getByText('Advanced: show all releases (1)'));
+    await user.click(screen.getByRole('button', { name: 'Delete release' }));
+
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Delete release' })).toBeNull();
+    });
+
+    expect(fetchMock).toHaveBeenCalledWith(
+      '/api/library/books/1/downloads/10',
+      expect.objectContaining({ method: 'DELETE' }),
+    );
   });
 
   it('shows the admin purge preview and purges after affirmative opt-in', async () => {
@@ -107,6 +167,7 @@ describe('BookDetailPage request-only availability', () => {
               <BookDetailPage
                 autoFindReleases={false}
                 canFindReleases={true}
+                canDeleteReleases
                 isRequestOnly={false}
                 isAdmin
                 onFindReleases={() => undefined}
