@@ -260,7 +260,7 @@ const AvailableFiles = ({
                   <p className="min-w-0 flex-1 text-sm font-medium text-(--text)">
                     {files[0].indexer_display_name || 'Unknown source'}
                   </p>
-                  {canUnlinkReleases && files.some((file) => file.downloadable_by_me) && (
+                  {canUnlinkReleases && files.some((file) => file.linked_to_my_library) && (
                     <button
                       type="button"
                       className="hover-action cursor-pointer rounded-md px-2 py-1 text-xs font-medium text-rose-700 dark:text-rose-300"

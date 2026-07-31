@@ -193,6 +193,7 @@ def _serialize_book_detail(
     files: list[dict[str, Any]],
     in_flight: list[dict[str, Any]],
     downloadable_history_ids: set[int],
+    linked_history_ids: set[int],
 ) -> dict[str, Any]:
     """Per #04 route table: GET /api/library/books/:book_id response shape."""
     return {
@@ -219,6 +220,7 @@ def _serialize_book_detail(
                 "protocol": f.get("content_type"),
                 "downloaded_at": f.get("terminal_at"),
                 "downloadable_by_me": int(f["id"]) in downloadable_history_ids,
+                "linked_to_my_library": int(f["id"]) in linked_history_ids,
             }
             for f in files
         ],
@@ -404,12 +406,21 @@ def register_library_routes(
             for f in files
             if (history_id := normalize_positive_int(f.get("id"))) is not None
         }
+        linked_history_ids = {
+            history_id
+            for f in files
+            if (history_id := normalize_positive_int(f.get("id"))) is not None
+            and library_service.download_linked_to_user(
+                user_id=actor.db_user_id, history_id=history_id
+            )
+        }
 
         detail = _serialize_book_detail(
             book,
             files=files,
             in_flight=in_flight,
             downloadable_history_ids=downloadable_history_ids,
+            linked_history_ids=linked_history_ids,
         )
         detail["in_my_library"] = library_service.is_in_library(
             user_id=actor.db_user_id, book_id=book_id

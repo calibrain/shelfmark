@@ -692,6 +692,10 @@ def test_unlink_download_idempotent(app, user_db, library_service):
     assert first.json["status"] == "unlinked"
     assert second.json["status"] == "unlinked"  # Idempotent.
     assert not library_service.download_linked_to_user(user_id=alice["id"], history_id=history_id)
+    detail = _authed_client(app, alice).get(f"/api/library/books/{book_id}").json
+    assert detail["files"][0]["history_id"] == history_id
+    assert detail["files"][0]["downloadable_by_me"] is True
+    assert detail["files"][0]["linked_to_my_library"] is False
 
 
 def test_unauthenticated_user_gets_401_on_all_routes(app, user_db):
