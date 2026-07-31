@@ -1022,8 +1022,8 @@ def api_download_release() -> Response | tuple[Response, int]:
             and library_book_id is None
         ):
             return jsonify({"error": "library_book_id is required"}), 400
-        if library_book_id is not None and not session.get("is_admin", False):
-            if (
+        if library_book_id is not None:
+            if not session.get("is_admin", False) and (
                 library_service is None
                 or db_user_id is None
                 or not library_service.is_in_library(user_id=db_user_id, book_id=library_book_id)

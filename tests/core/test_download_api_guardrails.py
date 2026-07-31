@@ -199,7 +199,7 @@ class TestReleaseDownloadEndpointGuardrails:
             "source": "direct_download",
             "source_id": "admin-private-release",
             "title": "Private Release",
-            "library_book_id": library_book_id,
+            "library_book_id": str(library_book_id),
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
@@ -208,7 +208,7 @@ class TestReleaseDownloadEndpointGuardrails:
 
         assert response.status_code == 200
         assert response.get_json() == {"status": "queued", "priority": 0}
-        assert mock_queue_release.call_args.args[0] == payload
+        assert mock_queue_release.call_args.args[0] == {**payload, "library_book_id": library_book_id}
 
     def test_non_admin_cannot_override_book_derived_release_query(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
