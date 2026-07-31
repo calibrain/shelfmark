@@ -80,6 +80,49 @@ describe('BookDetailPage request-only availability', () => {
     expect(screen.queryByRole('button', { name: 'Find another release' })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Delete release' })).toBeNull();
   });
+
+  it('allows a new request after a previous request was cancelled', async () => {
+    const unavailableBook = { ...book, files: [] };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          new Response(
+            JSON.stringify(
+              url === '/api/library/books/1'
+                ? unavailableBook
+                : [{ id: 9, book_id: 1, status: 'cancelled' }],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/library/1']}>
+        <Routes>
+          <Route
+            path="/library/:bookId"
+            element={
+              <BookDetailPage
+                autoFindReleases={false}
+                canFindReleases={false}
+                canDeleteReleases={false}
+                isRequestOnly
+                isAdmin={false}
+                onFindReleases={() => undefined}
+                onOpenSettings={() => undefined}
+                onShowToast={() => undefined}
+              />
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByRole('button', { name: 'Request this book' })).not.toBeNull();
+    expect(screen.queryByText('Request cancelled')).toBeNull();
+  });
 });
 
 describe('BookDetailPage release deletion', () => {

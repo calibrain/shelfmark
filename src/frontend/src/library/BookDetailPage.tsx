@@ -458,7 +458,10 @@ export const BookDetailPage = ({
         isRequestOnly ? listLibraryRequests() : Promise.resolve([]),
       ]);
       setBook(detail);
-      setRequest(requests.find((entry) => Number(entry.book_id) === bookId));
+      // Cancelled Requests are history; cancellation feedback is shown as a toast.
+      setRequest(
+        requests.find((entry) => Number(entry.book_id) === bookId && entry.status !== 'cancelled'),
+      );
     } catch (caught) {
       if (isApiResponseError(caught) && (caught.status === 403 || caught.status === 404)) {
         setError('Not in your library');
