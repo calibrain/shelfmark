@@ -133,6 +133,7 @@ const RequestState = ({
 const AvailableFiles = ({
   book,
   canFindReleases,
+  canUnlinkReleases,
   onDownload,
   onFindReleases,
   onOpenSettings,
@@ -141,6 +142,7 @@ const AvailableFiles = ({
 }: {
   book: BookDetailResponse;
   canFindReleases: boolean;
+  canUnlinkReleases: boolean;
   onDownload: (file: LibraryFile) => void;
   onFindReleases: () => void;
   onOpenSettings: () => void;
@@ -258,7 +260,7 @@ const AvailableFiles = ({
                   <p className="min-w-0 flex-1 text-sm font-medium text-(--text)">
                     {files[0].indexer_display_name || 'Unknown source'}
                   </p>
-                  {files.some((file) => file.downloadable_by_me) && (
+                  {canUnlinkReleases && files.some((file) => file.downloadable_by_me) && (
                     <button
                       type="button"
                       className="hover-action cursor-pointer rounded-md px-2 py-1 text-xs font-medium text-rose-700 dark:text-rose-300"
@@ -475,6 +477,7 @@ export const BookDetailPage = ({
         <AvailableFiles
           book={book}
           canFindReleases={canFindReleases}
+          canUnlinkReleases={canFindReleases}
           onDownload={(file) =>
             void mutate(
               () => downloadLibraryFile(book.book_id, { historyId: file.history_id }),

@@ -75,5 +75,6 @@ describe('BookDetailPage request-only availability', () => {
     ).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Send EPUB to Kindle' })).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Find another release' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Unlink release' })).toBeNull();
   });
 });

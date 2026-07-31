@@ -368,15 +368,16 @@ def test_request_only_member_gets_existing_files_and_can_send_them_to_kindle(
 
     with patch(
         "shelfmark.download.outputs.email.send_file_to_email", return_value="r***@example.test"
-    ):
+    ) as fake_send:
         sent = requester_client.post(f"/api/library/books/{book_id}/send-to-kindle")
+        unlinked = requester_client.delete(f"/api/library/books/{book_id}/downloads/{history_id}")
+        sent_after_unlink = requester_client.post(f"/api/library/books/{book_id}/send-to-kindle")
+
     assert sent.status_code == 200
     assert sent.json["status"] == "sent"
-
-    unlinked = requester_client.delete(f"/api/library/books/{book_id}/downloads/{history_id}")
-    rejected = requester_client.post(f"/api/library/books/{book_id}/send-to-kindle")
-    assert unlinked.status_code == 200
-    assert rejected.status_code == 404
+    assert unlinked.status_code == 403
+    assert sent_after_unlink.status_code == 200
+    assert fake_send.call_count == 2
 
 
 def test_book_detail_reports_non_membership_for_cross_library_admin(app, user_db):
@@ -780,6 +781,7 @@ def test_book_detail_includes_task_id_per_file_in_payload(app, user_db):
     # Every file entry carries task_id (the release grouping key).
     assert {f["task_id"] for f in detail["files"]} == {"release-A"}
     assert {f["format"] for f in detail["files"]} == {"epub", "mobi", "pdf"}
+    assert all(f["downloadable_by_me"] is True for f in detail["files"])
 
 
 def test_unlink_release_via_any_file_history_id_deletes_all_links(app, user_db, library_service):
