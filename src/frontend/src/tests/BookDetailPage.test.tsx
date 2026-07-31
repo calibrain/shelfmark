@@ -32,7 +32,6 @@ const book = {
       protocol: null,
       downloaded_at: '2026-01-01T00:00:00+00:00',
       downloadable_by_me: true,
-      linked_to_my_library: true,
     },
   ],
   in_flight: [],
@@ -61,6 +60,7 @@ describe('BookDetailPage request-only availability', () => {
               <BookDetailPage
                 autoFindReleases={false}
                 canFindReleases={false}
+                canDeleteReleases={false}
                 isRequestOnly
                 onFindReleases={() => undefined}
                 onOpenSettings={() => undefined}
@@ -77,27 +77,27 @@ describe('BookDetailPage request-only availability', () => {
     ).not.toBeNull();
     expect(screen.getByRole('button', { name: 'Send EPUB to Kindle' })).not.toBeNull();
     expect(screen.queryByRole('button', { name: 'Find another release' })).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Unlink release' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete release' })).toBeNull();
   });
 });
 
-describe('BookDetailPage release unlinking', () => {
+describe('BookDetailPage release deletion', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
   });
 
-  it('hides the unlink control after unlinking a globally available release', async () => {
+  it('removes a release after an admin deletes it', async () => {
     const user = userEvent.setup();
-    const unlinkedBook = {
+    const deletedBook = {
       ...book,
-      files: [{ ...book.files[0], linked_to_my_library: false }],
+      files: [],
     };
     let currentBook = book;
     const fetchMock = vi.fn((_url: string, options?: RequestInit) => {
       if (options?.method === 'DELETE') {
-        currentBook = unlinkedBook;
-        return Promise.resolve(new Response(JSON.stringify({ status: 'unlinked' })));
+        currentBook = deletedBook;
+        return Promise.resolve(new Response(JSON.stringify({ status: 'deleted' })));
       }
       return Promise.resolve(new Response(JSON.stringify(currentBook)));
     });
@@ -112,6 +112,7 @@ describe('BookDetailPage release unlinking', () => {
               <BookDetailPage
                 autoFindReleases={false}
                 canFindReleases
+                canDeleteReleases
                 isRequestOnly={false}
                 onFindReleases={() => undefined}
                 onOpenSettings={() => undefined}
@@ -125,10 +126,10 @@ describe('BookDetailPage release unlinking', () => {
 
     await screen.findByRole('heading', { name: 'Shared Book' });
     await user.click(screen.getByText('Advanced: show all releases (1)'));
-    await user.click(screen.getByRole('button', { name: 'Unlink release' }));
+    await user.click(screen.getByRole('button', { name: 'Delete release' }));
 
     await waitFor(() => {
-      expect(screen.queryByRole('button', { name: 'Unlink release' })).toBeNull();
+      expect(screen.queryByRole('button', { name: 'Delete release' })).toBeNull();
     });
 
     expect(fetchMock).toHaveBeenCalledWith(

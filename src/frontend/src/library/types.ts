@@ -7,7 +7,6 @@ export interface LibraryFile {
   protocol: string | null;
   downloaded_at: string | null;
   downloadable_by_me: boolean;
-  linked_to_my_library: boolean;
 }
 
 export interface InFlightDownload {

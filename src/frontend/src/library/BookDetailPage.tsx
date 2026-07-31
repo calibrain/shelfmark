@@ -10,7 +10,7 @@ import {
   isApiResponseError,
   listLibraryRequests,
   sendLibraryBookToKindle,
-  unlinkLibraryRelease,
+  deleteLibraryRelease,
 } from '../services/api';
 import type { Book, RequestRecord } from '../types';
 import { withBasePath } from '../utils/basePath';
@@ -25,6 +25,7 @@ import {
 interface BookDetailPageProps {
   autoFindReleases: boolean;
   canFindReleases: boolean;
+  canDeleteReleases: boolean;
   isRequestOnly: boolean;
   onFindReleases: (book: Book) => void;
   onOpenSettings: () => void;
@@ -133,21 +134,21 @@ const RequestState = ({
 const AvailableFiles = ({
   book,
   canFindReleases,
-  canUnlinkReleases,
+  canDeleteReleases,
   onDownload,
   onFindReleases,
   onOpenSettings,
   onSendToKindle,
-  onUnlinkRelease,
+  onDeleteRelease,
 }: {
   book: BookDetailResponse;
   canFindReleases: boolean;
-  canUnlinkReleases: boolean;
+  canDeleteReleases: boolean;
   onDownload: (file: LibraryFile) => void;
   onFindReleases: () => void;
   onOpenSettings: () => void;
   onSendToKindle: (format: string) => void;
-  onUnlinkRelease: (file: LibraryFile) => void;
+  onDeleteRelease: (file: LibraryFile) => void;
 }) => {
   const [kindleFormat, setKindleFormat] = useState('epub');
   const releases = groupFilesByRelease(book.files);
@@ -260,13 +261,13 @@ const AvailableFiles = ({
                   <p className="min-w-0 flex-1 text-sm font-medium text-(--text)">
                     {files[0].indexer_display_name || 'Unknown source'}
                   </p>
-                  {canUnlinkReleases && files.some((file) => file.linked_to_my_library) && (
+                  {canDeleteReleases && (
                     <button
                       type="button"
                       className="hover-action cursor-pointer rounded-md px-2 py-1 text-xs font-medium text-rose-700 dark:text-rose-300"
-                      onClick={() => onUnlinkRelease(files[0])}
+                      onClick={() => onDeleteRelease(files[0])}
                     >
-                      Unlink release
+                      Delete release
                     </button>
                   )}
                 </div>
@@ -306,6 +307,7 @@ const AvailableFiles = ({
 export const BookDetailPage = ({
   autoFindReleases,
   canFindReleases,
+  canDeleteReleases,
   isRequestOnly,
   onFindReleases,
   onOpenSettings,
@@ -477,7 +479,7 @@ export const BookDetailPage = ({
         <AvailableFiles
           book={book}
           canFindReleases={canFindReleases}
-          canUnlinkReleases={canFindReleases}
+          canDeleteReleases={canDeleteReleases}
           onDownload={(file) =>
             void mutate(
               () => downloadLibraryFile(book.book_id, { historyId: file.history_id }),
@@ -491,10 +493,10 @@ export const BookDetailPage = ({
               await sendLibraryBookToKindle(book.book_id, format);
             }, 'Sent to Kindle')
           }
-          onUnlinkRelease={(file) =>
+          onDeleteRelease={(file) =>
             void mutate(
-              () => unlinkLibraryRelease(book.book_id, file.history_id),
-              'Release unlinked',
+              () => deleteLibraryRelease(book.book_id, file.history_id),
+              'Release deleted',
             )
           }
         />

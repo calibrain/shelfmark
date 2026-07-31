@@ -664,7 +664,7 @@ def test_link_download_404_for_history_under_different_book(app, user_db, librar
     assert resp.status_code == 404
 
 
-def test_unlink_download_idempotent(app, user_db, library_service):
+def test_only_admin_can_delete_release(app, user_db, library_service):
     alice = user_db.create_user(username="alice")
     book_id = client_post_book(app, alice, "hardcover", "1")
     history_id = _seed_history_row(
@@ -680,22 +680,91 @@ def test_unlink_download_idempotent(app, user_db, library_service):
         user_id=alice["id"], book_id=book_id, history_id=history_id
     )
 
-    first = _authed_client(app, alice).delete(
-        f"/api/library/books/{book_id}/downloads/{history_id}"
-    )
-    second = _authed_client(app, alice).delete(
+    response = _authed_client(app, alice).delete(
         f"/api/library/books/{book_id}/downloads/{history_id}"
     )
 
-    assert first.status_code == 200
-    assert second.status_code == 200
-    assert first.json["status"] == "unlinked"
-    assert second.json["status"] == "unlinked"  # Idempotent.
-    assert not library_service.download_linked_to_user(user_id=alice["id"], history_id=history_id)
-    detail = _authed_client(app, alice).get(f"/api/library/books/{book_id}").json
-    assert detail["files"][0]["history_id"] == history_id
-    assert detail["files"][0]["downloadable_by_me"] is True
-    assert detail["files"][0]["linked_to_my_library"] is False
+    assert response.status_code == 403
+    assert library_service.download_linked_to_user(user_id=alice["id"], history_id=history_id)
+
+
+def test_admin_delete_release_removes_files_and_detaches_history(
+    app, user_db, library_service, tmp_path
+):
+    admin = user_db.create_user(username="admin", role="admin")
+    alice = user_db.create_user(username="alice")
+    bob = user_db.create_user(username="bob")
+    book_id = client_post_book(app, alice, "hardcover", "1")
+    paths = [tmp_path / "release.epub", tmp_path / "release.pdf"]
+    for path in paths:
+        path.write_bytes(b"release")
+    history_ids = _seed_multi_file_release(
+        user_db,
+        task_id="release-delete",
+        user_id=alice["id"],
+        username="alice",
+        book_id=book_id,
+        files=[("epub", str(paths[0])), ("pdf", str(paths[1]))],
+    )
+    for user in (alice, bob):
+        for history_id in history_ids:
+            library_service.link_download_to_user(
+                user_id=user["id"], book_id=book_id, history_id=history_id
+            )
+
+    response = _authed_client(app, admin, is_admin=True).delete(
+        f"/api/library/books/{book_id}/downloads/{history_ids[0]}"
+    )
+
+    assert response.status_code == 200
+    assert response.json["status"] == "deleted"
+    assert all(not path.exists() for path in paths)
+    for history_id in history_ids:
+        row = library_service.get_download_history_row(history_id)
+        assert row is not None
+        assert row["book_id"] is None
+        assert row["download_path"] is None
+        assert not library_service.download_linked_to_user(
+            user_id=alice["id"], history_id=history_id
+        )
+        assert not library_service.download_linked_to_user(user_id=bob["id"], history_id=history_id)
+    assert _authed_client(app, alice).get(f"/api/library/books/{book_id}").json["files"] == []
+
+
+def test_admin_cannot_delete_in_flight_release(app, user_db, library_service):
+    admin = user_db.create_user(username="admin", role="admin")
+    alice = user_db.create_user(username="alice")
+    book_id = client_post_book(app, alice, "hardcover", "1")
+    conn = user_db._connect()
+    try:
+        cursor = conn.execute(
+            """
+            INSERT INTO download_history (
+                task_id, user_id, source, title, content_type, origin, final_status, book_id
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                "release-active",
+                alice["id"],
+                "prowlarr",
+                "Active",
+                "ebook",
+                "direct",
+                "active",
+                book_id,
+            ),
+        )
+        history_id = int(cursor.lastrowid or 0)
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = _authed_client(app, admin, is_admin=True).delete(
+        f"/api/library/books/{book_id}/downloads/{history_id}"
+    )
+
+    assert response.status_code == 409
+    assert library_service.get_download_history_row(history_id)["book_id"] == book_id
 
 
 def test_unauthenticated_user_gets_401_on_all_routes(app, user_db):
@@ -786,94 +855,6 @@ def test_book_detail_includes_task_id_per_file_in_payload(app, user_db):
     assert {f["task_id"] for f in detail["files"]} == {"release-A"}
     assert {f["format"] for f in detail["files"]} == {"epub", "mobi", "pdf"}
     assert all(f["downloadable_by_me"] is True for f in detail["files"])
-
-
-def test_unlink_release_via_any_file_history_id_deletes_all_links(app, user_db, library_service):
-    """#13 unlink (4-a-strict): DELETE /downloads/:history_id fans out across
-    sibling file rows sharing task_id, deleting user_downloads links for all."""
-    alice = user_db.create_user(username="alice")
-    book_id = client_post_book(app, alice, "hardcover", "1")
-    history_ids = _seed_multi_file_release(
-        user_db,
-        task_id="release-unlink",
-        user_id=alice["id"],
-        username="alice",
-        book_id=book_id,
-        files=[
-            ("epub", "/lib/a.epub"),
-            ("mobi", "/lib/a.mobi"),
-            ("pdf", "/lib/a.pdf"),
-        ],
-    )
-    for hid in history_ids:
-        library_service.link_download_to_user(user_id=alice["id"], book_id=book_id, history_id=hid)
-
-    # Unlink the MIDDLE file row — should fan out to all three.
-    middle = history_ids[1]
-    resp = _authed_client(app, alice).delete(f"/api/library/books/{book_id}/downloads/{middle}")
-    assert resp.status_code == 200
-    assert resp.json["status"] == "unlinked"
-
-    # All three links are gone (release-atomic), download_history rows untouched.
-    for hid in history_ids:
-        assert not library_service.download_linked_to_user(user_id=alice["id"], history_id=hid), (
-            f"link for history_id={hid} should be gone"
-        )
-    for hid in history_ids:
-        assert library_service.get_download_history_row(hid) is not None
-
-
-def test_unlink_mid_flight_release_returns_404(app, user_db, library_service):
-    """#13 link-timing (4-mid-1-ii): an in-flight release has no
-    user_downloads link yet — unlink returns 404 (nothing to delete)."""
-    alice = user_db.create_user(username="alice")
-    book_id = client_post_book(app, alice, "hardcover", "1")
-
-    # Seed a sentinel 'active' row (in-flight, no link, no download_path).
-    conn = user_db._connect()
-    try:
-        conn.execute(
-            """
-            INSERT INTO download_history (
-                task_id, user_id, username, source, title, content_type,
-                origin, final_status, terminal_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                "release-inflight",
-                alice["id"],
-                "alice",
-                "prowlarr",
-                "In Flight",
-                "ebook",
-                "direct",
-                "active",
-                "2026-01-01T00:00:00+00:00",
-            ),
-        )
-        sentinel_id = conn.execute(
-            "SELECT id FROM download_history WHERE task_id = ?", ("release-inflight",)
-        ).fetchone()["id"]
-        conn.execute(
-            "UPDATE download_history SET book_id = ? WHERE id = ?",
-            (book_id, sentinel_id),
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-    # Unlink the sentinel — no link row exists → 404.
-    resp = _authed_client(app, alice).delete(
-        f"/api/library/books/{book_id}/downloads/{sentinel_id}"
-    )
-    # The route's book_id match check passes (sentinel has book_id), then the
-    # unlink service returns False (nothing to delete) — route surfaces 200
-    # "unlinked" idempotently. BUT the get_download_history_row must exist,
-    # so the real check is the link absence. See #13 4-mid-1-ii.
-    assert resp.status_code == 200
-    assert resp.json["status"] == "unlinked"
-    assert not library_service.download_linked_to_user(user_id=alice["id"], history_id=sentinel_id)
 
 
 # --- Helpers ------------------------------------------------------------- #
