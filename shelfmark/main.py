@@ -524,6 +524,7 @@ if user_db is not None:
                 resolve_auth_mode=_resolve_auth_mode_for_routes,
                 resolve_metadata_book=_resolve_metadata_book_for_library,
                 cancel_download=backend.cancel_download,
+                clear_completed_download=backend.clear_completed_download,
             )
     except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.warning("Failed to register request routes: %s", e)

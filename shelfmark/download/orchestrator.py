@@ -751,6 +751,14 @@ def cancel_download(book_id: str) -> bool:
     return result
 
 
+def clear_completed_download(task_id: str) -> bool:
+    """Remove a deleted release from the completed queue status."""
+    result = book_queue.remove_completed_task(task_id)
+    if result and ws_manager and ws_manager.is_enabled():
+        ws_manager.broadcast_status_update(queue_status())
+    return result
+
+
 def retry_download(book_id: str) -> tuple[bool, str | None]:
     """Retry a failed or cancelled download.
 

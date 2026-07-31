@@ -243,6 +243,7 @@ def register_library_routes(
     resolve_auth_mode: Callable[[], str],
     resolve_metadata_book: Callable[[str, str], dict[str, Any] | None],
     cancel_download: Callable[[str], bool],
+    clear_completed_download: Callable[[str], bool],
 ) -> None:
     """Register library API routes.
 
@@ -710,4 +711,5 @@ def register_library_routes(
                 error="Only completed releases can be deleted",
                 book_id=book_id,
             )
+        clear_completed_download(str(row["task_id"]))
         return jsonify({"status": "deleted"})

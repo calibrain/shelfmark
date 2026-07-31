@@ -58,8 +58,14 @@ def app(
     test_app.config["SECRET_KEY"] = "test-secret"
     test_app.config["TESTING"] = True
     cancelled_tasks: list[str] = []
+    cleared_completed_tasks: list[str] = []
     test_app.extensions["cancelled_tasks"] = cancelled_tasks
+    test_app.extensions["cleared_completed_tasks"] = cleared_completed_tasks
     test_app.extensions["cancel_should_fail"] = False
+
+    def _clear_completed_download(task_id: str) -> bool:
+        cleared_completed_tasks.append(task_id)
+        return True
 
     def _resolve_metadata_book(provider: str, provider_book_id: str) -> dict[str, Any] | None:
         # Deterministic stub for tests; mirrors the live _resolve_metadata_book_for_library
@@ -91,6 +97,7 @@ def app(
             cancelled_tasks.append(task_id) is None
             and not test_app.extensions["cancel_should_fail"]
         ),
+        clear_completed_download=_clear_completed_download,
     )
     register_request_routes(
         test_app,
@@ -221,6 +228,7 @@ def test_add_book_returns_503_when_metadata_provider_unavailable(user_db, db_pat
         resolve_auth_mode=_always_builtin_auth_mode,
         resolve_metadata_book=_resolve_none,
         cancel_download=lambda _task_id: True,
+        clear_completed_download=lambda _task_id: True,
     )
     client = _authed_client(test_app, alice)
     resp = client.post(
@@ -307,6 +315,7 @@ def test_list_books_no_auth_mode_keeps_instance_wide_view(
         resolve_auth_mode=_no_auth_mode,
         resolve_metadata_book=lambda _provider, _provider_book_id: None,
         cancel_download=lambda _task_id: True,
+        clear_completed_download=lambda _task_id: True,
     )
 
     response = no_auth_app.test_client().get("/api/library/books")
@@ -897,6 +906,7 @@ def test_admin_delete_release_removes_files_and_detaches_history(
 
     assert response.status_code == 200
     assert response.json["status"] == "deleted"
+    assert app.extensions["cleared_completed_tasks"] == ["release-delete"]
     assert all(not path.exists() for path in paths)
     for history_id in history_ids:
         row = library_service.get_download_history_row(history_id)
