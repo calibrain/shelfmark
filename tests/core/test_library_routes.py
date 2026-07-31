@@ -584,6 +584,30 @@ def test_admin_purge_fails_when_active_download_cannot_be_cancelled(app, user_db
     assert library_service.get_book(book_id) is not None
 
 
+def test_admin_purge_surfaces_artifact_cleanup_failures(app, user_db, library_service, tmp_path):
+    owner = user_db.create_user(username="owner")
+    admin = user_db.create_user(username="admin", role="admin")
+    book_id = client_post_book(app, owner, "hardcover", "cleanup-failure")
+    artifact_directory = tmp_path / "artifact-directory"
+    artifact_directory.mkdir()
+    _seed_history_row(
+        user_db,
+        task_id="cannot-unlink",
+        user_id=owner["id"],
+        username="owner",
+        book_id=book_id,
+        fmt="epub",
+        download_path=str(artifact_directory),
+    )
+
+    response = _authed_client(app, admin, is_admin=True).delete(
+        f"/api/library/books/{book_id}/purge"
+    )
+
+    assert response.status_code == 500
+    assert library_service.get_book(book_id) is not None
+
+
 def test_download_file_gates_on_library_membership(app, user_db, library_service, db_path):
     alice = user_db.create_user(username="alice")
     bob = user_db.create_user(username="bob")

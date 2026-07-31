@@ -294,10 +294,17 @@ class LibraryService:
                     "WHERE book_id = ? AND download_path IS NOT NULL",
                     (normalized_book_id,),
                 ).fetchall()
+                deleted_paths: list[str] = []
                 for row in paths:
                     path = row["download_path"]
                     if isinstance(path, str) and path:
-                        Path(path).unlink(missing_ok=True)
+                        try:
+                            Path(path).unlink(missing_ok=True)
+                        except OSError:
+                            self._clear_deleted_paths(conn, normalized_book_id, deleted_paths)
+                            conn.commit()
+                            raise
+                        deleted_paths.append(path)
 
                 self._detach_book_activity(conn, normalized_book_id, clear_paths=True)
                 conn.execute("DELETE FROM books WHERE id = ?", (normalized_book_id,))
@@ -319,6 +326,15 @@ class LibraryService:
             if not isinstance(task_id, str) or not task_id or not cancel_download(task_id):
                 msg = f"Could not cancel active download {task_id!r}"
                 raise RuntimeError(msg)
+
+    @staticmethod
+    def _clear_deleted_paths(conn: sqlite3.Connection, book_id: int, paths: list[str]) -> None:
+        for path in paths:
+            conn.execute(
+                "UPDATE download_history SET download_path = NULL "
+                "WHERE book_id = ? AND download_path = ?",
+                (book_id, path),
+            )
 
     @staticmethod
     def _detach_book_activity(conn: sqlite3.Connection, book_id: int, *, clear_paths: bool) -> None:
