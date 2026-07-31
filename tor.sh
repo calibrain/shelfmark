@@ -129,57 +129,76 @@ EOF
 cat <<'HC' > /app/tor_healthcheck.sh
 #!/bin/bash
 
-# Function to dynamically wait for Tor bootstrap
-wait_for_tor() {
-    echo "$(date): Waiting for Tor to finish bootstrapping..."
+# Tor watchdog.
+#
+# Once the NAT rules are live every process in the container is pinned to Tor,
+# so a Tor that has died or wedged takes the whole app down with it and cannot
+# reliably be repaired in place. When Tor stops being usable, tear the container
+# down instead: the configured Docker restart policy brings it back and tor.sh
+# rebuilds torrc, supervisor and the iptables rules from scratch.
 
-    > /var/log/tor/notices.log 2>/dev/null || true
+CHECK_INTERVAL=${TOR_CHECK_INTERVAL:-30}
+# Strikes before the container is reset. 2 means "one retry": a single failed
+# probe is tolerated, a second consecutive failure resets.
+MAX_FAILURES=${TOR_MAX_FAILURES:-2}
+NOTICES_LOG=${TOR_NOTICES_LOG:-/var/log/tor/notices.log}
+TRANS_PORT=${TOR_TRANS_PORT:-9040}
+# PID 1 is dumb-init, which tears the container down when it is signalled.
+CONTAINER_PID=${TOR_CONTAINER_PID:-1}
 
-    sleep 10
+tor_process_running() {
+    supervisorctl status tor 2>/dev/null | grep -q "RUNNING"
+}
 
-    TIMEOUT=300
-    ELAPSED=0
-    while [ $ELAPSED -lt $TIMEOUT ]; do
-        if grep -q "Bootstrapped 100%" /var/log/tor/notices.log 2>/dev/null; then
-            echo "$(date): Tor bootstrap complete."
-            return 0
-        fi
-        sleep 5
-        ELAPSED=$((ELAPSED + 5))
-        # Show progress
-        CURRENT=$(tail -n 1 /var/log/tor/notices.log 2>/dev/null | grep -oP 'Bootstrapped \d+%' || echo "waiting...")
-        echo "$(date): Bootstrap progress: $CURRENT ($ELAPSED/${TIMEOUT}s)"
-    done
+tor_has_bootstrapped() {
+    grep -q "Bootstrapped 100%" "$NOTICES_LOG" 2>/dev/null
+}
 
-    echo "$(date): WARNING - Tor bootstrap timed out after ${TIMEOUT}s"
-    return 1
+# Liveness probe for "Tor is still running but no longer usable". Deliberately a
+# loopback check against Tor's own TransPort: probing the clear net from here
+# would leak and defeat the point of the proxy.
+tor_accepts_connections() {
+    timeout 5 bash -c "exec 3<>/dev/tcp/127.0.0.1/${TRANS_PORT}" 2>/dev/null
 }
 
 tor_is_healthy() {
-    supervisorctl status tor | grep -q "RUNNING" &&
-        grep -q "Bootstrapped 100%" /var/log/tor/notices.log 2>/dev/null
+    tor_process_running && tor_has_bootstrapped && tor_accepts_connections
 }
+
+reset_container() {
+    echo "$(date): Tor still unhealthy after ${MAX_FAILURES} checks - resetting container."
+    kill -TERM "$CONTAINER_PID" 2>/dev/null
+    exit 1
+}
+
+# Never police Tor before it has bootstrapped once. A first bootstrap can
+# legitimately take minutes on a slow link, and mistaking that for a failure
+# would reset the container into an endless restart loop.
+echo "$(date): Waiting for initial Tor bootstrap before monitoring..."
+while ! tor_has_bootstrapped; do
+    sleep "$CHECK_INTERVAL"
+done
+echo "$(date): Tor bootstrapped - watchdog active (every ${CHECK_INTERVAL}s, ${MAX_FAILURES} strikes)."
 
 FAIL_COUNT=0
 while true; do
     if tor_is_healthy; then
+        if [ "$FAIL_COUNT" -ne 0 ]; then
+            echo "$(date): Tor recovered."
+        fi
         FAIL_COUNT=0
     else
         FAIL_COUNT=$((FAIL_COUNT+1))
-        echo "$(date): Healthcheck failed (Count: $FAIL_COUNT)"
+        echo "$(date): Healthcheck failed (${FAIL_COUNT}/${MAX_FAILURES})"
+
+        if [ "$FAIL_COUNT" -ge "$MAX_FAILURES" ]; then
+            reset_container
+        fi
+
+        echo "$(date): Retrying in ${CHECK_INTERVAL}s before resetting..."
     fi
 
-    # If failed 3 times in a row, restart Tor
-    if [ "$FAIL_COUNT" -ge 3 ]; then
-        echo "$(date): restart trigger - Restarting Tor..."
-        supervisorctl restart tor
-        FAIL_COUNT=0
-
-        # Wait for it to come back using the dynamic check
-        wait_for_tor
-    fi
-
-    sleep 30
+    sleep "$CHECK_INTERVAL"
 done
 HC
 chmod +x /app/tor_healthcheck.sh
@@ -221,8 +240,23 @@ TOR_UID=$(id -u debian-tor)
 # Allow loopback
 iptables -t nat -A OUTPUT -o lo -j RETURN
 
-# Allow Tor itself to reach the network
-iptables -t nat -A OUTPUT -m owner --uid-owner "$TOR_UID" -j RETURN
+# Allow Tor itself to reach the network.
+#
+# The owner match needs the xt_owner kernel module, which some NAS and embedded
+# kernels (Synology DSM in particular) do not ship. There iptables rejects the
+# rule with "Extension owner revision 0 not supported, missing kernel module?",
+# and under `set -e` that aborted the whole script before any routing rule was
+# installed, leaving the container in a restart loop. Treat the exemption as
+# best-effort so those hosts keep working as they did before it was introduced.
+if iptables -t nat -A OUTPUT -m owner --uid-owner "$TOR_UID" -j RETURN 2>/dev/null; then
+    echo "[✓] Tor process (uid $TOR_UID) exempted from transparent redirect."
+else
+    echo "[!] Warning: this kernel has no iptables owner match (xt_owner module)."
+    echo "[!] Continuing without the Tor process exemption. Tor keeps using the"
+    echo "[!] connections it opened while bootstrapping, so traffic is still"
+    echo "[!] routed through Tor, but if Tor loses its guard relays it may need"
+    echo "[!] a container restart to recover."
+fi
 
 # For UDP DNS queries
 iptables -t nat -A OUTPUT -p udp --dport 53 ! -d 127.0.0.1 -j DNAT --to-destination 127.0.0.1:53
