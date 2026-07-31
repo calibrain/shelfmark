@@ -1,6 +1,6 @@
 # Library file visibility is a per-user-per-release link table
 
-**Status:** accepted
+**Status:** superseded by [ADR 0003](0003-admin-release-deletion.md)
 
 Library membership (per #01 / ADR 0001) is Book-level — `user_library(user_id, book_id)` says "this user tracks this Book". Files (`download_history` rows) are global per-instance — a downloaded file is shared, not copied per user. The question this ADR answers: how does the library decide which files a user sees for a Book they've added, and which files they've unlinked?
 

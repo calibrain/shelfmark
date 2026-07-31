@@ -427,6 +427,7 @@ function App() {
                 <BookDetailPage
                   autoFindReleases={config?.library_auto_find_releases !== false}
                   canFindReleases={isAdmin || libraryCapability === 'download-capable'}
+                  canDeleteReleases={isAdmin}
                   isRequestOnly={isRequestOnlyLibraryUser(isAdmin, libraryCapability)}
                   onFindReleases={setReleaseBook}
                   onOpenSettings={handlePersonalSettingsClick}

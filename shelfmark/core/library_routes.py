@@ -404,7 +404,6 @@ def register_library_routes(
             for f in files
             if (history_id := normalize_positive_int(f.get("id"))) is not None
         }
-
         detail = _serialize_book_detail(
             book,
             files=files,
@@ -610,27 +609,23 @@ def register_library_routes(
         return jsonify({"status": "linked"})
 
     @app.route("/api/library/books/<int:book_id>/downloads/<int:history_id>", methods=["DELETE"])
-    def api_library_unlink_download(
+    def api_library_delete_release(
         book_id: int, history_id: int
     ) -> Response | LibraryRouteResponse:
-        action = "unlink_download"
+        action = "delete_release"
         gate = _actor_gate(action)
         if isinstance(gate, _ActorContext):
             actor = gate
         else:
             return gate
 
-        membership_error = _membership_or_403(actor, book_id, action)
-        if membership_error is not None:
-            return membership_error
-        if actor.library_capability == "request-only":
+        if not actor.is_admin:
             return _error_response(
                 action=action,
                 status_code=403,
-                error="Unlinking releases is not allowed",
+                error="Deleting releases is only allowed for administrators",
                 book_id=book_id,
             )
-
         try:
             row = library_service.get_download_history_row(history_id)
         except _OPERATIONAL_ERRORS as exc:
@@ -642,14 +637,25 @@ def register_library_routes(
                 error="Download not found for this book",
                 book_id=book_id,
             )
+        if row.get("final_status") != "complete" or not normalize_optional_text(
+            row.get("download_path")
+        ):
+            return _error_response(
+                action=action,
+                status_code=409,
+                error="Only completed releases can be deleted",
+                book_id=book_id,
+            )
 
         try:
-            library_service.unlink_download_from_user(
-                user_id=actor.db_user_id,
-                book_id=book_id,
-                history_id=history_id,
-            )
+            deleted = library_service.delete_release(book_id=book_id, history_id=history_id)
         except _OPERATIONAL_ERRORS as exc:
             return jsonify({"error": str(exc)}), 500
-        # Idempotent: returns "unlinked" whether or not a row was actually removed.
-        return jsonify({"status": "unlinked"})
+        if not deleted:
+            return _error_response(
+                action=action,
+                status_code=409,
+                error="Only completed releases can be deleted",
+                book_id=book_id,
+            )
+        return jsonify({"status": "deleted"})

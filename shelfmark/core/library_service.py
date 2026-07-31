@@ -13,6 +13,7 @@ import json
 import sqlite3
 import threading
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 
 from shelfmark.core.logger import setup_logger
@@ -526,59 +527,74 @@ class LibraryService:
             finally:
                 conn.close()
 
-    def unlink_download_from_user(self, *, user_id: int, book_id: int, history_id: int) -> bool:
-        """Release-atomic unlink: delete the user's ``user_downloads`` links for
-        **every file row in the release** identified by ``history_id``.
+    def delete_release(self, *, book_id: int, history_id: int) -> bool:
+        """Delete every on-disk File in a release and detach its history.
 
-        Per #13 decision (4-a-strict): the ``:history_id`` identifies any file
-        row of the release; the service fans out across sibling file rows
-        sharing the same ``task_id`` and deletes ``user_downloads`` links for
-        all of them for the requesting user. The underlying ``download_history``
-        rows and the on-disk files are untouched. Per-file unlink within a
-        release is out of scope (releases own atomically). Returns ``True`` if
-        any link was removed.
+        ``history_id`` identifies any File in the release. All sibling rows
+        sharing its ``task_id`` lose their Book and user-download links, while
+        preserving their history metadata as an audit record.
         """
-        normalized_user_id = normalize_positive_int(user_id)
         normalized_history_id = self._history_identity(history_id)
         self._book_identity(book_id)
-        if normalized_user_id is None:
-            msg = "user_id must be a positive integer"
-            raise ValueError(msg)
         with self._lock:
             conn = self._connect()
             try:
-                task_id = conn.execute(
+                task_id_row = conn.execute(
                     "SELECT task_id FROM download_history WHERE id = ?",
                     (normalized_history_id,),
                 ).fetchone()
-                if task_id is None:
-                    # No row to derive task_id from — nothing to unlink.
-                    # Preserves the #08 #04 sub-decision 7 "file/history untouched"
-                    # invariant and the mid-flight-404 UX (no link row yet).
+                if task_id_row is None:
                     return False
-                normalized_task_id = (
-                    str(task_id["task_id"]) if task_id["task_id"] is not None else None
-                )
-                if normalized_task_id is None:
-                    # Fall back to per-row unlink when task_id is unavailable.
-                    cursor = conn.execute(
-                        "DELETE FROM user_downloads WHERE user_id = ? AND history_id = ?",
-                        (normalized_user_id, normalized_history_id),
-                    )
-                    conn.commit()
-                    return cursor.rowcount > 0
-                # Fan out across every sibling file row sharing the task_id.
-                cursor = conn.execute(
+                task_id = task_id_row["task_id"]
+                rows = conn.execute(
                     """
-                    DELETE FROM user_downloads
-                    WHERE user_id = ? AND history_id IN (
-                        SELECT id FROM download_history WHERE task_id = ?
-                    )
+                    SELECT id, download_path, final_status FROM download_history WHERE task_id = ?
                     """,
-                    (normalized_user_id, normalized_task_id),
+                    (task_id,),
+                ).fetchall()
+                if not rows or any(
+                    row["final_status"] != _COMPLETE_DOWNLOAD_STATUS
+                    or normalize_optional_text(row["download_path"]) is None
+                    for row in rows
+                ):
+                    return False
+                deleted_history_ids: list[int] = []
+                for row in rows:
+                    path = normalize_optional_text(row["download_path"])
+                    try:
+                        if path:
+                            Path(path).unlink(missing_ok=True)
+                    except OSError:
+                        # Filesystem deletion cannot be transactional. Detach
+                        # artifacts already removed so retrying the remaining
+                        # release cannot advertise missing files.
+                        if deleted_history_ids:
+                            history_ids_json = json.dumps(deleted_history_ids)
+                            conn.execute(
+                                "DELETE FROM user_downloads WHERE history_id "
+                                "IN (SELECT value FROM json_each(?))",
+                                (history_ids_json,),
+                            )
+                            conn.execute(
+                                "UPDATE download_history SET book_id = NULL, download_path = NULL "
+                                "WHERE id IN (SELECT value FROM json_each(?))",
+                                (history_ids_json,),
+                            )
+                            conn.commit()
+                        raise
+                    deleted_history_ids.append(int(row["id"]))
+                conn.execute(
+                    "DELETE FROM user_downloads WHERE history_id IN "
+                    "(SELECT id FROM download_history WHERE task_id = ?)",
+                    (task_id,),
+                )
+                conn.execute(
+                    "UPDATE download_history SET book_id = NULL, download_path = NULL "
+                    "WHERE task_id = ?",
+                    (task_id,),
                 )
                 conn.commit()
-                return cursor.rowcount > 0
+                return bool(rows)
             finally:
                 conn.close()
 
