@@ -10,7 +10,7 @@ A Book row is a **denormalized snapshot** of the provider's `BookMetadata` at ad
 
 ## Library
 
-A user's **Library** is the set of Book rows that user has chosen to track — a per-user link onto Books (`user_library`, PK `(user_id, book_id)`, both FKs `ON DELETE CASCADE`). Library membership is orthogonal to files on disk: a Book can be in a user's Library with zero files anywhere (wishlist semantics). Removing a Book from a Library is a hard `DELETE` of the link row — no `removed_at`, no tombstone. Future "restore removed" UX is a fresh ticket that would introduce soft-delete then.
+A user's **Library** is the set of Book rows that user has chosen to track — a per-user link onto Books (`user_library`, PK `(user_id, book_id)`, both FKs `ON DELETE CASCADE`). Library membership is orthogonal to files on disk: a Book can be in a user's Library with zero files anywhere (wishlist semantics). Removing a Book from a Library is a hard `DELETE` of the link row — no `removed_at`, no tombstone. When that link is the final membership, the canonical Book and its Requests are deleted; Files become detached audit activity and remain on disk. Future "restore removed" UX is a fresh ticket that would introduce soft-delete then.
 
 ## Library Capability
 

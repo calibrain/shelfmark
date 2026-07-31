@@ -52,6 +52,10 @@ export interface LibraryBooksResponse {
   books: LibraryBookSummary[];
 }
 
+export interface LibraryPurgePreview {
+  users: Array<{ display_name: string | null; username: string }>;
+}
+
 export const latestFilesByFormat = (files: LibraryFile[]): LibraryFile[] => {
   const latest = new Map<string, LibraryFile>();
   for (const file of files) {

@@ -57,6 +57,9 @@ def app(
     test_app = Flask(__name__)
     test_app.config["SECRET_KEY"] = "test-secret"
     test_app.config["TESTING"] = True
+    cancelled_tasks: list[str] = []
+    test_app.extensions["cancelled_tasks"] = cancelled_tasks
+    test_app.extensions["cancel_should_fail"] = False
 
     def _resolve_metadata_book(provider: str, provider_book_id: str) -> dict[str, Any] | None:
         # Deterministic stub for tests; mirrors the live _resolve_metadata_book_for_library
@@ -84,6 +87,10 @@ def app(
         download_history_service=download_history_service,
         resolve_auth_mode=_always_builtin_auth_mode,
         resolve_metadata_book=_resolve_metadata_book,
+        cancel_download=lambda task_id: (
+            cancelled_tasks.append(task_id) is None
+            and not test_app.extensions["cancel_should_fail"]
+        ),
     )
     register_request_routes(
         test_app,
@@ -213,6 +220,7 @@ def test_add_book_returns_503_when_metadata_provider_unavailable(user_db, db_pat
         download_history_service=new_dhs,
         resolve_auth_mode=_always_builtin_auth_mode,
         resolve_metadata_book=_resolve_none,
+        cancel_download=lambda _task_id: True,
     )
     client = _authed_client(test_app, alice)
     resp = client.post(
@@ -298,6 +306,7 @@ def test_list_books_no_auth_mode_keeps_instance_wide_view(
         download_history_service=download_history_service,
         resolve_auth_mode=_no_auth_mode,
         resolve_metadata_book=lambda _provider, _provider_book_id: None,
+        cancel_download=lambda _task_id: True,
     )
 
     response = no_auth_app.test_client().get("/api/library/books")
@@ -429,6 +438,176 @@ def test_admin_add_and_remove_remain_scoped_to_own_library(app, user_db):
     ]
     assert admin_client.delete(f"/api/library/books/{alice_book_id}").status_code == 404
     assert admin_client.delete(f"/api/library/books/{admin_book_id}").status_code == 200
+
+
+def test_final_member_removal_detaches_activity_and_removes_visibility(
+    app, user_db, library_service
+):
+    alice = user_db.create_user(username="alice")
+    book_id = client_post_book(app, alice, "hardcover", "final-member")
+    history_id = _seed_history_row(
+        user_db,
+        task_id="final-member-release",
+        user_id=alice["id"],
+        username="alice",
+        book_id=book_id,
+        fmt="epub",
+        download_path="/tmp/retained.epub",
+    )
+    library_service.link_download_to_user(
+        user_id=alice["id"], book_id=book_id, history_id=history_id
+    )
+
+    response = _authed_client(app, alice).delete(f"/api/library/books/{book_id}")
+
+    assert response.status_code == 200
+    assert library_service.get_book(book_id) is None
+    history = library_service.get_download_history_row(history_id)
+    assert history is not None
+    assert history["book_id"] is None
+    assert history["download_path"] == "/tmp/retained.epub"
+    assert not library_service.download_linked_to_user(user_id=alice["id"], history_id=history_id)
+
+
+def test_personal_removal_keeps_shared_book_files_and_other_member_visibility(
+    app, user_db, library_service
+):
+    alice = user_db.create_user(username="alice")
+    bob = user_db.create_user(username="bob")
+    book_id = client_post_book(app, alice, "hardcover", "shared-removal")
+    client_post_book(app, bob, "hardcover", "shared-removal")
+    history_id = _seed_history_row(
+        user_db,
+        task_id="shared-removal-release",
+        user_id=alice["id"],
+        username="alice",
+        book_id=book_id,
+        fmt="epub",
+        download_path="/tmp/shared.epub",
+    )
+    library_service.link_download_to_user(user_id=bob["id"], book_id=book_id, history_id=history_id)
+
+    response = _authed_client(app, alice).delete(f"/api/library/books/{book_id}")
+
+    assert response.status_code == 200
+    assert library_service.get_book(book_id) is not None
+    assert library_service.get_download_history_row(history_id)["book_id"] == book_id
+    assert library_service.download_linked_to_user(user_id=bob["id"], history_id=history_id)
+
+
+def test_admin_purge_preview_is_protected_and_uses_display_name(app, user_db):
+    alice = user_db.create_user(username="alice", display_name="Alice Reader")
+    admin = user_db.create_user(username="admin", role="admin")
+    book_id = client_post_book(app, alice, "hardcover", "purge-preview")
+
+    assert (
+        _authed_client(app, alice).get(f"/api/library/books/{book_id}/purge-preview").status_code
+        == 403
+    )
+    assert (
+        _authed_client(app, alice).delete(f"/api/library/books/{book_id}/purge").status_code == 403
+    )
+    response = _authed_client(app, admin, is_admin=True).get(
+        f"/api/library/books/{book_id}/purge-preview"
+    )
+
+    assert response.status_code == 200
+    assert response.json == {"users": [{"display_name": "Alice Reader", "username": "alice"}]}
+
+
+def test_admin_purge_cancels_active_work_deletes_artifact_and_detaches_activity(
+    app, user_db, library_service, tmp_path
+):
+    owner = user_db.create_user(username="owner")
+    admin = user_db.create_user(username="admin", role="admin")
+    book_id = client_post_book(app, owner, "hardcover", "purge-book")
+    artifact = tmp_path / "purge.epub"
+    artifact.write_bytes(b"artifact")
+    history_id = _seed_history_row(
+        user_db,
+        task_id="purge-complete",
+        user_id=owner["id"],
+        username="owner",
+        book_id=book_id,
+        fmt="epub",
+        download_path=str(artifact),
+    )
+    library_service.link_download_to_user(
+        user_id=owner["id"], book_id=book_id, history_id=history_id
+    )
+    _seed_history_row(
+        user_db,
+        task_id="purge-active",
+        user_id=owner["id"],
+        username="owner",
+        book_id=book_id,
+        fmt="epub",
+        download_path="/tmp/not-yet-created.epub",
+        final_status="active",
+    )
+
+    response = _authed_client(app, admin, is_admin=True).delete(
+        f"/api/library/books/{book_id}/purge"
+    )
+
+    assert response.status_code == 200
+    assert not artifact.exists()
+    assert app.extensions["cancelled_tasks"] == ["purge-active"]
+    history = library_service.get_download_history_row(history_id)
+    assert history is not None
+    assert history["book_id"] is None
+    assert history["download_path"] is None
+    assert not library_service.download_linked_to_user(user_id=owner["id"], history_id=history_id)
+
+
+def test_admin_purge_continues_when_active_download_is_already_unavailable(
+    app, user_db, library_service
+):
+    owner = user_db.create_user(username="owner")
+    admin = user_db.create_user(username="admin", role="admin")
+    book_id = client_post_book(app, owner, "hardcover", "cancel-failure")
+    _seed_history_row(
+        user_db,
+        task_id="cannot-cancel",
+        user_id=owner["id"],
+        username="owner",
+        book_id=book_id,
+        fmt="epub",
+        download_path="/tmp/cannot-cancel.epub",
+        final_status="active",
+    )
+    app.extensions["cancel_should_fail"] = True
+
+    response = _authed_client(app, admin, is_admin=True).delete(
+        f"/api/library/books/{book_id}/purge"
+    )
+
+    assert response.status_code == 200
+    assert library_service.get_book(book_id) is None
+
+
+def test_admin_purge_surfaces_artifact_cleanup_failures(app, user_db, library_service, tmp_path):
+    owner = user_db.create_user(username="owner")
+    admin = user_db.create_user(username="admin", role="admin")
+    book_id = client_post_book(app, owner, "hardcover", "cleanup-failure")
+    artifact_directory = tmp_path / "artifact-directory"
+    artifact_directory.mkdir()
+    _seed_history_row(
+        user_db,
+        task_id="cannot-unlink",
+        user_id=owner["id"],
+        username="owner",
+        book_id=book_id,
+        fmt="epub",
+        download_path=str(artifact_directory),
+    )
+
+    response = _authed_client(app, admin, is_admin=True).delete(
+        f"/api/library/books/{book_id}/purge"
+    )
+
+    assert response.status_code == 500
+    assert library_service.get_book(book_id) is not None
 
 
 def test_download_file_gates_on_library_membership(app, user_db, library_service, db_path):

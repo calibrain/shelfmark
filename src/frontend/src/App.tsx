@@ -429,6 +429,7 @@ function App() {
                   canFindReleases={isAdmin || libraryCapability === 'download-capable'}
                   canDeleteReleases={isAdmin}
                   isRequestOnly={isRequestOnlyLibraryUser(isAdmin, libraryCapability)}
+                  isAdmin={isAdmin}
                   onFindReleases={setReleaseBook}
                   onOpenSettings={handlePersonalSettingsClick}
                   onShowToast={showToast}
