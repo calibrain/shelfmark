@@ -561,7 +561,10 @@ class SABnzbdClient(DownloadClient):
         return status.file_path
 
     def find_existing(
-        self, url: str, category: str | None = None
+        self,
+        url: str,
+        category: str | None = None,
+        expected_hash: str | None = None,
     ) -> tuple[str, DownloadStatus] | None:
         """Check if an NZB for this URL already exists in SABnzbd.
 

@@ -369,7 +369,10 @@ class RTorrentClient(DownloadClient):
             return None
 
     def find_existing(
-        self, url: str, category: str | None = None
+        self,
+        url: str,
+        category: str | None = None,
+        expected_hash: str | None = None,
     ) -> tuple[str, DownloadStatus] | None:
         """Check if a torrent for this URL already exists in rTorrent."""
         try:
