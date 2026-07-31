@@ -25,6 +25,7 @@ class MockTorrent:
         dlspeed=1024000,
         eta=3600,
         content_path="/downloads/test.txt",
+        category="",
     ):
         self.hash = hash_val
         self.name = name
@@ -33,6 +34,7 @@ class MockTorrent:
         self.dlspeed = dlspeed
         self.eta = eta
         self.content_path = content_path
+        self.category = category
 
     def to_dict(self):
         """Convert to dict for JSON response mocking."""
@@ -44,6 +46,7 @@ class MockTorrent:
             "dlspeed": self.dlspeed,
             "eta": self.eta,
             "content_path": self.content_path,
+            "category": self.category,
         }
 
 
@@ -1450,6 +1453,58 @@ class TestQBittorrentClientFindExisting:
             download_id, status = result
             assert download_id == "3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0"
             assert isinstance(status, DownloadStatus)
+
+    def test_find_existing_uses_expected_hash_when_private_url_cannot_be_fetched(self, monkeypatch):
+        """Known Prowlarr hashes match completed torrents outside the configured category."""
+        config_values = {
+            "QBITTORRENT_URL": "http://localhost:8080",
+            "QBITTORRENT_USERNAME": "admin",
+            "QBITTORRENT_PASSWORD": "password",
+            "QBITTORRENT_CATEGORY": "books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.qbittorrent.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        expected_hash = "3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0"
+        mock_torrent = MockTorrent(
+            hash_val=expected_hash,
+            progress=1.0,
+            state="uploading",
+            content_path="/downloads/other-category/book.epub",
+            category="other-category",
+        )
+        mock_client_instance = MagicMock()
+        mock_client_instance._session.get.return_value = create_mock_session_response(
+            [mock_torrent], status_code=200
+        )
+        mock_client_class = MagicMock(return_value=mock_client_instance)
+
+        with patch.dict("sys.modules", {"qbittorrentapi": MagicMock(Client=mock_client_class)}):
+            import importlib
+
+            import shelfmark.download.clients.qbittorrent as qb_module
+
+            importlib.reload(qb_module)
+
+            with patch(
+                "shelfmark.download.clients.qbittorrent.extract_torrent_info",
+                side_effect=AssertionError("private URL must not be fetched"),
+            ):
+                client = qb_module.QBittorrentClient()
+                result = client.find_existing(
+                    "https://private-tracker.example/download/expired",
+                    expected_hash=expected_hash,
+                )
+
+            assert result is not None
+            download_id, status = result
+            assert download_id == expected_hash
+            assert status.complete is True
+            assert mock_client_instance._session.get.call_args.kwargs["params"] == {
+                "hashes": expected_hash
+            }
 
     def test_find_existing_not_found(self, monkeypatch):
         """Test finding non-existent torrent."""

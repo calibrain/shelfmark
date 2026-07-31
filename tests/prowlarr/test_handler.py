@@ -890,6 +890,119 @@ class TestProwlarrHandlerExistingDownload:
                 # Should NOT have called add_download
                 mock_client.add_download.assert_not_called()
 
+    def test_uses_expected_hash_for_existing_complete_download(self):
+        """A Prowlarr hash reuses a complete torrent without refetching its private URL."""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            source_file = Path(tmp_dir) / "source" / "book.epub"
+            source_file.parent.mkdir(parents=True)
+            source_file.write_text("test content")
+
+            staging_dir = Path(tmp_dir) / "staging"
+            staging_dir.mkdir()
+
+            expected_hash = "3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0"
+            mock_client = MagicMock()
+            mock_client.name = "qbittorrent"
+            mock_client.find_existing.return_value = (
+                expected_hash,
+                DownloadStatus(
+                    progress=100,
+                    state=DownloadState.COMPLETE,
+                    message="Complete",
+                    complete=True,
+                    file_path=str(source_file),
+                ),
+            )
+            mock_client.get_download_path.return_value = str(source_file)
+
+            with (
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.get_release",
+                    return_value={
+                        "protocol": "torrent",
+                        "downloadUrl": "https://private-tracker.example/download/expired",
+                        "infoHash": expected_hash,
+                    },
+                ),
+                patch(
+                    "shelfmark.release_sources.prowlarr.handler.get_client",
+                    return_value=mock_client,
+                ),
+                patch("shelfmark.release_sources.prowlarr.handler.remove_release"),
+                patch(
+                    "shelfmark.download.staging.get_staging_dir",
+                    return_value=staging_dir,
+                ),
+            ):
+                handler = ProwlarrHandler()
+                task = DownloadTask(
+                    task_id="existing-complete-by-hash",
+                    source="prowlarr",
+                    title="Test Book",
+                )
+                recorder = ProgressRecorder()
+
+                result = handler.download(
+                    task=task,
+                    cancel_flag=Event(),
+                    progress_callback=recorder.progress_callback,
+                    status_callback=recorder.status_callback,
+                )
+
+                assert result is not None
+                assert mock_client.find_existing.call_args.kwargs["expected_hash"] == expected_hash
+                mock_client.add_download.assert_not_called()
+
+    def test_polls_existing_incomplete_download_found_by_expected_hash(self):
+        """An in-progress private torrent joins polling instead of being added again."""
+        expected_hash = "3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0"
+        mock_client = MagicMock()
+        mock_client.name = "qbittorrent"
+        mock_client.find_existing.return_value = (
+            expected_hash,
+            DownloadStatus(
+                progress=50,
+                state=DownloadState.DOWNLOADING,
+                message="Downloading",
+                complete=False,
+                file_path=None,
+            ),
+        )
+
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value={
+                    "protocol": "torrent",
+                    "downloadUrl": "https://private-tracker.example/download/expired",
+                    "infoHash": expected_hash,
+                },
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_client",
+                return_value=mock_client,
+            ),
+            patch.object(ProwlarrHandler, "_poll_and_complete", return_value=None) as mock_poll,
+        ):
+            handler = ProwlarrHandler()
+            task = DownloadTask(
+                task_id="existing-incomplete-by-hash",
+                source="prowlarr",
+                title="Test Book",
+            )
+            recorder = ProgressRecorder()
+
+            handler.download(
+                task=task,
+                cancel_flag=Event(),
+                progress_callback=recorder.progress_callback,
+                status_callback=recorder.status_callback,
+            )
+
+            assert mock_client.find_existing.call_args.kwargs["expected_hash"] == expected_hash
+            mock_client.add_download.assert_not_called()
+            mock_poll.assert_called_once()
+
 
 class TestProwlarrHandlerPolling:
     """Tests for download polling behavior."""

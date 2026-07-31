@@ -781,15 +781,20 @@ class QBittorrentClient(DownloadClient):
             return None
 
     def find_existing(
-        self, url: str, category: str | None = None
+        self,
+        url: str,
+        category: str | None = None,
+        expected_hash: str | None = None,
     ) -> tuple[str, DownloadStatus] | None:
         """Check if a torrent for this URL already exists in qBittorrent."""
         try:
-            torrent_info = extract_torrent_info(url)
-            if not torrent_info.info_hash:
+            torrent_hash = expected_hash
+            if not torrent_hash:
+                torrent_hash = extract_torrent_info(url).info_hash
+            if not torrent_hash:
                 return None
 
-            torrents, error = self._get_torrents_info(torrent_info.info_hash)
+            torrents, error = self._get_torrents_info(torrent_hash)
             if error:
                 logger.debug("qBittorrent find_existing: %s", error)
                 return None
@@ -799,7 +804,7 @@ class QBittorrentClient(DownloadClient):
                     t
                     for t in torrents
                     if isinstance(getattr(t, "hash", None), str)
-                    and _hashes_match(t.hash, torrent_info.info_hash)
+                    and _hashes_match(t.hash, torrent_hash)
                 ),
                 None,
             )
