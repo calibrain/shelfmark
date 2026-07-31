@@ -24,7 +24,7 @@ def test_wait_for_dcc_ignores_unexpected_sender(monkeypatch) -> None:
             event=IRCEvent.BOOK_RESULT,
         ),
     ]
-    monkeypatch.setattr(client, "read_messages", lambda: iter(messages))
+    monkeypatch.setattr(client, "read_messages", lambda **_: iter(messages))
 
     offer = client.wait_for_dcc(timeout=1.0, result_type=False)
 
@@ -43,7 +43,7 @@ def test_wait_for_dcc_uses_expected_sender_over_online_server_list(monkeypatch) 
             event=IRCEvent.BOOK_RESULT,
         )
     ]
-    monkeypatch.setattr(client, "read_messages", lambda: iter(messages))
+    monkeypatch.setattr(client, "read_messages", lambda **_: iter(messages))
 
     offer = client.wait_for_dcc(
         timeout=1.0,
@@ -76,7 +76,7 @@ def test_wait_for_dcc_ignores_unsafe_offer_and_keeps_waiting(monkeypatch) -> Non
             event=IRCEvent.BOOK_RESULT,
         ),
     ]
-    monkeypatch.setattr(client, "read_messages", lambda: iter(messages))
+    monkeypatch.setattr(client, "read_messages", lambda **_: iter(messages))
 
     offer = client.wait_for_dcc(timeout=1.0, result_type=False)
 

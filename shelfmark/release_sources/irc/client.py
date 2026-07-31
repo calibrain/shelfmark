@@ -25,6 +25,8 @@ logger = setup_logger(__name__)
 # Timing
 SOCKET_TIMEOUT = 300.0  # 5 minutes - long because we wait for DCC offers
 RECV_BUFFER = 4096
+# How often a deadline-bound read wakes up to re-check the clock
+POLL_INTERVAL = 2.0
 
 # IRC channel user prefixes that indicate elevated status (ops, voice, etc.)
 # These are the download bots/servers
@@ -248,11 +250,22 @@ class IRCClient:
 
                         # 366 = RPL_ENDOFNAMES - channel join is complete
                         if msg.command == "366":
-                            logger.info(
-                                "Joined #%s - %s servers online",
-                                channel,
-                                len(self.online_servers),
-                            )
+                            if not self.online_servers:
+                                # Joining a channel that doesn't exist on this network
+                                # silently creates an empty one, so an empty name list is
+                                # the only hint that the channel name is wrong.
+                                logger.warning(
+                                    "Joined #%s but no servers are online - the channel may "
+                                    "be empty or not exist on %s",
+                                    channel,
+                                    self.server,
+                                )
+                            else:
+                                logger.info(
+                                    "Joined #%s - %s servers online",
+                                    channel,
+                                    len(self.online_servers),
+                                )
                             return
 
                         # Check for errors (e.g., banned, channel doesn't exist)
@@ -296,27 +309,47 @@ class IRCClient:
         data = f"{message}\r\n".encode()
         self._socket.sendall(data)
 
-    def _recv_lines(self) -> Iterator[str]:
-        """Receive and yield complete CRLF-delimited IRC lines."""
-        sock = self._require_socket()
-        while True:
-            # Check if we have a complete line in buffer
-            while "\r\n" in self._buffer:
-                line, self._buffer = self._buffer.split("\r\n", 1)
-                if line:
-                    yield line
+    def _recv_lines(self, deadline: float | None = None) -> Iterator[str]:
+        """Receive and yield complete CRLF-delimited IRC lines.
 
-            # Read more data
-            try:
-                data = sock.recv(RECV_BUFFER)
-                if not data:
-                    return  # Connection closed
-                self._buffer += data.decode("utf-8", errors="replace")
-            except TimeoutError:
-                continue  # Keep waiting
-            except OSError as e:
-                logger.warning("Socket error: %s", e)
-                return  # Connection error
+        A deadline stops the read once it passes, even if nothing ever arrives.
+        Callers time out by watching the messages they receive, so on a channel
+        with no traffic at all there is nothing to watch: the recv would just
+        keep blocking for SOCKET_TIMEOUT and retrying forever.
+        """
+        sock = self._require_socket()
+        original_timeout = sock.gettimeout()
+
+        try:
+            while True:
+                # Check if we have a complete line in buffer
+                while "\r\n" in self._buffer:
+                    line, self._buffer = self._buffer.split("\r\n", 1)
+                    if line:
+                        yield line
+
+                if deadline is not None:
+                    remaining = deadline - time.time()
+                    if remaining <= 0:
+                        return
+                    # Wake up often enough to notice the deadline pass
+                    sock.settimeout(min(remaining, POLL_INTERVAL))
+
+                # Read more data
+                try:
+                    data = sock.recv(RECV_BUFFER)
+                    if not data:
+                        return  # Connection closed
+                    self._buffer += data.decode("utf-8", errors="replace")
+                except TimeoutError:
+                    continue  # Keep waiting (the deadline is re-checked above)
+                except OSError as e:
+                    logger.warning("Socket error: %s", e)
+                    return  # Connection error
+        finally:
+            if deadline is not None:
+                with suppress(OSError):
+                    sock.settimeout(original_timeout)
 
     def _parse_message(self, line: str) -> IRCMessage:
         """Parse an IRC message line into components.
@@ -427,9 +460,14 @@ class IRCClient:
             return False
         return True
 
-    def read_messages(self, *, auto_handle: bool = True) -> Iterator[IRCMessage]:
+    def read_messages(
+        self,
+        *,
+        auto_handle: bool = True,
+        deadline: float | None = None,
+    ) -> Iterator[IRCMessage]:
         """Read and yield IRC messages, optionally auto-handling PING/VERSION."""
-        for line in self._recv_lines():
+        for line in self._recv_lines(deadline):
             msg = self._parse_message(line)
 
             # Auto-handle certain events
@@ -453,13 +491,9 @@ class IRCClient:
     ) -> DCCOffer | None:
         """Wait for a DCC SEND offer. Returns None on timeout or no results."""
         target_event = IRCEvent.SEARCH_RESULT if result_type else IRCEvent.BOOK_RESULT
-        start = time.time()
+        deadline = time.time() + timeout
 
-        for msg in self.read_messages():
-            if time.time() - start > timeout:
-                logger.warning("Timeout waiting for DCC offer")
-                return None
-
+        for msg in self.read_messages(deadline=deadline):
             if msg.event == target_event:
                 if not self._is_allowed_dcc_sender(msg, expected_senders):
                     continue
@@ -491,6 +525,8 @@ class IRCClient:
                     count = match.group(1)
                     logger.info("Found %s matches", count)
 
+        if time.time() >= deadline:
+            logger.warning("Timeout waiting for DCC offer")
         return None
 
     @property
