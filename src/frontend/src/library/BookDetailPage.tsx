@@ -460,9 +460,7 @@ export const BookDetailPage = ({
       setBook(detail);
       // Cancelled Requests are history; cancellation feedback is shown as a toast.
       setRequest(
-        requests.find(
-          (entry) => Number(entry.book_id) === bookId && entry.status !== 'cancelled',
-        ),
+        requests.find((entry) => Number(entry.book_id) === bookId && entry.status !== 'cancelled'),
       );
     } catch (caught) {
       if (isApiResponseError(caught) && (caught.status === 403 || caught.status === 404)) {
