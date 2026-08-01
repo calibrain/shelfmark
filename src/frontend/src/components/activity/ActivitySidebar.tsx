@@ -1122,6 +1122,7 @@ export const ActivitySidebar = ({
         }`}
         onClick={onClose}
         data-button-highlight="none"
+        data-button-cursor="default"
         aria-label="Close activity sidebar"
         tabIndex={-1}
       />

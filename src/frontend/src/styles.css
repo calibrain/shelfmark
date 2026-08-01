@@ -231,7 +231,7 @@
 }
 
 /* Keep every enabled native button visibly interactive, overriding local hover variants. */
-button:not(:disabled) {
+button:not(:disabled):not([data-button-cursor='default']) {
   cursor: pointer;
 }
 
