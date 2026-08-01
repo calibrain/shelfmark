@@ -39,3 +39,7 @@ CONFIG_DIR="$PWD/.local/config" uv run python scripts/seed_library_demo.py
 ```
 
 The script writes only under `.local/`; remove `.local/config/users.db` and `.local/seed-files/` to reset the seed data.
+
+### Frontend interactions
+
+Enabled native buttons inherit the shared `--hover-action` highlight and `cursor: pointer` from `src/frontend/src/styles.css`. Do not override these without a specific interaction requirement; use the existing hover color utilities only for intentional component-specific variants.

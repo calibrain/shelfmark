@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 
-import { useDependencyEffect } from '../hooks/useMountEffect';
+import { useDependencyEffect, useMountEffect } from '../hooks/useMountEffect';
 import {
   addLibraryBook,
   fetchFieldOptions,
@@ -155,6 +155,7 @@ export const SearchPage = () => {
   const [activeSuggestions, setActiveSuggestions] = useState<DynamicFieldOption[]>([]);
   const configRequest = useRef(0);
   const activeSuggestionRequest = useRef(0);
+  const contextHoverTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [sort, setSort] = useState('relevance');
   const [books, setBooks] = useState<Book[]>([]);
   const [page, setPage] = useState(1);
@@ -166,6 +167,15 @@ export const SearchPage = () => {
   const [loadingMore, setLoadingMore] = useState(false);
   const [addingId, setAddingId] = useState<string>();
   const [error, setError] = useState<string>();
+
+  const clearContextHoverTimeout = () => {
+    if (contextHoverTimeout.current) {
+      clearTimeout(contextHoverTimeout.current);
+      contextHoverTimeout.current = null;
+    }
+  };
+
+  useMountEffect(() => clearContextHoverTimeout);
 
   useDependencyEffect(() => {
     const request = ++configRequest.current;
@@ -305,8 +315,19 @@ export const SearchPage = () => {
           >
             <div
               className="relative flex shrink-0 self-stretch"
-              onPointerEnter={() => setContextOpen(true)}
-              onPointerLeave={() => setContextOpen(false)}
+              onPointerEnter={(event) => {
+                if (event.pointerType !== 'mouse') return;
+                clearContextHoverTimeout();
+                setContextOpen(true);
+              }}
+              onPointerLeave={(event) => {
+                if (event.pointerType !== 'mouse') return;
+                clearContextHoverTimeout();
+                contextHoverTimeout.current = setTimeout(() => {
+                  setContextOpen(false);
+                  contextHoverTimeout.current = null;
+                }, 150);
+              }}
             >
               <button
                 type="button"
@@ -355,8 +376,10 @@ export const SearchPage = () => {
               />
               {contextOpen && (
                 <div
-                  className="absolute top-full left-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border shadow-2xl"
+                  className="animate-fade-in-down absolute top-full left-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border shadow-2xl"
                   style={{ background: 'var(--bg)', borderColor: 'var(--border-muted)' }}
+                  role="dialog"
+                  aria-label="Search context"
                 >
                   <div className="max-h-[min(24rem,calc(100vh-8rem))] overflow-y-auto p-3">
                     <div className="border-b pb-3" style={{ borderColor: 'var(--border-muted)' }}>
