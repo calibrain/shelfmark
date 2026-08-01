@@ -2,7 +2,7 @@
 
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { LibraryPage } from '../library/LibraryPage';
@@ -19,12 +19,20 @@ vi.mock('../contexts/SocketContext', () => ({
   }),
 }));
 
-const renderPage = (isAdmin: boolean) =>
+const renderPage = (isAdmin: boolean, initialEntry = '/library') =>
   render(
-    <MemoryRouter>
-      <LibraryPage isAdmin={isAdmin} />
+    <MemoryRouter initialEntries={[initialEntry]}>
+      <Routes>
+        <Route path="/library" element={<LibraryPage isAdmin={isAdmin} />} />
+        <Route path="/library/:bookId" element={<LibraryLocation />} />
+      </Routes>
     </MemoryRouter>,
   );
+
+const LibraryLocation = () => {
+  const location = useLocation();
+  return <p>{location.pathname + location.search}</p>;
+};
 
 describe('Library page scope', () => {
   afterEach(() => {
@@ -114,5 +122,80 @@ describe('Library page scope', () => {
 
     expect(await screen.findByRole('heading', { name: 'Your books' })).not.toBeNull();
     expect(screen.queryByRole('button', { name: "Show all users' books" })).toBeNull();
+  });
+
+  it('derives controls from the URL and preserves filters in detail links', async () => {
+    const fetch = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          books: [
+            {
+              book_id: 1,
+              title: 'Shared book',
+              author: 'Author',
+              cover_url: null,
+              formats_on_disk: [],
+              added_at: null,
+            },
+          ],
+        }),
+      ),
+    );
+    vi.stubGlobal('fetch', fetch);
+    const user = userEvent.setup();
+
+    renderPage(true, '/library?scope=all&availability=needs-files&q=Shared&other=kept');
+
+    expect(await screen.findByRole('heading', { name: "All users' books" })).not.toBeNull();
+    expect(screen.getByRole('textbox', { name: 'Search library' }).getAttribute('value')).toBe(
+      'Shared',
+    );
+    expect(screen.getByRole('button', { name: 'Needs files' }).getAttribute('aria-pressed')).toBe(
+      'true',
+    );
+    expect(fetch).toHaveBeenCalledWith('/api/library/books?scope=all&q=Shared', expect.any(Object));
+
+    await user.click(screen.getByRole('button', { name: 'All' }));
+    await user.click(screen.getByRole('link', { name: /Shared book/i }));
+
+    expect(await screen.findByText('/library/1?scope=all&q=Shared&other=kept')).not.toBeNull();
+  });
+
+  it('never renders duplicate cards while repeatedly switching availability filters', async () => {
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn().mockResolvedValue(
+        new Response(
+          JSON.stringify({
+            books: [
+              {
+                book_id: 1,
+                title: 'Shared book',
+                author: 'Author',
+                cover_url: null,
+                formats_on_disk: [],
+                added_at: null,
+              },
+            ],
+          }),
+        ),
+      ),
+    );
+    const user = userEvent.setup();
+
+    renderPage(true, '/library?scope=all');
+    await screen.findByText('Shared book');
+    await user.click(screen.getByRole('button', { name: 'Needs files' }));
+    await user.click(screen.getByRole('button', { name: 'All' }));
+    await user.click(screen.getByRole('button', { name: 'Needs files' }));
+    await user.click(screen.getByRole('button', { name: 'All' }));
+    await user.click(screen.getByRole('button', { name: 'Needs files' }));
+    await user.click(screen.getByRole('button', { name: 'All' }));
+
+    expect(screen.getAllByText('Shared book')).toHaveLength(1);
+    expect(screen.getByText(/1 total work, 1 waiting to be found/)).not.toBeNull();
+    expect(consoleError).not.toHaveBeenCalledWith(expect.stringContaining('same key'));
+    consoleError.mockRestore();
   });
 });

@@ -400,20 +400,23 @@ class LibraryService:
         ``?q=`` is a case-insensitive LIKE on title/author. Ordered by
         ``user_library.added_at DESC``.
         """
-        params: list[Any] = []
+        membership_params: list[Any] = []
         where_clauses: list[str] = []
+        membership_sql = "SELECT book_id, MAX(added_at) AS added_at FROM user_library"
         if not is_admin:
             normalized_user_id = normalize_positive_int(user_id)
             if normalized_user_id is None:
                 return []
-            where_clauses.append("ul.user_id = ?")
-            params.append(normalized_user_id)
+            membership_sql += " WHERE user_id = ?"
+            membership_params.append(normalized_user_id)
+        membership_sql += " GROUP BY book_id"
 
+        query_params: list[Any] = []
         normalized_query = normalize_optional_text(query)
         if normalized_query:
             where_clauses.append("(b.title LIKE ? OR COALESCE(b.author, '') LIKE ?)")
             like_pattern = f"%{normalized_query}%"
-            params.extend([like_pattern, like_pattern])
+            query_params.extend([like_pattern, like_pattern])
 
         where_sql = ""
         if where_clauses:
@@ -422,15 +425,16 @@ class LibraryService:
         # LIKE patterns flow through bound parameters, so string interpolation
         # here only joins fixed SQL text.
         sql = (
-            "SELECT b.*, ul.added_at AS library_added_at "
+            "SELECT b.*, library_membership.added_at AS library_added_at "
             "FROM books b "
-            "INNER JOIN user_library ul ON ul.book_id = b.id"
+            "INNER JOIN (" + membership_sql + ") AS library_membership "
+            "ON library_membership.book_id = b.id"
             + where_sql
-            + " ORDER BY ul.added_at DESC, b.id DESC"
+            + " ORDER BY library_membership.added_at DESC, b.id DESC"
         )
         conn = self._connect()
         try:
-            rows = conn.execute(sql, params).fetchall()
+            rows = conn.execute(sql, membership_params + query_params).fetchall()
             return [_row_to_book(row) or {} for row in rows]
         finally:
             conn.close()
