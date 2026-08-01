@@ -5,6 +5,7 @@ import { useSocket } from '../contexts/SocketContext';
 import { useDependencyEffect } from '../hooks/useMountEffect';
 import { getLibraryBooks } from '../services/api';
 import { withBasePath } from '../utils/basePath';
+import { LibraryPagination } from './LibraryPagination';
 import type { LibraryBookSummary } from './types';
 
 type FileFilter = 'all' | 'with-files' | 'needs-files';
@@ -295,33 +296,12 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
         </div>
       )}
       {!loading && !error && pageCount > 1 && (
-        <nav
-          className="mt-10 flex items-center justify-center gap-1 text-sm"
-          aria-label="Library pages"
-        >
-          <button type="button" disabled={page === 1} onClick={() => setPage(page - 1)}>
-            Previous
-          </button>
-          {pages.map((item, index) =>
-            item === 'ellipsis' ? (
-              <span key={`ellipsis-${pages[index + 1]}`} className="px-2">
-                ...
-              </span>
-            ) : (
-              <button
-                key={item}
-                type="button"
-                aria-current={item === page ? 'page' : undefined}
-                onClick={() => setPage(item)}
-              >
-                {item}
-              </button>
-            ),
-          )}
-          <button type="button" disabled={page === pageCount} onClick={() => setPage(page + 1)}>
-            Next
-          </button>
-        </nav>
+        <LibraryPagination
+          currentPage={page}
+          pageCount={pageCount}
+          pages={pages}
+          setPage={setPage}
+        />
       )}
     </section>
   );
