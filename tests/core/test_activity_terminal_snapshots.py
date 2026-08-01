@@ -40,6 +40,54 @@ def _read_download_history_row(main_module, task_id: str):
 
 
 class TestTerminalSnapshotCapture:
+    def test_complete_library_download_notifies_fulfilled_requester(self, main_module):
+        requester = main_module.user_db.create_user(
+            username=f"snap-requester-{uuid.uuid4().hex[:8]}",
+            email="requester@example.com",
+            library_capability="request-only",
+        )
+        main_module.user_db.update_personal_preferences(requester["id"], notifications_enabled=True)
+        book = main_module.library_service.upsert_book_from_metadata(
+            metadata_provider="hardcover",
+            provider_book_id=uuid.uuid4().hex,
+            title="Requested Availability Snapshot",
+            author="Test Author",
+            subtitle=None,
+            publish_year=None,
+            isbn_13=None,
+            cover_url=None,
+            series_name=None,
+            series_position=None,
+            language=None,
+            metadata_json={},
+        )
+        main_module.library_service.add_to_library(user_id=requester["id"], book_id=book["id"])
+        main_module.user_db.create_library_request(user_id=requester["id"], book_id=book["id"])
+        task = DownloadTask(
+            task_id=f"request-notify-{uuid.uuid4().hex[:8]}",
+            source="library_activity",
+            title=book["title"],
+            user_id=requester["id"],
+            username=requester["username"],
+            library_book_id=book["id"],
+            download_path="/library/requested.epub",
+        )
+        assert main_module.backend.book_queue.add(task) is True
+
+        try:
+            with patch.object(main_module, "notify_user") as mock_notify:
+                main_module.backend.book_queue.update_status(task.task_id, QueueStatus.COMPLETE)
+
+            mock_notify.assert_called_once()
+            user_db, user_id, event, context = mock_notify.call_args.args
+            assert user_db is main_module.user_db
+            assert user_id == requester["id"]
+            assert event == NotificationEvent.REQUEST_FULFILLED
+            assert context.title == book["title"]
+            assert context.book_id == book["id"]
+        finally:
+            main_module.backend.book_queue.cancel_download(task.task_id)
+
     def test_complete_library_download_emits_availability_after_finalization(self, main_module):
         owner = _create_user(main_module, prefix="snap-availability-owner")
         member = _create_user(main_module, prefix="snap-availability-member")

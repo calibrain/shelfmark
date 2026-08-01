@@ -678,11 +678,13 @@ def _deliver(
     if transport != "email" or not is_valid_email_destination(destination):
         return {"success": False, "message": "Invalid notification destination"}
     try:
+        smtp_config = build_email_smtp_config(_get_email_settings())
         message = EmailMessage()
+        message["From"] = smtp_config.from_addr
         message["To"] = destination
         message["Subject"] = title
         message.set_content(body)
-        send_email_message(build_email_smtp_config(_get_email_settings()), message)
+        send_email_message(smtp_config, message)
     except EmailOutputError as exc:
         return {"success": False, "message": str(exc)}
     return {"success": True, "message": "Notification sent"}
