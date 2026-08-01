@@ -158,6 +158,9 @@ CREATE TABLE IF NOT EXISTS user_library (
 CREATE INDEX IF NOT EXISTS idx_user_library_book_id_added_at
 ON user_library (book_id, added_at DESC);
 
+CREATE INDEX IF NOT EXISTS idx_user_library_user_added_at_book_id
+ON user_library (user_id, added_at DESC, book_id DESC);
+
 CREATE TABLE IF NOT EXISTS user_downloads (
     user_id     INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     history_id  INTEGER NOT NULL REFERENCES download_history(id) ON DELETE CASCADE,
@@ -403,6 +406,11 @@ class UserDB:
             "CREATE INDEX IF NOT EXISTS idx_download_history_book_id "
             "ON download_history (book_id, final_status)"
         )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_download_history_book_completed_path "
+            "ON download_history (book_id) WHERE final_status = 'complete' "
+            "AND download_path IS NOT NULL"
+        )
 
     def _migrate_download_history_task_id_nonunique(self, conn: sqlite3.Connection) -> None:
         """Drop the legacy UNIQUE constraint on ``download_history.task_id``.
@@ -474,6 +482,9 @@ class UserDB:
                 ON download_history (task_id);
             CREATE INDEX idx_download_history_book_id
                 ON download_history (book_id, final_status);
+            CREATE INDEX idx_download_history_book_completed_path
+                ON download_history (book_id)
+                WHERE final_status = 'complete' AND download_path IS NOT NULL;
             """
         )
 

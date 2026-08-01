@@ -177,13 +177,16 @@ def test_list_library_books_admin_sees_all_others_see_own(library_service, user_
     library_service.add_to_library(user_id=alice["id"], book_id=book_a["id"])
     library_service.add_to_library(user_id=bob["id"], book_id=book_b["id"])
 
-    alice_view = library_service.list_library_books(user_id=alice["id"], is_admin=False)
-    bob_view = library_service.list_library_books(user_id=bob["id"], is_admin=False)
-    admin_view = library_service.list_library_books(user_id=None, is_admin=True)
+    alice_view, alice_total = library_service.list_library_books(
+        user_id=alice["id"], is_admin=False
+    )
+    bob_view, bob_total = library_service.list_library_books(user_id=bob["id"], is_admin=False)
+    admin_view, admin_total = library_service.list_library_books(user_id=None, is_admin=True)
 
     assert [b["provider_book_id"] for b in alice_view] == ["A"]
     assert [b["provider_book_id"] for b in bob_view] == ["B"]
     assert sorted(b["provider_book_id"] for b in admin_view) == ["A", "B"]
+    assert (alice_total, bob_total, admin_total) == (1, 1, 2)
 
 
 def test_list_library_books_admin_returns_shared_book_once_with_latest_membership_time(
@@ -211,10 +214,11 @@ def test_list_library_books_admin_returns_shared_book_once_with_latest_membershi
     finally:
         conn.close()
 
-    books = library_service.list_library_books(user_id=None, is_admin=True)
+    books, total = library_service.list_library_books(user_id=None, is_admin=True)
 
     assert [book["id"] for book in books] == [shared_book["id"], older_book["id"]]
     assert books[0]["library_added_at"] == "2027-01-02T00:00:00+00:00"
+    assert total == 2
 
 
 def test_list_library_books_fuzzy_query_matches_title_or_author(library_service, user_db):
@@ -226,13 +230,17 @@ def test_list_library_books_fuzzy_query_matches_title_or_author(library_service,
     library_service.add_to_library(user_id=alice["id"], book_id=book_a["id"])
     library_service.add_to_library(user_id=alice["id"], book_id=book_b["id"])
 
-    matches = library_service.list_library_books(user_id=alice["id"], is_admin=False, query="ender")
+    matches, match_total = library_service.list_library_books(
+        user_id=alice["id"], is_admin=False, query="ender"
+    )
     assert [b["provider_book_id"] for b in matches] == ["A"]
+    assert match_total == 1
 
-    author_matches = library_service.list_library_books(
+    author_matches, author_total = library_service.list_library_books(
         user_id=alice["id"], is_admin=False, query="herbert"
     )
     assert [b["provider_book_id"] for b in author_matches] == ["B"]
+    assert author_total == 1
 
 
 def test_files_on_disk_returns_complete_rows_globally(library_service, user_db, db_path):

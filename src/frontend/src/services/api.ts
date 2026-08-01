@@ -491,11 +491,22 @@ export const getLibraryBook = async (bookId: number): Promise<BookDetailResponse
 };
 
 export const getLibraryBooks = async (
-  options: { scope?: 'mine' | 'all'; query?: string } = {},
+  options: {
+    scope?: 'mine' | 'all';
+    query?: string;
+    availability?: 'all' | 'with-files' | 'needs-files';
+    limit?: number;
+    offset?: number;
+  } = {},
 ): Promise<LibraryBooksResponse> => {
   const params = new URLSearchParams();
   if (options.scope === 'all') params.set('scope', 'all');
   if (options.query?.trim()) params.set('q', options.query.trim());
+  if (options.availability && options.availability !== 'all') {
+    params.set('availability', options.availability);
+  }
+  if (options.limit) params.set('limit', String(options.limit));
+  if (options.offset) params.set('offset', String(options.offset));
   const query = params.toString();
   return fetchJSON<LibraryBooksResponse>(query ? `${API.libraryBooks}?${query}` : API.libraryBooks);
 };

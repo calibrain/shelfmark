@@ -175,6 +175,19 @@ def _normalize_book_id_param(raw: Any) -> int | None:
     return normalize_positive_int(raw)
 
 
+def _parse_pagination_params() -> tuple[int, int] | None:
+    raw_limit = request.args.get("limit")
+    raw_offset = request.args.get("offset")
+    try:
+        limit = 25 if raw_limit is None else int(raw_limit)
+        offset = 0 if raw_offset is None else int(raw_offset)
+    except ValueError:
+        return None
+    if not 1 <= limit <= 100 or offset < 0:
+        return None
+    return limit, offset
+
+
 def _serialize_book_summary(book: dict[str, Any], *, library_added_at: Any) -> dict[str, Any]:
     """Per #04 route table: GET /api/library/books response shape."""
     return {
@@ -359,28 +372,40 @@ def register_library_routes(
             return gate
 
         query = request.args.get("q", type=str) or None
+        pagination = _parse_pagination_params()
+        if pagination is None:
+            return _error_response(
+                action=action, status_code=400, error="limit must be 1..100 and offset must be >= 0"
+            )
+        limit, offset = pagination
+        availability = request.args.get("availability")
+        if availability not in {"with-files", "needs-files"}:
+            availability = "all"
         include_all_libraries = actor.is_admin and (
             actor.owner_scope is None or request.args.get("scope") == "all"
         )
         try:
-            books = library_service.list_library_books(
+            books, total = library_service.list_library_books(
                 user_id=actor.owner_scope,
                 is_admin=include_all_libraries,
                 query=query,
+                availability=availability,
+                limit=limit,
+                offset=offset,
             )
         except _OPERATIONAL_ERRORS as exc:
             return jsonify({"error": str(exc)}), 500
 
+        files_by_book = library_service.get_files_on_disk_for_books(
+            [int(row["id"]) for row in books]
+        )
         serialized: list[dict[str, Any]] = []
         for row in books:
             book_id = int(row["id"])
-            files = library_service.get_files_on_disk(book_id)
             summary = _serialize_book_summary(row, library_added_at=row.get("library_added_at"))
-            summary["formats_on_disk"] = [
-                {"format": f.get("format"), "size": f.get("size")} for f in files
-            ]
+            summary["formats_on_disk"] = files_by_book.get(book_id, [])
             serialized.append(summary)
-        return jsonify({"books": serialized})
+        return jsonify({"books": serialized, "total": total, "limit": limit, "offset": offset})
 
     @app.route("/api/library/books/<int:book_id>", methods=["GET"])
     def api_library_book_detail(book_id: int) -> Response | LibraryRouteResponse:

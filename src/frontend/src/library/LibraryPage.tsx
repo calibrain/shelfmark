@@ -18,10 +18,23 @@ const getFileFilter = (value: string | null): FileFilter => {
 const getScope = (value: string | null, isAdmin: boolean): LibraryScope =>
   isAdmin && value === 'all' ? 'all' : 'mine';
 
-const matchesFilter = (book: LibraryBookSummary, filter: FileFilter): boolean => {
-  if (filter === 'with-files') return book.formats_on_disk.length > 0;
-  if (filter === 'needs-files') return book.formats_on_disk.length === 0;
-  return true;
+const PAGE_SIZE = 25;
+
+const getPage = (value: string | null): number => {
+  const page = Number(value);
+  return Number.isInteger(page) && page > 0 ? page : 1;
+};
+
+const paginationPages = (currentPage: number, pageCount: number): Array<number | 'ellipsis'> => {
+  const pages = new Set([1, pageCount]);
+  for (let page = currentPage - 2; page <= currentPage + 2; page += 1) {
+    if (page > 0 && page <= pageCount) pages.add(page);
+  }
+  const sorted = [...pages].toSorted((a, b) => a - b);
+  return sorted.flatMap((page, index) => {
+    const previous = sorted[index - 1];
+    return previous && page - previous > 1 ? ['ellipsis', page] : [page];
+  });
 };
 
 const Cover = ({ book }: { book: LibraryBookSummary }) => {
@@ -71,27 +84,67 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
   const [books, setBooks] = useState<LibraryBookSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [total, setTotal] = useState(0);
   const latestRequest = useRef(0);
   const query = searchParams.get('q') ?? '';
   const filter = getFileFilter(searchParams.get('availability'));
   const scope = getScope(searchParams.get('scope'), isAdmin);
+  const page = getPage(searchParams.get('page'));
+  const [searchInput, setSearchInput] = useState(query);
+  const pageCount = Math.ceil(total / PAGE_SIZE);
 
-  const updateParam = (name: string, value: string, defaultValue: string) => {
+  const updateParam = (name: string, value: string, defaultValue: string, resetPage = true) => {
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
       if (value === defaultValue) next.delete(name);
       else next.set(name, value);
+      if (resetPage) next.delete('page');
       return next;
     });
   };
+
+  const setPage = (nextPage: number) => updateParam('page', String(nextPage), '1', false);
+
+  useDependencyEffect(() => {
+    setSearchInput(query);
+  }, [query]);
+
+  useDependencyEffect(() => {
+    if (searchInput === query) return undefined;
+    const timeout = window.setTimeout(() => updateParam('q', searchInput, '', true), 300);
+    return () => window.clearTimeout(timeout);
+  }, [query, searchInput]);
 
   const load = async () => {
     const requestId = ++latestRequest.current;
     setLoading(true);
     setError(null);
     try {
-      const response = await getLibraryBooks({ scope, query });
-      if (requestId === latestRequest.current) setBooks(response.books);
+      const response = await getLibraryBooks({
+        scope,
+        query,
+        availability: filter,
+        limit: PAGE_SIZE,
+        offset: (page - 1) * PAGE_SIZE,
+      });
+      if (requestId === latestRequest.current) {
+        const responseTotal = response.total ?? response.books.length;
+        const lastPage = Math.max(1, Math.ceil(responseTotal / PAGE_SIZE));
+        if (page > lastPage) {
+          setSearchParams(
+            (current) => {
+              const next = new URLSearchParams(current);
+              if (lastPage === 1) next.delete('page');
+              else next.set('page', String(lastPage));
+              return next;
+            },
+            { replace: true },
+          );
+          return;
+        }
+        setBooks(response.books);
+        setTotal(responseTotal);
+      }
     } catch (caught) {
       if (requestId === latestRequest.current) {
         setError(caught instanceof Error ? caught.message : 'Failed to load your library');
@@ -103,7 +156,7 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
 
   useDependencyEffect(() => {
     void load();
-  }, [scope, query]);
+  }, [scope, query, filter, page]);
 
   const onAvailability = useEffectEvent(() => {
     void load();
@@ -116,14 +169,10 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
     };
   }, [socket]);
 
-  const normalizedQuery = query.trim().toLocaleLowerCase();
-  const visibleBooks = books.filter((book) => {
-    const searchText = `${book.title ?? ''} ${book.author ?? ''}`.toLocaleLowerCase();
-    return (
-      matchesFilter(book, filter) && (!normalizedQuery || searchText.includes(normalizedQuery))
-    );
-  });
-  const missingFiles = books.filter((book) => !book.formats_on_disk.length).length;
+  const firstMatch = total ? (page - 1) * PAGE_SIZE + 1 : 0;
+  const lastMatch = Math.min(page * PAGE_SIZE, total);
+  const hasFilters = Boolean(query || filter !== 'all');
+  const pages = paginationPages(page, pageCount);
 
   return (
     <section className="pb-16">
@@ -136,9 +185,7 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
             {scope === 'all' ? "All users' books" : 'Your books'}
           </h1>
           <p className="mt-2 text-sm opacity-65">
-            {books.length} {scope === 'all' ? 'total' : 'saved'}{' '}
-            {books.length === 1 ? 'work' : 'works'}
-            {missingFiles ? `, ${missingFiles} waiting to be found.` : '.'}
+            Showing {firstMatch}-{lastMatch} of {total} {total === 1 ? 'work' : 'works'}
           </p>
         </div>
         <div className="flex flex-col gap-2 sm:items-end">
@@ -168,8 +215,8 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
           )}
           <input
             aria-label="Search library"
-            value={query}
-            onChange={(event) => updateParam('q', event.target.value, '')}
+            value={searchInput}
+            onChange={(event) => setSearchInput(event.target.value)}
             placeholder="Search title or author"
             className="w-full rounded-md border border-(--border-muted) bg-transparent px-3 py-2 text-sm sm:w-56"
           />
@@ -210,7 +257,7 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
           </button>
         </div>
       )}
-      {!loading && !error && !books.length && (
+      {!loading && !error && total === 0 && !hasFilters && (
         <div className="rounded-xl border border-dashed border-(--border-muted) p-8 text-center">
           <h2 className="font-semibold text-(--text)">
             {scope === 'all' ? "No users' books yet" : 'Your library is empty'}
@@ -222,14 +269,14 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
           </p>
         </div>
       )}
-      {!loading && !error && books.length > 0 && !visibleBooks.length && (
+      {!loading && !error && total === 0 && hasFilters && (
         <div className="rounded-xl border border-dashed border-(--border-muted) p-8 text-center text-sm opacity-65">
           No books match this search and filter.
         </div>
       )}
-      {!loading && !error && visibleBooks.length > 0 && (
+      {!loading && !error && books.length > 0 && (
         <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-5">
-          {visibleBooks.map((book) => (
+          {books.map((book) => (
             <article key={book.book_id} className="group min-w-0">
               <Link to={`/library/${book.book_id}${location.search}`} className="block">
                 <Cover book={book} />
@@ -246,6 +293,35 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
             </article>
           ))}
         </div>
+      )}
+      {!loading && !error && pageCount > 1 && (
+        <nav
+          className="mt-10 flex items-center justify-center gap-1 text-sm"
+          aria-label="Library pages"
+        >
+          <button type="button" disabled={page === 1} onClick={() => setPage(page - 1)}>
+            Previous
+          </button>
+          {pages.map((item, index) =>
+            item === 'ellipsis' ? (
+              <span key={`ellipsis-${pages[index + 1]}`} className="px-2">
+                ...
+              </span>
+            ) : (
+              <button
+                key={item}
+                type="button"
+                aria-current={item === page ? 'page' : undefined}
+                onClick={() => setPage(item)}
+              >
+                {item}
+              </button>
+            ),
+          )}
+          <button type="button" disabled={page === pageCount} onClick={() => setPage(page + 1)}>
+            Next
+          </button>
+        </nav>
       )}
     </section>
   );

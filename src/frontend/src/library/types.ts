@@ -50,6 +50,9 @@ export interface LibraryBookSummary {
 
 export interface LibraryBooksResponse {
   books: LibraryBookSummary[];
+  total: number;
+  limit: number;
+  offset: number;
 }
 
 export interface LibraryBookAvailabilityEvent {

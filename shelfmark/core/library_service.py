@@ -393,20 +393,18 @@ class LibraryService:
         user_id: int | None,
         is_admin: bool,
         query: str | None = None,
-    ) -> list[dict[str, Any]]:
-        """Return library books for a user, or all users when explicitly authorized.
-
-        Per #04 sub-decision 9: no pagination for MVP. Per sub-decision 10:
-        ``?q=`` is a case-insensitive LIKE on title/author. Ordered by
-        ``user_library.added_at DESC``.
-        """
+        availability: str = "all",
+        limit: int = 25,
+        offset: int = 0,
+    ) -> tuple[list[dict[str, Any]], int]:
+        """Return a filtered library page and its total matching-book count."""
         membership_params: list[Any] = []
         where_clauses: list[str] = []
         membership_sql = "SELECT book_id, MAX(added_at) AS added_at FROM user_library"
         if not is_admin:
             normalized_user_id = normalize_positive_int(user_id)
             if normalized_user_id is None:
-                return []
+                return [], 0
             membership_sql += " WHERE user_id = ?"
             membership_params.append(normalized_user_id)
         membership_sql += " GROUP BY book_id"
@@ -418,26 +416,66 @@ class LibraryService:
             like_pattern = f"%{normalized_query}%"
             query_params.extend([like_pattern, like_pattern])
 
+        if availability == "with-files":
+            where_clauses.append("has_files")
+        elif availability == "needs-files":
+            where_clauses.append("NOT has_files")
+
         where_sql = ""
         if where_clauses:
             where_sql = " WHERE " + " AND ".join(where_clauses)
         # Query is assembled from static fragments + parameterized clauses; the
         # LIKE patterns flow through bound parameters, so string interpolation
         # here only joins fixed SQL text.
-        sql = (
-            "SELECT b.*, library_membership.added_at AS library_added_at "
-            "FROM books b "
-            "INNER JOIN (" + membership_sql + ") AS library_membership "
-            "ON library_membership.book_id = b.id"
-            + where_sql
-            + " ORDER BY library_membership.added_at DESC, b.id DESC"
+        filtered_sql = (
+            "WITH library_membership AS (" + membership_sql + "), filtered_books AS ("  # noqa: S608
+            "SELECT b.*, library_membership.added_at AS library_added_at, "
+            "EXISTS (SELECT 1 FROM download_history dh "
+            "WHERE dh.book_id = b.id AND dh.final_status = ? "
+            "AND dh.download_path IS NOT NULL) AS has_files "
+            "FROM books b INNER JOIN library_membership "
+            "ON library_membership.book_id = b.id" + where_sql + ") "
         )
         conn = self._connect()
         try:
-            rows = conn.execute(sql, membership_params + query_params).fetchall()
-            return [_row_to_book(row) or {} for row in rows]
+            params = [*membership_params, _COMPLETE_DOWNLOAD_STATUS, *query_params]
+            total = int(
+                conn.execute(
+                    filtered_sql + "SELECT COUNT(*) FROM filtered_books",  # noqa: S608
+                    params,
+                ).fetchone()[0]
+            )
+            rows = conn.execute(
+                filtered_sql  # noqa: S608
+                + "SELECT * FROM filtered_books "
+                "ORDER BY library_added_at DESC, id DESC LIMIT ? OFFSET ?",
+                [*params, limit, offset],
+            ).fetchall()
+            return [_row_to_book(row) or {} for row in rows], total
         finally:
             conn.close()
+
+    def get_files_on_disk_for_books(self, book_ids: list[int]) -> dict[int, list[dict[str, Any]]]:
+        """Return completed on-disk Files grouped by Book for one library page."""
+        if not book_ids:
+            return {}
+        placeholders = ", ".join("?" for _ in book_ids)
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT book_id, format, size FROM download_history "  # noqa: S608
+                f"WHERE book_id IN ({placeholders}) AND final_status = ? "
+                "AND download_path IS NOT NULL ORDER BY terminal_at DESC, id DESC",
+                [*book_ids, _COMPLETE_DOWNLOAD_STATUS],
+            ).fetchall()
+        finally:
+            conn.close()
+        files_by_book: dict[int, list[dict[str, Any]]] = {book_id: [] for book_id in book_ids}
+        for row in rows:
+            files_by_book[int(row["book_id"])].append(
+                {"format": row["format"], "size": row["size"]}
+            )
+        return files_by_book
 
     def get_files_on_disk(self, book_id: int) -> list[dict[str, Any]]:
         """Return ``download_history`` rows for a book with on-disk artifacts.
