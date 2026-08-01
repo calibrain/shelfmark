@@ -362,6 +362,101 @@ def test_list_books_scoped_to_own_library(app, user_db):
     assert bob_book in bob_ids and alice_book not in bob_ids
 
 
+def test_list_books_paginates_in_membership_order_and_returns_page_metadata(app, user_db):
+    alice = user_db.create_user(username="alice")
+    book_ids = [client_post_book(app, alice, "hardcover", str(index)) for index in range(3)]
+    conn = user_db._connect()
+    try:
+        for index, book_id in enumerate(book_ids):
+            conn.execute(
+                "UPDATE user_library SET added_at = ? WHERE user_id = ? AND book_id = ?",
+                (f"2026-01-0{index + 1}T00:00:00+00:00", alice["id"], book_id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    response = _authed_client(app, alice).get("/api/library/books?limit=2&offset=1")
+
+    assert response.status_code == 200
+    assert [book["book_id"] for book in response.json["books"]] == [book_ids[1], book_ids[0]]
+    assert response.json["total"] == 3
+    assert response.json["limit"] == 2
+    assert response.json["offset"] == 1
+
+
+@pytest.mark.parametrize(
+    "query", ["limit=0", "limit=101", "limit=nope", "offset=-1", "offset=nope"]
+)
+def test_list_books_rejects_invalid_pagination_parameters(app, user_db, query):
+    alice = user_db.create_user(username="alice")
+
+    response = _authed_client(app, alice).get(f"/api/library/books?{query}")
+
+    assert response.status_code == 400
+
+
+def test_list_books_filters_search_and_availability_before_pagination(
+    app, user_db, library_service
+):
+    alice = user_db.create_user(username="alice")
+    available_book = client_post_book(app, alice, "hardcover", "available")
+    unavailable_book = client_post_book(app, alice, "hardcover", "unavailable")
+    _seed_history_row(
+        user_db,
+        task_id="available-file",
+        user_id=alice["id"],
+        username="alice",
+        book_id=available_book,
+        fmt="epub",
+        download_path="/tmp/available.epub",
+    )
+
+    with patch.object(library_service, "get_files_on_disk", side_effect=AssertionError):
+        with_files = _authed_client(app, alice).get(
+            "/api/library/books?availability=with-files&limit=1"
+        )
+    needs_files = _authed_client(app, alice).get(
+        "/api/library/books?availability=needs-files&q=unavailable"
+    )
+
+    assert [book["book_id"] for book in with_files.json["books"]] == [available_book]
+    assert with_files.json["total"] == 1
+    assert with_files.json["books"][0]["formats_on_disk"] == [{"format": "epub", "size": None}]
+    assert [book["book_id"] for book in needs_files.json["books"]] == [unavailable_book]
+    assert needs_files.json["total"] == 1
+
+
+def test_list_books_admin_paginates_shared_books_once(app, user_db):
+    admin = user_db.create_user(username="admin", role="admin")
+    reader = user_db.create_user(username="reader")
+    shared_book = client_post_book(app, admin, "hardcover", "shared")
+    client_post_book(app, reader, "hardcover", "shared")
+    admin_book = client_post_book(app, admin, "hardcover", "admin")
+    reader_book = client_post_book(app, reader, "hardcover", "reader")
+    conn = user_db._connect()
+    try:
+        for index, book_id in enumerate([shared_book, admin_book, reader_book]):
+            conn.execute(
+                "UPDATE user_library SET added_at = ? WHERE book_id = ?",
+                (f"2026-01-0{index + 1}T00:00:00+00:00", book_id),
+            )
+        conn.commit()
+    finally:
+        conn.close()
+
+    client = _authed_client(app, admin, is_admin=True)
+    first_page = client.get("/api/library/books?scope=all&limit=2").json
+    second_page = client.get("/api/library/books?scope=all&limit=2&offset=2").json
+
+    assert first_page["total"] == 3
+    assert {book["book_id"] for book in first_page["books"] + second_page["books"]} == {
+        shared_book,
+        admin_book,
+        reader_book,
+    }
+
+
 def test_list_books_admin_defaults_to_own_library(app, user_db):
     alice = user_db.create_user(username="alice", role="user")
     admin = user_db.create_user(username="admin", role="admin")
