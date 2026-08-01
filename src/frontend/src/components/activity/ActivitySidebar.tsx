@@ -1056,6 +1056,7 @@ export const ActivitySidebar = ({
             <button
               type="button"
               onClick={() => onClearCompleted(clearCompletedTargets)}
+              data-button-highlight="none"
               className="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
             >
               Clear Completed
@@ -1074,6 +1075,7 @@ export const ActivitySidebar = ({
           <button
             type="button"
             onClick={onClearHistory}
+            data-button-highlight="none"
             className="text-sm text-gray-500 transition-colors hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
           >
             Clear History
@@ -1119,6 +1121,7 @@ export const ActivitySidebar = ({
           isOpen ? 'opacity-100' : 'pointer-events-none opacity-0'
         }`}
         onClick={onClose}
+        data-button-highlight="none"
         aria-label="Close activity sidebar"
         tabIndex={-1}
       />

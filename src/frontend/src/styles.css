@@ -235,7 +235,7 @@ button:not(:disabled) {
   cursor: pointer;
 }
 
-button:not(:disabled):hover {
+button:not(:disabled):not([data-button-highlight='none']):hover {
   background-color: var(--hover-action);
 }
 
