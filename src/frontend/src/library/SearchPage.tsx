@@ -605,14 +605,13 @@ export const SearchPage = () => {
             {books.map((book) => (
               <article
                 key={book.id}
-                className="animate-pop-up flex min-h-36 overflow-hidden rounded-xl"
-                style={{ background: 'var(--bg-soft)' }}
+                className="animate-pop-up flex min-h-36 overflow-hidden rounded-xl bg-(--bg-soft) transition duration-200 focus-within:-translate-y-0.5 focus-within:bg-(--hover-surface) focus-within:shadow-md hover:-translate-y-0.5 hover:bg-(--hover-surface) hover:shadow-md"
               >
                 <div className="w-28 shrink-0">
                   <Cover book={book} />
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col p-3">
-                  <h2 className="line-clamp-2 leading-tight font-semibold">
+                  <h2 className="leading-tight font-semibold break-words">
                     {book.title || 'Untitled'}
                   </h2>
                   <p className="mt-1 truncate text-xs opacity-70">

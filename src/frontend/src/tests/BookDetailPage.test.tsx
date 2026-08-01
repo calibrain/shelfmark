@@ -135,6 +135,51 @@ describe('BookDetailPage request-only availability', () => {
     expect(screen.queryByRole('button', { name: 'Delete release' })).toBeNull();
   });
 
+  it('defaults Send to Kindle to EPUB without automatic-format status text', async () => {
+    const uppercaseEpubBook = {
+      ...book,
+      files: book.files.map((file) => ({ ...file, format: 'EPUB' })),
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn((url: string) =>
+        Promise.resolve(
+          new Response(JSON.stringify(url === '/api/library/books/1' ? uppercaseEpubBook : [])),
+        ),
+      ),
+    );
+
+    render(
+      <MemoryRouter initialEntries={['/library/1']}>
+        <Routes>
+          <Route
+            path="/library/:bookId"
+            element={
+              <BookDetailPage
+                autoFindReleases={false}
+                canFindReleases={false}
+                canDeleteReleases={false}
+                isRequestOnly={false}
+                isAdmin={false}
+                onFindReleases={() => undefined}
+                onOpenSettings={() => undefined}
+                onShowToast={() => undefined}
+              />
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    const format = await screen.findByRole('combobox');
+    if (!(format instanceof HTMLSelectElement))
+      throw new Error('Expected the Kindle format control');
+    expect(format.value).toBe('epub');
+    expect(screen.getAllByRole('option')).toHaveLength(1);
+    expect(screen.getByRole('option', { name: 'EPUB' }).getAttribute('value')).toBe('epub');
+    expect(screen.queryByText(/Selected format|No Kindle-compatible|Auto \(EPUB\)/)).toBeNull();
+  });
+
   it('allows a new request after a previous request was cancelled', async () => {
     const unavailableBook = { ...book, files: [] };
     vi.stubGlobal(

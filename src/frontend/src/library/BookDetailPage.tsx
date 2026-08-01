@@ -161,10 +161,16 @@ const AvailableFiles = ({
   const releases = groupFilesByRelease(book.files);
   const latestFiles = latestFilesByFormat(book.files);
   const kindleFiles = latestFilesByFormat(book.files.filter((file) => file.downloadable_by_me));
-  const kindleFormats = kindleFiles
-    .map((file) => file.format)
-    .filter((format): format is string => format?.toLowerCase() === 'epub');
-  const selectedKindleFormat = kindleFormats.includes(kindleFormat) ? kindleFormat : null;
+  const kindleFormats = [
+    ...new Set(
+      kindleFiles
+        .map((file) => file.format?.toLowerCase())
+        .filter((format): format is string => format === 'epub'),
+    ),
+  ];
+  const selectedKindleFormat = kindleFormats.includes(kindleFormat)
+    ? kindleFormat
+    : (kindleFormats[0] ?? null);
 
   return (
     <section className="mt-10">
@@ -216,20 +222,14 @@ const AvailableFiles = ({
           </div>
           <aside className="rounded-lg border border-(--border-muted) px-4 py-4">
             <h3 className="text-sm font-semibold text-(--text)">Send to Kindle</h3>
-            <p className="mt-1 text-xs leading-5 text-gray-500 dark:text-gray-400">
-              {selectedKindleFormat
-                ? `Selected format: ${selectedKindleFormat.toUpperCase()}. EPUB is selected by default.`
-                : 'No Kindle-compatible EPUB file is available.'}
-            </p>
             <select
-              value={selectedKindleFormat ?? 'auto'}
+              value={selectedKindleFormat ?? ''}
               disabled={!kindleFormats.length}
               onChange={(event) => setKindleFormat(event.target.value)}
-              className="mt-4 w-full rounded-md border border-(--border-muted) bg-transparent px-2 py-2 text-sm text-(--text)"
+              className="mt-4 w-full rounded-md border border-(--border-muted) bg-(--bg) px-2 py-2 text-sm text-(--text)"
             >
-              <option value="auto">Auto (EPUB)</option>
               {kindleFormats.map((format) => (
-                <option key={format} value={format}>
+                <option key={format} value={format} className="bg-(--bg) text-(--text)">
                   {format.toUpperCase()}
                 </option>
               ))}
