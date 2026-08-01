@@ -279,18 +279,21 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
         <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-5">
           {books.map((book) => (
             <article key={book.book_id} className="group min-w-0">
-              <Link to={`/library/${book.book_id}${location.search}`} className="block">
+              <Link
+                to={`/library/${book.book_id}${location.search}`}
+                className="block rounded-xl p-2 transition duration-200 hover:bg-(--hover-surface) hover:shadow-sm focus-visible:bg-(--hover-surface) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
+              >
                 <Cover book={book} />
-                <h2 className="mt-3 truncate font-semibold text-(--text)">
+                <h2 className="mt-3 break-words font-semibold text-(--text) transition-colors duration-200 group-hover:text-violet-700 group-focus-within:text-violet-700 dark:group-hover:text-violet-300 dark:group-focus-within:text-violet-300">
                   {book.title ?? 'Untitled'}
                 </h2>
                 <p className="truncate text-sm opacity-65">{book.author || 'Unknown author'}</p>
+                {book.formats_on_disk.length > 0 && (
+                  <div className="mt-2">
+                    <FormatBadges formats={book.formats_on_disk} />
+                  </div>
+                )}
               </Link>
-              {book.formats_on_disk.length > 0 && (
-                <div className="mt-2">
-                  <FormatBadges formats={book.formats_on_disk} />
-                </div>
-              )}
             </article>
           ))}
         </div>
