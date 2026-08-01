@@ -143,7 +143,9 @@ describe('BookDetailPage request-only availability', () => {
     vi.stubGlobal(
       'fetch',
       vi.fn((url: string) =>
-        Promise.resolve(new Response(JSON.stringify(url === '/api/library/books/1' ? uppercaseEpubBook : []))),
+        Promise.resolve(
+          new Response(JSON.stringify(url === '/api/library/books/1' ? uppercaseEpubBook : [])),
+        ),
       ),
     );
 
@@ -170,7 +172,8 @@ describe('BookDetailPage request-only availability', () => {
     );
 
     const format = await screen.findByRole('combobox');
-    if (!(format instanceof HTMLSelectElement)) throw new Error('Expected the Kindle format control');
+    if (!(format instanceof HTMLSelectElement))
+      throw new Error('Expected the Kindle format control');
     expect(format.value).toBe('epub');
     expect(screen.getAllByRole('option')).toHaveLength(1);
     expect(screen.getByRole('option', { name: 'EPUB' }).getAttribute('value')).toBe('epub');

@@ -284,7 +284,7 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
                 className="block rounded-xl p-2 transition duration-200 hover:bg-(--hover-surface) hover:shadow-sm focus-visible:bg-(--hover-surface) focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-violet-600"
               >
                 <Cover book={book} />
-                <h2 className="mt-3 break-words font-semibold text-(--text) transition-colors duration-200 group-hover:text-violet-700 group-focus-within:text-violet-700 dark:group-hover:text-violet-300 dark:group-focus-within:text-violet-300">
+                <h2 className="mt-3 font-semibold break-words text-(--text) transition-colors duration-200 group-focus-within:text-violet-700 group-hover:text-violet-700 dark:group-focus-within:text-violet-300 dark:group-hover:text-violet-300">
                   {book.title ?? 'Untitled'}
                 </h2>
                 <p className="truncate text-sm opacity-65">{book.author || 'Unknown author'}</p>
