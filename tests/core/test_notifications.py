@@ -1,6 +1,10 @@
 """Focused tests for personal and administrator notification delivery."""
 
+import smtplib
+from email.utils import parseaddr
+
 from shelfmark.core import notifications as notifications_module
+from shelfmark.download.outputs import email as email_module
 
 
 class _Executor:
@@ -48,6 +52,91 @@ def test_personal_delivery_uses_canonical_email(monkeypatch):
     assert executor.calls[0][1][0:2] == ("email", "reader@example.com")
 
 
+def test_personal_email_test_uses_configured_sender_and_account_recipient(monkeypatch):
+    sent_messages = []
+
+    class SenderRequiredSmtp:
+        def __init__(self, *_args, **_kwargs):
+            pass
+
+        def ehlo(self):
+            pass
+
+        def send_message(self, message):
+            sender = parseaddr(message["From"])[1]
+            if not sender:
+                raise smtplib.SMTPSenderRefused(550, "Sender required", "")
+            sent_messages.append((sender, message))
+
+        def quit(self):
+            pass
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(
+        notifications_module,
+        "_get_email_settings",
+        lambda: {
+            "EMAIL_SMTP_HOST": "smtp.example.com",
+            "EMAIL_SMTP_PORT": 25,
+            "EMAIL_SMTP_SECURITY": "none",
+            "EMAIL_FROM": "Shelfmark <sender@example.com>",
+        },
+    )
+    monkeypatch.setattr(email_module.smtplib, "SMTP", SenderRequiredSmtp)
+
+    result = notifications_module.send_personal_test_notification(
+        _UserDB(
+            {
+                "notifications_enabled": True,
+                "notification_transport": None,
+                "notification_destination": None,
+            }
+        ),
+        4,
+    )
+
+    assert result == {"success": True, "message": "Notification sent"}
+    sender, message = sent_messages[0]
+    assert sender == "sender@example.com"
+    assert message["From"] == "Shelfmark <sender@example.com>"
+    assert message["To"] == "reader@example.com"
+
+
+def test_personal_email_delivery_uses_configured_sender_and_account_recipient(monkeypatch):
+    smtp_config = type("SmtpConfig", (), {"from_addr": "Shelfmark <sender@example.com>"})()
+    sent_messages = []
+    monkeypatch.setattr(notifications_module, "_get_email_settings", lambda: {})
+    monkeypatch.setattr(
+        notifications_module, "build_email_smtp_config", lambda _settings: smtp_config
+    )
+    monkeypatch.setattr(
+        notifications_module,
+        "send_email_message",
+        lambda config, message: sent_messages.append((config, message)),
+    )
+
+    result = notifications_module._deliver(
+        "email",
+        "reader@example.com",
+        notifications_module.NotificationEvent.REQUEST_REJECTED,
+        notifications_module.NotificationContext(
+            event=notifications_module.NotificationEvent.REQUEST_REJECTED,
+            title="Book",
+            author="Author",
+            admin_note="Not available",
+        ),
+    )
+
+    assert result == {"success": True, "message": "Notification sent"}
+    config, message = sent_messages[0]
+    assert config is smtp_config
+    assert message["From"] == "Shelfmark <sender@example.com>"
+    assert message["To"] == "reader@example.com"
+    assert "Note: Not available" in message.get_content()
+
+
 def test_personal_delivery_ignores_operational_events(monkeypatch):
     executor = _Executor()
     monkeypatch.setattr(notifications_module, "_executor", executor)
@@ -64,6 +153,26 @@ def test_personal_delivery_ignores_operational_events(monkeypatch):
         notifications_module.NotificationEvent.DOWNLOAD_FAILED,
         _context(notifications_module.NotificationEvent.DOWNLOAD_FAILED),
     )
+    assert executor.calls == []
+
+
+def test_disabled_personal_notifications_do_not_queue_request_outcomes(monkeypatch):
+    executor = _Executor()
+    monkeypatch.setattr(notifications_module, "_executor", executor)
+    user_db = _UserDB(
+        {
+            "notifications_enabled": False,
+            "notification_transport": None,
+            "notification_destination": None,
+        }
+    )
+
+    for event in (
+        notifications_module.NotificationEvent.REQUEST_REJECTED,
+        notifications_module.NotificationEvent.REQUEST_FULFILLED,
+    ):
+        notifications_module.notify_user(user_db, 4, event, _context(event))
+
     assert executor.calls == []
 
 

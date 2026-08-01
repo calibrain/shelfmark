@@ -47,9 +47,12 @@ def _set_session(client, *, user: dict) -> None:
         session["is_admin"] = user["role"] == "admin"
 
 
-def _create_user(main_module, *, role: str = "user", capability: str = "request-only") -> dict:
+def _create_user(
+    main_module, *, role: str = "user", capability: str = "request-only", email: str | None = None
+) -> dict:
     return main_module.user_db.create_user(
         username=f"request-{uuid.uuid4().hex[:12]}",
+        email=email,
         role=role,
         library_capability=capability,
     )
@@ -169,10 +172,11 @@ def test_user_can_list_and_cancel_only_own_request(main_module, client):
 
 
 def test_admin_can_reject_pending_request(main_module, client):
-    requester = _create_user(main_module)
+    requester = _create_user(main_module, email="requester@example.com")
     admin = _create_user(main_module, role="admin", capability="download-capable")
     book_id = _create_book(main_module, member_ids=[requester["id"]])
     pending = main_module.user_db.create_library_request(user_id=requester["id"], book_id=book_id)
+    main_module.user_db.update_personal_preferences(requester["id"], notifications_enabled=True)
     _set_session(client, user=admin)
 
     with patch("shelfmark.core.request_routes.notify_user") as notify:
@@ -188,6 +192,7 @@ def test_admin_can_reject_pending_request(main_module, client):
     assert response.json["admin_note"] == "Unavailable"
     assert notify.call_args.args[2].value == "request_rejected"
     assert notify.call_args.args[3].title == "Canonical Request Book"
+    assert notify.call_args.args[3].admin_note == "Unavailable"
 
 
 def test_admin_cannot_fulfil_requests_without_a_release(main_module, client):
