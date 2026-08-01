@@ -59,13 +59,21 @@ def app(
     test_app.config["TESTING"] = True
     cancelled_tasks: list[str] = []
     cleared_completed_tasks: list[str] = []
+    queued_releases: list[tuple[dict[str, Any], int, int | None, str | None]] = []
     test_app.extensions["cancelled_tasks"] = cancelled_tasks
     test_app.extensions["cleared_completed_tasks"] = cleared_completed_tasks
+    test_app.extensions["queued_releases"] = queued_releases
     test_app.extensions["cancel_should_fail"] = False
 
     def _clear_completed_download(task_id: str) -> bool:
         cleared_completed_tasks.append(task_id)
         return True
+
+    def _queue_release(
+        release: dict[str, Any], priority: int, *, user_id: int | None, username: str | None
+    ) -> tuple[bool, None]:
+        queued_releases.append((release, priority, user_id, username))
+        return True, None
 
     def _resolve_metadata_book(provider: str, provider_book_id: str) -> dict[str, Any] | None:
         # Deterministic stub for tests; mirrors the live _resolve_metadata_book_for_library
@@ -103,7 +111,7 @@ def app(
         test_app,
         user_db,
         resolve_auth_mode=_always_builtin_auth_mode,
-        queue_release=lambda *_args, **_kwargs: (True, None),
+        queue_release=_queue_release,
     )
     return test_app
 
@@ -207,6 +215,100 @@ def test_request_only_user_can_add_a_book_and_request_it_when_no_files_exist(app
     assert created.status_code == 201
     assert created.json["book_id"] == added.json["book_id"]
     assert created.json["status"] == "pending"
+
+
+def test_manual_request_fulfilment_finalizes_files_for_the_requester(
+    app, user_db, download_history_service
+):
+    requester = user_db.create_user(username="requester", library_capability="request-only")
+    admin = user_db.create_user(
+        username="admin", role="admin", library_capability="download-capable"
+    )
+    requester_client = _authed_client(app, requester)
+    added = requester_client.post(
+        "/api/library/books",
+        json={"metadata_provider": "hardcover", "provider_book_id": "manual-request-book"},
+    )
+    book_id = added.json["book_id"]
+    pending = requester_client.post("/api/requests", json={"book_id": book_id})
+    admin_client = _authed_client(app, admin, is_admin=True)
+    release_data = {"source": "test", "source_id": "manual-release", "title": "Requested Book"}
+
+    fulfil = admin_client.post(
+        f"/api/admin/requests/books/{book_id}/fulfil", json={"release_data": release_data}
+    )
+
+    assert added.status_code == 200
+    assert pending.status_code == 201
+    assert fulfil.status_code == 200
+    assert fulfil.json == {"status": "queued", "book_id": book_id}
+    assert app.extensions["queued_releases"] == [
+        ({**release_data, "library_book_id": book_id}, 0, admin["id"], "admin")
+    ]
+
+    for task_id, final_status in (
+        ("empty-completed-release", "complete"),
+        ("failed-release", "error"),
+        ("cancelled-release", "cancelled"),
+    ):
+        download_history_service.record_download(
+            task_id=task_id,
+            user_id=None,
+            username=None,
+            request_id=None,
+            source="test",
+            source_display_name="Test",
+            title="Requested Book",
+            author="Author A",
+            file_format=None,
+            size=None,
+            preview=None,
+            content_type="ebook",
+            origin="direct",
+            book_id=book_id,
+        )
+        download_history_service.finalize_download_files(
+            task_id=task_id, final_status=final_status, file_rows=[]
+        )
+        assert requester_client.get("/api/requests").json == [{**pending.json, "status": "pending"}]
+
+    download_history_service.record_download(
+        task_id="completed-release",
+        user_id=None,
+        username=None,
+        request_id=None,
+        source="test",
+        source_display_name="Test",
+        title="Requested Book",
+        author="Author A",
+        file_format=None,
+        size=None,
+        preview=None,
+        content_type="ebook",
+        origin="direct",
+        book_id=book_id,
+    )
+    download_history_service.finalize_download_files(
+        task_id="completed-release",
+        final_status="complete",
+        file_rows=[
+            {"download_path": "/tmp/requested.epub", "format": "epub", "size": "1"},
+            {"download_path": "/tmp/requested.pdf", "format": "pdf", "size": "2"},
+        ],
+    )
+
+    assert requester_client.get("/api/requests").json[0]["status"] == "fulfilled"
+    detail = requester_client.get(f"/api/library/books/{book_id}")
+    assert detail.status_code == 200
+    assert {file["format"] for file in detail.json["files"]} == {"epub", "pdf"}
+    conn = user_db._connect()
+    try:
+        links = conn.execute(
+            "SELECT user_id, history_id FROM user_downloads ORDER BY history_id"
+        ).fetchall()
+    finally:
+        conn.close()
+    assert [link["user_id"] for link in links] == [requester["id"], requester["id"]]
 
 
 def test_add_book_returns_503_when_metadata_provider_unavailable(user_db, db_path):
