@@ -246,7 +246,11 @@ def test_manual_request_fulfilment_finalizes_files_for_the_requester(
         ({**release_data, "library_book_id": book_id}, 0, admin["id"], "admin")
     ]
 
-    for task_id, final_status in (("failed-release", "error"), ("cancelled-release", "cancelled")):
+    for task_id, final_status in (
+        ("empty-completed-release", "complete"),
+        ("failed-release", "error"),
+        ("cancelled-release", "cancelled"),
+    ):
         download_history_service.record_download(
             task_id=task_id,
             user_id=None,
