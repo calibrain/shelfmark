@@ -2,7 +2,7 @@
 
 import { cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { BookDetailPage } from '../library/BookDetailPage';
@@ -177,7 +177,45 @@ describe('BookDetailPage request-only availability', () => {
     expect(await screen.findByRole('button', { name: 'Request this book' })).not.toBeNull();
     expect(screen.queryByText('Request cancelled')).toBeNull();
   });
+
+  it('returns to the originating filtered Library URL', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(book))));
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={['/library/1?scope=all&availability=needs-files&q=shared']}>
+        <Routes>
+          <Route
+            path="/library/:bookId"
+            element={
+              <BookDetailPage
+                autoFindReleases={false}
+                canFindReleases={false}
+                canDeleteReleases={false}
+                isRequestOnly={false}
+                isAdmin={false}
+                onFindReleases={() => undefined}
+                onOpenSettings={() => undefined}
+                onShowToast={() => undefined}
+              />
+            }
+          />
+          <Route path="/library" element={<LibraryLocation />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Back to Library' }));
+    expect(
+      await screen.findByText('/library?scope=all&availability=needs-files&q=shared'),
+    ).not.toBeNull();
+  });
 });
+
+const LibraryLocation = () => {
+  const location = useLocation();
+  return <p>{location.pathname + location.search}</p>;
+};
 
 describe('BookDetailPage release deletion', () => {
   afterEach(() => {

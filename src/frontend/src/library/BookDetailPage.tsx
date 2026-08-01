@@ -446,6 +446,7 @@ export const BookDetailPage = ({
   const [autoOpenedFor, setAutoOpenedFor] = useState<number | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const firstAddIntent = hasAutoFindReleasesIntent(location.state);
+  const libraryUrl = `/library${location.search}`;
 
   const load = useCallback(async () => {
     if (!Number.isInteger(bookId) || bookId < 1) {
@@ -536,7 +537,7 @@ export const BookDetailPage = ({
         <button
           type="button"
           className="hover-action mt-4 cursor-pointer rounded-md border border-(--border-muted) px-3 py-2 text-sm"
-          onClick={() => (unavailable ? void navigate('/library') : void load())}
+          onClick={() => (unavailable ? void navigate(libraryUrl) : void load())}
         >
           {unavailable ? 'Back to library' : 'Retry'}
         </button>
@@ -555,42 +556,53 @@ export const BookDetailPage = ({
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-10">
-      <header className="flex gap-5 border-b border-(--border-muted) pb-8">
-        {book.cover_url ? (
-          <img
-            src={withBasePath(book.cover_url)}
-            alt={`Cover of ${book.title ?? 'book'}`}
-            className="h-52 w-36 rounded-lg object-cover shadow-lg"
-          />
-        ) : (
-          <div className="flex h-52 w-36 items-center justify-center rounded-lg bg-(--bg-soft) text-xs text-gray-500">
-            No cover
-          </div>
-        )}
-        <div className="min-w-0 self-end">
-          <p className="text-xs font-semibold tracking-[0.16em] text-emerald-700 uppercase dark:text-emerald-300">
-            {bookMembershipLabel(book.in_my_library)}
-          </p>
-          <h1 className="mt-2 text-3xl font-semibold tracking-tight text-(--text)">{book.title}</h1>
-          {book.subtitle && (
-            <p className="mt-1 text-lg text-gray-600 dark:text-gray-300">{book.subtitle}</p>
+      <header className="border-b border-(--border-muted) pb-8">
+        <button
+          type="button"
+          className="hover-action mb-5 cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-(--text)"
+          onClick={() => void navigate(libraryUrl)}
+        >
+          <span aria-hidden="true">&larr;</span> Back to Library
+        </button>
+        <div className="flex gap-5">
+          {book.cover_url ? (
+            <img
+              src={withBasePath(book.cover_url)}
+              alt={`Cover of ${book.title ?? 'book'}`}
+              className="h-52 w-36 rounded-lg object-cover shadow-lg"
+            />
+          ) : (
+            <div className="flex h-52 w-36 items-center justify-center rounded-lg bg-(--bg-soft) text-xs text-gray-500">
+              No cover
+            </div>
           )}
-          <p className="mt-3 text-sm font-medium text-gray-700 dark:text-gray-200">
-            {book.author || 'Unknown author'}
-          </p>
-          {metadata.length > 0 && (
-            <p className="mt-3 text-xs text-gray-500">{metadata.join(' · ')}</p>
+          <div className="min-w-0 self-end">
+            <p className="text-xs font-semibold tracking-[0.16em] text-emerald-700 uppercase dark:text-emerald-300">
+              {bookMembershipLabel(book.in_my_library)}
+            </p>
+            <h1 className="mt-2 text-3xl font-semibold tracking-tight text-(--text)">
+              {book.title}
+            </h1>
+            {book.subtitle && (
+              <p className="mt-1 text-lg text-gray-600 dark:text-gray-300">{book.subtitle}</p>
+            )}
+            <p className="mt-3 text-sm font-medium text-gray-700 dark:text-gray-200">
+              {book.author || 'Unknown author'}
+            </p>
+            {metadata.length > 0 && (
+              <p className="mt-3 text-xs text-gray-500">{metadata.join(' · ')}</p>
+            )}
+          </div>
+          {(book.in_my_library || isAdmin) && (
+            <button
+              type="button"
+              className="hover-action ml-auto self-end rounded-md px-2 py-1 text-sm font-medium text-rose-700 dark:text-rose-300"
+              onClick={() => setDeleteDialogOpen(true)}
+            >
+              Delete book
+            </button>
           )}
         </div>
-        {(book.in_my_library || isAdmin) && (
-          <button
-            type="button"
-            className="hover-action ml-auto self-end rounded-md px-2 py-1 text-sm font-medium text-rose-700 dark:text-rose-300"
-            onClick={() => setDeleteDialogOpen(true)}
-          >
-            Delete book
-          </button>
-        )}
       </header>
       {book.metadata_json?.display_fields?.length ? (
         <dl className="mt-6 flex flex-wrap gap-3">
@@ -666,7 +678,7 @@ export const BookDetailPage = ({
               await removeLibraryBook(book.book_id);
               onShowToast('Book removed from your library', 'success');
             }
-            await navigate('/library');
+            await navigate(libraryUrl);
           }}
         />
       )}

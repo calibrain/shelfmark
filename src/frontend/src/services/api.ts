@@ -491,10 +491,13 @@ export const getLibraryBook = async (bookId: number): Promise<BookDetailResponse
 };
 
 export const getLibraryBooks = async (
-  scope: 'mine' | 'all' = 'mine',
+  options: { scope?: 'mine' | 'all'; query?: string } = {},
 ): Promise<LibraryBooksResponse> => {
-  const url = scope === 'all' ? `${API.libraryBooks}?scope=all` : API.libraryBooks;
-  return fetchJSON<LibraryBooksResponse>(url);
+  const params = new URLSearchParams();
+  if (options.scope === 'all') params.set('scope', 'all');
+  if (options.query?.trim()) params.set('q', options.query.trim());
+  const query = params.toString();
+  return fetchJSON<LibraryBooksResponse>(query ? `${API.libraryBooks}?${query}` : API.libraryBooks);
 };
 
 export const removeLibraryBook = async (bookId: number): Promise<void> => {

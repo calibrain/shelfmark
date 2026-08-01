@@ -1,5 +1,5 @@
 import { useEffectEvent, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation, useSearchParams } from 'react-router-dom';
 
 import { useSocket } from '../contexts/SocketContext';
 import { useDependencyEffect } from '../hooks/useMountEffect';
@@ -8,6 +8,15 @@ import { withBasePath } from '../utils/basePath';
 import type { LibraryBookSummary } from './types';
 
 type FileFilter = 'all' | 'with-files' | 'needs-files';
+type LibraryScope = 'mine' | 'all';
+
+const getFileFilter = (value: string | null): FileFilter => {
+  if (value === 'with-files' || value === 'needs-files') return value;
+  return 'all';
+};
+
+const getScope = (value: string | null, isAdmin: boolean): LibraryScope =>
+  isAdmin && value === 'all' ? 'all' : 'mine';
 
 const matchesFilter = (book: LibraryBookSummary, filter: FileFilter): boolean => {
   if (filter === 'with-files') return book.formats_on_disk.length > 0;
@@ -57,20 +66,31 @@ const FormatBadges = ({ formats }: { formats: LibraryBookSummary['formats_on_dis
 
 export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
   const { socket } = useSocket();
+  const location = useLocation();
+  const [searchParams, setSearchParams] = useSearchParams();
   const [books, setBooks] = useState<LibraryBookSummary[]>([]);
-  const [query, setQuery] = useState('');
-  const [filter, setFilter] = useState<FileFilter>('all');
-  const [scope, setScope] = useState<'mine' | 'all'>('mine');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const latestRequest = useRef(0);
+  const query = searchParams.get('q') ?? '';
+  const filter = getFileFilter(searchParams.get('availability'));
+  const scope = getScope(searchParams.get('scope'), isAdmin);
+
+  const updateParam = (name: string, value: string, defaultValue: string) => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      if (value === defaultValue) next.delete(name);
+      else next.set(name, value);
+      return next;
+    });
+  };
 
   const load = async () => {
     const requestId = ++latestRequest.current;
     setLoading(true);
     setError(null);
     try {
-      const response = await getLibraryBooks(scope);
+      const response = await getLibraryBooks({ scope, query });
       if (requestId === latestRequest.current) setBooks(response.books);
     } catch (caught) {
       if (requestId === latestRequest.current) {
@@ -83,7 +103,7 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
 
   useDependencyEffect(() => {
     void load();
-  }, [scope]);
+  }, [scope, query]);
 
   const onAvailability = useEffectEvent(() => {
     void load();
@@ -130,7 +150,7 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
                 className={`rounded px-2.5 py-1.5 ${
                   scope === 'mine' ? 'bg-(--hover-surface) font-semibold' : 'opacity-65'
                 }`}
-                onClick={() => setScope('mine')}
+                onClick={() => updateParam('scope', 'mine', 'mine')}
               >
                 Your books
               </button>
@@ -140,7 +160,7 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
                 className={`rounded px-2.5 py-1.5 ${
                   scope === 'all' ? 'bg-(--hover-surface) font-semibold' : 'opacity-65'
                 }`}
-                onClick={() => setScope('all')}
+                onClick={() => updateParam('scope', 'all', 'mine')}
               >
                 Show all users' books
               </button>
@@ -149,7 +169,7 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
           <input
             aria-label="Search library"
             value={query}
-            onChange={(event) => setQuery(event.target.value)}
+            onChange={(event) => updateParam('q', event.target.value, '')}
             placeholder="Search title or author"
             className="w-full rounded-md border border-(--border-muted) bg-transparent px-3 py-2 text-sm sm:w-56"
           />
@@ -168,7 +188,7 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
                 className={`rounded px-2.5 py-1.5 ${
                   filter === value ? 'bg-(--hover-surface) font-semibold' : 'opacity-65'
                 }`}
-                onClick={() => setFilter(value)}
+                onClick={() => updateParam('availability', value, 'all')}
               >
                 {label}
               </button>
@@ -211,7 +231,7 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
         <div className="grid grid-cols-2 gap-x-4 gap-y-8 sm:grid-cols-3 lg:grid-cols-5">
           {visibleBooks.map((book) => (
             <article key={book.book_id} className="group min-w-0">
-              <Link to={`/library/${book.book_id}`} className="block">
+              <Link to={`/library/${book.book_id}${location.search}`} className="block">
                 <Cover book={book} />
                 <h2 className="mt-3 truncate font-semibold text-(--text)">
                   {book.title ?? 'Untitled'}

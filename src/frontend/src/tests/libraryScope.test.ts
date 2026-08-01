@@ -11,7 +11,7 @@ describe('library scope requests', () => {
     const fetch = vi.fn().mockResolvedValue(new Response(JSON.stringify({ books: [] })));
     vi.stubGlobal('fetch', fetch);
 
-    await getLibraryBooks('all');
+    await getLibraryBooks({ scope: 'all' });
 
     expect(fetch).toHaveBeenCalledWith('/api/library/books?scope=all', expect.any(Object));
   });
