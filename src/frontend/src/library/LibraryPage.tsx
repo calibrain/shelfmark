@@ -195,7 +195,7 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
               <button
                 type="button"
                 aria-pressed={scope === 'mine'}
-                className={`rounded px-2.5 py-1.5 ${
+                className={`hover-action rounded px-2.5 py-1.5 ${
                   scope === 'mine' ? 'bg-(--hover-surface) font-semibold' : 'opacity-65'
                 }`}
                 onClick={() => updateParam('scope', 'mine', 'mine')}
@@ -205,7 +205,7 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
               <button
                 type="button"
                 aria-pressed={scope === 'all'}
-                className={`rounded px-2.5 py-1.5 ${
+                className={`hover-action rounded px-2.5 py-1.5 ${
                   scope === 'all' ? 'bg-(--hover-surface) font-semibold' : 'opacity-65'
                 }`}
                 onClick={() => updateParam('scope', 'all', 'mine')}
@@ -233,7 +233,7 @@ export const LibraryPage = ({ isAdmin }: { isAdmin: boolean }) => {
                 key={value}
                 type="button"
                 aria-pressed={filter === value}
-                className={`rounded px-2.5 py-1.5 ${
+                className={`hover-action rounded px-2.5 py-1.5 ${
                   filter === value ? 'bg-(--hover-surface) font-semibold' : 'opacity-65'
                 }`}
                 onClick={() => updateParam('availability', value, 'all')}

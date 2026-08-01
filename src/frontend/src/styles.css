@@ -230,6 +230,15 @@
   }
 }
 
+/* Keep every enabled native button visibly interactive, overriding local hover variants. */
+button:not(:disabled) {
+  cursor: pointer;
+}
+
+button:not(:disabled):hover {
+  background-color: var(--hover-action);
+}
+
 /* =============================================
    Keyframes (don't participate in cascade layers)
    ============================================= */

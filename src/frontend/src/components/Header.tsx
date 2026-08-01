@@ -391,7 +391,7 @@ export const Header = ({
                 href="https://github.com/calibrain/shelfmark/issues"
                 target="_blank"
                 rel="noopener noreferrer"
-                className="hover-surface flex w-full items-center gap-3 px-4 py-2 text-left text-slate-700 transition-colors dark:text-slate-200"
+                className="hover-action flex w-full items-center gap-3 px-4 py-2 text-left text-slate-700 transition-colors dark:text-slate-200"
                 title="Submit a bug report"
               >
                 <svg
@@ -419,7 +419,7 @@ export const Header = ({
                     closeDropdown();
                     onPersonalSettingsClick();
                   }}
-                  className="hover-surface flex w-full items-center gap-3 px-4 py-2 text-left transition-colors"
+                  className="hover-action flex w-full items-center gap-3 px-4 py-2 text-left transition-colors"
                 >
                   <svg
                     className="h-5 w-5"
@@ -453,7 +453,7 @@ export const Header = ({
                   }
                   disabled={!settingsEnabled}
                   className={`flex w-full items-center gap-3 px-4 py-2 text-left transition-colors ${
-                    settingsEnabled ? 'hover-surface' : 'cursor-not-allowed opacity-40'
+                    settingsEnabled ? 'hover-action' : 'cursor-not-allowed opacity-40'
                   }`}
                 >
                   <svg
@@ -484,7 +484,7 @@ export const Header = ({
                 <>
                   <button
                     type="button"
-                    className="hover-surface flex w-full items-center gap-3 px-4 py-2 text-left text-orange-600 transition-colors dark:text-orange-400"
+                    className="hover-action flex w-full items-center gap-3 px-4 py-2 text-left text-orange-600 transition-colors dark:text-orange-400"
                     onClick={() => void handleDebugDownload()}
                   >
                     <svg
@@ -505,7 +505,7 @@ export const Header = ({
                   </button>
                   <form action={withBasePath('/api/restart')} method="get" className="w-full">
                     <button
-                      className="hover-surface flex w-full items-center gap-3 px-4 py-2 text-left text-orange-600 transition-colors dark:text-orange-400"
+                      className="hover-action flex w-full items-center gap-3 px-4 py-2 text-left text-orange-600 transition-colors dark:text-orange-400"
                       type="submit"
                     >
                       <svg
