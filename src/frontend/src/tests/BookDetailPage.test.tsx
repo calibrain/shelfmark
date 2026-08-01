@@ -210,6 +210,37 @@ describe('BookDetailPage request-only availability', () => {
       await screen.findByText('/library?scope=all&availability=needs-files&q=shared'),
     ).not.toBeNull();
   });
+
+  it('keeps the originating Library URL available after a detail load error', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 500 })));
+    const user = userEvent.setup();
+
+    render(
+      <MemoryRouter initialEntries={['/library/1?availability=needs-files&q=shared']}>
+        <Routes>
+          <Route
+            path="/library/:bookId"
+            element={
+              <BookDetailPage
+                autoFindReleases={false}
+                canFindReleases={false}
+                canDeleteReleases={false}
+                isRequestOnly={false}
+                isAdmin={false}
+                onFindReleases={() => undefined}
+                onOpenSettings={() => undefined}
+                onShowToast={() => undefined}
+              />
+            }
+          />
+          <Route path="/library" element={<LibraryLocation />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await user.click(await screen.findByRole('button', { name: 'Back to Library' }));
+    expect(await screen.findByText('/library?availability=needs-files&q=shared')).not.toBeNull();
+  });
 });
 
 const LibraryLocation = () => {

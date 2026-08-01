@@ -534,13 +534,24 @@ export const BookDetailPage = ({
     return (
       <section className="mx-auto max-w-5xl px-4 py-10 text-center sm:px-6 lg:px-8">
         <h1 className="text-xl font-semibold text-(--text)">{error}</h1>
-        <button
-          type="button"
-          className="hover-action mt-4 cursor-pointer rounded-md border border-(--border-muted) px-3 py-2 text-sm"
-          onClick={() => (unavailable ? void navigate(libraryUrl) : void load())}
-        >
-          {unavailable ? 'Back to library' : 'Retry'}
-        </button>
+        <div className="mt-4 flex justify-center gap-3">
+          {!unavailable && (
+            <button
+              type="button"
+              className="hover-action cursor-pointer rounded-md border border-(--border-muted) px-3 py-2 text-sm"
+              onClick={() => void load()}
+            >
+              Retry
+            </button>
+          )}
+          <button
+            type="button"
+            className="hover-action cursor-pointer rounded-md border border-(--border-muted) px-3 py-2 text-sm"
+            onClick={() => void navigate(libraryUrl)}
+          >
+            Back to Library
+          </button>
+        </div>
       </section>
     );
   }

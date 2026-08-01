@@ -194,6 +194,7 @@ describe('Library page scope', () => {
     await user.click(screen.getByRole('button', { name: 'All' }));
 
     expect(screen.getAllByText('Shared book')).toHaveLength(1);
+    expect(screen.getByText(/1 total work, 1 waiting to be found/)).not.toBeNull();
     expect(consoleError).not.toHaveBeenCalledWith(expect.stringContaining('same key'));
     consoleError.mockRestore();
   });

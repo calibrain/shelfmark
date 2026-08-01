@@ -192,14 +192,20 @@ def test_list_library_books_admin_returns_shared_book_once_with_latest_membershi
     administrator = user_db.create_user(username="administrator")
     reader = user_db.create_user(username="reader")
     shared_book = _insert_book(library_service, provider_book_id="shared", title="Shared")
+    older_book = _insert_book(library_service, provider_book_id="older", title="Older")
 
     library_service.add_to_library(user_id=administrator["id"], book_id=shared_book["id"])
     library_service.add_to_library(user_id=reader["id"], book_id=shared_book["id"])
+    library_service.add_to_library(user_id=administrator["id"], book_id=older_book["id"])
     conn = user_db._connect()
     try:
         conn.execute(
             "UPDATE user_library SET added_at = ? WHERE user_id = ? AND book_id = ?",
             ("2027-01-02T00:00:00+00:00", reader["id"], shared_book["id"]),
+        )
+        conn.execute(
+            "UPDATE user_library SET added_at = ? WHERE user_id = ? AND book_id = ?",
+            ("2026-01-02T00:00:00+00:00", administrator["id"], older_book["id"]),
         )
         conn.commit()
     finally:
@@ -207,7 +213,7 @@ def test_list_library_books_admin_returns_shared_book_once_with_latest_membershi
 
     books = library_service.list_library_books(user_id=None, is_admin=True)
 
-    assert [book["id"] for book in books] == [shared_book["id"]]
+    assert [book["id"] for book in books] == [shared_book["id"], older_book["id"]]
     assert books[0]["library_added_at"] == "2027-01-02T00:00:00+00:00"
 
 
