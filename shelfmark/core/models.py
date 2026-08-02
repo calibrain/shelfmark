@@ -121,6 +121,8 @@ class DownloadTask:
     username: str | None = None  # Username for {User} template variable
     request_id: int | None = None  # Origin request ID when queued from request fulfilment
     library_book_id: int | None = None  # Optional Book identity for library downloads
+    source_release_key: str | None = None  # Durable physical source identity
+    import_activity_id: int | None = None  # Durable Book-scoped import identity
 
     # Runtime state
     priority: int = 0

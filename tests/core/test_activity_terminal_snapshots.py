@@ -40,6 +40,50 @@ def _read_download_history_row(main_module, task_id: str):
 
 
 class TestTerminalSnapshotCapture:
+    def test_book_targeted_queue_creates_import_activity_before_completion(self, main_module):
+        owner = _create_user(main_module, prefix="import-activity-owner")
+        book = main_module.library_service.upsert_book_from_metadata(
+            metadata_provider="hardcover",
+            provider_book_id=uuid.uuid4().hex,
+            title="Import Activity Snapshot",
+            author="Test Author",
+            subtitle=None,
+            publish_year=None,
+            isbn_13=None,
+            cover_url=None,
+            series_name=None,
+            series_position=None,
+            language=None,
+            metadata_json={},
+        )
+        task = DownloadTask(
+            task_id=f"import-activity-{uuid.uuid4().hex[:8]}",
+            source="prowlarr",
+            source_release_key="prowlarr:shared-source",
+            title=book["title"],
+            user_id=owner["id"],
+            username=owner["username"],
+            library_book_id=book["id"],
+            download_path="/library/import-activity.epub",
+        )
+
+        assert main_module.backend.book_queue.add(task) is True
+        try:
+            activity = main_module.import_activity_service.get_by_task_id(task.task_id)
+            assert activity is not None
+            assert activity["state"] == "matching"
+            assert activity["book_snapshot"]["title"] == book["title"]
+
+            main_module.backend.book_queue.update_status(task.task_id, QueueStatus.COMPLETE)
+            history = _read_download_history_row(main_module, task.task_id)
+            assert history["import_activity_id"] == activity["id"]
+            assert (
+                main_module.import_activity_service.get_by_task_id(task.task_id)["state"]
+                == "completed"
+            )
+        finally:
+            main_module.backend.book_queue.cancel_download(task.task_id)
+
     def test_complete_library_download_notifies_fulfilled_requester(self, main_module):
         requester = main_module.user_db.create_user(
             username=f"snap-requester-{uuid.uuid4().hex[:8]}",

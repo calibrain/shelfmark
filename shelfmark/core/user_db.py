@@ -170,6 +170,59 @@ CREATE TABLE IF NOT EXISTS user_downloads (
 
 CREATE INDEX IF NOT EXISTS idx_user_downloads_history
 ON user_downloads (history_id);
+
+CREATE TABLE IF NOT EXISTS source_releases (
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_key      TEXT NOT NULL UNIQUE,
+    source          TEXT NOT NULL,
+    metadata_json   TEXT NOT NULL DEFAULT '{}',
+    accepted_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS source_release_members (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    source_release_id   INTEGER NOT NULL REFERENCES source_releases(id) ON DELETE CASCADE,
+    relative_path       TEXT NOT NULL,
+    size                INTEGER,
+    format              TEXT,
+    discovery_status    TEXT NOT NULL,
+    discovered_at       TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE (source_release_id, relative_path)
+);
+
+CREATE INDEX IF NOT EXISTS idx_source_release_members_release
+ON source_release_members (source_release_id);
+
+CREATE TABLE IF NOT EXISTS import_activities (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    task_id             TEXT NOT NULL UNIQUE,
+    source_release_id   INTEGER NOT NULL REFERENCES source_releases(id),
+    book_id             INTEGER REFERENCES books(id) ON DELETE SET NULL,
+    book_snapshot_json  TEXT NOT NULL,
+    state               TEXT NOT NULL,
+    retry_count         INTEGER NOT NULL DEFAULT 0,
+    error_context_json  TEXT,
+    created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_import_activities_source_release
+ON import_activities (source_release_id);
+
+CREATE INDEX IF NOT EXISTS idx_import_activities_book_state
+ON import_activities (book_id, state);
+
+CREATE TABLE IF NOT EXISTS import_activity_selections (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    import_activity_id  INTEGER NOT NULL REFERENCES import_activities(id) ON DELETE CASCADE,
+    source_member_id    INTEGER NOT NULL REFERENCES source_release_members(id),
+    evidence_json       TEXT NOT NULL DEFAULT '{}',
+    planned_output_path TEXT NOT NULL,
+    UNIQUE (import_activity_id, source_member_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_import_activity_selections_activity
+ON import_activity_selections (import_activity_id);
 """
 
 
@@ -267,6 +320,7 @@ class UserDB:
                 self._migrate_download_history_retry_payload(conn)
                 self._migrate_download_history_book_id(conn)
                 self._migrate_download_history_task_id_nonunique(conn)
+                self._migrate_download_history_import_activity_id(conn)
                 conn.commit()
                 # WAL mode must be changed outside an open transaction.
                 conn.execute("PRAGMA journal_mode=WAL")
@@ -467,6 +521,7 @@ class UserDB:
                 queued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 terminal_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
                 book_id INTEGER REFERENCES books(id) ON DELETE SET NULL
+                ,import_activity_id INTEGER REFERENCES import_activities(id) ON DELETE SET NULL
             );
 
             INSERT INTO download_history
@@ -486,6 +541,21 @@ class UserDB:
                 ON download_history (book_id)
                 WHERE final_status = 'complete' AND download_path IS NOT NULL;
             """
+        )
+
+    def _migrate_download_history_import_activity_id(self, conn: sqlite3.Connection) -> None:
+        """Link Files to their durable Import Activity when one exists."""
+        column_names = {
+            str(column["name"]) for column in conn.execute("PRAGMA table_info(download_history)")
+        }
+        if "import_activity_id" not in column_names:
+            conn.execute(
+                "ALTER TABLE download_history ADD COLUMN import_activity_id "
+                "INTEGER REFERENCES import_activities(id) ON DELETE SET NULL"
+            )
+        conn.execute(
+            "CREATE INDEX IF NOT EXISTS idx_download_history_import_activity "
+            "ON download_history (import_activity_id)"
         )
 
     def create_user(

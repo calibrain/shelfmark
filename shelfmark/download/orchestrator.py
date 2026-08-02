@@ -8,6 +8,7 @@ import os
 import random
 import threading
 import time
+import uuid
 from concurrent.futures import Future, ThreadPoolExecutor
 from pathlib import Path
 from threading import Event, Lock
@@ -171,11 +172,13 @@ def _build_retry_resolution_fields(
 
 
 def derive_release_task_id(release_data: dict[str, Any]) -> str:
-    """Return the stable history identity for a release before it is queued."""
+    """Return an activity identity, unique per explicit Book selection."""
     source_id = release_data.get("source_id")
     if not isinstance(source_id, str) or not source_id.strip():
         msg = "source_id is required"
         raise ValueError(msg)
+    if release_data.get("library_book_id") is not None:
+        return f"import-{uuid.uuid4().hex}"
     return source_id.strip()
 
 
@@ -241,6 +244,7 @@ def queue_release(
             username=username,
             request_id=request_id,
             library_book_id=release_data.get("library_book_id"),
+            source_release_key=f"{source}:{release_data['source_id'].strip()}",
             **retry_resolution_fields,
         )
 
@@ -363,6 +367,9 @@ def serialize_task_for_retry(task: DownloadTask) -> dict[str, Any]:
         "user_id": getattr(task, "user_id", None),
         "username": getattr(task, "username", None),
         "request_id": getattr(task, "request_id", None),
+        "library_book_id": getattr(task, "library_book_id", None),
+        "source_release_key": getattr(task, "source_release_key", None),
+        "import_activity_id": getattr(task, "import_activity_id", None),
         "staged_path": getattr(task, "staged_path", None),
         "retry_download_url": getattr(task, "retry_download_url", None),
         "retry_download_protocol": getattr(task, "retry_download_protocol", None),
@@ -408,6 +415,9 @@ def _restore_task_from_retry_payload(payload: object) -> DownloadTask | None:
         user_id=normalize_positive_int(payload.get("user_id")),
         username=normalize_optional_text(payload.get("username")),
         request_id=normalize_positive_int(payload.get("request_id")),
+        library_book_id=normalize_positive_int(payload.get("library_book_id")),
+        source_release_key=normalize_optional_text(payload.get("source_release_key")),
+        import_activity_id=normalize_positive_int(payload.get("import_activity_id")),
         staged_path=normalize_optional_text(payload.get("staged_path")),
         retry_download_url=normalize_optional_text(payload.get("retry_download_url")),
         retry_download_protocol=normalize_optional_text(payload.get("retry_download_protocol")),

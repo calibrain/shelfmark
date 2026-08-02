@@ -49,6 +49,7 @@ from shelfmark.core.config import config as app_config
 from shelfmark.core.cwa_user_sync import upsert_cwa_user
 from shelfmark.core.download_history_service import DownloadHistoryService
 from shelfmark.core.external_user_linking import upsert_external_user
+from shelfmark.core.import_activity_service import ImportActivityService
 from shelfmark.core.library_routes import register_library_routes
 from shelfmark.core.library_service import LibraryService
 from shelfmark.core.logger import setup_logger
@@ -158,10 +159,12 @@ user_db: UserDB | None = None
 download_history_service: DownloadHistoryService | None = None
 activity_view_state_service: ActivityViewStateService | None = None
 library_service: LibraryService | None = None
+import_activity_service: ImportActivityService | None = None
 try:
     user_db = UserDB(_user_db_path)
     user_db.initialize()
     download_history_service = DownloadHistoryService(_user_db_path)
+    import_activity_service = ImportActivityService(_user_db_path)
     activity_view_state_service = ActivityViewStateService(_user_db_path)
     library_service = LibraryService(_user_db_path)
     import_module("shelfmark.config.users_settings")
@@ -182,6 +185,7 @@ except (sqlite3.OperationalError, OSError) as e:
     download_history_service = None
     activity_view_state_service = None
     library_service = None
+    import_activity_service = None
 
 # Start download coordinator
 backend.start()
@@ -1317,6 +1321,25 @@ def _record_download_queued(task_id: str, task: Any) -> None:
 
     source_name = normalize_source(getattr(task, "source", None))
     source_display = get_source_display_name(source_name)
+    book_id = normalize_positive_int(getattr(task, "library_book_id", None))
+
+    if import_activity_service is not None and book_id is not None:
+        try:
+            activity = import_activity_service.get_by_task_id(task_id)
+            if activity is None:
+                source_key = normalize_optional_text(getattr(task, "source_release_key", None))
+                if source_key is None:
+                    source_key = f"{source_name}:{task_id}"
+                activity = import_activity_service.accept_book_targeted_release(
+                    source_key=source_key,
+                    source=source_name,
+                    source_metadata={"title": getattr(task, "title", None)},
+                    task_id=task_id,
+                    book_id=book_id,
+                )
+            task.import_activity_id = activity["id"]
+        except _OPERATIONAL_ERRORS as exc:
+            logger.warning("Failed to record import activity for task %s: %s", task_id, exc)
 
     try:
         download_history_service.record_download(
@@ -1333,7 +1356,8 @@ def _record_download_queued(task_id: str, task: Any) -> None:
             preview=normalize_optional_text(getattr(task, "preview", None)),
             content_type=normalize_optional_text(getattr(task, "content_type", None)),
             origin=origin,
-            book_id=normalize_positive_int(getattr(task, "library_book_id", None)),
+            book_id=book_id,
+            import_activity_id=normalize_positive_int(getattr(task, "import_activity_id", None)),
             retry_payload=backend.serialize_task_for_retry(task),
         )
     except _OPERATIONAL_ERRORS as exc:
@@ -1392,6 +1416,21 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
             finalized_download = True
         except _OPERATIONAL_ERRORS as exc:
             logger.warning("Failed to finalize download history for task %s: %s", task_id, exc)
+
+    activity_id = normalize_positive_int(getattr(task, "import_activity_id", None))
+    if import_activity_service is not None and activity_id is not None:
+        try:
+            if final_status == QueueStatus.COMPLETE.value:
+                import_activity_service.complete(activity_id=activity_id)
+            elif final_status == QueueStatus.CANCELLED.value:
+                import_activity_service.cancel(activity_id=activity_id)
+            else:
+                import_activity_service.fail(
+                    activity_id=activity_id,
+                    error_context={"message": getattr(task, "status_message", None)},
+                )
+        except _OPERATIONAL_ERRORS as exc:
+            logger.warning("Failed to finalize import activity for task %s: %s", task_id, exc)
 
     if finalized_download:
         book_id = normalize_positive_int(getattr(task, "library_book_id", None))
