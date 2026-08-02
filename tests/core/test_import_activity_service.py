@@ -88,7 +88,6 @@ def test_one_source_release_can_create_multiple_book_activities():
 def test_retry_and_recovery_preserve_the_activity_output_plan():
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = os.path.join(tmpdir, "users.db")
-        output_path = Path(tmpdir) / "library" / "Example.epub"
         user_db = UserDB(db_path)
         user_db.initialize()
         service = ImportActivityService(db_path)
@@ -107,16 +106,17 @@ def test_retry_and_recovery_preserve_the_activity_output_plan():
             discovery_status="discovered",
         )
 
-        service.plan_import(
+        planned = service.plan_import(
             activity_id=activity["id"],
+            storage_root=Path(tmpdir) / "library",
             selections=[
                 {
                     "source_member_id": member["id"],
                     "evidence": {"reason": "exact-title-author"},
-                    "planned_output_path": str(output_path),
                 }
             ],
         )
+        output_path = Path(planned["selections"][0]["planned_output_path"])
         failed = service.fail(activity_id=activity["id"], error_context={"message": "disk full"})
         retried = service.retry(activity_id=activity["id"])
 
@@ -128,12 +128,14 @@ def test_retry_and_recovery_preserve_the_activity_output_plan():
             str(output_path)
         ]
 
-        output_path.parent.mkdir()
+        output_path.parent.mkdir(parents=True)
         output_path.write_bytes(b"content")
         assert service.reconcile(activity_id=activity["id"])["missing_output_paths"] == []
 
         with pytest.raises(ValueError, match="cannot be planned"):
-            service.plan_import(activity_id=activity["id"], selections=[])
+            service.plan_import(
+                activity_id=activity["id"], storage_root=Path(tmpdir) / "library", selections=[]
+            )
 
 
 def test_cancelled_activity_cannot_be_retried():
@@ -153,3 +155,58 @@ def test_cancelled_activity_cannot_be_retried():
         assert service.cancel(activity_id=activity["id"])["state"] == "cancelled"
         with pytest.raises(ValueError, match="cannot be retried"):
             service.retry(activity_id=activity["id"])
+
+
+def test_plan_import_derives_safe_fixed_paths_and_rejects_duplicate_book_members():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "users.db")
+        storage_root = Path(tmpdir) / "library"
+        user_db = UserDB(db_path)
+        user_db.initialize()
+        service = ImportActivityService(db_path)
+        book_id = _create_book(user_db, "42", "Example")
+        activity = service.accept_book_targeted_release(
+            source_key="prowlarr:abc123",
+            source="prowlarr",
+            source_metadata={},
+            task_id="activity-1",
+            book_id=book_id,
+        )
+        member = service.record_source_member(
+            source_release_id=activity["source_release_id"],
+            relative_path="collection/Chapter: 1/Example?.epub",
+            size=7,
+            file_format="epub",
+            discovery_status="discovered",
+        )
+
+        planned = service.plan_import(
+            activity_id=activity["id"],
+            storage_root=storage_root,
+            selections=[{"source_member_id": member["id"], "evidence": {"match": "exact"}}],
+        )
+
+        assert planned["state"] == "importing"
+        assert planned["selections"][0]["planned_output_path"] == str(
+            storage_root
+            / "books"
+            / str(book_id)
+            / str(activity["source_release_id"])
+            / "collection"
+            / "Chapter_ 1"
+            / "Example_.epub"
+        )
+
+        duplicate = service.accept_book_targeted_release(
+            source_key="prowlarr:abc123",
+            source="prowlarr",
+            source_metadata={},
+            task_id="activity-2",
+            book_id=book_id,
+        )
+        with pytest.raises(ValueError, match="already selected for this Book"):
+            service.plan_import(
+                activity_id=duplicate["id"],
+                storage_root=storage_root,
+                selections=[{"source_member_id": member["id"], "evidence": {"match": "exact"}}],
+            )

@@ -169,7 +169,7 @@ class TestResultToRelease:
             orchestrator.config, "get", lambda key, default=None, user_id=None: default
         )
 
-        success, error = orchestrator.queue_release(release.__dict__)
+        success, error = orchestrator.queue_release({**release.__dict__, "library_book_id": 1})
 
         assert success is True
         assert error is None

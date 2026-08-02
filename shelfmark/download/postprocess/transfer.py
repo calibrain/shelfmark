@@ -158,6 +158,47 @@ def _transfer_single_file(
     return atomic_move(source_path, dest_path, max_attempts=max_attempts), "move"
 
 
+def transfer_selected_source_members(
+    selections: list[tuple[Path, Path]], *, use_hardlink: bool
+) -> tuple[list[Path], str | None, dict[str, int]]:
+    """Copy or link explicitly selected retained source members to their planned paths."""
+    if not selections:
+        return [], "No source members selected", {"hardlink": 0, "copy": 0}
+
+    destinations = [destination for _, destination in selections]
+    if len(set(destinations)) != len(destinations):
+        msg = "selected source members have duplicate planned output paths"
+        raise ValueError(msg)
+    for source, destination in selections:
+        if not run_blocking_io(source.is_file):
+            msg = f"selected source member is unavailable: {source}"
+            raise FileNotFoundError(msg)
+        if run_blocking_io(destination.exists):
+            msg = f"planned output already exists: {destination}"
+            raise FileExistsError(msg)
+
+    final_paths: list[Path] = []
+    op_counts = {"hardlink": 0, "copy": 0}
+    max_attempts = _max_attempts_for_batch(len(selections))
+    for source, destination in selections:
+        run_blocking_io(destination.parent.mkdir, parents=True, exist_ok=True)
+        if use_hardlink:
+            final_path = atomic_hardlink(source, destination, max_attempts=max_attempts)
+            op = "hardlink"
+            try:
+                if run_blocking_io(source.stat).st_ino != run_blocking_io(final_path.stat).st_ino:
+                    op = "copy"
+            except OSError:
+                pass
+        else:
+            final_path = atomic_copy(source, destination, max_attempts=max_attempts)
+            op = "copy"
+        final_paths.append(final_path)
+        op_counts[op] += 1
+
+    return final_paths, None, op_counts
+
+
 def transfer_book_files(
     book_files: list[Path],
     destination: Path,

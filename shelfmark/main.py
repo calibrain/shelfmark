@@ -1022,17 +1022,19 @@ def api_download_release() -> Response | tuple[Response, int]:
         library_book_id = normalize_positive_int(raw_library_book_id)
         if raw_library_book_id is not None and library_book_id is None:
             return jsonify({"error": "library_book_id must be a positive integer"}), 400
-        if (
-            get_auth_mode() != "none"
-            and not session.get("is_admin", False)
-            and library_book_id is None
-        ):
+        if library_book_id is None:
             return jsonify({"error": "library_book_id is required"}), 400
         if library_book_id is not None:
-            if not session.get("is_admin", False) and (
-                library_service is None
-                or db_user_id is None
-                or not library_service.is_in_library(user_id=db_user_id, book_id=library_book_id)
+            if (
+                get_auth_mode() != "none"
+                and not session.get("is_admin", False)
+                and (
+                    library_service is None
+                    or db_user_id is None
+                    or not library_service.is_in_library(
+                        user_id=db_user_id, book_id=library_book_id
+                    )
+                )
             ):
                 return jsonify({"error": "Book is not in your library"}), 403
             release_payload = dict(release_payload)
@@ -1310,19 +1312,19 @@ def _build_download_file_rows(task: Any) -> list[dict[str, Any]]:
     return rows
 
 
-def _record_source_members(task: Any) -> None:
+def _record_source_members(task: Any) -> dict[int, Path]:
     """Retain the original torrent members independently of its Book activity."""
     if import_activity_service is None:
-        return
+        return {}
     activity_id = normalize_positive_int(getattr(task, "import_activity_id", None))
     original_path = normalize_optional_text(getattr(task, "original_download_path", None))
     if activity_id is None or original_path is None:
-        return
+        return {}
 
     try:
         activity = import_activity_service.get_by_task_id(str(getattr(task, "task_id", "")))
         if activity is None:
-            return
+            return {}
         source_path = Path(original_path)
         if source_path.is_file():
             members = [source_path]
@@ -1331,17 +1333,75 @@ def _record_source_members(task: Any) -> None:
             members = [path for path in source_path.rglob("*") if path.is_file()]
             root = source_path
         else:
-            return
+            return {}
+        recorded: dict[int, Path] = {}
         for member in members:
-            import_activity_service.record_source_member(
+            source_member = import_activity_service.record_source_member(
                 source_release_id=activity["source_release_id"],
                 relative_path=str(member.relative_to(root)),
                 size=member.stat().st_size,
                 file_format=member.suffix.lstrip(".").lower() or None,
                 discovery_status="discovered",
             )
+            recorded[source_member["id"]] = member
     except _OPERATIONAL_ERRORS as exc:
         logger.warning("Failed to record source members for task %s: %s", task.task_id, exc)
+        return {}
+    else:
+        return recorded
+
+
+def _transfer_default_import_selection(task: Any) -> None:
+    """Default-match every supported retained member and transfer its persisted plan."""
+    if import_activity_service is None:
+        return
+    activity_id = normalize_positive_int(getattr(task, "import_activity_id", None))
+    if activity_id is None:
+        return
+    members_by_id = _record_source_members(task)
+    activity = import_activity_service.get_by_task_id(str(getattr(task, "task_id", "")))
+    if activity is None:
+        return
+    if not activity["selections"]:
+        from shelfmark.download.postprocess.scan import get_supported_formats
+
+        supported = set(get_supported_formats(getattr(task, "content_type", None)))
+        selections = [
+            {"source_member_id": member["id"], "evidence": {"match": "default-all-supported"}}
+            for member in import_activity_service.source_members(
+                source_release_id=activity["source_release_id"]
+            )
+            if member["id"] in members_by_id and member["format"] in supported
+        ]
+        activity = import_activity_service.plan_import(
+            activity_id=activity_id,
+            storage_root=Path(str(app_config.get("DESTINATION", "/books"))),
+            selections=selections,
+        )
+    from shelfmark.download.postprocess.transfer import (
+        should_hardlink,
+        transfer_selected_source_members,
+    )
+
+    missing_members = [
+        selection["source_member_id"]
+        for selection in activity["selections"]
+        if selection["source_member_id"] not in members_by_id
+    ]
+    if missing_members:
+        msg = "selected source members are unavailable"
+        raise FileNotFoundError(msg)
+    final_paths, error, _ = transfer_selected_source_members(
+        [
+            (members_by_id[selection["source_member_id"]], Path(selection["planned_output_path"]))
+            for selection in activity["selections"]
+        ],
+        use_hardlink=should_hardlink(task),
+    )
+    if error:
+        raise RuntimeError(error)
+    task.library_paths = [str(path) for path in final_paths]
+    task.download_path = task.library_paths[0] if task.library_paths else None
 
 
 def _record_download_queued(task_id: str, task: Any) -> None:
@@ -1435,11 +1495,17 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
 
     finalized_download = False
     finalized_files = False
+    finalize_error: str | None = None
     file_rows: list[dict[str, Any]] = []
     fulfilled_requests: list[dict[str, Any]] = []
     if download_history_service is not None:
         try:
-            _record_source_members(task)
+            if final_status == QueueStatus.COMPLETE.value and getattr(
+                task, "original_download_path", None
+            ):
+                _transfer_default_import_selection(task)
+            else:
+                _record_source_members(task)
             file_rows = _build_download_file_rows(task)
             finalize_result = download_history_service.finalize_download_files(
                 task_id=task_id,
@@ -1452,13 +1518,19 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
             finalized_files = finalize_result.files_finalized
             finalized_download = True
         except _OPERATIONAL_ERRORS as exc:
+            finalize_error = str(exc)
             logger.warning("Failed to finalize download history for task %s: %s", task_id, exc)
 
     activity_id = normalize_positive_int(getattr(task, "import_activity_id", None))
     if import_activity_service is not None and activity_id is not None:
         try:
-            if final_status == QueueStatus.COMPLETE.value:
+            if final_status == QueueStatus.COMPLETE.value and finalized_download:
                 import_activity_service.complete(activity_id=activity_id)
+            elif final_status == QueueStatus.COMPLETE.value:
+                import_activity_service.fail(
+                    activity_id=activity_id,
+                    error_context={"message": finalize_error or "Import finalization failed"},
+                )
             elif final_status == QueueStatus.CANCELLED.value:
                 import_activity_service.cancel(activity_id=activity_id)
             else:

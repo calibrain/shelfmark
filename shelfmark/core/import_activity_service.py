@@ -8,6 +8,7 @@ import threading
 from pathlib import Path
 from typing import Any
 
+from shelfmark.core.naming import sanitize_filename
 from shelfmark.core.request_helpers import now_utc_iso
 
 _STATES = frozenset({"matching", "needs review", "importing", "completed", "failed", "cancelled"})
@@ -191,7 +192,27 @@ class ImportActivityService:
         finally:
             conn.close()
 
-    def plan_import(self, *, activity_id: int, selections: list[dict[str, Any]]) -> dict[str, Any]:
+    def source_members(self, *, source_release_id: int) -> list[dict[str, Any]]:
+        """Return the retained members available for an activity's default selection."""
+        conn = self._connect()
+        try:
+            return [
+                dict(row)
+                for row in conn.execute(
+                    "SELECT * FROM source_release_members WHERE source_release_id = ? ORDER BY id",
+                    (source_release_id,),
+                ).fetchall()
+            ]
+        finally:
+            conn.close()
+
+    def plan_import(
+        self,
+        *,
+        activity_id: int,
+        storage_root: Path,
+        selections: list[dict[str, Any]],
+    ) -> dict[str, Any]:
         """Persist selection evidence and exact output paths before transfer starts."""
         with self._lock:
             conn = self._connect()
@@ -200,16 +221,36 @@ class ImportActivityService:
                 if activity["state"] != "matching" or activity["selections"]:
                     msg = "import activity cannot be planned"
                     raise ValueError(msg)
-                conn.execute(
-                    "DELETE FROM import_activity_selections WHERE import_activity_id = ?",
-                    (activity_id,),
-                )
                 for selection in selections:
-                    path = selection.get("planned_output_path")
                     member_id = selection.get("source_member_id")
-                    if not isinstance(path, str) or not path or not isinstance(member_id, int):
-                        msg = "each selection needs a source member and output path"
+                    if not isinstance(member_id, int):
+                        msg = "each selection needs a source member"
+                        raise TypeError(msg)
+                    member = conn.execute(
+                        "SELECT relative_path FROM source_release_members WHERE id = ? AND source_release_id = ?",
+                        (member_id, activity["source_release_id"]),
+                    ).fetchone()
+                    if member is None:
+                        msg = "source member does not belong to this source release"
                         raise ValueError(msg)
+                    duplicate = conn.execute(
+                        """
+                        SELECT 1
+                        FROM import_activity_selections AS selection
+                        JOIN import_activities AS prior ON prior.id = selection.import_activity_id
+                        WHERE prior.book_id = ? AND selection.source_member_id = ?
+                        """,
+                        (activity["book_id"], member_id),
+                    ).fetchone()
+                    if duplicate is not None:
+                        msg = "source member is already selected for this Book"
+                        raise ValueError(msg)
+                    path = self._planned_output_path(
+                        storage_root=storage_root,
+                        book_id=activity["book_id"],
+                        source_release_id=activity["source_release_id"],
+                        relative_path=member["relative_path"],
+                    )
                     conn.execute(
                         """
                         INSERT INTO import_activity_selections
@@ -226,6 +267,26 @@ class ImportActivityService:
                 return self._activity(conn, activity_id)
             finally:
                 conn.close()
+
+    @staticmethod
+    def _planned_output_path(
+        *,
+        storage_root: Path,
+        book_id: int | None,
+        source_release_id: int,
+        relative_path: str,
+    ) -> str:
+        if book_id is None:
+            msg = "import activity has no Book target"
+            raise ValueError(msg)
+        components = Path(relative_path).parts
+        sanitized = [sanitize_filename(component) for component in components]
+        if not components or any(not component for component in sanitized):
+            msg = "source member path has an unusable component"
+            raise ValueError(msg)
+        return str(
+            storage_root / "books" / str(book_id) / str(source_release_id) / Path(*sanitized)
+        )
 
     def fail(self, *, activity_id: int, error_context: dict[str, Any]) -> dict[str, Any]:
         """Retain a retryable failure without changing the activity context."""

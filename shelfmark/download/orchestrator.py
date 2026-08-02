@@ -177,9 +177,13 @@ def derive_release_task_id(release_data: dict[str, Any]) -> str:
     if not isinstance(source_id, str) or not source_id.strip():
         msg = "source_id is required"
         raise ValueError(msg)
-    if release_data.get("library_book_id") is not None:
-        return f"import-{uuid.uuid4().hex}"
-    return source_id.strip()
+    if (
+        not isinstance(release_data.get("library_book_id"), int)
+        or release_data["library_book_id"] <= 0
+    ):
+        msg = "library_book_id is required"
+        raise ValueError(msg)
+    return f"import-{uuid.uuid4().hex}"
 
 
 def queue_release(

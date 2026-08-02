@@ -520,12 +520,24 @@ class UserDB:
                 retry_payload TEXT,
                 queued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                 terminal_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-                book_id INTEGER REFERENCES books(id) ON DELETE SET NULL
-                ,import_activity_id INTEGER REFERENCES import_activities(id) ON DELETE SET NULL
+                book_id INTEGER REFERENCES books(id) ON DELETE SET NULL,
+                import_activity_id INTEGER REFERENCES import_activities(id) ON DELETE SET NULL
             );
 
-            INSERT INTO download_history
-                SELECT * FROM download_history_migration;
+            INSERT INTO download_history (
+                id, task_id, user_id, username, request_id, source,
+                source_display_name, title, author, format, size, preview,
+                content_type, origin, final_status, status_message,
+                download_path, retry_payload, queued_at, terminal_at, book_id,
+                import_activity_id
+            )
+            SELECT
+                id, task_id, user_id, username, request_id, source,
+                source_display_name, title, author, format, size, preview,
+                content_type, origin, final_status, status_message,
+                download_path, retry_payload, queued_at, terminal_at, book_id,
+                NULL
+            FROM download_history_migration;
 
             DROP TABLE download_history_migration;
 

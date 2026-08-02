@@ -65,6 +65,27 @@ def _add_library_book(main_module, *, user_id: int, provider_book_id: str) -> in
 
 
 class TestReleaseDownloadEndpointGuardrails:
+    @pytest.mark.parametrize("is_admin", [False, True])
+    def test_release_download_requires_library_book_id_in_every_auth_mode(
+        self, main_module, client, is_admin
+    ):
+        _set_authenticated_session(client, is_admin=is_admin)
+
+        with patch.object(main_module, "get_auth_mode", return_value="none"):
+            with patch.object(main_module.backend, "queue_release") as mock_queue_release:
+                response = client.post(
+                    "/api/releases/download",
+                    json={
+                        "source": "direct_download",
+                        "source_id": "book-only-release",
+                        "title": "Book-only Release",
+                    },
+                )
+
+        assert response.status_code == 400
+        assert response.get_json() == {"error": "library_book_id is required"}
+        mock_queue_release.assert_not_called()
+
     def test_release_search_requires_library_book_id(self, main_module, client):
         with patch.object(main_module, "get_auth_mode", return_value="none"):
             response = client.get(
@@ -337,6 +358,7 @@ class TestReleaseDownloadEndpointGuardrails:
             "title": "Audio Title [m4b]",
             "format": "m4b",
             "priority": 1,
+            "library_book_id": 1,
         }
 
         with patch.object(main_module, "get_auth_mode", return_value="none"):

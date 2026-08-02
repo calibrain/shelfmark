@@ -96,6 +96,12 @@ def process_folder_output(
     preserve_source_on_failure: bool = False,
 ) -> str | None:
     """Post-process download to the configured folder destination."""
+    if task.library_book_id is not None and task.original_download_path:
+        # The durable import activity plans and transfers retained members in the
+        # terminal hook, after member discovery has completed.
+        status_callback("complete", "Downloaded; importing selected files")
+        return str(temp_file)
+
     from shelfmark.download.postprocess.pipeline import (
         CustomScriptContext,
         CustomScriptTransferSummary,

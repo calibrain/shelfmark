@@ -515,7 +515,7 @@ class TestProwlarrLocalizedQueries:
 
         monkeypatch.setattr(orchestrator.book_queue, "add", fake_add)
 
-        success, error = orchestrator.queue_release(releases[0].__dict__)
+        success, error = orchestrator.queue_release({**releases[0].__dict__, "library_book_id": 1})
 
         assert success is True
         assert error is None
