@@ -132,6 +132,9 @@ def test_retry_and_recovery_preserve_the_activity_output_plan():
         output_path.write_bytes(b"content")
         assert service.reconcile(activity_id=activity["id"])["missing_output_paths"] == []
 
+        with pytest.raises(ValueError, match="cannot be planned"):
+            service.plan_import(activity_id=activity["id"], selections=[])
+
 
 def test_cancelled_activity_cannot_be_retried():
     with tempfile.TemporaryDirectory() as tmpdir:

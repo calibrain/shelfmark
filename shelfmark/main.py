@@ -1310,6 +1310,40 @@ def _build_download_file_rows(task: Any) -> list[dict[str, Any]]:
     return rows
 
 
+def _record_source_members(task: Any) -> None:
+    """Retain the original torrent members independently of its Book activity."""
+    if import_activity_service is None:
+        return
+    activity_id = normalize_positive_int(getattr(task, "import_activity_id", None))
+    original_path = normalize_optional_text(getattr(task, "original_download_path", None))
+    if activity_id is None or original_path is None:
+        return
+
+    try:
+        activity = import_activity_service.get_by_task_id(str(getattr(task, "task_id", "")))
+        if activity is None:
+            return
+        source_path = Path(original_path)
+        if source_path.is_file():
+            members = [source_path]
+            root = source_path.parent
+        elif source_path.is_dir():
+            members = [path for path in source_path.rglob("*") if path.is_file()]
+            root = source_path
+        else:
+            return
+        for member in members:
+            import_activity_service.record_source_member(
+                source_release_id=activity["source_release_id"],
+                relative_path=str(member.relative_to(root)),
+                size=member.stat().st_size,
+                file_format=member.suffix.lstrip(".").lower() or None,
+                discovery_status="discovered",
+            )
+    except _OPERATIONAL_ERRORS as exc:
+        logger.warning("Failed to record source members for task %s: %s", task.task_id, exc)
+
+
 def _record_download_queued(task_id: str, task: Any) -> None:
     """Persist initial download record when a task enters the queue."""
     if download_history_service is None:
@@ -1337,6 +1371,8 @@ def _record_download_queued(task_id: str, task: Any) -> None:
                     task_id=task_id,
                     book_id=book_id,
                 )
+            elif activity["state"] == "failed":
+                activity = import_activity_service.retry(activity_id=activity["id"])
             task.import_activity_id = activity["id"]
         except _OPERATIONAL_ERRORS as exc:
             logger.warning("Failed to record import activity for task %s: %s", task_id, exc)
@@ -1403,6 +1439,7 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
     fulfilled_requests: list[dict[str, Any]] = []
     if download_history_service is not None:
         try:
+            _record_source_members(task)
             file_rows = _build_download_file_rows(task)
             finalize_result = download_history_service.finalize_download_files(
                 task_id=task_id,

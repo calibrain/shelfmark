@@ -197,7 +197,7 @@ class ImportActivityService:
             conn = self._connect()
             try:
                 activity = self._activity(conn, activity_id)
-                if activity["state"] not in {"matching", "needs review"}:
+                if activity["state"] != "matching" or activity["selections"]:
                     msg = "import activity cannot be planned"
                     raise ValueError(msg)
                 conn.execute(

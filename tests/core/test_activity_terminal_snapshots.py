@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import uuid
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import ANY, patch
 
@@ -40,7 +41,9 @@ def _read_download_history_row(main_module, task_id: str):
 
 
 class TestTerminalSnapshotCapture:
-    def test_book_targeted_queue_creates_import_activity_before_completion(self, main_module):
+    def test_book_targeted_queue_creates_import_activity_before_completion(
+        self, main_module, tmp_path
+    ):
         owner = _create_user(main_module, prefix="import-activity-owner")
         book = main_module.library_service.upsert_book_from_metadata(
             metadata_provider="hardcover",
@@ -64,8 +67,12 @@ class TestTerminalSnapshotCapture:
             user_id=owner["id"],
             username=owner["username"],
             library_book_id=book["id"],
+            original_download_path=str(tmp_path / "source"),
             download_path="/library/import-activity.epub",
         )
+        source_dir = Path(task.original_download_path)
+        source_dir.mkdir()
+        (source_dir / "Import Activity Snapshot.epub").write_bytes(b"source")
 
         assert main_module.backend.book_queue.add(task) is True
         try:
@@ -77,6 +84,17 @@ class TestTerminalSnapshotCapture:
             main_module.backend.book_queue.update_status(task.task_id, QueueStatus.COMPLETE)
             history = _read_download_history_row(main_module, task.task_id)
             assert history["import_activity_id"] == activity["id"]
+            conn = main_module.user_db._connect()
+            try:
+                members = conn.execute(
+                    "SELECT relative_path FROM source_release_members WHERE source_release_id = ?",
+                    (activity["source_release_id"],),
+                ).fetchall()
+            finally:
+                conn.close()
+            assert [member["relative_path"] for member in members] == [
+                "Import Activity Snapshot.epub"
+            ]
             assert (
                 main_module.import_activity_service.get_by_task_id(task.task_id)["state"]
                 == "completed"
