@@ -1,4 +1,4 @@
-"""Typed data containers used by the post-processing pipeline."""
+"""Typed containers for optional post-processing integrations."""
 
 from __future__ import annotations
 
@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True)
 class TransferPlan:
-    """Plan describing how files should move from source to output."""
+    """A staged transfer source and its operation policy."""
 
     source_path: Path
     use_hardlink: bool
@@ -23,7 +23,7 @@ class TransferPlan:
 
 @dataclass(frozen=True)
 class OutputPlan:
-    """Resolved output mode, staging strategy, and transfer settings."""
+    """Resolved staging plan for an optional output integration."""
 
     mode: str
     stage_action: StageAction
@@ -34,7 +34,7 @@ class OutputPlan:
 
 @dataclass(frozen=True)
 class PreparedFiles:
-    """Prepared file set ready for transfer or output handling."""
+    """Files prepared for an optional output integration."""
 
     output_plan: OutputPlan
     working_path: Path
@@ -45,7 +45,7 @@ class PreparedFiles:
 
 @dataclass(frozen=True)
 class PlanStep:
-    """Recorded post-processing step and its debug metadata."""
+    """Recorded optional post-processing step."""
 
     name: str
     details: dict[str, Any]

@@ -7,21 +7,13 @@ import uuid
 from typing import TYPE_CHECKING
 
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.utils import (
-    get_destination,
-)
-from shelfmark.core.utils import (
-    is_audiobook as check_audiobook,
-)
 from shelfmark.download.fs import run_blocking_io
 from shelfmark.download.permissions_debug import log_path_permission_context
-from shelfmark.release_sources import get_source
 
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
 
-    from shelfmark.core.models import DownloadTask
 
 logger = setup_logger("shelfmark.download.postprocess.pipeline")
 
@@ -72,18 +64,3 @@ def validate_destination(
         return False
 
     return True
-
-
-def get_final_destination(task: DownloadTask) -> Path:
-    """Get final destination directory, with content-type routing support."""
-    is_audiobook = check_audiobook(task.content_type)
-
-    try:
-        override = get_source(task.source).get_destination_override(task)
-    except ValueError:
-        override = None
-
-    if override:
-        return override
-
-    return get_destination(is_audiobook=is_audiobook)

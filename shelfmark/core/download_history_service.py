@@ -23,7 +23,7 @@ logger = setup_logger(__name__)
 
 VALID_TERMINAL_STATUSES = frozenset(s.value for s in TERMINAL_QUEUE_STATUSES)
 ACTIVE_DOWNLOAD_STATUS = "active"
-VALID_ORIGINS = frozenset({"direct", "requested"})
+VALID_ORIGINS = frozenset({"book", "direct", "requested"})
 
 
 @dataclass(frozen=True)
@@ -62,10 +62,10 @@ def _normalize_task_id(task_id: object) -> str:
 def _normalize_origin(origin: object) -> str:
     normalized = normalize_optional_text(origin)
     if normalized is None:
-        return "direct"
+        return "book"
     lowered = normalized.lower()
     if lowered not in VALID_ORIGINS:
-        msg = "origin must be one of: direct, requested"
+        msg = "origin must be one of: book, direct, requested"
         raise ValueError(msg)
     return lowered
 

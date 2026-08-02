@@ -379,7 +379,6 @@ The release source tab to open by default in the release modal for books. Leave 
 
 - **Type:** string (choice)
 - **Default:** _empty string_
-- **Options:** `""` (Use first available source)
 
 #### `DEFAULT_RELEASE_SOURCE_AUDIOBOOK`
 
@@ -389,7 +388,6 @@ The release source tab to open by default in the release modal for audiobooks. U
 
 - **Type:** string (choice)
 - **Default:** _empty string_
-- **Options:** `""` (Use book release source)
 
 </details>
 
@@ -397,16 +395,8 @@ The release source tab to open by default in the release modal for audiobooks. U
 
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
-| `INGEST_DIR` | Directory where completed Files are saved. | string | `/books` |
-| `FILE_ORGANIZATION` | Choose how downloaded book files are named and organized. | string (choice) | `rename` |
-| `TEMPLATE_RENAME` | Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension). Universal adds: {Series}, {SeriesPosition}, {Subtitle}, {PrimaryTitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. Applies to single-file downloads. | string | `{Author} - {Title} ({Year})` |
-| `TEMPLATE_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension). Universal adds: {Series}, {SeriesPosition}, {Subtitle}, {PrimaryTitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. | string | `{Author}/{Title} ({Year})` |
-| `HARDLINK_TORRENTS` | Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder. | boolean | `false` |
-| `DESTINATION_AUDIOBOOK` | Directory where downloaded audiobook files are saved. Leave empty to use the Books destination. | string | _none_ |
-| `FILE_ORGANIZATION_AUDIOBOOK` | Choose how downloaded audiobook files are named and organized. | string (choice) | `rename` |
-| `TEMPLATE_AUDIOBOOK_RENAME` | Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, {PrimaryTitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. Applies to single-file downloads. | string | `{Author} - {Title}` |
-| `TEMPLATE_AUDIOBOOK_ORGANIZE` | Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, {PrimaryTitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. | string | `{Author}/{Title}/{Title}` |
-| `HARDLINK_TORRENTS_AUDIOBOOK` | Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder. | boolean | `true` |
+| `DESTINATION` | Directory where completed Files are saved. | string | `/books` |
+| `HARDLINK_TORRENTS` | Create hardlinks instead of copies while preserving torrent seeding. | boolean | `false` |
 | `AUTO_OPEN_DOWNLOADS_SIDEBAR` | Automatically open the downloads sidebar when a new download is queued. | boolean | `false` |
 | `MAX_CONCURRENT_DOWNLOADS` | Maximum number of simultaneous downloads. | number | `3` |
 | `STATUS_TIMEOUT` | How long to keep completed/failed downloads in the queue display. | number | `3600` |
@@ -414,7 +404,7 @@ The release source tab to open by default in the release modal for audiobooks. U
 <details>
 <summary>Detailed descriptions</summary>
 
-#### `INGEST_DIR`
+#### `DESTINATION`
 
 **Destination**
 
@@ -424,88 +414,14 @@ Directory where completed Files are saved.
 - **Default:** `/books`
 - **Required:** Yes
 
-#### `FILE_ORGANIZATION`
-
-**File Organization**
-
-Choose how downloaded book files are named and organized.
-
-- **Type:** string (choice)
-- **Default:** `rename`
-- **Options:** `none` (None), `rename` (Rename Only), `organize` (Rename and Organize)
-
-#### `TEMPLATE_RENAME`
-
-**Naming Template**
-
-Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension). Universal adds: {Series}, {SeriesPosition}, {Subtitle}, {PrimaryTitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. Applies to single-file downloads.
-
-- **Type:** string
-- **Default:** `{Author} - {Title} ({Year})`
-
-#### `TEMPLATE_ORGANIZE`
-
-**Path Template**
-
-Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension). Universal adds: {Series}, {SeriesPosition}, {Subtitle}, {PrimaryTitle}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty.
-
-- **Type:** string
-- **Default:** `{Author}/{Title} ({Year})`
-
 #### `HARDLINK_TORRENTS`
 
 **Hardlink Book Torrents**
 
-Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder.
+Create hardlinks instead of copies while preserving torrent seeding.
 
 - **Type:** boolean
 - **Default:** `false`
-
-#### `DESTINATION_AUDIOBOOK`
-
-**Destination**
-
-Directory where downloaded audiobook files are saved. Leave empty to use the Books destination.
-
-- **Type:** string
-- **Default:** _none_
-
-#### `FILE_ORGANIZATION_AUDIOBOOK`
-
-**File Organization**
-
-Choose how downloaded audiobook files are named and organized.
-
-- **Type:** string (choice)
-- **Default:** `rename`
-- **Options:** `none` (None), `rename` (Rename Only), `organize` (Rename and Organize)
-
-#### `TEMPLATE_AUDIOBOOK_RENAME`
-
-**Naming Template**
-
-Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, {PrimaryTitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. Rename templates are filename-only (no '/' or '\'); use Organize for folders. Applies to single-file downloads.
-
-- **Type:** string
-- **Default:** `{Author} - {Title}`
-
-#### `TEMPLATE_AUDIOBOOK_ORGANIZE`
-
-**Path Template**
-
-Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} (source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, {PrimaryTitle}, {PartNumber}. Use arbitrary prefix/suffix: {Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty.
-
-- **Type:** string
-- **Default:** `{Author}/{Title}/{Title}`
-
-#### `HARDLINK_TORRENTS_AUDIOBOOK`
-
-**Hardlink Audiobook Torrents**
-
-Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder.
-
-- **Type:** boolean
-- **Default:** `true`
 
 #### `AUTO_OPEN_DOWNLOADS_SIDEBAR`
 
@@ -1793,15 +1709,6 @@ Default sort order for Google Books search results.
 | `SOURCE_PRIORITY` | Fallback sources, may have waiting. Requires bypasser. Drag to reorder. | JSON array | _see UI for defaults_ |
 | `MAX_RETRY` | Maximum retry attempts for failed downloads. | number | `10` |
 | `DEFAULT_SLEEP` | Wait time between download retry attempts. | number | `5` |
-| `AA_CONTENT_TYPE_ROUTING` | Override destination based on content type metadata. | boolean | `false` |
-| `AA_CONTENT_TYPE_DIR_FICTION` | Fiction Books | string | _none_ |
-| `AA_CONTENT_TYPE_DIR_NON_FICTION` | Non-Fiction Books | string | _none_ |
-| `AA_CONTENT_TYPE_DIR_UNKNOWN` | Unknown Books | string | _none_ |
-| `AA_CONTENT_TYPE_DIR_MAGAZINE` | Magazines | string | _none_ |
-| `AA_CONTENT_TYPE_DIR_COMIC` | Comic Books | string | _none_ |
-| `AA_CONTENT_TYPE_DIR_STANDARDS` | Standards Documents | string | _none_ |
-| `AA_CONTENT_TYPE_DIR_MUSICAL_SCORE` | Musical Scores | string | _none_ |
-| `AA_CONTENT_TYPE_DIR_OTHER` | Other | string | _none_ |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -1870,71 +1777,6 @@ Wait time between download retry attempts.
 - **Type:** number
 - **Default:** `5`
 - **Constraints:** min: 1, max: 60
-
-#### `AA_CONTENT_TYPE_ROUTING`
-
-**Enable Content-Type Routing**
-
-Override destination based on content type metadata.
-
-- **Type:** boolean
-- **Default:** `false`
-
-#### `AA_CONTENT_TYPE_DIR_FICTION`
-
-**Fiction Books**
-
-- **Type:** string
-- **Default:** _none_
-
-#### `AA_CONTENT_TYPE_DIR_NON_FICTION`
-
-**Non-Fiction Books**
-
-- **Type:** string
-- **Default:** _none_
-
-#### `AA_CONTENT_TYPE_DIR_UNKNOWN`
-
-**Unknown Books**
-
-- **Type:** string
-- **Default:** _none_
-
-#### `AA_CONTENT_TYPE_DIR_MAGAZINE`
-
-**Magazines**
-
-- **Type:** string
-- **Default:** _none_
-
-#### `AA_CONTENT_TYPE_DIR_COMIC`
-
-**Comic Books**
-
-- **Type:** string
-- **Default:** _none_
-
-#### `AA_CONTENT_TYPE_DIR_STANDARDS`
-
-**Standards Documents**
-
-- **Type:** string
-- **Default:** _none_
-
-#### `AA_CONTENT_TYPE_DIR_MUSICAL_SCORE`
-
-**Musical Scores**
-
-- **Type:** string
-- **Default:** _none_
-
-#### `AA_CONTENT_TYPE_DIR_OTHER`
-
-**Other**
-
-- **Type:** string
-- **Default:** _none_
 
 </details>
 

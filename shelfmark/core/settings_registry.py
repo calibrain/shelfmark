@@ -554,7 +554,6 @@ def sync_env_to_config() -> None:
                 list(values_to_sync.keys()),
             )
 
-    migrate_legacy_settings()
     migrate_mirror_settings()
     migrate_direct_download_upgrade(existing_install=had_existing_install_state)
 
@@ -658,96 +657,6 @@ def migrate_mirror_settings() -> None:
 
     if mirror_updates:
         save_config_file("mirrors", mirror_updates)
-
-
-def migrate_legacy_settings() -> None:
-    """Migrate legacy settings to new unified file destination format.
-
-    Maps stable legacy settings to the current download model:
-    - INGEST_DIR -> DESTINATION
-    - USE_BOOK_TITLE -> FILE_ORGANIZATION
-    - USE_CONTENT_TYPE_DIRECTORIES -> AA_CONTENT_TYPE_ROUTING
-    - INGEST_DIR_* -> AA_CONTENT_TYPE_DIR_*
-    - TORRENT_HARDLINK -> HARDLINK_TORRENTS / HARDLINK_TORRENTS_AUDIOBOOK
-
-    Intentionally ignores the short-lived pre-1.0 library-mode settings
-    (`PROCESSING_MODE`, `LIBRARY_PATH`, `LIBRARY_TEMPLATE`, etc.), which were
-    replaced before the first stable release shipped.
-    """
-    # Load existing downloads config
-    downloads_config = load_config_file("downloads")
-
-    # Skip migration if already using new settings
-    if "FILE_ORGANIZATION" in downloads_config or "DESTINATION" in downloads_config:
-        return
-
-    # Skip migration if no legacy settings exist (fresh install)
-    legacy_keys = {
-        "INGEST_DIR",
-        "USE_BOOK_TITLE",
-        "INGEST_DIR_AUDIOBOOK",
-        "TORRENT_HARDLINK",
-        "USE_CONTENT_TYPE_DIRECTORIES",
-        "INGEST_DIR_BOOK_FICTION",
-        "INGEST_DIR_BOOK_NON_FICTION",
-        "INGEST_DIR_BOOK_UNKNOWN",
-        "INGEST_DIR_MAGAZINE",
-        "INGEST_DIR_COMIC_BOOK",
-        "INGEST_DIR_STANDARDS_DOCUMENT",
-        "INGEST_DIR_MUSICAL_SCORE",
-        "INGEST_DIR_OTHER",
-    }
-    if not any(key in downloads_config for key in legacy_keys):
-        return
-
-    migrated_downloads = {}
-    migrated_sources = {}
-
-    old_ingest_dir = downloads_config.get("INGEST_DIR", "/cwa-book-ingest")
-    old_use_book_title = downloads_config.get("USE_BOOK_TITLE", True)
-
-    migrated_downloads["DESTINATION"] = old_ingest_dir
-    if old_use_book_title:
-        migrated_downloads["FILE_ORGANIZATION"] = "rename"
-    else:
-        migrated_downloads["FILE_ORGANIZATION"] = "none"
-
-    # === HARDLINK MIGRATION ===
-    old_torrent_hardlink = downloads_config.get("TORRENT_HARDLINK")
-    if old_torrent_hardlink is not None:
-        migrated_downloads["HARDLINK_TORRENTS"] = old_torrent_hardlink
-        migrated_downloads["HARDLINK_TORRENTS_AUDIOBOOK"] = old_torrent_hardlink
-
-    # === CONTENT-TYPE ROUTING MIGRATION ===
-    old_use_content_type = downloads_config.get("USE_CONTENT_TYPE_DIRECTORIES", False)
-    if old_use_content_type:
-        migrated_sources["AA_CONTENT_TYPE_ROUTING"] = True
-
-        # Map old keys to new keys
-        content_type_mapping = {
-            "INGEST_DIR_BOOK_FICTION": "AA_CONTENT_TYPE_DIR_FICTION",
-            "INGEST_DIR_BOOK_NON_FICTION": "AA_CONTENT_TYPE_DIR_NON_FICTION",
-            "INGEST_DIR_BOOK_UNKNOWN": "AA_CONTENT_TYPE_DIR_UNKNOWN",
-            "INGEST_DIR_MAGAZINE": "AA_CONTENT_TYPE_DIR_MAGAZINE",
-            "INGEST_DIR_COMIC_BOOK": "AA_CONTENT_TYPE_DIR_COMIC",
-            "INGEST_DIR_STANDARDS_DOCUMENT": "AA_CONTENT_TYPE_DIR_STANDARDS",
-            "INGEST_DIR_MUSICAL_SCORE": "AA_CONTENT_TYPE_DIR_MUSICAL_SCORE",
-            "INGEST_DIR_OTHER": "AA_CONTENT_TYPE_DIR_OTHER",
-        }
-
-        for old_key, new_key in content_type_mapping.items():
-            old_value = downloads_config.get(old_key, "")
-            if old_value:
-                migrated_sources[new_key] = old_value
-
-    # Save migrated settings
-    if migrated_downloads:
-        save_config_file("downloads", migrated_downloads)
-        logger.info("Migrated download settings: %s", list(migrated_downloads.keys()))
-
-    if migrated_sources:
-        save_config_file("download_sources", migrated_sources)
-        logger.info("Migrated content-type routing settings: %s", list(migrated_sources.keys()))
 
 
 def get_setting_value(field: FieldBase, tab_name: str) -> object:

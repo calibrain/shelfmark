@@ -4,7 +4,7 @@ from shelfmark.core.models import DownloadTask
 from shelfmark.release_sources.direct_download import DirectDownloadHandler
 
 
-def test_direct_download_handler_builds_staging_filename_from_browse_record(monkeypatch):
+def test_direct_download_handler_uses_the_source_id_for_staging(monkeypatch):
     captured = {}
 
     def fake_download_book(book_info, book_path, progress_callback, cancel_flag, status_callback):
@@ -16,12 +16,6 @@ def test_direct_download_handler_builds_staging_filename_from_browse_record(monk
     import shelfmark.release_sources.direct_download as dd
 
     monkeypatch.setattr(dd, "_download_book", fake_download_book)
-    monkeypatch.setattr(
-        dd.config,
-        "get",
-        lambda key, default=None: "rename" if key == "FILE_ORGANIZATION" else default,
-    )
-
     task = DownloadTask(
         task_id="92c7879138d18678b763118250228955",
         source="direct_download",
@@ -37,10 +31,10 @@ def test_direct_download_handler_builds_staging_filename_from_browse_record(monk
     assert result is not None
     assert captured["title"] == "Project Hail Mary: A Novel"
     assert captured["year"] == "2021"
-    assert captured["path"].name == "Andy Weir - Project Hail Mary_ A Novel (2021).epub"
+    assert captured["path"].name == "92c7879138d18678b763118250228955.epub"
 
 
-def test_direct_download_handler_uses_source_id_filename_when_organization_disabled(monkeypatch):
+def test_direct_download_handler_uses_source_id_filename(monkeypatch):
     captured = {}
 
     def fake_download_book(book_info, book_path, progress_callback, cancel_flag, status_callback):
@@ -50,12 +44,6 @@ def test_direct_download_handler_uses_source_id_filename_when_organization_disab
     import shelfmark.release_sources.direct_download as dd
 
     monkeypatch.setattr(dd, "_download_book", fake_download_book)
-    monkeypatch.setattr(
-        dd.config,
-        "get",
-        lambda key, default=None: "none" if key == "FILE_ORGANIZATION" else default,
-    )
-
     task = DownloadTask(
         task_id="aa-md5-hash",
         source="direct_download",
@@ -117,11 +105,6 @@ def test_direct_download_handler_removes_partial_file_when_cancelled_after_downl
 
     monkeypatch.setattr(dd, "_download_book", fake_download_book)
     monkeypatch.setattr(dd, "TMP_DIR", tmp_path)
-    monkeypatch.setattr(
-        dd.config,
-        "get",
-        lambda key, default=None: "rename" if key == "FILE_ORGANIZATION" else default,
-    )
 
     task = DownloadTask(
         task_id="cancel-after-download",
@@ -141,7 +124,7 @@ def test_direct_download_handler_removes_partial_file_when_cancelled_after_downl
         lambda status, message: status_updates.append((status, message)),
     )
 
-    expected_path = tmp_path / "A. Author - Partial Book (2024).epub"
+    expected_path = tmp_path / "cancel-after-download.epub"
 
     assert result is None
     assert not expected_path.exists()

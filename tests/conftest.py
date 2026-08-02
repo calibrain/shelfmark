@@ -14,7 +14,7 @@ _temp_base = tempfile.mkdtemp(prefix="cwabd_test_")
 # So we set LOG_ROOT to our temp directory to get LOG_DIR = _temp_base/shelfmark
 os.environ["LOG_ROOT"] = _temp_base
 os.environ["CONFIG_DIR"] = os.path.join(_temp_base, "config")
-os.environ["INGEST_DIR"] = os.path.join(_temp_base, "ingest")
+os.environ["DESTINATION"] = os.path.join(_temp_base, "destination")
 os.environ["TMP_DIR"] = os.path.join(_temp_base, "tmp")
 
 # Create the directories that will be used

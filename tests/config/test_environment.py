@@ -126,55 +126,6 @@ class TestSupportedFormats:
 
 
 # =============================================================================
-# Content-Type Routing Tests
-# =============================================================================
-
-
-class TestContentTypeRouting:
-    """Tests for content-type based directory routing."""
-
-    def test_get_ingest_dir_returns_path(self):
-        """get_ingest_dir should return a Path for all content types."""
-        from shelfmark.core.utils import CONTENT_TYPES, get_ingest_dir
-
-        # Default (no content type) should return a Path
-        default_path = get_ingest_dir()
-        assert isinstance(default_path, Path)
-
-        # All content types should return a Path
-        for content_type in CONTENT_TYPES:
-            path = get_ingest_dir(content_type)
-            assert isinstance(path, Path)
-
-    def test_content_types_list_complete(self):
-        """All expected content types should be present in CONTENT_TYPES."""
-        from shelfmark.core.utils import CONTENT_TYPES
-
-        expected_types = [
-            "book (fiction)",
-            "book (non-fiction)",
-            "book (unknown)",
-            "magazine",
-            "comic book",
-            "audiobook",
-            "standards document",
-            "musical score",
-            "other",
-        ]
-
-        for content_type in expected_types:
-            assert content_type in CONTENT_TYPES, f"Missing content type: {content_type}"
-
-    def test_get_ingest_dir_unknown_type_returns_default(self):
-        """Unknown content types should return the default ingest directory."""
-        from shelfmark.core.utils import get_ingest_dir
-
-        default_path = get_ingest_dir()
-        unknown_path = get_ingest_dir("unknown content type")
-        assert unknown_path == default_path
-
-
-# =============================================================================
 # Settings System Tests
 # =============================================================================
 
@@ -331,67 +282,6 @@ class TestConfigValidation:
                     assert result is False
             finally:
                 os.chmod(readonly_dir, 0o755)  # Restore for cleanup
-
-
-# =============================================================================
-# Settings Validation Tests
-# =============================================================================
-
-
-class TestSettingsValidation:
-    """Tests for settings save-time validation."""
-
-    def test_downloads_books_rename_template_rejects_path_separators(self):
-        import shelfmark.config.settings  # noqa: F401
-        from shelfmark.core.settings_registry import update_settings
-
-        result = update_settings(
-            "downloads",
-            {
-                "FILE_ORGANIZATION": "rename",
-                "TEMPLATE_RENAME": "{Author}/{Title}",
-            },
-        )
-
-        assert result["success"] is False
-        assert "Naming Template" in result["message"]
-        assert "Organize" in result["message"]
-
-    def test_downloads_audiobooks_rename_template_rejects_path_separators(self):
-        import shelfmark.config.settings  # noqa: F401
-        from shelfmark.core.settings_registry import update_settings
-
-        result = update_settings(
-            "downloads",
-            {
-                "FILE_ORGANIZATION_AUDIOBOOK": "rename",
-                "TEMPLATE_AUDIOBOOK_RENAME": "{Author}/{Title}",
-            },
-        )
-
-        assert result["success"] is False
-        assert "Naming Template" in result["message"]
-        assert "Organize" in result["message"]
-
-    def test_downloads_books_rename_validation_uses_existing_values(self):
-        import shelfmark.config.settings  # noqa: F401
-        from shelfmark.core.settings_registry import update_settings
-
-        with patch(
-            "shelfmark.config.settings.load_config_file",
-            return_value={
-                "TEMPLATE_RENAME": "{Author}/{Title}",
-            },
-        ):
-            result = update_settings(
-                "downloads",
-                {
-                    "FILE_ORGANIZATION": "rename",
-                },
-            )
-
-        assert result["success"] is False
-        assert "Naming Template" in result["message"]
 
 
 # =============================================================================

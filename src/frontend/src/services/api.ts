@@ -694,7 +694,7 @@ export interface ActivityHistoryItem {
   item_key: string;
   dismissed_at: string;
   snapshot: Record<string, unknown> | null;
-  origin: 'direct' | 'request' | 'requested' | null;
+  origin: 'book' | 'request' | 'requested' | null;
   final_status: string | null;
   terminal_at: string | null;
   request_id: number | null;

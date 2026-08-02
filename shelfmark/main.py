@@ -1270,7 +1270,7 @@ def _build_download_file_rows(task: Any) -> list[dict[str, Any]]:
     """Build per-file row dicts for :meth:`finalize_download_files`.
 
     Reads ``task.library_paths`` (populated by the folder output handler
-    from ``transfer_book_files``, or defaulted to ``[download_path]`` by
+    from the immutable import transfer, or defaulted to ``[download_path]`` by
     the orchestrator for single-path output handlers) and derives the
     per-file ``format`` (from the path extension) and ``size`` (from the
     on-disk file size when stat succeeds) for each row. Returns an empty
@@ -1317,15 +1317,18 @@ def _record_source_members(task: Any) -> dict[int, Path]:
     if import_activity_service is None:
         return {}
     activity_id = normalize_positive_int(getattr(task, "import_activity_id", None))
-    original_path = normalize_optional_text(getattr(task, "original_download_path", None))
-    if activity_id is None or original_path is None:
+    source_path_value = normalize_optional_text(getattr(task, "original_download_path", None))
+    source_path_value = source_path_value or normalize_optional_text(
+        getattr(task, "download_path", None)
+    )
+    if activity_id is None or source_path_value is None:
         return {}
 
     try:
         activity = import_activity_service.get_by_task_id(str(getattr(task, "task_id", "")))
         if activity is None:
             return {}
-        source_path = Path(original_path)
+        source_path = Path(source_path_value)
         if source_path.is_file():
             members = [source_path]
             root = source_path.parent
@@ -1411,7 +1414,7 @@ def _record_download_queued(task_id: str, task: Any) -> None:
 
     owner_user_id = normalize_positive_int(getattr(task, "user_id", None))
     request_id = normalize_positive_int(getattr(task, "request_id", None))
-    origin = "requested" if request_id else "direct"
+    origin = "requested" if request_id else "book"
 
     source_name = normalize_source(getattr(task, "source", None))
     source_display = get_source_display_name(source_name)
@@ -1500,9 +1503,7 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
     fulfilled_requests: list[dict[str, Any]] = []
     if download_history_service is not None:
         try:
-            if final_status == QueueStatus.COMPLETE.value and getattr(
-                task, "original_download_path", None
-            ):
+            if final_status == QueueStatus.COMPLETE.value:
                 _transfer_default_import_selection(task)
             else:
                 _record_source_members(task)

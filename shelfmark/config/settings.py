@@ -5,15 +5,11 @@ from pathlib import Path
 from typing import Any
 
 from shelfmark.config import env
-from shelfmark.config.download_settings_handlers import (
-    check_audiobook_destination,
-    check_books_destination,
-)
+from shelfmark.config.download_settings_handlers import check_books_destination
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import (
     ActionButton,
     CheckboxField,
-    CustomComponentField,
     HeadingField,
     MultiSelectField,
     NumberField,
@@ -24,7 +20,6 @@ from shelfmark.core.settings_registry import (
     TableField,
     TagListField,
     TextField,
-    load_config_file,
     register_group,
     register_on_save,
     register_settings,
@@ -133,7 +128,7 @@ _EMAIL_ATTACHMENT_LIMIT_MB_MAX = 600
 
 # Log bootstrap configuration values at DEBUG level
 logger.debug("Bootstrap configuration:")
-for key in ["CONFIG_DIR", "LOG_DIR", "TMP_DIR", "INGEST_DIR", "DEBUG", "DOCKERMODE"]:
+for key in ["CONFIG_DIR", "LOG_DIR", "TMP_DIR", "DEBUG", "DOCKERMODE"]:
     if hasattr(env, key):
         logger.debug("  %s: %s", key, getattr(env, key))
 
@@ -613,78 +608,14 @@ def network_settings() -> list[SettingsField]:
     ]
 
 
-def _contains_path_separators(value: Any) -> bool:
-    return isinstance(value, str) and ("/" in value or "\\" in value)
-
-
-def _on_save_downloads(values: dict[str, Any]) -> dict[str, Any]:
-    """Validate download settings before persisting."""
-    existing = load_config_file("downloads")
-    effective: dict[str, Any] = dict(existing)
-    effective.update(values)
-
-    if effective.get("FILE_ORGANIZATION", "rename") == "rename":
-        template = effective.get("TEMPLATE_RENAME", "")
-        if _contains_path_separators(template):
-            return {
-                "error": True,
-                "message": "Books Naming Template cannot contain '/' or '\\' in Rename mode. Use Organize mode to create folders.",
-                "values": values,
-            }
-
-    if effective.get("FILE_ORGANIZATION_AUDIOBOOK", "rename") == "rename":
-        template = effective.get("TEMPLATE_AUDIOBOOK_RENAME", "")
-        if _contains_path_separators(template):
-            return {
-                "error": True,
-                "message": "Audiobooks Naming Template cannot contain '/' or '\\' in Rename mode. Use Organize mode to create folders.",
-                "values": values,
-            }
-
-    return {"error": False, "values": values}
-
-
-def _naming_template_field(
-    *,
-    key: str,
-    label: str,
-    description: str,
-    default: str,
-    placeholder: str,
-    show_when: dict[str, Any] | list[dict[str, Any]],
-    universal_only: bool = False,
-) -> CustomComponentField:
-    return CustomComponentField(
-        key=f"{key.lower()}_editor",
-        label=label,
-        component="naming_template",
-        show_when=show_when,
-        universal_only=universal_only,
-        wrap_in_field_wrapper=True,
-        value_fields=[
-            TextField(
-                key=key,
-                label=label,
-                description=description,
-                default=default,
-                placeholder=placeholder,
-                show_when=show_when,
-                universal_only=universal_only,
-            )
-        ],
-    )
-
-
 @register_settings("downloads", "Downloads", icon="folder", order=5)
 def download_settings() -> list[SettingsField]:
     """Configure download behavior and file locations."""
     return [
-        # === BOOKS SECTION ===
-        # Visible for ALL modes (Direct + Universal)
         HeadingField(
             key="books_heading",
             title="Books",
-            description="Configure where ebooks, comics, and magazines are saved.",
+            description="Configure immutable storage for imported Book files.",
         ),
         TextField(
             key="DESTINATION",
@@ -692,7 +623,7 @@ def download_settings() -> list[SettingsField]:
             description="Directory where completed Files are saved.",
             default="/books",
             required=True,
-            env_var="INGEST_DIR",  # Legacy env var name for backwards compatibility
+            env_var="DESTINATION",
         ),
         ActionButton(
             key="test_destination",
@@ -701,149 +632,11 @@ def download_settings() -> list[SettingsField]:
             style="primary",
             callback=check_books_destination,
         ),
-        SelectField(
-            key="FILE_ORGANIZATION",
-            label="File Organization",
-            description="Choose how downloaded book files are named and organized.",
-            options=[
-                {
-                    "value": "none",
-                    "label": "None",
-                    "description": "Keep original filename from source",
-                },
-                {
-                    "value": "rename",
-                    "label": "Rename Only",
-                    "description": "Rename single-file downloads; multi-file keeps original names.",
-                },
-                {
-                    "value": "organize",
-                    "label": "Rename and Organize",
-                    "description": "Create folders and rename files using a template. Do not use with ingest folders.",
-                },
-            ],
-            default="rename",
-        ),
-        # Rename mode template - filename only
-        _naming_template_field(
-            key="TEMPLATE_RENAME",
-            label="Naming Template",
-            description=(
-                "Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} "
-                "(source filename without extension). Universal adds: {Series}, "
-                "{SeriesPosition}, {Subtitle}, {PrimaryTitle}. Use arbitrary prefix/suffix: "
-                "{Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. "
-                "Rename templates are filename-only (no '/' or '\\'); use Organize for folders. "
-                "Applies to single-file downloads."
-            ),
-            default="{Author} - {Title} ({Year})",
-            placeholder="{Author} - {Title} ({Year})",
-            show_when={"field": "FILE_ORGANIZATION", "value": "rename"},
-        ),
-        # Organize mode template - folders allowed
-        _naming_template_field(
-            key="TEMPLATE_ORGANIZE",
-            label="Path Template",
-            description=(
-                "Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, "
-                "{OriginalName} (source filename without extension). Universal adds: {Series}, "
-                "{SeriesPosition}, {Subtitle}, {PrimaryTitle}. Use arbitrary prefix/suffix: "
-                "{Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty."
-            ),
-            default="{Author}/{Title} ({Year})",
-            placeholder="{Author}/{Series/}{Title} ({Year})",
-            show_when={"field": "FILE_ORGANIZATION", "value": "organize"},
-        ),
         CheckboxField(
             key="HARDLINK_TORRENTS",
             label="Hardlink Book Torrents",
-            description="Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder.",
+            description="Create hardlinks instead of copies while preserving torrent seeding.",
             default=False,
-        ),
-        # === AUDIOBOOKS SECTION ===
-        # Universal mode only
-        HeadingField(
-            key="audiobooks_heading",
-            title="Audiobooks",
-            description="Configure where audiobooks are saved.",
-            universal_only=True,
-        ),
-        TextField(
-            key="DESTINATION_AUDIOBOOK",
-            label="Destination",
-            description="Directory where downloaded audiobook files are saved. Leave empty to use the Books destination.",
-            universal_only=True,
-        ),
-        ActionButton(
-            key="test_destination_audiobook",
-            label="Test Destination",
-            description="Check that Shelfmark can create and write to this audiobook destination.",
-            style="primary",
-            callback=check_audiobook_destination,
-            universal_only=True,
-        ),
-        SelectField(
-            key="FILE_ORGANIZATION_AUDIOBOOK",
-            label="File Organization",
-            description="Choose how downloaded audiobook files are named and organized.",
-            options=[
-                {
-                    "value": "none",
-                    "label": "None",
-                    "description": "Keep original filename from source",
-                },
-                {
-                    "value": "rename",
-                    "label": "Rename Only",
-                    "description": "Rename single-file downloads; multi-file keeps original names.",
-                },
-                {
-                    "value": "organize",
-                    "label": "Rename and Organize",
-                    "description": "Create folders and rename files using a template. Recommended for Audiobookshelf. Do not use with ingest folders.",
-                },
-            ],
-            default="rename",
-            universal_only=True,
-        ),
-        # Rename mode template - filename only
-        _naming_template_field(
-            key="TEMPLATE_AUDIOBOOK_RENAME",
-            label="Naming Template",
-            description=(
-                "Variables: {Author}, {Title}, {Year}, {User}, {OriginalName} "
-                "(source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, "
-                "{PrimaryTitle}, {PartNumber}. Use arbitrary prefix/suffix: "
-                "{Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty. "
-                "Rename templates are filename-only (no '/' or '\\'); use Organize for folders. "
-                "Applies to single-file downloads."
-            ),
-            default="{Author} - {Title}",
-            placeholder="{Author} - {Title}{ - Part }{PartNumber}",
-            show_when={"field": "FILE_ORGANIZATION_AUDIOBOOK", "value": "rename"},
-            universal_only=True,
-        ),
-        # Organize mode template - folders allowed
-        _naming_template_field(
-            key="TEMPLATE_AUDIOBOOK_ORGANIZE",
-            label="Path Template",
-            description=(
-                "Use / to create folders. Variables: {Author}, {Title}, {Year}, {User}, "
-                "{OriginalName} (source filename without extension), {Series}, {SeriesPosition}, "
-                "{Subtitle}, {PrimaryTitle}, {PartNumber}. Use arbitrary prefix/suffix: "
-                "{Vol. SeriesPosition - } outputs 'Vol. 2 - ' when set, nothing when empty."
-            ),
-            default="{Author}/{Title}/{Title}",
-            placeholder="{Author}/{Series/}{Title}{ - Part }{PartNumber}",
-            show_when={"field": "FILE_ORGANIZATION_AUDIOBOOK", "value": "organize"},
-            universal_only=True,
-        ),
-        CheckboxField(
-            key="HARDLINK_TORRENTS_AUDIOBOOK",
-            label="Hardlink Audiobook Torrents",
-            description="Create hardlinks instead of copying. Preserves seeding but archives won't be extracted. Don't use if destination is a library ingest folder.",
-            default=True,
-            universal_only=True,
         ),
         # === OPTIONS SECTION ===
         HeadingField(
@@ -874,10 +667,6 @@ def download_settings() -> list[SettingsField]:
             max_value=86400,
         ),
     ]
-
-
-# Register the on_save handler for this tab
-register_on_save("downloads", _on_save_downloads)
 
 
 def _get_fast_source_options() -> list[dict[str, str | bool | int | None]]:
@@ -1043,65 +832,6 @@ def download_source_settings() -> list[SettingsField]:
             default=5,
             min_value=1,
             max_value=60,
-        ),
-        HeadingField(
-            key="content_type_routing_heading",
-            title="Content-Type Routing",
-            description="Route downloads to different folders based on content type. Only applies to Direct download source.",
-        ),
-        CheckboxField(
-            key="AA_CONTENT_TYPE_ROUTING",
-            label="Enable Content-Type Routing",
-            description="Override destination based on content type metadata.",
-            default=False,
-        ),
-        TextField(
-            key="AA_CONTENT_TYPE_DIR_FICTION",
-            label="Fiction Books",
-            placeholder="/books/fiction",
-            show_when={"field": "AA_CONTENT_TYPE_ROUTING", "value": True},
-        ),
-        TextField(
-            key="AA_CONTENT_TYPE_DIR_NON_FICTION",
-            label="Non-Fiction Books",
-            placeholder="/books/non-fiction",
-            show_when={"field": "AA_CONTENT_TYPE_ROUTING", "value": True},
-        ),
-        TextField(
-            key="AA_CONTENT_TYPE_DIR_UNKNOWN",
-            label="Unknown Books",
-            placeholder="/books/unknown",
-            show_when={"field": "AA_CONTENT_TYPE_ROUTING", "value": True},
-        ),
-        TextField(
-            key="AA_CONTENT_TYPE_DIR_MAGAZINE",
-            label="Magazines",
-            placeholder="/books/magazines",
-            show_when={"field": "AA_CONTENT_TYPE_ROUTING", "value": True},
-        ),
-        TextField(
-            key="AA_CONTENT_TYPE_DIR_COMIC",
-            label="Comic Books",
-            placeholder="/books/comics",
-            show_when={"field": "AA_CONTENT_TYPE_ROUTING", "value": True},
-        ),
-        TextField(
-            key="AA_CONTENT_TYPE_DIR_STANDARDS",
-            label="Standards Documents",
-            placeholder="/books/standards",
-            show_when={"field": "AA_CONTENT_TYPE_ROUTING", "value": True},
-        ),
-        TextField(
-            key="AA_CONTENT_TYPE_DIR_MUSICAL_SCORE",
-            label="Musical Scores",
-            placeholder="/books/scores",
-            show_when={"field": "AA_CONTENT_TYPE_ROUTING", "value": True},
-        ),
-        TextField(
-            key="AA_CONTENT_TYPE_DIR_OTHER",
-            label="Other",
-            placeholder="/books/other",
-            show_when={"field": "AA_CONTENT_TYPE_ROUTING", "value": True},
         ),
     ]
 

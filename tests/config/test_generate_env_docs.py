@@ -40,7 +40,7 @@ def test_generated_env_docs_describe_mirror_lists_as_comma_separated_strings() -
     ) in docs
 
 
-def test_generated_env_docs_include_custom_component_value_fields() -> None:
+def test_generated_env_docs_exclude_retired_organization_settings() -> None:
     docs = generate_env_docs()
 
     for env_var in (
@@ -49,11 +49,4 @@ def test_generated_env_docs_include_custom_component_value_fields() -> None:
         "TEMPLATE_AUDIOBOOK_RENAME",
         "TEMPLATE_AUDIOBOOK_ORGANIZE",
     ):
-        assert f"`{env_var}`" in docs
-
-    assert (
-        "| `TEMPLATE_AUDIOBOOK_ORGANIZE` | Use / to create folders. Variables: "
-        "{Author}, {Title}, {Year}, {User}, {OriginalName} "
-        "(source filename without extension), {Series}, {SeriesPosition}, {Subtitle}, "
-        "{PrimaryTitle}, {PartNumber}. Use arbitrary prefix/suffix:"
-    ) in docs
+        assert f"`{env_var}`" not in docs

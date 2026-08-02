@@ -1,6 +1,5 @@
 import type { ComponentType, ReactNode } from 'react';
 
-import { NamingTemplateField } from './NamingTemplateField';
 import { OidcAdminHint } from './OidcAdminHint';
 import { OidcEnvInfo } from './OidcEnvInfo';
 import { SettingsLabel } from './SettingsLabel';
@@ -29,9 +28,6 @@ const CUSTOM_FIELD_DEFINITIONS: Record<string, CustomFieldDefinition> = {
         takeOverTab: false,
       };
     },
-  },
-  naming_template: {
-    renderer: NamingTemplateField,
   },
   settings_label: {
     renderer: SettingsLabel,

@@ -93,7 +93,6 @@ LOG_ROOT = Path(os.getenv("LOG_ROOT", "/var/log/"))
 LOG_DIR = LOG_ROOT / "shelfmark"
 LOG_FILE = LOG_DIR / "shelfmark.log"
 TMP_DIR = Path(os.getenv("TMP_DIR", (Path(tempfile.gettempdir()) / "shelfmark").as_posix()))
-INGEST_DIR = Path(os.getenv("INGEST_DIR", "/books"))
 
 
 # =============================================================================
