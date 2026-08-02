@@ -101,6 +101,21 @@ class PlatformClient:
     def queue_download(self, release: dict) -> requests.Response:
         return self.post("/api/releases/download", json=release, timeout=30)
 
+    def wait_for_task_id(self, title: str, timeout: int = DEFAULT_TIMEOUT) -> str | None:
+        """Return the activity task ID created for a queued release title."""
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            resp = self.get("/api/status")
+            if resp.status_code == 200 and isinstance(resp.json(), dict):
+                for entries in resp.json().values():
+                    if not isinstance(entries, dict):
+                        continue
+                    for task_id, task in entries.items():
+                        if isinstance(task, dict) and task.get("title") == title:
+                            return task_id
+            time.sleep(0.2)
+        return None
+
     def wait_for_terminal(self, book_id: str, timeout: int = DOWNLOAD_TIMEOUT) -> tuple[str, dict]:
         deadline = time.time() + timeout
         last: dict = {}

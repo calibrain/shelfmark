@@ -215,6 +215,13 @@ class ProwlarrHandler(ExternalClientHandler):
         # Look up the cached release
         prowlarr_result = get_release(task.task_id)
         if not prowlarr_result:
+            source_key = normalize_optional_text(getattr(task, "source_release_key", None))
+            if source_key and source_key.startswith("prowlarr:"):
+                prowlarr_result = get_release(source_key.removeprefix("prowlarr:"))
+                if prowlarr_result:
+                    # Queues assign a distinct activity ID to each Book import.
+                    cache_release(task.task_id, prowlarr_result)
+        if not prowlarr_result:
             logger.info("Prowlarr release cache miss, refreshing: %s", task.task_id)
             prowlarr_result = self._refresh_release(task)
             if prowlarr_result is None:
