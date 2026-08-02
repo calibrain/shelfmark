@@ -24,21 +24,29 @@ A **Request** is a request-only user's explicit signal that one Book in their Li
 
 A **Notification** communicates a library event. Personal Notifications are sent to a User through one selected email or Apprise transport. Administrator Notifications are instance-level operational alerts sent through administrator-configured email or Apprise transports; they are separate from personal Notifications.
 
+## Source Release
+
+A **Source Release** is the durable identity of retained original download contents: the physical torrent or equivalent download source and its members. It is provenance, not Book-scoped. One Source Release can be selected for multiple Books and can produce multiple Import Activities. Shelfmark never alters or copies its unselected contents; it is available for selection only while the download client retains the original data.
+
+## Import Activity
+
+An **Import Activity** is one Book-specific attempt to select files from one Source Release and place the selected Files into immutable library storage. Each explicit selection creates a new Import Activity, while operational retries remain part of that same activity. It keeps an immutable Book target and selection/evidence snapshot for deterministic retry and audit. Its transient states are `matching` and `importing`; `needs review` is non-terminal; `completed`, `failed`, and `cancelled` are terminal. Files produced by an Import Activity belong to that activity; the original source contents remain with its Source Release. For a correction of the same Book from the same Source Release, the latest successful activity is the complete import: it supersedes every earlier activity's Files, which are removed from library availability and storage while their detached history remains for audit.
+
 ## File / Download
 
 A **File** is a concrete downloaded artifact — one `download_history` row with its own `download_path`, `format`, and `size`. Files are global (per-instance, not per-user); the Library merely surfaces them. Adding to the Library never creates a File; downloading never creates a Library entry.
 
-A single download activity (one qbittorrent/usenet job) may produce **multiple Files**. Files belonging to the same download activity **share a `task_id`** — together they form one **release** (the post-download artefact; distinct from a "release" in the search-results sense, which is a row the user picked from). `download_history.task_id` is therefore non-UNIQUE; the release is the derived `GROUP BY task_id` across file rows. At queue time, one `'active'` sentinel row per `task_id` (per-file columns NULL) stands in for the in-flight release; at finalize, the sentinel is deleted and replaced by N concrete file rows.
+A single Import Activity may produce **multiple Files**. Files belonging to the same activity share a `task_id`; its source provenance is a distinct Source Release rather than a derived grouping of the File rows. `download_history.task_id` is therefore non-UNIQUE. At queue time, one `'active'` sentinel row per `task_id` (per-file columns NULL) stands in for the in-flight activity; at finalize, the sentinel is deleted and replaced by N concrete file rows.
 
-`download_history.book_id` (nullable, `ON DELETE SET NULL`) links a File to a Book. Legacy / direct-mode / un-lined rows have `book_id IS NULL` and are invisible to library queries. Backfill strategy for existing rows is deferred to the implementation ticket.
+`download_history.book_id` (nullable, `ON DELETE SET NULL`) links a File to a Book. Shelfmark creates no direct or non-library Downloads: every new Import Activity and File is Book-targeted. A cleared Book link is retained audit history after Book or Release Deletion, not a direct-download mode.
 
 A user's library surfaces a File via the **`user_downloads(user_id, history_id)` link table** — the load-bearing column for file visibility in a user's library. Multiple users can link the same `download_history` row. Library file serving gates on `user_library` Book-membership (any user with the Book in their library can download any of its files), not on `download_history.user_id`. The `download_history.user_id` column stays as an audit field for "the auth identity who triggered the download" — not exposed via the library API.
 
 ## Release Deletion
 
-A **Release Deletion** is an administrator-only, release-atomic destruction of every File in a release (all `download_history` rows sharing a `task_id`). It deletes the on-disk artifacts, removes every `user_downloads` link, and clears the retained history rows' `book_id` and `download_path`. The history rows remain as audit records, but their Files are unavailable and the release is no longer associated with the Book for any user. A later download may create and link a new release for that Book.
+A **Release Deletion** is an administrator-only, Import-Activity-atomic destruction of every File in an Import Activity (all `download_history` rows sharing a `task_id`). It deletes the immutable library artifacts, removes every `user_downloads` link, and clears the retained history rows' `book_id` and `download_path`. The history rows remain as audit records, but their Files are unavailable and the Import Activity is no longer associated with the Book for any user. Superseding an activity during correction uses the same deletion semantics. It does not destroy the retained Source Release; a later selection may create and link a new Import Activity for that Book.
 
-`user_downloads` links are created at **finalize time** (when N file rows are concrete), not at queue time: one row per File for each Download recipient. A direct Download has its triggering user as the recipient; a shared Request fulfilment has every requester with a fulfilled Request for the Book.
+`user_downloads` links are created at **finalize time** (when N file rows are concrete), not at queue time: one row per File for every applicable recipient: the administrator who initiated the Import Activity and every requester with a fulfilled Request for that Book.
 
 ## Orphan
 
