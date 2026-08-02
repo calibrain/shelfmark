@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import importlib
 import uuid
+from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
 
 from shelfmark.core.models import DownloadTask
+from shelfmark.release_sources import Release, ReleaseColumnConfig
 
 
 @pytest.fixture(scope="module")
@@ -259,6 +261,40 @@ class TestReleaseDownloadEndpointGuardrails:
         assert response.get_json() == {
             "error": "Manual release queries require administrator access"
         }
+
+    def test_release_search_derives_task_ids_with_requested_library_book_id(
+        self, main_module, client
+    ):
+        user = _create_user(main_module, prefix="reader")
+        library_book_id = _add_library_book(
+            main_module, user_id=user["id"], provider_book_id="book-for-release-search"
+        )
+        _set_authenticated_session(
+            client,
+            user_id=user["username"],
+            db_user_id=user["id"],
+        )
+        source = SimpleNamespace(
+            search=lambda *_args, **_kwargs: [
+                Release(source="test_source", source_id="release-without-book-id", title="Release")
+            ],
+            get_column_config=lambda: ReleaseColumnConfig(columns=[]),
+            last_search_type=None,
+        )
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch("shelfmark.release_sources.get_source", return_value=source):
+                with patch.object(
+                    main_module.backend, "derive_release_task_id", return_value="derived-task-id"
+                ) as derive_task_id:
+                    response = client.get(
+                        "/api/releases",
+                        query_string={"library_book_id": library_book_id, "source": "test_source"},
+                    )
+
+        assert response.status_code == 200
+        assert response.get_json()["releases"][0]["source_id"] == "release-without-book-id"
+        assert derive_task_id.call_args.args[0]["library_book_id"] == library_book_id
 
     def test_empty_json_payload_returns_400(self, main_module, client):
         with patch.object(main_module, "get_auth_mode", return_value="none"):

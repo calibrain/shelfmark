@@ -3066,7 +3066,10 @@ def api_releases() -> Response | tuple[Response, int]:
                 errors.append(error)
 
         # Convert Release objects to dicts
-        releases_data = [_serialize_release(release) for release in all_releases]
+        releases_data = [
+            {**_serialize_release(release), "library_book_id": library_book_id}
+            for release in all_releases
+        ]
         if library_service is not None:
             task_ids = [backend.derive_release_task_id(release) for release in releases_data]
             states = library_service.get_release_library_states(
