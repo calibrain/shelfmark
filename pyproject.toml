@@ -40,7 +40,7 @@ dev = [
     "pytest",
     "pytest-cov",
     "pytest-xdist>=3.8.0",
-    "ruff==0.16.0",
+    "ruff==0.16.1",
     "vulture>=2.14",
 ]
 
