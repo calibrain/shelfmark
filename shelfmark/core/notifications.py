@@ -597,14 +597,18 @@ def _html_book_card(context: NotificationContext, cta_url: str) -> str:
 
     cta_html = _html_cta_button(cta_url, book.get("title")) if cta_url else ""
 
-    return (
-        '<div style="display:flex;gap:26px;align-items:flex-start;">'
+    # Two-column table (not flexbox) so cover/text spacing renders reliably in
+    # every email client; email clients do not consistently honor flex ``gap``.
+    card_header = (
+        '<table role="presentation" cellpadding="0" cellspacing="0" '
+        'style="width:100%;"><tr>'
+        '<td style="vertical-align:top;padding-right:28px;width:112px;max-width:112px;">'
         + cover_html
+        + "</td><td style=\"vertical-align:top;\">"
         + info_html
-        + "</div>"
-        + description_html
-        + cta_html
+        + "</td></tr></table>"
     )
+    return card_header + description_html + cta_html
 
 
 def _render_html_email(context: NotificationContext) -> str:
