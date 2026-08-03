@@ -68,6 +68,33 @@ const toReleaseBook = (book: BookDetailResponse): Book => ({
 const dateLabel = (date: string | null): string =>
   date ? new Date(date).toLocaleDateString() : 'date unknown';
 
+const DownloadIcon = () => (
+  <svg
+    className="h-4 w-4"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    aria-hidden="true"
+  >
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4m-5 6v3h18v-3" />
+  </svg>
+);
+
+const SendIcon = () => (
+  <svg
+    className="h-4 w-4"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    aria-hidden="true"
+  >
+    <path strokeLinecap="round" strokeLinejoin="round" d="m22 2-7 20-4-9-9-4 20-7Z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="m22 2-11 11" />
+  </svg>
+);
+
 export const shouldAutoFindReleases = ({
   canFindReleases,
   autoFindReleases,
@@ -312,24 +339,36 @@ const AvailableFiles = ({
                     <span className="min-w-0 flex-1 truncate text-xs text-gray-500">
                       {file.download_path || 'Path unknown'}
                     </span>
-                    {file.downloadable_by_me && (
+                    <div className="ml-auto flex shrink-0 items-center gap-1">
                       <button
                         type="button"
-                        className="hover-action ml-auto cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-sky-700 dark:text-sky-300"
+                        disabled={!file.downloadable_by_me}
+                        title={
+                          file.downloadable_by_me
+                            ? `Download ${file.download_path ?? 'file'}`
+                            : 'Download is not available to you'
+                        }
+                        aria-label="Download"
+                        className={`rounded-md p-2 text-sky-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-sky-300 ${file.downloadable_by_me ? 'hover-action cursor-pointer' : ''}`}
                         onClick={() => onDownload(file)}
                       >
-                        Download
+                        <DownloadIcon />
                       </button>
-                    )}
-                    {file.format?.toLowerCase() === 'epub' && (
                       <button
                         type="button"
-                        className="hover-action cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-emerald-700 dark:text-emerald-300"
+                        disabled={file.format?.toLowerCase() !== 'epub'}
+                        title={
+                          file.format?.toLowerCase() === 'epub'
+                            ? 'Send this EPUB to Kindle'
+                            : 'Send to Kindle is available for EPUB files only'
+                        }
+                        aria-label="Send to Kindle"
+                        className={`rounded-md p-2 text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-300 ${file.format?.toLowerCase() === 'epub' ? 'hover-action cursor-pointer' : ''}`}
                         onClick={() => onSendToKindle({ historyId: file.history_id })}
                       >
-                        Send to Kindle
+                        <SendIcon />
                       </button>
-                    )}
+                    </div>
                   </div>
                 ))}
               </div>
