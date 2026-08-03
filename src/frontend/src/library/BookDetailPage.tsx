@@ -1088,6 +1088,7 @@ export const BookDetailPage = ({
             void mutate(
               () => downloadLibraryFile(book.book_id, { historyId: file.history_id }),
               'Download started',
+              false,
             )
           }
           onFindReleases={() => onFindReleases(toReleaseBook(book))}
