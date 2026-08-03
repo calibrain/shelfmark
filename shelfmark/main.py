@@ -1590,6 +1590,7 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
                                     title=book["title"],
                                     author=book["author"],
                                     book_id=book_id,
+                                    book=book,
                                 ),
                             )
             except _OPERATIONAL_ERRORS as exc:

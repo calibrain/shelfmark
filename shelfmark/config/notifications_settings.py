@@ -12,6 +12,7 @@ from shelfmark.core.settings_registry import (
     HeadingField,
     SettingsField,
     TableField,
+    TextField,
     load_config_file,
     register_on_save,
     register_settings,
@@ -109,6 +110,18 @@ def notifications_settings() -> list[SettingsField]:
             key="notifications_heading",
             title="Administrator Notifications",
             description="Instance-level operational delivery targets. Personal notifications are configured by each user.",
+        ),
+        TextField(
+            key="NOTIFICATION_BASE_URL",
+            label="Public Base URL",
+            description=(
+                "The public URL where users reach this Shelfmark instance "
+                "(e.g. https://shelfmark.example.com). Used to build clickable "
+                "links to books in notification emails. Leave blank to send "
+                "relative links."
+            ),
+            placeholder="https://shelfmark.example.com",
+            env_supported=True,
         ),
         TableField(
             key="ADMIN_NOTIFICATION_TARGETS",

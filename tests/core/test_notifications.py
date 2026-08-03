@@ -134,7 +134,12 @@ def test_personal_email_delivery_uses_configured_sender_and_account_recipient(mo
     assert config is smtp_config
     assert message["From"] == "Shelfmark <sender@example.com>"
     assert message["To"] == "reader@example.com"
-    assert "Note: Not available" in message.get_content()
+    plain_part = message.get_body(preferencelist=("plain",))
+    assert plain_part is not None
+    assert "Note: Not available" in plain_part.get_content()
+    html_part = message.get_body(preferencelist=("html",))
+    assert html_part is not None
+    assert message["Subject"] == "Request Rejected"
 
 
 def test_personal_delivery_ignores_operational_events(monkeypatch):
@@ -222,3 +227,114 @@ def test_personal_test_requires_an_active_valid_destination():
         1,
     )
     assert result["success"] is False
+
+
+def _conf_get(base_url, base_path):
+    def get(key, default=None):
+        return {"NOTIFICATION_BASE_URL": base_url, "URL_BASE": base_path}.get(key, default)
+
+    return get
+
+
+def _book(monkeypatch):
+    return {
+        "id": 17,
+        "title": "The Book & <Title>",
+        "author": "Author",
+        "subtitle": "A subtitle",
+        "publish_year": 2007,
+        "series_name": "Series",
+        "series_position": 2,
+        "language": "en",
+        "isbn_13": "9780000000000",
+        "cover_url": "https://img.example.com/cover.jpg",
+        "metadata_json": {"description": "A short description.", "display_fields": []},
+    }
+
+
+def test_render_message_is_test_uses_test_subject():
+    title, body = notifications_module._render_message(
+        notifications_module.NotificationContext(
+            event=notifications_module.NotificationEvent.REQUEST_CREATED,
+            title="Shelfmark Test Notification",
+            author="Shelfmark",
+            username="Shelfmark",
+            is_test=True,
+        )
+    )
+    assert title == "Shelfmark Test Notification"
+    assert "test notification" in body
+
+
+def test_build_book_url_falls_back_to_relative_without_base_url(monkeypatch):
+    monkeypatch.setattr(
+        notifications_module.app_config, "get", _conf_get("", "")
+    )
+    assert notifications_module._build_book_url(17) == "/library/17"
+
+
+def test_build_book_url_combines_base_and_base_path(monkeypatch):
+    monkeypatch.setattr(
+        notifications_module.app_config,
+        "get",
+        _conf_get("https://shelfmark.example.com", "/shelfmark"),
+    )
+    assert (
+        notifications_module._build_book_url(17)
+        == "https://shelfmark.example.com/shelfmark/library/17"
+    )
+
+
+def test_html_email_includes_absolute_link_and_book_card(monkeypatch):
+    monkeypatch.setattr(
+        notifications_module.app_config,
+        "get",
+        _conf_get("https://shelfmark.example.com", "/shelfmark"),
+    )
+    context = notifications_module.NotificationContext(
+        event=notifications_module.NotificationEvent.REQUEST_FULFILLED,
+        title="The Book",
+        author="Author",
+        book_id=17,
+        book=_book(monkeypatch),
+    )
+    html = notifications_module._render_html_email(context)
+    assert "https://shelfmark.example.com/shelfmark/library/17" in html
+    assert "https://img.example.com/cover.jpg" in html
+    assert "View in Library" in html
+    assert "The Book &amp; &lt;Title&gt;" in html
+    assert "About this book" in html
+
+
+def test_html_email_hides_book_card_without_book(monkeypatch):
+    monkeypatch.setattr(
+        notifications_module.app_config, "get", _conf_get("", "")
+    )
+    context = notifications_module.NotificationContext(
+        event=notifications_module.NotificationEvent.DOWNLOAD_COMPLETE,
+        title="A Book",
+        author="Author",
+    )
+    html = notifications_module._render_html_email(context)
+    assert "View in Library" not in html
+
+
+def test_html_email_test_template_renders_sample_card(monkeypatch):
+    monkeypatch.setattr(
+        notifications_module.app_config,
+        "get",
+        _conf_get("https://shelfmark.example.com", ""),
+    )
+    context = notifications_module.NotificationContext(
+        event=notifications_module.NotificationEvent.REQUEST_CREATED,
+        title="Shelfmark Test Notification",
+        author="Shelfmark",
+        username="Shelfmark",
+        is_test=True,
+        book=dict(notifications_module._SAMPLE_BOOK),
+    )
+    html = notifications_module._render_html_email(context)
+    assert "Shelfmark test email" in html
+    assert "https://shelfmark.example.com/library" in html
+    assert "No cover" in html
+

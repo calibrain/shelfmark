@@ -75,6 +75,7 @@ def _notify_request(user_db: UserDB, request_row: dict[str, Any], event: Notific
         author=book["author"],
         admin_note=request_row.get("admin_note"),
         book_id=book["id"],
+        book=book,
     )
     if event == NotificationEvent.REQUEST_CREATED:
         requester = user_db.get_user(user_id=request_row["user_id"])

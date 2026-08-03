@@ -976,13 +976,35 @@ class UserDB:
             conn.close()
 
     def get_book_notification_context(self, book_id: int) -> dict[str, Any] | None:
-        """Return the small canonical Book projection used by notifications."""
+        """Return the canonical Book projection used by notifications.
+
+        Includes the rich Hardcover snapshot (cover, subtitle, series, year,
+        ISBN, description/display fields) so notification emails can render a
+        book card without a live metadata fetch. ``metadata_json`` is parsed
+        from its stored JSON text.
+        """
         conn = self._connect()
         try:
             row = conn.execute(
-                "SELECT id, title, author FROM books WHERE id = ?", (book_id,)
+                """
+                SELECT id, metadata_provider, provider_book_id, title, author,
+                       subtitle, publish_year, isbn_13, cover_url, series_name,
+                       series_position, language, metadata_json
+                FROM books WHERE id = ?
+                """,
+                (book_id,),
             ).fetchone()
-            return dict(row) if row else None
+            if row is None:
+                return None
+            book = dict(row)
+            raw_metadata = book.get("metadata_json")
+            if isinstance(raw_metadata, str):
+                try:
+                    parsed = json.loads(raw_metadata)
+                except json.JSONDecodeError:
+                    parsed = {}
+                book["metadata_json"] = parsed if isinstance(parsed, dict) else {}
+            return book
         finally:
             conn.close()
 

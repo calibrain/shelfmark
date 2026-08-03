@@ -10,6 +10,7 @@ def test_notifications_tab_exposes_only_administrator_operational_targets():
     fields = {field.key: field for field in tab.fields if hasattr(field, "key")}
     assert set(fields) == {
         "notifications_heading",
+        "NOTIFICATION_BASE_URL",
         "ADMIN_NOTIFICATION_TARGETS",
         "test_admin_notification",
     }

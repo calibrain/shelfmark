@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import html
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor
@@ -43,6 +44,35 @@ _APPRISE_LOGO_URL = (
 )
 _APPRISE_LOGGER_NAME = "apprise"
 _APPRISE_DISPATCH_ERRORS = (RuntimeError, TypeError, ValueError)
+
+# Representative book shown in the test notification so the full email template
+# (book card, cover placeholder, chips, description, library link) can be
+# previewed. Real notifications use the requested book's stored Hardcover data.
+_SAMPLE_BOOK: dict[str, Any] = {
+    "id": None,
+    "title": "The Lighthouse Keeper's Daughter",
+    "author": "Jane Doe",
+    "subtitle": "A sweeping tale of the sea",
+    "publish_year": 2024,
+    "series_name": None,
+    "series_position": None,
+    "language": "English",
+    "isbn_13": "9781234567890",
+    "cover_url": None,
+    "metadata_json": {
+        "description": (
+            "When a lighthouse keeper's daughter discovers a washed-up journal, "
+            "she is pulled into a century-old mystery that would change her "
+            "coastal village forever. This sample book is shown to preview how "
+            "Shelfmark notification emails look; real notifications show the "
+            "requested book's details from Hardcover."
+        ),
+        "display_fields": [
+            {"label": "Rating", "value": "4.6 (1,204)", "icon": "star"},
+            {"label": "Readers", "value": "3,215", "icon": "users"},
+        ],
+    },
+}
 
 
 class _ApprisePluginWithUrl(Protocol):
@@ -95,6 +125,41 @@ class NotificationContext:
     admin_note: str | None = None
     error_message: str | None = None
     book_id: int | None = None
+    book: dict[str, Any] | None = None
+    is_test: bool = False
+
+
+def _notification_public_base() -> str:
+    """Return the configured public base URL (``scheme://host``) or empty string."""
+    from shelfmark.core.utils import normalize_http_url, normalize_optional_text
+
+    raw = normalize_optional_text(app_config.get("NOTIFICATION_BASE_URL", ""))
+    if not raw:
+        return ""
+    return normalize_http_url(raw, default_scheme="https", strip_trailing_slash=True)
+
+
+def _notification_base_path() -> str:
+    from shelfmark.core.utils import normalize_base_path, normalize_optional_text
+
+    return normalize_base_path(normalize_optional_text(app_config.get("URL_BASE", "")))
+
+
+def _build_book_url(book_id: object) -> str:
+    """Build the library link for a book, absolute when a base URL is set."""
+    normalized_id = normalize_positive_int(book_id)
+    if normalized_id is None:
+        return ""
+    path = f"{_notification_base_path()}/library/{normalized_id}"
+    base = _notification_public_base()
+    return f"{base}{path}" if base else path
+
+
+def _build_library_home_url() -> str:
+    """Build the library home link (used by the test email as a dead-link-safe CTA)."""
+    path = f"{_notification_base_path()}/library"
+    base = _notification_public_base()
+    return f"{base}{path}" if base else path
 
 
 def _normalize_urls(value: object) -> list[str]:
@@ -328,11 +393,14 @@ def _render_message(context: NotificationContext) -> tuple[str, str]:
     author = _clean_text(context.author, "Unknown author")
     username = _clean_text(context.username, "A user")
 
+    if context.is_test:
+        return "Shelfmark Test Notification", "This is a test notification from Shelfmark."
     if event == NotificationEvent.REQUEST_CREATED:
         return "New Request", f'{username} requested "{title}" by {author}'
     if event == NotificationEvent.REQUEST_FULFILLED:
-        link = f"\nView book: /library/{context.book_id}" if context.book_id else ""
-        return "Requested Book Available", f'"{title}" by {author} is now available.{link}'
+        link = _build_book_url(context.book_id)
+        link_line = f"\nView book: {link}" if link else ""
+        return "Requested Book Available", f'"{title}" by {author} is now available.{link_line}'
     if event == NotificationEvent.REQUEST_REJECTED:
         note = _clean_text(context.admin_note, "")
         note_line = f"\nNote: {note}" if note else ""
@@ -346,6 +414,258 @@ def _render_message(context: NotificationContext) -> tuple[str, str]:
     error_message = _clean_text(context.error_message, "")
     error_line = f"\nError: {error_message}" if error_message else ""
     return "Download Failed", f'Failed to download "{title}" by {author}.{error_line}'
+
+
+def _html_escape(value: object) -> str:
+    return html.escape(str(value if value is not None else ""), quote=True)
+
+
+def _html_action_copy(context: NotificationContext) -> tuple[str, str]:
+    """Return (hero, detail) copy for the HTML template.
+
+    One template serves every notification action: the hero message and detail
+    copy change per event while the book card, cover, and library link stay the
+    same. The test email uses the same template with its own message/subject.
+    """
+    event = context.event
+    title = _clean_text(context.title, "Unknown title")
+    author = _clean_text(context.author, "Unknown author")
+    username = _clean_text(context.username, "A user")
+
+    if context.is_test:
+        return (
+            "Shelfmark test email",
+            "This test notification confirms your Shelfmark notification settings "
+            "are working. A real notification would show the requested book here.",
+        )
+    if event == NotificationEvent.REQUEST_CREATED:
+        return "New request submitted", f'{username} requested "{title}" by {author}.'
+    if event == NotificationEvent.REQUEST_FULFILLED:
+        return (
+            "Your requested book is ready",
+            f'"{title}" by {author} is now available in your library.',
+        )
+    if event == NotificationEvent.REQUEST_REJECTED:
+        note = _clean_text(context.admin_note, "")
+        detail = f'Request for "{title}" by {author} was declined.'
+        if note:
+            detail += f' The administrator left this note: "{note}".'
+        return "Request declined", detail
+    if event == NotificationEvent.DOWNLOAD_COMPLETE:
+        return "Download complete", f'"{title}" by {author} downloaded successfully.'
+
+    error_message = _clean_text(context.error_message, "")
+    detail = f'Failed to download "{title}" by {author}.'
+    if error_message:
+        detail += f" Error: {error_message}"
+    return "Download failed", detail
+
+
+def _resolve_email_cover_url(cover_url: object) -> str | None:
+    """Return an absolute cover URL for email clients, or None to use a placeholder.
+
+    Stored covers are either absolute (external host) or relative proxy paths
+    (cover caching enabled). Relative paths are only usable in email when a
+    public base URL is configured.
+    """
+    raw = str(cover_url or "").strip()
+    if not raw:
+        return None
+    if raw.startswith("/"):
+        base = _notification_public_base()
+        return f"{base}{raw}" if base else None
+    return raw
+
+
+def _html_cta_button(url: str, title: object, label: str = "View in Library") -> str:
+    return (
+        '<div style="margin-top:26px;text-align:center;">'
+        f'<a href="{_html_escape(url)}" '
+        'style="display:inline-block;background:#7c3aed;color:#ffffff;padding:13px 28px;'
+        'border-radius:8px;font-size:15px;font-weight:600;text-decoration:none;'
+        f'text-align:center;">{_html_escape(label)}</a>'
+        '<p style="margin:10px 0 0;font-size:12px;color:#9ca3af;">'
+        f'{_html_escape(title)} — opens in your Shelfmark library</p>'
+        "</div>"
+    )
+
+
+def _html_footer_link(url: str) -> str:
+    """A plain clickable fallback link for clients that strip rich CTA buttons."""
+    return (
+        '<p style="margin:8px 0 0;font-size:12px;color:#9ca3af;">'
+        f'<a href="{_html_escape(url)}" '
+        f'style="color:#7c3aed;text-decoration:underline;">{_html_escape(url)}</a></p>'
+    )
+
+
+def _html_book_card(context: NotificationContext) -> str:
+    """Build the book card section (cover, title block, chips, description)."""
+    book = context.book if isinstance(context.book, dict) else None
+    if book is None:
+        return (
+            '<p style="margin:0;text-align:center;font-size:15px;color:#4b5563;'
+            f'line-height:1.6;">{_html_escape(_html_action_copy(context)[1])}</p>'
+        )
+
+    cover_url = _resolve_email_cover_url(book.get("cover_url"))
+    if cover_url:
+        cover_html = (
+            f'<img src="{_html_escape(cover_url)}" alt="{_html_escape(book.get("title"))}" '
+            'style="width:112px;height:168px;object-fit:cover;border-radius:10px;'
+            'display:block;box-shadow:0 4px 14px rgba(0,0,0,0.14);flex-shrink:0;" />'
+        )
+    else:
+        cover_html = (
+            '<div style="width:112px;height:168px;border-radius:10px;flex-shrink:0;'
+            'background:#ede9fe;display:flex;align-items:center;justify-content:center;'
+            'color:#7c3aed;font-size:12px;font-weight:600;letter-spacing:0.05em;">'
+            "No cover</div>"
+        )
+
+    title = _html_escape(book.get("title") or context.title or "Unknown title")
+    subtitle = _html_escape(book.get("subtitle"))
+    author = _html_escape(book.get("author") or context.author or "Unknown author")
+
+    meta_parts: list[str] = []
+    if book.get("publish_year"):
+        meta_parts.append(_html_escape(book["publish_year"]))
+    series = book.get("series_name")
+    if series:
+        series_label = str(series)
+        if book.get("series_position") is not None:
+            series_label += f" #{book['series_position']}"
+        meta_parts.append(_html_escape(series_label))
+    if book.get("language"):
+        meta_parts.append(_html_escape(str(book["language"]).upper()))
+    if book.get("isbn_13"):
+        meta_parts.append(_html_escape(f"ISBN {book['isbn_13']}"))
+    meta_html = (
+        f'<p style="margin:10px 0 0;font-size:12px;color:#6b7280;">{" · ".join(meta_parts)}</p>'
+        if meta_parts
+        else ""
+    )
+
+    metadata_json = book.get("metadata_json") or {}
+    display_fields = (
+        metadata_json.get("display_fields")
+        if isinstance(metadata_json, dict) and isinstance(metadata_json.get("display_fields"), list)
+        else []
+    )
+    chips: list[str] = []
+    for field in display_fields[:3]:
+        if not isinstance(field, dict):
+            continue
+        label = str(field.get("label") or "").strip()
+        value = str(field.get("value") or "").strip()
+        if label and value:
+            chips.append(
+                '<span style="display:inline-block;background:#f5f3ff;color:#6d28d9;'
+                'border-radius:8px;padding:5px 10px;font-size:12px;font-weight:600;'
+                f'margin:0 6px 6px 0;">{_html_escape(label)}: {_html_escape(value)}</span>'
+            )
+    chips_html = f'<div style="margin-top:14px;">{"".join(chips)}</div>' if chips else ""
+
+    info_html = (
+        '<div style="min-width:0;flex:1;">'
+        f'<h2 style="margin:0;font-size:22px;font-weight:700;color:#111827;line-height:1.3;">{title}</h2>'
+        + (f'<p style="margin:4px 0 0;font-size:15px;color:#6b7280;line-height:1.4;">{subtitle}</p>' if subtitle else "")
+        + f'<p style="margin:8px 0 0;font-size:13px;font-weight:600;color:#374151;">{author}</p>'
+        + meta_html
+        + chips_html
+        + "</div>"
+    )
+
+    description = (
+        metadata_json.get("description")
+        if isinstance(metadata_json, dict)
+        else None
+    )
+    description_html = ""
+    if description:
+        description_text = str(description).strip()
+        if len(description_text) > 420:
+            description_text = description_text[:420].rstrip() + "…"
+        description_html = (
+            '<div style="margin-top:22px;padding-top:20px;border-top:1px solid #f3f4f6;">'
+            '<p style="margin:0;font-size:12px;font-weight:600;letter-spacing:0.06em;'
+            'text-transform:uppercase;color:#6b7280;">About this book</p>'
+            f'<p style="margin:8px 0 0;font-size:14px;line-height:1.7;color:#4b5563;">'
+            f"{_html_escape(description_text)}</p>"
+            "</div>"
+        )
+
+    book_url = _build_book_url(context.book_id)
+    cta_html = _html_cta_button(book_url, book.get("title")) if book_url else ""
+
+    return (
+        '<div style="display:flex;gap:20px;align-items:flex-start;">'
+        + cover_html
+        + info_html
+        + "</div>"
+        + description_html
+        + cta_html
+    )
+
+
+def _render_html_email(context: NotificationContext) -> str:
+    """Render the shared HTML notification email template.
+
+    One template serves every notification action and the test email; only the
+    hero message, detail copy, and subject differ between events. The book card
+    (cover, title, author, series, year, description) and library link are the
+    same for every book-related action.
+    """
+    hero, detail = _html_action_copy(context)
+    book_url = _build_book_url(context.book_id)
+    if not book_url and context.is_test:
+        book_url = _build_library_home_url()
+
+    header_detail = detail
+    if book_url and not (context.book and isinstance(context.book, dict)):
+        header_detail = f"{detail} Open it at {book_url}."
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="x-apple-disable-message-reformatting" />
+<title>{_html_escape(hero)}</title>
+</head>
+<body style="margin:0;padding:0;background:#f3f4f6;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;">{_html_escape(detail)}</div>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#f3f4f6;">
+<tr>
+<td align="center" style="padding:32px 16px;">
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:600px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 2px 12px rgba(0,0,0,0.06);">
+<tr>
+<td style="background:#5b21b6;padding:26px 32px;">
+<p style="margin:0;font-size:12px;font-weight:700;letter-spacing:0.14em;text-transform:uppercase;color:#c4b5fd;">Shelfmark</p>
+<h1 style="margin:8px 0 0;font-size:22px;font-weight:700;color:#ffffff;line-height:1.3;">{_html_escape(hero)}</h1>
+<p style="margin:8px 0 0;font-size:14px;color:#ddd6fe;line-height:1.5;">{_html_escape(header_detail)}</p>
+</td>
+</tr>
+<tr>
+<td style="padding:28px 32px;">
+{_html_book_card(context)}
+</td>
+</tr>
+<tr>
+<td style="background:#f9fafb;padding:18px 32px;">
+<p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">
+Sent by <strong>Shelfmark</strong>. Reply to this email is not monitored.
+</p>
+{_html_footer_link(book_url) if book_url else ""}
+</td>
+</tr>
+</table>
+</td>
+</tr>
+</table>
+</body>
+</html>
+"""
 
 
 def _plugin_label(plugin: object, fallback_scheme: str) -> str:
@@ -684,6 +1004,7 @@ def _deliver(
         message["To"] = destination
         message["Subject"] = title
         message.set_content(body)
+        message.add_alternative(_render_html_email(context), subtype="html")
         send_email_message(smtp_config, message)
     except EmailOutputError as exc:
         return {"success": False, "message": str(exc)}
@@ -726,6 +1047,8 @@ def send_personal_test_notification(user_db: Any, user_id: int) -> dict[str, Any
             title="Shelfmark Test Notification",
             author="Shelfmark",
             username="Shelfmark",
+            is_test=True,
+            book=dict(_SAMPLE_BOOK),
         ),
     )
 
@@ -741,5 +1064,7 @@ def send_test_notification(urls: list[str]) -> dict[str, Any]:
         title="Shelfmark Test Notification",
         author="Shelfmark",
         username="Shelfmark",
+        is_test=True,
+        book=dict(_SAMPLE_BOOK),
     )
     return _send_apprise_event(NotificationEvent.REQUEST_CREATED, test_context, normalized_urls)
