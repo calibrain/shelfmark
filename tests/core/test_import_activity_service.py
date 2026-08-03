@@ -276,7 +276,9 @@ def test_reselecting_deleted_release_member_creates_a_new_final_file():
         deleted = imports.get_by_task_id("activity-1")
         assert deleted is not None
         assert deleted["book_id"] is None
-        assert [selection["source_member_id"] for selection in deleted["selections"]] == [member["id"]]
+        assert [selection["source_member_id"] for selection in deleted["selections"]] == [
+            member["id"]
+        ]
 
         second = imports.accept_book_targeted_release(
             source_key="prowlarr:abc123",

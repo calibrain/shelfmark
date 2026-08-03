@@ -1554,13 +1554,21 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
 
     if finalized_download:
         book_id = normalize_positive_int(getattr(task, "library_book_id", None))
-        if effective_final_status == QueueStatus.COMPLETE.value and book_id is not None and finalized_files:
+        if (
+            effective_final_status == QueueStatus.COMPLETE.value
+            and book_id is not None
+            and finalized_files
+        ):
             try:
                 _emit_library_book_availability(book_id=book_id, task_id=task_id)
             except _OPERATIONAL_ERRORS as exc:
                 logger.warning("Failed to emit availability for Book %s: %s", book_id, exc)
 
-        if effective_final_status == QueueStatus.COMPLETE.value and book_id is not None and file_rows:
+        if (
+            effective_final_status == QueueStatus.COMPLETE.value
+            and book_id is not None
+            and file_rows
+        ):
             try:
                 _emit_request_update_events(fulfilled_requests)
                 if user_db is not None:
