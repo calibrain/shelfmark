@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import os
 import tempfile
+from pathlib import Path
 from typing import Any
 from unittest.mock import patch
 
@@ -11,6 +12,7 @@ import pytest
 from flask import Flask
 
 from shelfmark.core.download_history_service import DownloadHistoryService
+from shelfmark.core.import_activity_service import ImportActivityService
 from shelfmark.core.library_routes import register_library_routes
 from shelfmark.core.library_service import LibraryService
 from shelfmark.core.request_routes import register_request_routes
@@ -44,6 +46,11 @@ def download_history_service(db_path):
 
 
 @pytest.fixture
+def import_activity_service(db_path):
+    return ImportActivityService(db_path)
+
+
+@pytest.fixture
 def library_service(user_db, db_path):
     return LibraryService(db_path)
 
@@ -53,6 +60,8 @@ def app(
     user_db,
     library_service,
     download_history_service,
+    import_activity_service,
+    tmp_path,
 ):
     test_app = Flask(__name__)
     test_app.config["SECRET_KEY"] = "test-secret"
@@ -106,6 +115,8 @@ def app(
             and not test_app.extensions["cancel_should_fail"]
         ),
         clear_completed_download=_clear_completed_download,
+        import_activity_service=import_activity_service,
+        storage_root=tmp_path / "books",
     )
     register_request_routes(
         test_app,
@@ -540,6 +551,83 @@ def test_book_detail_returns_full_metadata_for_member(app, user_db):
     assert resp["title"] == "Book 42"
     assert resp["in_my_library"] is True
     assert resp["metadata_json"] == {"provider": "hardcover", "provider_id": "42"}
+
+
+def test_admin_can_review_and_replace_a_completed_source_release(
+    app, user_db, import_activity_service, download_history_service, library_service, tmp_path
+):
+    admin = user_db.create_user(username="admin", role="admin")
+    book_id = client_post_book(app, admin, "hardcover", "review-source")
+    source_root = tmp_path / "retained"
+    source_root.mkdir()
+    source_file = source_root / "Book.epub"
+    source_file.write_bytes(b"replacement")
+    original = import_activity_service.accept_book_targeted_release(
+        source_key="prowlarr:review-source",
+        source="prowlarr",
+        source_metadata={},
+        task_id="original-release",
+        book_id=book_id,
+    )
+    import_activity_service.set_source_root(
+        source_release_id=original["source_release_id"], source_root=source_root
+    )
+    member = import_activity_service.record_source_member(
+        source_release_id=original["source_release_id"],
+        relative_path="Book.epub",
+        size=len(b"replacement"),
+        file_format="epub",
+        discovery_status="discovered",
+    )
+    import_activity_service.complete(activity_id=original["id"])
+    old_path = tmp_path / "old.epub"
+    old_path.write_bytes(b"old")
+    download_history_service.record_download(
+        task_id="original-release",
+        user_id=admin["id"],
+        username="admin",
+        request_id=None,
+        source="prowlarr",
+        source_display_name="Prowlarr",
+        title="Book review-source",
+        author="Author A",
+        file_format=None,
+        size=None,
+        preview=None,
+        content_type="ebook",
+        origin="book",
+        book_id=book_id,
+        import_activity_id=original["id"],
+    )
+    download_history_service.finalize_download_files(
+        task_id="original-release",
+        final_status="complete",
+        file_rows=[{"download_path": str(old_path), "format": "epub", "size": "3"}],
+    )
+    client = _authed_client(app, admin, is_admin=True)
+
+    review = client.get(f"/api/library/books/{book_id}/releases/{original['id']}/review")
+    replacement = client.post(
+        f"/api/library/books/{book_id}/releases/{original['id']}/review",
+        json={"member_ids": [member["id"]]},
+    )
+
+    assert review.status_code == 200
+    assert review.json["members"] == [
+        {
+            "available": True,
+            "evidence": {"result": "Previously selected"},
+            "format": "epub",
+            "id": member["id"],
+            "relative_path": "Book.epub",
+            "size": len(b"replacement"),
+        }
+    ]
+    assert replacement.status_code == 200, replacement.json
+    files = library_service.get_files_on_disk(book_id)
+    assert len(files) == 1
+    assert Path(files[0]["download_path"]).read_bytes() == b"replacement"
+    assert not old_path.exists()
 
 
 def test_request_only_member_gets_existing_files_and_can_send_them_to_kindle(

@@ -493,7 +493,7 @@ class LibraryService:
                 """
                 SELECT id, task_id, source, source_display_name, title, author,
                        format, size, content_type, download_path,
-                       username, user_id AS triggering_user_id, queued_at,
+                        username, user_id AS triggering_user_id, import_activity_id, queued_at,
                        terminal_at, final_status
                 FROM download_history
                 WHERE book_id = ?

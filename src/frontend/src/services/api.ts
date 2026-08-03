@@ -2,6 +2,7 @@ import type {
   BookDetailResponse,
   LibraryBooksResponse,
   LibraryPurgePreview,
+  ReleaseReviewResponse,
 } from '../library/types';
 import type {
   Book,
@@ -531,6 +532,26 @@ export const purgeLibraryBook = async (bookId: number): Promise<void> => {
 
 export const deleteLibraryRelease = async (bookId: number, historyId: number): Promise<void> => {
   await fetchJSON(`${API.libraryBooks}/${bookId}/downloads/${historyId}`, { method: 'DELETE' });
+};
+
+export const getLibraryReleaseReview = async (
+  bookId: number,
+  activityId: number,
+): Promise<ReleaseReviewResponse> => {
+  return fetchJSON<ReleaseReviewResponse>(
+    `${API.libraryBooks}/${bookId}/releases/${activityId}/review`,
+  );
+};
+
+export const replaceLibraryRelease = async (
+  bookId: number,
+  activityId: number,
+  memberIds: number[],
+): Promise<void> => {
+  await fetchJSON(`${API.libraryBooks}/${bookId}/releases/${activityId}/review`, {
+    method: 'POST',
+    body: JSON.stringify({ member_ids: memberIds }),
+  });
 };
 
 export const sendLibraryBookToKindle = async (

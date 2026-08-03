@@ -176,6 +176,7 @@ CREATE TABLE IF NOT EXISTS source_releases (
     source_key      TEXT NOT NULL UNIQUE,
     source          TEXT NOT NULL,
     metadata_json   TEXT NOT NULL DEFAULT '{}',
+    source_root     TEXT,
     accepted_at     TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
@@ -202,6 +203,7 @@ CREATE TABLE IF NOT EXISTS import_activities (
     state               TEXT NOT NULL,
     retry_count         INTEGER NOT NULL DEFAULT 0,
     error_context_json  TEXT,
+    selected_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
     created_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at          TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
@@ -321,6 +323,7 @@ class UserDB:
                 self._migrate_download_history_book_id(conn)
                 self._migrate_download_history_task_id_nonunique(conn)
                 self._migrate_download_history_import_activity_id(conn)
+                self._migrate_source_release_review_columns(conn)
                 conn.commit()
                 # WAL mode must be changed outside an open transaction.
                 conn.execute("PRAGMA journal_mode=WAL")
@@ -465,6 +468,23 @@ class UserDB:
             "ON download_history (book_id) WHERE final_status = 'complete' "
             "AND download_path IS NOT NULL"
         )
+
+    def _migrate_source_release_review_columns(self, conn: sqlite3.Connection) -> None:
+        """Add retained-source and selector audit fields to existing library databases."""
+        source_columns = {
+            str(column["name"]) for column in conn.execute("PRAGMA table_info(source_releases)")
+        }
+        if "source_root" not in source_columns:
+            conn.execute("ALTER TABLE source_releases ADD COLUMN source_root TEXT")
+
+        activity_columns = {
+            str(column["name"]) for column in conn.execute("PRAGMA table_info(import_activities)")
+        }
+        if "selected_by_user_id" not in activity_columns:
+            conn.execute(
+                "ALTER TABLE import_activities ADD COLUMN selected_by_user_id "
+                "INTEGER REFERENCES users(id) ON DELETE SET NULL"
+            )
 
     def _migrate_download_history_task_id_nonunique(self, conn: sqlite3.Connection) -> None:
         """Drop the legacy UNIQUE constraint on ``download_history.task_id``.

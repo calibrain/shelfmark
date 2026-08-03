@@ -1,12 +1,30 @@
 export interface LibraryFile {
   history_id: number;
   task_id: string;
+  import_activity_id: number | null;
   format: string | null;
   size: string | null;
   indexer_display_name: string | null;
   protocol: string | null;
   downloaded_at: string | null;
   downloadable_by_me: boolean;
+}
+
+export interface SourceMemberReview {
+  id: number;
+  relative_path: string;
+  format: string | null;
+  size: number | null;
+  available: boolean;
+  evidence: { result: string };
+}
+
+export interface ReleaseReviewResponse {
+  activity_id: number;
+  source: string;
+  source_key: string;
+  members: SourceMemberReview[];
+  destination: string;
 }
 
 export interface InFlightDownload {

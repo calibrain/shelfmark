@@ -15,6 +15,8 @@ import {
   removeLibraryBook,
   sendLibraryBookToKindle,
   deleteLibraryRelease,
+  getLibraryReleaseReview,
+  replaceLibraryRelease,
 } from '../services/api';
 import type { Book, RequestRecord } from '../types';
 import { withBasePath } from '../utils/basePath';
@@ -26,6 +28,7 @@ import {
   type LibraryBookAvailabilityEvent,
   type LibraryPurgePreview,
   type LibraryFile,
+  type ReleaseReviewResponse,
 } from './types';
 
 interface BookDetailPageProps {
@@ -147,6 +150,7 @@ const AvailableFiles = ({
   onOpenSettings,
   onSendToKindle,
   onDeleteRelease,
+  onReviewSource,
 }: {
   book: BookDetailResponse;
   canFindReleases: boolean;
@@ -156,6 +160,7 @@ const AvailableFiles = ({
   onOpenSettings: () => void;
   onSendToKindle: (format: string) => void;
   onDeleteRelease: (file: LibraryFile) => void;
+  onReviewSource: (file: LibraryFile) => void;
 }) => {
   const [kindleFormat, setKindleFormat] = useState('epub');
   const releases = groupFilesByRelease(book.files);
@@ -269,13 +274,24 @@ const AvailableFiles = ({
                     {files[0].indexer_display_name || 'Unknown source'}
                   </p>
                   {canDeleteReleases && (
-                    <button
-                      type="button"
-                      className="hover-action cursor-pointer rounded-md px-2 py-1 text-xs font-medium text-rose-700 dark:text-rose-300"
-                      onClick={() => onDeleteRelease(files[0])}
-                    >
-                      Delete release
-                    </button>
+                    <div className="ml-auto flex gap-2">
+                      {files[0].import_activity_id && (
+                        <button
+                          type="button"
+                          className="hover-action rounded-md px-2 py-1 text-xs font-medium text-violet-700 dark:text-violet-300"
+                          onClick={() => onReviewSource(files[0])}
+                        >
+                          Review source files
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="hover-action rounded-md px-2 py-1 text-xs font-medium text-rose-700 dark:text-rose-300"
+                        onClick={() => onDeleteRelease(files[0])}
+                      >
+                        Delete release
+                      </button>
+                    </div>
                   )}
                 </div>
                 <p className="mt-1 text-xs text-gray-500">
@@ -307,6 +323,200 @@ const AvailableFiles = ({
           </div>
         )}
       </details>
+    </section>
+  );
+};
+
+const SourceReview = ({
+  book,
+  activityId,
+  onClose,
+  onDelete,
+  onComplete,
+}: {
+  book: BookDetailResponse;
+  activityId: number;
+  onClose: () => void;
+  onDelete: () => void;
+  onComplete: () => Promise<void>;
+}) => {
+  const [review, setReview] = useState<ReleaseReviewResponse | null>(null);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [confirming, setConfirming] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useMountEffect(() => {
+    void getLibraryReleaseReview(book.book_id, activityId)
+      .then(setReview)
+      .catch((caught: unknown) =>
+        setError(caught instanceof Error ? caught.message : 'Failed to load retained source files'),
+      );
+  });
+
+  const toggle = (memberId: number) => {
+    setSelected((current) =>
+      current.includes(memberId) ? current.filter((id) => id !== memberId) : [...current, memberId],
+    );
+  };
+
+  const confirm = async () => {
+    setSubmitting(true);
+    try {
+      await replaceLibraryRelease(book.book_id, activityId, selected);
+      await onComplete();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to replace release');
+      setSubmitting(false);
+    }
+  };
+
+  if (!review && !error) return <BookDetailSkeleton />;
+  if (!review) {
+    return (
+      <section className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-10">
+        <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p>
+        <button
+          type="button"
+          className="hover-action mt-4 rounded-md px-3 py-2 text-sm"
+          onClick={onClose}
+        >
+          Back to book
+        </button>
+      </section>
+    );
+  }
+
+  return (
+    <section className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-10">
+      <button type="button" className="hover-action rounded-md px-2 py-1 text-sm" onClick={onClose}>
+        <span aria-hidden="true">&larr;</span> Back to {book.title ?? 'book'}
+      </button>
+      <header className="mt-6">
+        <p className="text-xs font-bold tracking-[0.18em] text-violet-700 uppercase dark:text-violet-300">
+          Manual review
+        </p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-(--text)">
+          Review source files
+        </h1>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+          {book.title} {book.author ? `· ${book.author}` : ''}
+        </p>
+      </header>
+      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+        <div className="rounded-lg bg-(--bg-soft) p-4">
+          <p className="text-xs font-bold text-gray-500 uppercase">Source</p>
+          <p className="mt-2 text-sm break-all text-(--text)">{review.source_key}</p>
+        </div>
+        <div className="rounded-lg bg-(--bg-soft) p-4">
+          <p className="text-xs font-bold text-gray-500 uppercase">Retention</p>
+          <p className="mt-2 text-sm text-(--text)">Original files available for correction</p>
+        </div>
+      </div>
+      <section className="mt-6 rounded-xl border border-(--border-muted) bg-(--bg-soft)">
+        <div className="border-b border-(--border-muted) px-4 py-3">
+          <p className="font-semibold text-(--text)">Choose files to import</p>
+          <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+            Nothing is selected automatically. Replacing this release imports only checked files.
+          </p>
+        </div>
+        <div className="divide-y divide-(--border-muted)">
+          {review.members.map((member) => (
+            <label
+              key={member.id}
+              className={`block px-4 py-3 ${member.available ? 'cursor-pointer hover:bg-(--hover-row)' : 'opacity-55'}`}
+            >
+              <div className="flex gap-3">
+                <input
+                  checked={selected.includes(member.id)}
+                  disabled={!member.available}
+                  aria-label={`Select ${member.relative_path}`}
+                  className="mt-1 h-4 w-4 accent-violet-700"
+                  type="checkbox"
+                  onChange={() => toggle(member.id)}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-sm font-medium break-all text-(--text)">
+                      {member.relative_path}
+                    </span>
+                    {!member.available && (
+                      <span className="rounded-full bg-rose-500/12 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:text-rose-300">
+                        Unavailable
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-1 text-xs text-gray-500">
+                    {member.format?.toUpperCase() ?? 'Unknown'} ·{' '}
+                    {formatFileSize(member.size?.toString() ?? null) || 'Size unknown'}
+                  </p>
+                  <details className="mt-2 text-xs text-gray-600 dark:text-gray-300">
+                    <summary className="cursor-pointer font-medium">
+                      {member.evidence.result}
+                    </summary>
+                    <p className="mt-2 leading-5">
+                      The original source remains untouched until this selection is confirmed.
+                    </p>
+                  </details>
+                </div>
+              </div>
+            </label>
+          ))}
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-(--border-muted) px-4 py-3">
+          <span className="text-sm font-medium text-(--text)">{selected.length} selected</span>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="hover-action rounded-md px-3 py-2 text-sm text-rose-700 dark:text-rose-300"
+              onClick={onDelete}
+            >
+              Delete release
+            </button>
+            <button
+              disabled={!selected.length}
+              type="button"
+              className="rounded-md bg-violet-700 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-800"
+              onClick={() => setConfirming(true)}
+            >
+              Review selection
+            </button>
+          </div>
+        </div>
+      </section>
+      {error && <p className="mt-4 text-sm text-rose-700 dark:text-rose-300">{error}</p>}
+      {confirming && (
+        <div
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+        >
+          <div className="w-full max-w-md rounded-xl bg-(--bg) p-6 shadow-xl">
+            <h2 className="text-lg font-semibold text-(--text)">Replace this release?</h2>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+              {selected.length} selected file{selected.length === 1 ? '' : 's'} will be imported
+              into immutable storage under {review.destination}.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                className="hover-action rounded-md px-3 py-2 text-sm"
+                onClick={() => setConfirming(false)}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={submitting}
+                type="button"
+                className="rounded-md bg-violet-700 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-800"
+                onClick={() => void confirm()}
+              >
+                Import {selected.length} file{selected.length === 1 ? '' : 's'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };
@@ -445,6 +655,7 @@ export const BookDetailPage = ({
   const [loading, setLoading] = useState(true);
   const [autoOpenedFor, setAutoOpenedFor] = useState<number | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [sourceReviewActivityId, setSourceReviewActivityId] = useState<number | null>(null);
   const firstAddIntent = hasAutoFindReleasesIntent(location.state);
   const libraryUrl = `/library${location.search}`;
 
@@ -557,6 +768,31 @@ export const BookDetailPage = ({
   }
   if (!book) return null;
 
+  if (sourceReviewActivityId !== null) {
+    const reviewedFile = book.files.find(
+      (file) => file.import_activity_id === sourceReviewActivityId,
+    );
+    return (
+      <SourceReview
+        book={book}
+        activityId={sourceReviewActivityId}
+        onClose={() => setSourceReviewActivityId(null)}
+        onDelete={() => {
+          if (!reviewedFile) return;
+          void mutate(
+            () => deleteLibraryRelease(book.book_id, reviewedFile.history_id),
+            'Release deleted',
+          ).then(() => setSourceReviewActivityId(null));
+        }}
+        onComplete={async () => {
+          await load();
+          setSourceReviewActivityId(null);
+          onShowToast('Release replaced', 'success');
+        }}
+      />
+    );
+  }
+
   const metadata = [
     book.publish_year,
     book.series_name &&
@@ -667,6 +903,9 @@ export const BookDetailPage = ({
               'Release deleted',
             )
           }
+          onReviewSource={(file) => {
+            if (file.import_activity_id) setSourceReviewActivityId(file.import_activity_id);
+          }}
         />
       )}
       <article className="mt-10 max-w-4xl border-t border-(--border-muted) pt-6">

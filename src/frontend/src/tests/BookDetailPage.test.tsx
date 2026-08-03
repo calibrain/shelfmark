@@ -405,3 +405,89 @@ describe('BookDetailPage release deletion', () => {
     );
   });
 });
+
+describe('BookDetailPage source review', () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    socketListeners.clear();
+  });
+
+  it('requires an admin selection before confirming a source-release correction', async () => {
+    const user = userEvent.setup();
+    const reviewBook = {
+      ...book,
+      files: [{ ...book.files[0], import_activity_id: 22 }],
+    };
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith('/releases/22/review') && init?.method === 'POST') {
+        return Promise.resolve(new Response(JSON.stringify({ status: 'completed' })));
+      }
+      if (url.endsWith('/releases/22/review')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              activity_id: 22,
+              source: 'prowlarr',
+              source_key: 'prowlarr:source',
+              destination: '/books',
+              members: [
+                {
+                  id: 7,
+                  relative_path: 'Dune/Dune.epub',
+                  format: 'epub',
+                  size: 1024,
+                  available: true,
+                  evidence: { result: 'Previously selected' },
+                },
+              ],
+            }),
+          ),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify(reviewBook)));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/library/1']}>
+        <Routes>
+          <Route
+            path="/library/:bookId"
+            element={
+              <BookDetailPage
+                autoFindReleases={false}
+                canFindReleases
+                canDeleteReleases
+                isRequestOnly={false}
+                isAdmin
+                onFindReleases={() => undefined}
+                onOpenSettings={() => undefined}
+                onShowToast={() => undefined}
+              />
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: 'Shared Book' });
+    await user.click(screen.getByText('Advanced: show all releases (1)'));
+    await user.click(screen.getByRole('button', { name: 'Review source files' }));
+
+    const review = await screen.findByRole('button', { name: 'Review selection' });
+    if (!(review instanceof HTMLButtonElement)) throw new Error('Expected selection button');
+    expect(review.disabled).toBe(true);
+    await user.click(screen.getByRole('checkbox', { name: 'Select Dune/Dune.epub' }));
+    await user.click(review);
+    expect(await screen.findByText(/1 selected file will be imported/)).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Import 1 file' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/library/books/1/releases/22/review',
+        expect.objectContaining({ method: 'POST', body: JSON.stringify({ member_ids: [7] }) }),
+      );
+    });
+  });
+});
