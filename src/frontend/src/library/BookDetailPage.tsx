@@ -929,11 +929,11 @@ export const BookDetailPage = ({
     onFindReleases,
   ]);
 
-  const mutate = async (action: () => Promise<void>, success: string) => {
+  const mutate = async (action: () => Promise<void>, success: string, reload = true) => {
     try {
       await action();
       onShowToast(success, 'success');
-      await load();
+      if (reload) await load();
     } catch (caught) {
       onShowToast(caught instanceof Error ? caught.message : 'Action failed', 'error');
     }
@@ -1093,9 +1093,13 @@ export const BookDetailPage = ({
           onFindReleases={() => onFindReleases(toReleaseBook(book))}
           onOpenSettings={onOpenSettings}
           onSendToKindle={async (selection) => {
-            await mutate(async () => {
-              await sendLibraryBookToKindle(book.book_id, selection);
-            }, 'Sent to Kindle');
+            await mutate(
+              async () => {
+                await sendLibraryBookToKindle(book.book_id, selection);
+              },
+              'Sent to Kindle',
+              false,
+            );
           }}
           onDeleteRelease={(file) =>
             void mutate(
