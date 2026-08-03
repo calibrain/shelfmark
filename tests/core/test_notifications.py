@@ -337,4 +337,5 @@ def test_html_email_test_template_renders_sample_card(monkeypatch):
     assert "Shelfmark test email" in html
     assert "https://shelfmark.example.com/library" in html
     assert "No cover" in html
+    assert "View in Library" in html
 

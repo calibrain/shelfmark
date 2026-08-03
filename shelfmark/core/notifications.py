@@ -499,7 +499,7 @@ def _html_footer_link(url: str) -> str:
     )
 
 
-def _html_book_card(context: NotificationContext) -> str:
+def _html_book_card(context: NotificationContext, cta_url: str) -> str:
     """Build the book card section (cover, title block, chips, description)."""
     book = context.book if isinstance(context.book, dict) else None
     if book is None:
@@ -587,7 +587,7 @@ def _html_book_card(context: NotificationContext) -> str:
         if len(description_text) > 420:
             description_text = description_text[:420].rstrip() + "…"
         description_html = (
-            '<div style="margin-top:22px;padding-top:20px;border-top:1px solid #f3f4f6;">'
+            '<div style="margin-top:26px;padding-top:22px;border-top:1px solid #f3f4f6;">'
             '<p style="margin:0;font-size:12px;font-weight:600;letter-spacing:0.06em;'
             'text-transform:uppercase;color:#6b7280;">About this book</p>'
             f'<p style="margin:8px 0 0;font-size:14px;line-height:1.7;color:#4b5563;">'
@@ -595,11 +595,10 @@ def _html_book_card(context: NotificationContext) -> str:
             "</div>"
         )
 
-    book_url = _build_book_url(context.book_id)
-    cta_html = _html_cta_button(book_url, book.get("title")) if book_url else ""
+    cta_html = _html_cta_button(cta_url, book.get("title")) if cta_url else ""
 
     return (
-        '<div style="display:flex;gap:20px;align-items:flex-start;">'
+        '<div style="display:flex;gap:26px;align-items:flex-start;">'
         + cover_html
         + info_html
         + "</div>"
@@ -617,13 +616,13 @@ def _render_html_email(context: NotificationContext) -> str:
     same for every book-related action.
     """
     hero, detail = _html_action_copy(context)
-    book_url = _build_book_url(context.book_id)
-    if not book_url and context.is_test:
-        book_url = _build_library_home_url()
+    cta_url = _build_book_url(context.book_id)
+    if not cta_url and context.is_test:
+        cta_url = _build_library_home_url()
 
     header_detail = detail
-    if book_url and not (context.book and isinstance(context.book, dict)):
-        header_detail = f"{detail} Open it at {book_url}."
+    if cta_url and not (context.book and isinstance(context.book, dict)):
+        header_detail = f"{detail} Open it at {cta_url}."
 
     return f"""<!DOCTYPE html>
 <html lang="en">
@@ -648,7 +647,7 @@ def _render_html_email(context: NotificationContext) -> str:
 </tr>
 <tr>
 <td style="padding:28px 32px;">
-{_html_book_card(context)}
+{_html_book_card(context, cta_url)}
 </td>
 </tr>
 <tr>
@@ -656,7 +655,7 @@ def _render_html_email(context: NotificationContext) -> str:
 <p style="margin:0;font-size:12px;color:#9ca3af;line-height:1.5;">
 Sent by <strong>Shelfmark</strong>. Reply to this email is not monitored.
 </p>
-{_html_footer_link(book_url) if book_url else ""}
+{_html_footer_link(cta_url) if cta_url else ""}
 </td>
 </tr>
 </table>
