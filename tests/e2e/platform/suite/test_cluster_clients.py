@@ -70,12 +70,11 @@ def test_prowlarr_to_real_torrent_client_download(client, active_profile) -> Non
     assert queued.status_code in (200, 201, 202), (
         f"[{active_profile}] queue refused the release: {queued.status_code} {queued.text[:300]}"
     )
-    # The prowlarr source serializes download_url=None and resolves the real URL
-    # from its cache by source_id at download time.
-    book_id = releases[0].get("source_id") or releases[0].get("id") or releases[0].get("guid")
-    assert book_id, f"[{active_profile}] release missing a trackable id: {releases[0]!r}"
+    # Queue entries use generated activity IDs rather than source IDs.
+    book_id = client.wait_for_task_id(str(releases[0].get("title", "")))
+    assert book_id, f"[{active_profile}] queued release did not appear in download status"
 
-    state, info = client.wait_for_terminal(str(book_id))
+    state, info = client.wait_for_terminal(book_id)
     assert state in {"complete", "done", "available"}, (
         f"[{active_profile}] real torrent-client download did not complete: "
         f"state={state} info={info!r}"

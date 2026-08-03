@@ -203,6 +203,55 @@ class TestProwlarrHandlerDownloadErrors:
         finally:
             remove_release(task_id)
 
+    def test_import_activity_cache_miss_refreshes_by_source_release_key(self):
+        """An Import Activity ID resolves its Prowlarr release after a cache miss."""
+        activity_id = "import-activity-1"
+        release_id = "fresh-guid-1"
+        fresh_url = "https://prowlarr.example.com/download/fresh-token"
+
+        def mock_search(*_args, **_kwargs):
+            cache_release(
+                release_id,
+                {
+                    "guid": release_id,
+                    "protocol": "torrent",
+                    "downloadUrl": fresh_url,
+                    "title": "Fresh Release",
+                },
+            )
+            return [
+                Release(
+                    source="prowlarr",
+                    source_id=release_id,
+                    title="Fresh Release",
+                    protocol=ReleaseProtocol.TORRENT,
+                )
+            ]
+
+        remove_release(activity_id)
+        remove_release(release_id)
+        try:
+            with patch(
+                "shelfmark.release_sources.prowlarr.handler.ProwlarrSource.search",
+                side_effect=mock_search,
+            ):
+                handler = ProwlarrHandler()
+                task = DownloadTask(
+                    task_id=activity_id,
+                    source="prowlarr",
+                    title="Fresh Book",
+                    source_release_key=f"prowlarr:{release_id}",
+                )
+                recorder = ProgressRecorder()
+
+                request = handler._resolve_download(task, recorder.status_callback)
+
+                assert request is not None
+                assert request.url == fresh_url
+        finally:
+            remove_release(activity_id)
+            remove_release(release_id)
+
     def test_stale_cached_url_add_failure_re_resolves_once_and_succeeds(self):
         """Expired cached proxy URL should be refreshed once after qBittorrent hash failure."""
         task_id = "stale-guid-1"

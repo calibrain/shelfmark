@@ -83,30 +83,28 @@ def test_queue_priority_and_cancellation_contract(client) -> None:
             "source": "direct_download",
             "source_id": source_id,
             "title": "API Contract Book",
+            "library_book_id": os.environ["E2E_DIRECT_SOURCE_BOOK_ID"],
         },
     )
 
     assert queued.status_code == 200
     assert queued.json() == {"status": "queued", "priority": 0}
 
-    priority = client.put(f"/api/queue/{source_id}/priority", json={"priority": 3})
-    assert priority.status_code == 200
-    assert priority.json() == {"status": "updated", "book_id": source_id, "priority": 3}
+    task_id = client.wait_for_task_id("API Contract Book")
+    assert task_id, "queued release did not appear in the download status"
 
-    cancelled = client.delete(f"/api/download/{source_id}/cancel")
+    priority = client.put(f"/api/queue/{task_id}/priority", json={"priority": 3})
+    assert priority.status_code == 200
+    assert priority.json() == {"status": "updated", "book_id": task_id, "priority": 3}
+
+    cancelled = client.delete(f"/api/download/{task_id}/cancel")
     assert cancelled.status_code == 200
-    assert cancelled.json() == {"status": "cancelled", "book_id": source_id}
+    assert cancelled.json() == {"status": "cancelled", "book_id": task_id}
 
 
 def test_direct_source_query_contract(client) -> None:
     """The direct source searches the runner's deterministic Anna's Archive mock."""
-    response = client.get(
-        "/api/releases",
-        params={
-            "library_book_id": os.environ["E2E_DIRECT_SOURCE_BOOK_ID"],
-            "source": "direct_download",
-        },
-    )
+    response = client.direct_search()
 
     assert response.status_code == 200
     data = response.json()

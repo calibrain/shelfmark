@@ -59,10 +59,6 @@ def _wait_for_new_book(books: Path, before: set[str], timeout: int = 40) -> set[
     return set()
 
 
-def _track_id(release: dict) -> str:
-    return str(release.get("source_id") or release.get("id") or release.get("guid") or "")
-
-
 # --------------------------------------------------------------------------- #
 # 1. Real Chrome solves Cloudflare end-to-end (the "spin a chrome browser" path)
 # --------------------------------------------------------------------------- #
@@ -83,8 +79,8 @@ def test_real_chrome_solves_cloudflare_end_to_end(client) -> None:
     assert queued.status_code in (200, 201, 202), (
         f"queue refused the AA release: {queued.status_code} {queued.text[:300]}"
     )
-    book_id = _track_id(releases[0])
-    assert book_id, f"release missing a trackable id: {releases[0]!r}"
+    book_id = client.wait_for_task_id(str(releases[0].get("title", "")))
+    assert book_id, "queued release did not appear in the download status"
 
     state, info = client.wait_for_terminal(book_id)
     assert state in {"complete", "done", "available"}, (

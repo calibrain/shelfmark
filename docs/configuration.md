@@ -27,7 +27,7 @@ Required volumes:
 | Container path | Purpose | Notes |
 | --- | --- | --- |
 | `/config` | Settings, database, cover cache | Configurable via `CONFIG_DIR` |
-| `/books` | Destination folder for completed files | Configurable via `INGEST_DIR` and Settings -> Downloads -> Destination |
+| `/books` | Immutable Book storage root | Configurable via `DESTINATION` and Settings -> Downloads -> Destination |
 
 Example `docker-compose`:
 
@@ -41,8 +41,7 @@ services:
 ```
 
 Notes:
-- Point `/books` to your library ingest folder (Calibre-Web, Booklore, Audiobookshelf, etc) for automatic import.
-- If you set Books Output Mode to Booklore (API), books are uploaded via API instead of written to `/books`. Audiobooks still use a destination folder.
+- Shelfmark stores imported members under `/books/books/<book>/<source release>/<relative path>`.
 - Ensure `PUID`/`PGID` (or legacy `UID`/`GID`) match the owner of the host directories.
 - For non-root mode, start the container as `1000:1000`.
 - On Kubernetes, set `runAsUser: 1000`, `runAsGroup: 1000`, and `runAsNonRoot: true` together.
@@ -59,7 +58,7 @@ Required volumes:
 | Container path | Purpose | Notes |
 | --- | --- | --- |
 | `/config` | Settings, database, cover cache | Configurable via `CONFIG_DIR` |
-| `/books` | Destination folder for processed files | Configurable via `INGEST_DIR` |
+| `/books` | Immutable Book storage root | Configurable via `DESTINATION` |
 | `<client path>` | Download client path | Must match the download client container path exactly |
 
 Side-by-side example with qBittorrent:

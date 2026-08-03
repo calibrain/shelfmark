@@ -125,99 +125,13 @@ CONTENT_TYPES = [
     "other",
 ]
 
-# Maps AA content types to their config keys for content-type routing
-# Used when AA_CONTENT_TYPE_ROUTING is enabled
-_AA_CONTENT_TYPE_TO_CONFIG_KEY = {
-    "book (fiction)": "AA_CONTENT_TYPE_DIR_FICTION",
-    "book (non-fiction)": "AA_CONTENT_TYPE_DIR_NON_FICTION",
-    "book (unknown)": "AA_CONTENT_TYPE_DIR_UNKNOWN",
-    "magazine": "AA_CONTENT_TYPE_DIR_MAGAZINE",
-    "comic book": "AA_CONTENT_TYPE_DIR_COMIC",
-    "audiobook": "AA_CONTENT_TYPE_DIR_AUDIOBOOK",
-    "standards document": "AA_CONTENT_TYPE_DIR_STANDARDS",
-    "musical score": "AA_CONTENT_TYPE_DIR_MUSICAL_SCORE",
-    "other": "AA_CONTENT_TYPE_DIR_OTHER",
-}
 
-# Legacy mapping - kept for backwards compatibility during migration
-_LEGACY_CONTENT_TYPE_TO_CONFIG_KEY = {
-    "book (fiction)": "INGEST_DIR_BOOK_FICTION",
-    "book (non-fiction)": "INGEST_DIR_BOOK_NON_FICTION",
-    "book (unknown)": "INGEST_DIR_BOOK_UNKNOWN",
-    "magazine": "INGEST_DIR_MAGAZINE",
-    "comic book": "INGEST_DIR_COMIC_BOOK",
-    "audiobook": "INGEST_DIR_AUDIOBOOK",
-    "standards document": "INGEST_DIR_STANDARDS_DOCUMENT",
-    "musical score": "INGEST_DIR_MUSICAL_SCORE",
-    "other": "INGEST_DIR_OTHER",
-}
-
-
-def get_destination(
-    *,
-    is_audiobook: bool = False,
-) -> Path:
-    """Get base destination directory. Audiobooks fall back to main destination."""
+def get_destination() -> Path:
+    """Get the single immutable library storage root."""
     from shelfmark.core.config import config
 
-    if is_audiobook:
-        # Audiobook destination with fallback to main destination
-        audiobook_dest = config.get("DESTINATION_AUDIOBOOK", "")
-        if audiobook_dest:
-            return Path(str(audiobook_dest))
-
-    # Main destination (also fallback for audiobooks)
-    # Check new setting first, then legacy INGEST_DIR
-    destination = config.get("DESTINATION", "") or config.get("INGEST_DIR", "/books")
+    destination = config.get("DESTINATION", "/books")
     return Path(str(destination))
-
-
-def get_aa_content_type_dir(content_type: str | None = None) -> Path | None:
-    """Get override directory for AA content-type routing if configured."""
-    from shelfmark.core.config import config
-
-    # Check if content-type routing is enabled (new or legacy setting)
-    if not config.get("AA_CONTENT_TYPE_ROUTING", False) and not config.get(
-        "USE_CONTENT_TYPE_DIRECTORIES", False
-    ):
-        return None
-
-    if not content_type:
-        return None
-
-    content_type_lower = content_type.lower().strip()
-
-    # Try new AA-specific config keys first, then legacy keys
-    for mapping in (_AA_CONTENT_TYPE_TO_CONFIG_KEY, _LEGACY_CONTENT_TYPE_TO_CONFIG_KEY):
-        config_key = mapping.get(content_type_lower)
-        if config_key:
-            custom_dir = _coerce_config_path(config.get(config_key, ""))
-            if custom_dir is not None:
-                return custom_dir
-
-    return None
-
-
-def get_ingest_dir(content_type: str | None = None) -> Path:
-    """Return the legacy ingest directory for a content type."""
-    from shelfmark.core.config import config
-
-    # Check new DESTINATION setting first, then legacy INGEST_DIR
-    default_ingest_dir = _coerce_config_path(config.get("DESTINATION", "")) or _coerce_config_path(
-        config.get("INGEST_DIR", "/books")
-    )
-    if default_ingest_dir is None:
-        default_ingest_dir = Path("/books")
-
-    if not content_type:
-        return default_ingest_dir
-
-    # Check for content-type override
-    override_dir = get_aa_content_type_dir(content_type)
-    if override_dir:
-        return override_dir
-
-    return default_ingest_dir
 
 
 def transform_cover_url(cover_url: str | None, cache_id: str) -> str | None:

@@ -335,12 +335,9 @@ def download(self, task, cancel_flag, progress_callback, status_callback):
                 if total_size > 0:
                     progress_callback((downloaded / total_size) * 100)
 
-        # Phase 3: Post-process and move to final location
-        final_path = INGEST_DIR / f"{task.title}.{task.format}"
-        shutil.move(str(temp_path), str(final_path))
-
-        # Return the file path - orchestrator will set status to "complete"
-        return str(final_path)
+        # Return the source path. Shelfmark persists the immutable Book output
+        # plan and transfers selected members after the download completes.
+        return str(temp_path)
 
     except Exception as e:
         if not cancel_flag.is_set():
@@ -934,7 +931,6 @@ from shelfmark.core.settings_registry import (
     ActionButton,
     load_config_file,
 )
-from shelfmark.config.env import INGEST_DIR
 
 logger = setup_logger(__name__)
 
@@ -1241,25 +1237,8 @@ class BookNetHandler(DownloadHandler):
                     status_callback("error", f"File too small ({downloaded_size} bytes)")
                     return None
 
-                # Phase 3: Move to final location
-                safe_title = "".join(
-                    c if c.isalnum() or c in " .-_" else "_"
-                    for c in task.title[:100]
-                ).strip()
-
-                final_filename = f"{safe_title}.{task.format or 'epub'}"
-                final_path = Path(INGEST_DIR) / final_filename
-
-                # Avoid overwriting existing files
-                counter = 1
-                while final_path.exists():
-                    final_path = Path(INGEST_DIR) / f"{safe_title} ({counter}).{task.format or 'epub'}"
-                    counter += 1
-
-                shutil.move(str(temp_path), str(final_path))
-
-                # Return file path - orchestrator sets "complete" status
-                return str(final_path)
+                # Return the source path for durable Book import planning.
+                return str(temp_path)
 
             except Exception as e:
                 temp_path.unlink(missing_ok=True)

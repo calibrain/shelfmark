@@ -91,7 +91,7 @@ Environment variables work for initial setup and Docker deployments. They serve 
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `FLASK_PORT` | Web interface port | `8084` |
-| `INGEST_DIR` | Book download directory | `/books` |
+| `DESTINATION` | Immutable Book storage root | `/books` |
 | `TZ` | Container timezone | `UTC` |
 | `PUID` / `PGID` | Runtime user/group for the default root-startup flow (also supports legacy `UID`/`GID`) | `1000` / `1000` |
 | `USING_TOR` | Enable Tor routing (requires root startup) | `false` |

@@ -43,11 +43,7 @@ def _resolve_destination_test_path(
     )
 
 
-def _test_folder_destination(
-    *,
-    current_values: dict[str, Any] | None = None,
-    is_audiobook: bool,
-) -> dict[str, Any]:
+def _test_folder_destination(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
     """Validate a folder destination using current form values."""
     from shelfmark.download.postprocess.destination import validate_destination
 
@@ -58,22 +54,8 @@ def _test_folder_destination(
     )
     destination = str(destination_value or "").strip()
 
-    label = "Books destination"
+    label = "Destination"
     message_suffix = ""
-
-    if is_audiobook:
-        audiobook_value = _get_download_setting_value(
-            current_values,
-            "DESTINATION_AUDIOBOOK",
-            default="",
-        )
-        audiobook_destination = str(audiobook_value or "").strip()
-        if audiobook_destination:
-            destination = audiobook_destination
-            label = "Audiobook destination"
-        else:
-            label = "Audiobook destination"
-            message_suffix = " (using the Books destination)"
 
     if not destination:
         return {"success": False, "message": f"{label} is required"}
@@ -102,9 +84,4 @@ def _test_folder_destination(
 
 def check_books_destination(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
     """Validate the configured books destination."""
-    return _test_folder_destination(current_values=current_values, is_audiobook=False)
-
-
-def check_audiobook_destination(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Validate the configured audiobook destination."""
-    return _test_folder_destination(current_values=current_values, is_audiobook=True)
+    return _test_folder_destination(current_values=current_values)

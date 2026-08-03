@@ -23,7 +23,7 @@ logger = setup_logger(__name__)
 
 VALID_TERMINAL_STATUSES = frozenset(s.value for s in TERMINAL_QUEUE_STATUSES)
 ACTIVE_DOWNLOAD_STATUS = "active"
-VALID_ORIGINS = frozenset({"direct", "requested"})
+VALID_ORIGINS = frozenset({"book", "direct", "requested"})
 
 
 @dataclass(frozen=True)
@@ -62,10 +62,10 @@ def _normalize_task_id(task_id: object) -> str:
 def _normalize_origin(origin: object) -> str:
     normalized = normalize_optional_text(origin)
     if normalized is None:
-        return "direct"
+        return "book"
     lowered = normalized.lower()
     if lowered not in VALID_ORIGINS:
-        msg = "origin must be one of: direct, requested"
+        msg = "origin must be one of: book, direct, requested"
         raise ValueError(msg)
     return lowered
 
@@ -281,6 +281,7 @@ class DownloadHistoryService:
         content_type: str | None,
         origin: str,
         book_id: int | None = None,
+        import_activity_id: int | None = None,
         retry_payload: dict[str, Any] | None = None,
     ) -> None:
         """Record a download at queue time with ``final_status='active'``.
@@ -298,6 +299,9 @@ class DownloadHistoryService:
         normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
         normalized_request_id = normalize_optional_positive_int(request_id, "request_id")
         normalized_book_id = normalize_optional_positive_int(book_id, "book_id")
+        normalized_import_activity_id = normalize_optional_positive_int(
+            import_activity_id, "import_activity_id"
+        )
         normalized_source = normalize_optional_text(source)
         if normalized_source is None:
             msg = "source must be a non-empty string"
@@ -328,11 +332,11 @@ class DownloadHistoryService:
                     task_id, user_id, username, request_id,
                     source, source_display_name,
                     title, author, format, size, preview, content_type,
-                    origin, final_status, book_id,
+                    origin, final_status, book_id, import_activity_id,
                     status_message, download_path, retry_payload,
                     queued_at, terminal_at
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, 'active', ?, NULL, NULL, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, 'active', ?, ?, NULL, NULL, ?, ?, ?)
                 """,
                     (
                         normalized_task_id,
@@ -347,6 +351,7 @@ class DownloadHistoryService:
                         normalize_optional_text(content_type),
                         normalized_origin,
                         normalized_book_id,
+                        normalized_import_activity_id,
                         normalized_retry_payload,
                         recorded_at,
                         recorded_at,
@@ -504,11 +509,11 @@ class DownloadHistoryService:
                             task_id, user_id, username, request_id,
                             source, source_display_name,
                             title, author, format, size, preview, content_type,
-                            origin, final_status, book_id,
+                            origin, final_status, book_id, import_activity_id,
                             status_message, download_path, retry_payload,
                             queued_at, terminal_at
                         )
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                         """,
                         (
                             normalized_task_id,
@@ -526,6 +531,7 @@ class DownloadHistoryService:
                             sentinel["origin"],
                             normalized_final_status,
                             sentinel["book_id"],
+                            sentinel["import_activity_id"],
                             normalized_status_message,
                             row["download_path"],
                             normalized_retry_payload,

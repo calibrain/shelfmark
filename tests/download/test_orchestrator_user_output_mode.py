@@ -52,6 +52,7 @@ def test_queue_release_has_no_per_user_output_selection(monkeypatch):
     release_data = {
         "source": "direct_download",
         "source_id": "release-1",
+        "library_book_id": 1,
         "title": "Release Title",
         "content_type": "book (fiction)",
         "format": "epub",
@@ -143,6 +144,7 @@ def test_queue_release_persists_prowlarr_retry_context_without_download_url(monk
         {
             "source": "prowlarr",
             "source_id": "prowlarr-release-1",
+            "library_book_id": 1,
             "title": "Queued Prowlarr Release",
             "download_url": "magnet:?xt=urn:btih:abc123",
             "protocol": "torrent",
@@ -196,6 +198,7 @@ def test_queue_release_prefers_configured_seed_time_minutes_for_retry(monkeypatc
         {
             "source": "prowlarr",
             "source_id": "prowlarr-release-configured-seed-time",
+            "library_book_id": 1,
             "title": "Queued Prowlarr Release",
             "download_url": "magnet:?xt=urn:btih:abc123",
             "protocol": "torrent",
@@ -233,6 +236,7 @@ def test_queue_release_ignores_configured_seed_time_when_disabled_for_retry(monk
         {
             "source": "prowlarr",
             "source_id": "prowlarr-release-configured-seed-time-disabled",
+            "library_book_id": 1,
             "title": "Queued Prowlarr Release",
             "download_url": "magnet:?xt=urn:btih:abc123",
             "protocol": "torrent",
@@ -268,6 +272,7 @@ def test_queue_release_ignores_torznab_minimum_seed_criteria_for_retry(monkeypat
         {
             "source": "prowlarr",
             "source_id": "prowlarr-release-minimum-only",
+            "library_book_id": 1,
             "title": "Queued Prowlarr Release",
             "download_url": "magnet:?xt=urn:btih:abc123",
             "protocol": "torrent",
@@ -301,6 +306,7 @@ def test_queue_release_returns_error_for_operational_queue_failure(monkeypatch):
         {
             "source": "direct_download",
             "source_id": "release-broken-1",
+            "library_book_id": 1,
             "title": "Broken Queue",
             "content_type": "ebook",
         }

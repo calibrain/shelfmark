@@ -42,10 +42,10 @@ def test_no_bypass_download_fails_cleanly(client) -> None:
     assert queued.status_code in (200, 201, 202), (
         f"queue refused the release: {queued.status_code} {queued.text[:300]}"
     )
-    book_id = releases[0].get("id") or releases[0].get("source_id") or releases[0].get("md5")
-    assert book_id, f"release missing an id to track: {releases[0]!r}"
+    book_id = client.wait_for_task_id(str(releases[0].get("title", "")))
+    assert book_id, "queued release did not appear in the download status"
 
-    state, info = client.wait_for_terminal(str(book_id))
+    state, info = client.wait_for_terminal(book_id)
     assert state == "error", (
         f"expected a clean terminal error without a bypasser, got state={state} info={info!r}"
     )

@@ -19,9 +19,8 @@ from bs4.element import NavigableString
 from shelfmark.config.env import DEBUG_SKIP_SOURCES, TMP_DIR
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import DownloadTask, SearchFilters, build_filename
-from shelfmark.core.utils import CONTENT_TYPES, get_aa_content_type_dir
-from shelfmark.core.utils import is_audiobook as check_audiobook
+from shelfmark.core.models import DownloadTask, SearchFilters
+from shelfmark.core.utils import CONTENT_TYPES
 from shelfmark.download import http as downloader
 from shelfmark.download import network
 from shelfmark.release_sources import (
@@ -1805,12 +1804,6 @@ class DirectDownloadSource(ReleaseSource):
         """Direct search results already represent concrete downloadable releases."""
         return True
 
-    def get_destination_override(self, task: DownloadTask) -> Path | None:
-        """Apply Anna's Archive content-type routing when configured."""
-        if check_audiobook(task.content_type):
-            return None
-        return get_aa_content_type_dir(task.content_type)
-
     def _search_books_with_language_fallback(
         self,
         query: str,
@@ -2032,19 +2025,7 @@ class DirectDownloadHandler(DownloadHandler):
         try:
             logger.debug("Starting download: %s", book_info.title)
 
-            # Prepare paths - use descriptive staging filename, orchestrator will rename
-            # based on FILE_ORGANIZATION setting
-            file_org = config.get("FILE_ORGANIZATION", "rename")
-            if file_org == "none":
-                book_name = f"{book_info.id}.{book_info.format or 'bin'}"
-            else:
-                book_name = build_filename(
-                    book_info.title,
-                    book_info.author,
-                    book_info.year,
-                    book_info.format,
-                )
-            book_path = TMP_DIR / book_name
+            book_path = TMP_DIR / f"{book_info.id}.{book_info.format or 'bin'}"
 
             # Check cancellation before download
             if cancel_flag.is_set():
