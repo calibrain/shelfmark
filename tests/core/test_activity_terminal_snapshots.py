@@ -126,5 +126,6 @@ def test_terminal_snapshot_fails_when_a_planned_member_is_unavailable(
         source.unlink()
         main_module.backend.book_queue.update_status(task.task_id, QueueStatus.COMPLETE)
         assert main_module.import_activity_service.get_by_task_id(task.task_id)["state"] == "failed"
+        assert main_module.download_history_service.get_by_task_id(task.task_id)["final_status"] == "error"
     finally:
         main_module.backend.book_queue.cancel_download(task.task_id)

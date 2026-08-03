@@ -1499,6 +1499,7 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
     finalized_download = False
     finalized_files = False
     finalize_error: str | None = None
+    effective_final_status = final_status
     file_rows: list[dict[str, Any]] = []
     fulfilled_requests: list[dict[str, Any]] = []
     if download_history_service is not None:
@@ -1508,9 +1509,16 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
             else:
                 _record_source_members(task)
             file_rows = _build_download_file_rows(task)
+        except _OPERATIONAL_ERRORS as exc:
+            finalize_error = str(exc)
+            if final_status == QueueStatus.COMPLETE.value:
+                effective_final_status = QueueStatus.ERROR.value
+            logger.warning("Failed to prepare download finalization for task %s: %s", task_id, exc)
+
+        try:
             finalize_result = download_history_service.finalize_download_files(
                 task_id=task_id,
-                final_status=final_status,
+                final_status=effective_final_status,
                 status_message=normalize_optional_text(getattr(task, "status_message", None)),
                 file_rows=file_rows,
                 retry_payload=backend.serialize_task_for_retry(task),
@@ -1525,32 +1533,34 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
     activity_id = normalize_positive_int(getattr(task, "import_activity_id", None))
     if import_activity_service is not None and activity_id is not None:
         try:
-            if final_status == QueueStatus.COMPLETE.value and finalized_download:
+            if effective_final_status == QueueStatus.COMPLETE.value and finalized_download:
                 import_activity_service.complete(activity_id=activity_id)
-            elif final_status == QueueStatus.COMPLETE.value:
+            elif effective_final_status == QueueStatus.COMPLETE.value:
                 import_activity_service.fail(
                     activity_id=activity_id,
                     error_context={"message": finalize_error or "Import finalization failed"},
                 )
-            elif final_status == QueueStatus.CANCELLED.value:
+            elif effective_final_status == QueueStatus.CANCELLED.value:
                 import_activity_service.cancel(activity_id=activity_id)
             else:
                 import_activity_service.fail(
                     activity_id=activity_id,
-                    error_context={"message": getattr(task, "status_message", None)},
+                    error_context={
+                        "message": finalize_error or getattr(task, "status_message", None)
+                    },
                 )
         except _OPERATIONAL_ERRORS as exc:
             logger.warning("Failed to finalize import activity for task %s: %s", task_id, exc)
 
     if finalized_download:
         book_id = normalize_positive_int(getattr(task, "library_book_id", None))
-        if final_status == QueueStatus.COMPLETE.value and book_id is not None and finalized_files:
+        if effective_final_status == QueueStatus.COMPLETE.value and book_id is not None and finalized_files:
             try:
                 _emit_library_book_availability(book_id=book_id, task_id=task_id)
             except _OPERATIONAL_ERRORS as exc:
                 logger.warning("Failed to emit availability for Book %s: %s", book_id, exc)
 
-        if final_status == QueueStatus.COMPLETE.value and book_id is not None and file_rows:
+        if effective_final_status == QueueStatus.COMPLETE.value and book_id is not None and file_rows:
             try:
                 _emit_request_update_events(fulfilled_requests)
                 if user_db is not None:
@@ -1575,7 +1585,7 @@ def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: 
             payload={
                 "kind": "download_terminal",
                 "task_id": task_id,
-                "status": final_status,
+                "status": effective_final_status,
             },
         )
 

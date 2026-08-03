@@ -764,6 +764,16 @@ class LibraryService:
                     "WHERE task_id = ?",
                     (task_id,),
                 )
+                conn.execute(
+                    """
+                    UPDATE import_activities SET book_id = NULL, updated_at = ?
+                    WHERE id IN (
+                        SELECT DISTINCT import_activity_id FROM download_history
+                        WHERE task_id = ? AND import_activity_id IS NOT NULL
+                    )
+                    """,
+                    (_now_utc_iso(), task_id),
+                )
                 conn.commit()
                 return bool(rows)
             finally:

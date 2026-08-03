@@ -8,7 +8,9 @@ from pathlib import Path
 
 import pytest
 
+from shelfmark.core.download_history_service import DownloadHistoryService
 from shelfmark.core.import_activity_service import ImportActivityService
+from shelfmark.core.library_service import LibraryService
 from shelfmark.core.user_db import UserDB
 
 
@@ -210,3 +212,112 @@ def test_plan_import_derives_safe_fixed_paths_and_rejects_duplicate_book_members
                 storage_root=storage_root,
                 selections=[{"source_member_id": member["id"], "evidence": {"match": "exact"}}],
             )
+
+
+def test_reselecting_deleted_release_member_creates_a_new_final_file():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "users.db")
+        storage_root = Path(tmpdir) / "library"
+        user_db = UserDB(db_path)
+        user_db.initialize()
+        imports = ImportActivityService(db_path)
+        history = DownloadHistoryService(db_path)
+        library = LibraryService(db_path)
+        user = user_db.create_user(username="owner")
+        book_id = _create_book(user_db, "42", "Example")
+        first = imports.accept_book_targeted_release(
+            source_key="prowlarr:abc123",
+            source="prowlarr",
+            source_metadata={},
+            task_id="activity-1",
+            book_id=book_id,
+        )
+        member = imports.record_source_member(
+            source_release_id=first["source_release_id"],
+            relative_path="Example.epub",
+            size=7,
+            file_format="epub",
+            discovery_status="discovered",
+        )
+        first = imports.plan_import(
+            activity_id=first["id"],
+            storage_root=storage_root,
+            selections=[{"source_member_id": member["id"]}],
+        )
+        first_path = Path(first["selections"][0]["planned_output_path"])
+        first_path.parent.mkdir(parents=True)
+        first_path.write_bytes(b"first")
+        history.record_download(
+            task_id="activity-1",
+            user_id=user["id"],
+            username=user["username"],
+            request_id=None,
+            source="prowlarr",
+            source_display_name="Prowlarr",
+            title="Example",
+            author="Author",
+            file_format=None,
+            size=None,
+            preview=None,
+            content_type="ebook",
+            origin="book",
+            book_id=book_id,
+            import_activity_id=first["id"],
+        )
+        history.finalize_download_files(
+            task_id="activity-1",
+            final_status="complete",
+            file_rows=[{"download_path": str(first_path), "format": "epub", "size": "5"}],
+        )
+        imports.complete(activity_id=first["id"])
+        first_history_id = library.get_files_on_disk(book_id)[0]["id"]
+
+        assert library.delete_release(book_id=book_id, history_id=first_history_id)
+        deleted = imports.get_by_task_id("activity-1")
+        assert deleted is not None
+        assert deleted["book_id"] is None
+        assert [selection["source_member_id"] for selection in deleted["selections"]] == [member["id"]]
+
+        second = imports.accept_book_targeted_release(
+            source_key="prowlarr:abc123",
+            source="prowlarr",
+            source_metadata={},
+            task_id="activity-2",
+            book_id=book_id,
+        )
+        second = imports.plan_import(
+            activity_id=second["id"],
+            storage_root=storage_root,
+            selections=[{"source_member_id": member["id"]}],
+        )
+        second_path = Path(second["selections"][0]["planned_output_path"])
+        second_path.parent.mkdir(parents=True, exist_ok=True)
+        second_path.write_bytes(b"second")
+        history.record_download(
+            task_id="activity-2",
+            user_id=user["id"],
+            username=user["username"],
+            request_id=None,
+            source="prowlarr",
+            source_display_name="Prowlarr",
+            title="Example",
+            author="Author",
+            file_format=None,
+            size=None,
+            preview=None,
+            content_type="ebook",
+            origin="book",
+            book_id=book_id,
+            import_activity_id=second["id"],
+        )
+        history.finalize_download_files(
+            task_id="activity-2",
+            final_status="complete",
+            file_rows=[{"download_path": str(second_path), "format": "epub", "size": "6"}],
+        )
+        imports.complete(activity_id=second["id"])
+
+        files = library.get_files_on_disk(book_id)
+        assert [(file["task_id"], file["download_path"]) for file in files] == [
+            ("activity-2", str(second_path))
+        ]
