@@ -12,6 +12,7 @@ from __future__ import annotations
 import json
 import sqlite3
 import threading
+from contextlib import suppress
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -319,6 +320,7 @@ class LibraryService:
                             raise
                         deleted_paths.append(path)
 
+                self._prune_empty_book_artifact_directories(normalized_book_id, deleted_paths)
                 self._detach_book_activity(conn, normalized_book_id, clear_paths=True)
                 conn.execute("DELETE FROM books WHERE id = ?", (normalized_book_id,))
                 conn.commit()
@@ -349,6 +351,27 @@ class LibraryService:
                 "WHERE book_id = ? AND download_path = ?",
                 (book_id, path),
             )
+
+    @staticmethod
+    def _prune_empty_book_artifact_directories(book_id: int, paths: list[str]) -> None:
+        """Remove empty directories only within the immutable Book artifact tree."""
+        roots: set[Path] = set()
+        for path in paths:
+            artifact_path = Path(path)
+            for parent in artifact_path.parents:
+                if parent.name == str(book_id) and parent.parent.name == "books":
+                    roots.add(parent)
+                    break
+
+        for root in roots:
+            for directory in sorted(
+                root.rglob("*"), key=lambda entry: len(entry.parts), reverse=True
+            ):
+                if directory.is_dir():
+                    with suppress(OSError):
+                        directory.rmdir()
+            with suppress(OSError):
+                root.rmdir()
 
     @staticmethod
     def _detach_book_activity(conn: sqlite3.Connection, book_id: int, *, clear_paths: bool) -> None:
@@ -493,7 +516,7 @@ class LibraryService:
                 """
                 SELECT id, task_id, source, source_display_name, title, author,
                        format, size, content_type, download_path,
-                       username, user_id AS triggering_user_id, queued_at,
+                        username, user_id AS triggering_user_id, import_activity_id, queued_at,
                        terminal_at, final_status
                 FROM download_history
                 WHERE book_id = ?
@@ -730,6 +753,7 @@ class LibraryService:
                 ):
                     return False
                 deleted_history_ids: list[int] = []
+                deleted_paths: list[str] = []
                 for row in rows:
                     path = normalize_optional_text(row["download_path"])
                     try:
@@ -754,6 +778,9 @@ class LibraryService:
                             conn.commit()
                         raise
                     deleted_history_ids.append(int(row["id"]))
+                    if path:
+                        deleted_paths.append(path)
+                self._prune_empty_book_artifact_directories(book_id, deleted_paths)
                 conn.execute(
                     "DELETE FROM user_downloads WHERE history_id IN "
                     "(SELECT id FROM download_history WHERE task_id = ?)",
@@ -826,6 +853,33 @@ class LibraryService:
                 continue
             return self._format_history_row_for_kindle(row)
         return None
+
+    def resolve_kindle_history_id(self, *, book_id: int, history_id: int) -> dict[str, Any] | None:
+        """Resolve one completed Kindle-compatible File for a Book."""
+        normalized_book_id = self._book_identity(book_id)
+        normalized_history_id = self._history_identity(history_id)
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                """
+                SELECT id, format, download_path, size
+                FROM download_history
+                WHERE id = ?
+                  AND book_id = ?
+                  AND final_status = ?
+                  AND download_path IS NOT NULL
+                  AND LOWER(format) = ?
+                """,
+                (
+                    normalized_history_id,
+                    normalized_book_id,
+                    _COMPLETE_DOWNLOAD_STATUS,
+                    KINDLE_FORMAT_PRIORITY[0],
+                ),
+            ).fetchone()
+            return self._format_history_row_for_kindle(row)
+        finally:
+            conn.close()
 
     def _fetch_book_history_row_for_format(
         self, book_id: int, fmt: str, *, user_id: int | None

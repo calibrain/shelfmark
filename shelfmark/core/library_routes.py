@@ -15,6 +15,7 @@ Ownership rules enforce #04 sub-decisions:
 from __future__ import annotations
 
 import sqlite3
+import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, NamedTuple
 
@@ -32,6 +33,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from shelfmark.core.download_history_service import DownloadHistoryService
+    from shelfmark.core.import_activity_service import ImportActivityService
     from shelfmark.core.library_service import LibraryService
     from shelfmark.core.user_db import UserDB
 
@@ -226,11 +228,13 @@ def _serialize_book_detail(
             {
                 "history_id": f["id"],
                 "task_id": f.get("task_id"),
+                "import_activity_id": f.get("import_activity_id"),
                 "format": f.get("format"),
                 "size": f.get("size"),
                 "indexer_display_name": f.get("source_display_name") or f.get("source"),
                 "protocol": f.get("content_type"),
                 "downloaded_at": f.get("terminal_at"),
+                "download_path": f.get("download_path"),
                 "downloadable_by_me": int(f["id"]) in downloadable_history_ids,
             }
             for f in files
@@ -257,6 +261,9 @@ def register_library_routes(
     resolve_metadata_book: Callable[[str, str], dict[str, Any] | None],
     cancel_download: Callable[[str], bool],
     clear_completed_download: Callable[[str], bool],
+    import_activity_service: ImportActivityService | None = None,
+    storage_root: Path | None = None,
+    hardlink_torrents: bool = False,
 ) -> None:
     """Register library API routes.
 
@@ -588,12 +595,28 @@ def register_library_routes(
         requested_format = (
             normalize_optional_text(data.get("format")) if isinstance(data, dict) else None
         )
+        requested_history_id = (
+            normalize_positive_int(data.get("history_id")) if isinstance(data, dict) else None
+        )
+        if isinstance(data, dict) and "history_id" in data and requested_history_id is None:
+            return _error_response(
+                action=action,
+                status_code=400,
+                error="history_id must be a positive integer",
+                book_id=book_id,
+            )
 
         try:
-            resolved = library_service.resolve_kindle_format(
-                book_id=book_id,
-                requested_format=requested_format,
-                user_id=None,
+            resolved = (
+                library_service.resolve_kindle_history_id(
+                    book_id=book_id, history_id=requested_history_id
+                )
+                if requested_history_id is not None
+                else library_service.resolve_kindle_format(
+                    book_id=book_id,
+                    requested_format=requested_format,
+                    user_id=None,
+                )
             )
         except _OPERATIONAL_ERRORS as exc:
             return jsonify({"error": str(exc)}), 500
@@ -685,6 +708,208 @@ def register_library_routes(
         except _OPERATIONAL_ERRORS as exc:
             return jsonify({"error": str(exc)}), 500
         return jsonify({"status": "linked"})
+
+    @app.route(
+        "/api/library/books/<int:book_id>/releases/<int:activity_id>/review", methods=["GET"]
+    )
+    def api_library_release_review(
+        book_id: int, activity_id: int
+    ) -> Response | LibraryRouteResponse:
+        action = "release_review"
+        gate = _actor_gate(action)
+        if not isinstance(gate, _ActorContext):
+            return gate
+        admin_error = _admin_or_403(gate, action=action, book_id=book_id)
+        if admin_error is not None:
+            return admin_error
+        if import_activity_service is None:
+            return _error_response(action=action, status_code=404, error="Source release not found")
+        try:
+            activity = import_activity_service.get_book_activity(
+                activity_id=activity_id, book_id=book_id
+            )
+        except _OPERATIONAL_ERRORS as exc:
+            return jsonify({"error": str(exc)}), 500
+        if activity is None or activity["state"] != "completed":
+            return _error_response(action=action, status_code=404, error="Source release not found")
+        source_root = normalize_optional_text(activity["source_release"].get("source_root"))
+        if source_root is None:
+            return _error_response(
+                action=action, status_code=409, error="Retained source is unavailable"
+            )
+
+        from shelfmark.download.postprocess.scan import get_supported_formats
+
+        supported_formats = set(get_supported_formats())
+        root = Path(source_root)
+        selection_evidence = {
+            selection["source_member_id"]: selection["evidence"]
+            for selection in activity["selections"]
+        }
+        members = [
+            {
+                "id": member["id"],
+                "relative_path": member["relative_path"],
+                "format": member["format"],
+                "size": member["size"],
+                "available": (root / member["relative_path"]).is_file(),
+                "evidence": selection_evidence.get(member["id"], {}),
+                "evidence_summary": "Previously selected"
+                if member["id"] in selection_evidence
+                else "No prior selection evidence",
+            }
+            for member in import_activity_service.source_members(
+                source_release_id=activity["source_release_id"]
+            )
+            if member["format"] in supported_formats
+        ]
+        return jsonify(
+            {
+                "activity_id": activity["id"],
+                "source": activity["source_release"]["source"],
+                "source_key": activity["source_release"]["source_key"],
+                "members": members,
+                "destination": str(storage_root or Path("/books")),
+            }
+        )
+
+    @app.route(
+        "/api/library/books/<int:book_id>/releases/<int:activity_id>/review", methods=["POST"]
+    )
+    def api_library_replace_release(
+        book_id: int, activity_id: int
+    ) -> Response | LibraryRouteResponse:
+        action = "replace_release"
+        gate = _actor_gate(action)
+        if not isinstance(gate, _ActorContext):
+            return gate
+        admin_error = _admin_or_403(gate, action=action, book_id=book_id)
+        if admin_error is not None:
+            return admin_error
+        if import_activity_service is None or storage_root is None:
+            return _error_response(action=action, status_code=404, error="Source release not found")
+        data = request.get_json(silent=True)
+        member_ids = data.get("member_ids") if isinstance(data, dict) else None
+        if (
+            not isinstance(member_ids, list)
+            or not member_ids
+            or any(not isinstance(member_id, int) or member_id < 1 for member_id in member_ids)
+            or len(set(member_ids)) != len(member_ids)
+        ):
+            return _error_response(
+                action=action,
+                status_code=400,
+                error="Select one or more source files",
+                book_id=book_id,
+            )
+        try:
+            original = import_activity_service.get_book_activity(
+                activity_id=activity_id, book_id=book_id
+            )
+            if original is None or original["state"] != "completed":
+                return _error_response(
+                    action=action, status_code=404, error="Source release not found"
+                )
+            source_root = normalize_optional_text(original["source_release"].get("source_root"))
+            if source_root is None:
+                return _error_response(
+                    action=action,
+                    status_code=409,
+                    error="Retained source is unavailable",
+                    book_id=book_id,
+                )
+            root = Path(source_root)
+            members = {
+                member["id"]: member
+                for member in import_activity_service.source_members(
+                    source_release_id=original["source_release_id"]
+                )
+            }
+            selected = [members.get(member_id) for member_id in member_ids]
+            if any(member is None for member in selected):
+                return _error_response(
+                    action=action, status_code=400, error="Unknown source member"
+                )
+            selected_members = [member for member in selected if member is not None]
+            if any(not (root / member["relative_path"]).is_file() for member in selected_members):
+                return _error_response(
+                    action=action,
+                    status_code=409,
+                    error="One or more selected source files are unavailable",
+                    book_id=book_id,
+                )
+            correction = import_activity_service.create_manual_correction(
+                source_release_id=original["source_release_id"],
+                book_id=book_id,
+                task_id=f"manual-{uuid.uuid4()}",
+                selected_by_user_id=gate.db_user_id,
+            )
+            correction = import_activity_service.plan_import(
+                activity_id=correction["id"],
+                storage_root=storage_root,
+                selections=[
+                    {"source_member_id": member["id"], "evidence": {"match": "manual"}}
+                    for member in selected_members
+                ],
+                allow_existing_book_members=True,
+            )
+            from shelfmark.download.postprocess.transfer import transfer_selected_source_members
+
+            paths, error, _ = transfer_selected_source_members(
+                [
+                    (root / member["relative_path"], Path(selection["planned_output_path"]))
+                    for member, selection in zip(
+                        selected_members, correction["selections"], strict=True
+                    )
+                ],
+                use_hardlink=hardlink_torrents,
+            )
+            if error:
+                raise RuntimeError(error)
+            download_history_service.record_download(
+                task_id=correction["task_id"],
+                user_id=gate.db_user_id,
+                username=None,
+                request_id=None,
+                source=original["source_release"]["source"],
+                source_display_name=original["source_release"]["source"],
+                title=str(original["book_snapshot"].get("title") or "Unknown title"),
+                author=normalize_optional_text(original["book_snapshot"].get("author")),
+                file_format=None,
+                size=None,
+                preview=None,
+                content_type="ebook",
+                origin="book",
+                book_id=book_id,
+                import_activity_id=correction["id"],
+            )
+            download_history_service.finalize_download_files(
+                task_id=correction["task_id"],
+                final_status="complete",
+                file_rows=[
+                    {
+                        "download_path": str(path),
+                        "format": member["format"],
+                        "size": str(member["size"]) if member["size"] is not None else None,
+                    }
+                    for member, path in zip(selected_members, paths, strict=True)
+                ],
+            )
+            old_files = library_service.get_files_on_disk(book_id)
+            old_file = next(
+                (file for file in old_files if file.get("import_activity_id") == original["id"]),
+                None,
+            )
+            if old_file is None or not library_service.delete_release(
+                book_id=book_id, history_id=int(old_file["id"])
+            ):
+                msg = "Completed release could not be replaced"
+                raise RuntimeError(msg)
+            import_activity_service.complete(activity_id=correction["id"])
+        except _OPERATIONAL_ERRORS as exc:
+            logger.warning("Library release replacement failed: %s", exc)
+            return jsonify({"error": str(exc)}), 500
+        return jsonify({"status": "completed", "activity_id": correction["id"]})
 
     @app.route("/api/library/books/<int:book_id>/downloads/<int:history_id>", methods=["DELETE"])
     def api_library_delete_release(

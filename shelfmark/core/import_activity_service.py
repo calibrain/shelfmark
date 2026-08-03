@@ -49,7 +49,7 @@ class ImportActivityService:
     def _activity(self, conn: sqlite3.Connection, activity_id: int) -> dict[str, Any]:
         row = conn.execute(
             """
-            SELECT activity.*, source.source_key, source.source, source.metadata_json
+            SELECT activity.*, source.source_key, source.source, source.metadata_json, source.source_root
             FROM import_activities AS activity
             JOIN source_releases AS source ON source.id = activity.source_release_id
             WHERE activity.id = ?
@@ -67,6 +67,7 @@ class ImportActivityService:
             "source_key": result.pop("source_key"),
             "source": result.pop("source"),
             "metadata": self._decoded(result.pop("metadata_json")),
+            "source_root": result.pop("source_root"),
         }
         selections = conn.execute(
             """
@@ -181,12 +182,91 @@ class ImportActivityService:
             finally:
                 conn.close()
 
+    def set_source_root(self, *, source_release_id: int, source_root: Path) -> None:
+        """Persist the retained original root used for later manual corrections."""
+        if not source_root.is_absolute():
+            msg = "source_root must be absolute"
+            raise ValueError(msg)
+        with self._lock:
+            conn = self._connect()
+            try:
+                cursor = conn.execute(
+                    "UPDATE source_releases SET source_root = ? WHERE id = ?",
+                    (str(source_root), source_release_id),
+                )
+                if cursor.rowcount != 1:
+                    msg = "source release not found"
+                    raise ValueError(msg)
+                conn.commit()
+            finally:
+                conn.close()
+
+    def create_manual_correction(
+        self,
+        *,
+        source_release_id: int,
+        book_id: int,
+        task_id: str,
+        selected_by_user_id: int,
+    ) -> dict[str, Any]:
+        """Create a Book-scoped correction from a retained completed source release."""
+        if not isinstance(selected_by_user_id, int) or selected_by_user_id < 1:
+            msg = "selected_by_user_id must be a positive integer"
+            raise ValueError(msg)
+        if not isinstance(task_id, str) or not task_id.strip():
+            msg = "task_id must be a non-empty string"
+            raise ValueError(msg)
+        with self._lock:
+            conn = self._connect()
+            try:
+                book = conn.execute("SELECT * FROM books WHERE id = ?", (book_id,)).fetchone()
+                source_release = conn.execute(
+                    "SELECT id FROM source_releases WHERE id = ?", (source_release_id,)
+                ).fetchone()
+                if book is None or source_release is None:
+                    msg = "book or source release not found"
+                    raise ValueError(msg)
+                cursor = conn.execute(
+                    """
+                    INSERT INTO import_activities
+                    (task_id, source_release_id, book_id, book_snapshot_json, state, selected_by_user_id, updated_at)
+                    VALUES (?, ?, ?, ?, 'matching', ?, ?)
+                    """,
+                    (
+                        task_id.strip(),
+                        source_release_id,
+                        book_id,
+                        self._json(dict(book)),
+                        selected_by_user_id,
+                        now_utc_iso(),
+                    ),
+                )
+                conn.commit()
+                if cursor.lastrowid is None:
+                    msg = "manual correction was not created"
+                    raise RuntimeError(msg)
+                return self._activity(conn, cursor.lastrowid)
+            finally:
+                conn.close()
+
     def get_by_task_id(self, task_id: str) -> dict[str, Any] | None:
         """Return the activity associated with a queue task, if it exists."""
         conn = self._connect()
         try:
             row = conn.execute(
                 "SELECT id FROM import_activities WHERE task_id = ?", (task_id,)
+            ).fetchone()
+            return self._activity(conn, row["id"]) if row is not None else None
+        finally:
+            conn.close()
+
+    def get_book_activity(self, *, activity_id: int, book_id: int) -> dict[str, Any] | None:
+        """Return one activity only when it remains attached to the requested Book."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT id FROM import_activities WHERE id = ? AND book_id = ?",
+                (activity_id, book_id),
             ).fetchone()
             return self._activity(conn, row["id"]) if row is not None else None
         finally:
@@ -212,6 +292,7 @@ class ImportActivityService:
         activity_id: int,
         storage_root: Path,
         selections: list[dict[str, Any]],
+        allow_existing_book_members: bool = False,
     ) -> dict[str, Any]:
         """Persist selection evidence and exact output paths before transfer starts."""
         with self._lock:
@@ -242,13 +323,16 @@ class ImportActivityService:
                         """,
                         (activity["book_id"], member_id),
                     ).fetchone()
-                    if duplicate is not None:
+                    if duplicate is not None and not allow_existing_book_members:
                         msg = "source member is already selected for this Book"
                         raise ValueError(msg)
                     path = self._planned_output_path(
                         storage_root=storage_root,
                         book_id=activity["book_id"],
                         source_release_id=activity["source_release_id"],
+                        activity_id=activity_id
+                        if activity["selected_by_user_id"] is not None
+                        else None,
                         relative_path=member["relative_path"],
                     )
                     conn.execute(
@@ -274,6 +358,7 @@ class ImportActivityService:
         storage_root: Path,
         book_id: int | None,
         source_release_id: int,
+        activity_id: int | None,
         relative_path: str,
     ) -> str:
         if book_id is None:
@@ -284,9 +369,10 @@ class ImportActivityService:
         if not components or any(not component for component in sanitized):
             msg = "source member path has an unusable component"
             raise ValueError(msg)
-        return str(
-            storage_root / "books" / str(book_id) / str(source_release_id) / Path(*sanitized)
-        )
+        root = storage_root / "books" / str(book_id) / str(source_release_id)
+        if activity_id is not None:
+            root /= str(activity_id)
+        return str(root / Path(*sanitized))
 
     def fail(self, *, activity_id: int, error_context: dict[str, Any]) -> dict[str, Any]:
         """Retain a retryable failure without changing the activity context."""

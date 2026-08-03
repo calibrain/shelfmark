@@ -87,6 +87,38 @@ def test_one_source_release_can_create_multiple_book_activities():
         assert first["id"] != second["id"]
 
 
+def test_completed_source_release_can_create_an_attributed_manual_correction():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "users.db")
+        user_db = UserDB(db_path)
+        user_db.initialize()
+        service = ImportActivityService(db_path)
+        selector = user_db.create_user(username="selector")
+        book_id = _create_book(user_db, "42", "Example")
+        original = service.accept_book_targeted_release(
+            source_key="prowlarr:abc123",
+            source="prowlarr",
+            source_metadata={},
+            task_id="activity-1",
+            book_id=book_id,
+        )
+        service.set_source_root(
+            source_release_id=original["source_release_id"], source_root=Path(tmpdir) / "source"
+        )
+        service.complete(activity_id=original["id"])
+
+        correction = service.create_manual_correction(
+            source_release_id=original["source_release_id"],
+            book_id=book_id,
+            task_id="activity-2",
+            selected_by_user_id=selector["id"],
+        )
+
+        assert correction["state"] == "matching"
+        assert correction["selected_by_user_id"] == selector["id"]
+        assert correction["source_release"]["source_root"] == str(Path(tmpdir) / "source")
+
+
 def test_retry_and_recovery_preserve_the_activity_output_plan():
     with tempfile.TemporaryDirectory() as tmpdir:
         db_path = os.path.join(tmpdir, "users.db")

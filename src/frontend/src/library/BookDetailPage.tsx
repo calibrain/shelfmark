@@ -15,6 +15,8 @@ import {
   removeLibraryBook,
   sendLibraryBookToKindle,
   deleteLibraryRelease,
+  getLibraryReleaseReview,
+  replaceLibraryRelease,
 } from '../services/api';
 import type { Book, RequestRecord } from '../types';
 import { withBasePath } from '../utils/basePath';
@@ -26,6 +28,7 @@ import {
   type LibraryBookAvailabilityEvent,
   type LibraryPurgePreview,
   type LibraryFile,
+  type ReleaseReviewResponse,
 } from './types';
 
 interface BookDetailPageProps {
@@ -64,6 +67,55 @@ const toReleaseBook = (book: BookDetailResponse): Book => ({
 
 const dateLabel = (date: string | null): string =>
   date ? new Date(date).toLocaleDateString() : 'date unknown';
+
+const DownloadIcon = () => (
+  <svg
+    className="h-4 w-4"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    aria-hidden="true"
+  >
+    <path strokeLinecap="round" strokeLinejoin="round" d="M12 3v12m0 0 4-4m-4 4-4-4m-5 6v3h18v-3" />
+  </svg>
+);
+
+const SendIcon = () => (
+  <svg
+    className="h-4 w-4"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="2"
+    aria-hidden="true"
+  >
+    <path strokeLinecap="round" strokeLinejoin="round" d="m22 2-7 20-4-9-9-4 20-7Z" />
+    <path strokeLinecap="round" strokeLinejoin="round" d="m22 2-11 11" />
+  </svg>
+);
+
+const SendingSpinner = () => (
+  <svg
+    className="h-4 w-4 animate-spin"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="3"
+    aria-label="Sending to Kindle"
+    role="img"
+  >
+    <circle cx="12" cy="12" r="9" opacity="0.25" />
+    <path strokeLinecap="round" d="M21 12a9 9 0 0 0-9-9" />
+  </svg>
+);
+
+const kindleSendTitle = (format: string | null, isSending: boolean): string => {
+  if (isSending) return 'Sending to Kindle...';
+  return format?.toLowerCase() === 'epub'
+    ? 'Send this EPUB to Kindle'
+    : 'Send to Kindle is available for EPUB files only';
+};
 
 export const shouldAutoFindReleases = ({
   canFindReleases,
@@ -147,6 +199,9 @@ const AvailableFiles = ({
   onOpenSettings,
   onSendToKindle,
   onDeleteRelease,
+  onReviewSource,
+  advancedOpen,
+  onAdvancedOpenChange,
 }: {
   book: BookDetailResponse;
   canFindReleases: boolean;
@@ -154,10 +209,14 @@ const AvailableFiles = ({
   onDownload: (file: LibraryFile) => void;
   onFindReleases: () => void;
   onOpenSettings: () => void;
-  onSendToKindle: (format: string) => void;
+  onSendToKindle: (selection: { format?: string; historyId?: number }) => Promise<void>;
   onDeleteRelease: (file: LibraryFile) => void;
+  onReviewSource: (file: LibraryFile) => void;
+  advancedOpen: boolean;
+  onAdvancedOpenChange: (open: boolean) => void;
 }) => {
   const [kindleFormat, setKindleFormat] = useState('epub');
+  const [sendingKindle, setSendingKindle] = useState<number | 'latest' | null>(null);
   const releases = groupFilesByRelease(book.files);
   const latestFiles = latestFilesByFormat(book.files);
   const kindleFiles = latestFilesByFormat(book.files.filter((file) => file.downloadable_by_me));
@@ -171,6 +230,17 @@ const AvailableFiles = ({
   const selectedKindleFormat = kindleFormats.includes(kindleFormat)
     ? kindleFormat
     : (kindleFormats[0] ?? null);
+  const sendToKindle = async (
+    selection: { format?: string; historyId?: number },
+    sender: number | 'latest',
+  ) => {
+    setSendingKindle(sender);
+    try {
+      await onSendToKindle(selection);
+    } finally {
+      setSendingKindle(null);
+    }
+  };
 
   return (
     <section className="mt-10">
@@ -236,11 +306,20 @@ const AvailableFiles = ({
             </select>
             <button
               type="button"
-              disabled={!selectedKindleFormat}
-              className={`mt-2 w-full rounded-md border border-(--border-muted) px-3 py-2 text-sm font-medium text-(--text) disabled:cursor-not-allowed disabled:opacity-50 ${selectedKindleFormat ? 'hover-action cursor-pointer' : ''}`}
-              onClick={() => selectedKindleFormat && onSendToKindle(selectedKindleFormat)}
+              disabled={!selectedKindleFormat || sendingKindle !== null}
+              className={`mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-(--border-muted) px-3 py-2 text-sm font-medium text-(--text) disabled:cursor-not-allowed disabled:opacity-50 ${selectedKindleFormat && sendingKindle === null ? 'hover-action cursor-pointer' : ''}`}
+              onClick={() =>
+                selectedKindleFormat &&
+                void sendToKindle({ format: selectedKindleFormat }, 'latest')
+              }
             >
-              Send {selectedKindleFormat?.toUpperCase() ?? 'file'} to Kindle
+              {sendingKindle === 'latest' ? (
+                <>
+                  <SendingSpinner /> Sending to Kindle
+                </>
+              ) : (
+                `Send ${selectedKindleFormat?.toUpperCase() ?? 'file'} to Kindle`
+              )}
             </button>
             <button
               type="button"
@@ -256,7 +335,11 @@ const AvailableFiles = ({
           {book.in_flight.length ? 'A release is downloading.' : 'No files are available yet.'}
         </div>
       )}
-      <details className="mt-6">
+      <details
+        open={advancedOpen}
+        className="mt-6"
+        onToggle={(event) => onAdvancedOpenChange(event.currentTarget.open)}
+      >
         <summary className="cursor-pointer text-sm font-medium text-gray-600 dark:text-gray-300">
           Advanced: show all releases{releases.length ? ` (${releases.length})` : ''}
         </summary>
@@ -269,13 +352,24 @@ const AvailableFiles = ({
                     {files[0].indexer_display_name || 'Unknown source'}
                   </p>
                   {canDeleteReleases && (
-                    <button
-                      type="button"
-                      className="hover-action cursor-pointer rounded-md px-2 py-1 text-xs font-medium text-rose-700 dark:text-rose-300"
-                      onClick={() => onDeleteRelease(files[0])}
-                    >
-                      Delete release
-                    </button>
+                    <div className="ml-auto flex gap-2">
+                      {files[0].import_activity_id && (
+                        <button
+                          type="button"
+                          className="hover-action rounded-md px-2 py-1 text-xs font-medium text-violet-700 dark:text-violet-300"
+                          onClick={() => onReviewSource(files[0])}
+                        >
+                          Review source files
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        className="hover-action rounded-md px-2 py-1 text-xs font-medium text-rose-700 dark:text-rose-300"
+                        onClick={() => onDeleteRelease(files[0])}
+                      >
+                        Delete release
+                      </button>
+                    </div>
                   )}
                 </div>
                 <p className="mt-1 text-xs text-gray-500">
@@ -291,15 +385,37 @@ const AvailableFiles = ({
                     <span className="text-xs text-gray-500">
                       {formatFileSize(file.size) || 'Size unknown'}
                     </span>
-                    {file.downloadable_by_me && (
+                    <span className="min-w-0 flex-1 truncate text-xs text-gray-500">
+                      {file.download_path || 'Path unknown'}
+                    </span>
+                    <div className="ml-auto flex shrink-0 items-center gap-1">
                       <button
                         type="button"
-                        className="hover-action ml-auto cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-sky-700 dark:text-sky-300"
+                        disabled={!file.downloadable_by_me}
+                        title={
+                          file.downloadable_by_me
+                            ? `Download ${file.download_path ?? 'file'}`
+                            : 'Download is not available to you'
+                        }
+                        aria-label="Download"
+                        className={`rounded-md p-2 text-sky-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-sky-300 ${file.downloadable_by_me ? 'hover-action cursor-pointer' : ''}`}
                         onClick={() => onDownload(file)}
                       >
-                        Download
+                        <DownloadIcon />
                       </button>
-                    )}
+                      <button
+                        type="button"
+                        disabled={file.format?.toLowerCase() !== 'epub' || sendingKindle !== null}
+                        title={kindleSendTitle(file.format, sendingKindle !== null)}
+                        aria-label="Send to Kindle"
+                        className={`rounded-md p-2 text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-300 ${file.format?.toLowerCase() === 'epub' && sendingKindle === null ? 'hover-action cursor-pointer' : ''}`}
+                        onClick={() =>
+                          void sendToKindle({ historyId: file.history_id }, file.history_id)
+                        }
+                      >
+                        {sendingKindle === file.history_id ? <SendingSpinner /> : <SendIcon />}
+                      </button>
+                    </div>
                   </div>
                 ))}
               </div>
@@ -307,6 +423,299 @@ const AvailableFiles = ({
           </div>
         )}
       </details>
+    </section>
+  );
+};
+
+interface SourceMemberTree {
+  directories: Map<string, SourceMemberTree>;
+  members: ReleaseReviewResponse['members'];
+}
+
+const createSourceMemberTree = (members: ReleaseReviewResponse['members']): SourceMemberTree => {
+  const root: SourceMemberTree = { directories: new Map(), members: [] };
+  for (const member of members) {
+    const path = member.relative_path.split('/').filter(Boolean);
+    const filename = path.pop();
+    if (!filename) continue;
+
+    let directory = root;
+    for (const segment of path) {
+      let child = directory.directories.get(segment);
+      if (!child) {
+        child = { directories: new Map(), members: [] };
+        directory.directories.set(segment, child);
+      }
+      directory = child;
+    }
+    directory.members.push(member);
+  }
+  return root;
+};
+
+const sourceMembers = (tree: SourceMemberTree): ReleaseReviewResponse['members'] => [
+  ...tree.members,
+  ...[...tree.directories.values()].flatMap(sourceMembers),
+];
+
+const SourceMemberTreeView = ({
+  tree,
+  selected,
+  onSelect,
+}: {
+  tree: SourceMemberTree;
+  selected: number[];
+  onSelect: (memberIds: number[], checked: boolean) => void;
+}) => {
+  const selectedIds = new Set(selected);
+  const directories = [...tree.directories.entries()].toSorted(([left], [right]) =>
+    left.localeCompare(right),
+  );
+  const members = tree.members.toSorted((left, right) =>
+    left.relative_path.localeCompare(right.relative_path),
+  );
+
+  return (
+    <>
+      {directories.map(([name, child]) => {
+        const selectableIds = sourceMembers(child)
+          .filter((member) => member.available)
+          .map((member) => member.id);
+        const selectedCount = selectableIds.filter((id) => selectedIds.has(id)).length;
+
+        return (
+          <details key={name} className="border-b border-(--border-muted) last:border-0" open>
+            <summary className="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-(--hover-row)">
+              <input
+                checked={selectableIds.length > 0 && selectedCount === selectableIds.length}
+                disabled={!selectableIds.length}
+                aria-label={`Select all files in ${name}`}
+                className="h-4 w-4 accent-violet-700"
+                type="checkbox"
+                onClick={(event) => event.stopPropagation()}
+                onChange={(event) => onSelect(selectableIds, event.target.checked)}
+              />
+              <span className="text-sm font-medium text-(--text)">{name}</span>
+              <span className="text-xs text-gray-500">
+                {selectedCount ? `${selectedCount} of ` : ''}
+                {selectableIds.length} selectable
+              </span>
+            </summary>
+            <div className="border-l border-(--border-muted) pl-4">
+              <SourceMemberTreeView tree={child} selected={selected} onSelect={onSelect} />
+            </div>
+          </details>
+        );
+      })}
+      {members.map((member) => (
+        <label
+          key={member.id}
+          className={`flex gap-3 border-b border-(--border-muted) px-4 py-3 last:border-0 ${member.available ? 'cursor-pointer hover:bg-(--hover-row)' : 'opacity-55'}`}
+        >
+          <input
+            checked={selectedIds.has(member.id)}
+            disabled={!member.available}
+            aria-label={`Select ${member.relative_path}`}
+            className="mt-0.5 h-4 w-4 accent-violet-700"
+            type="checkbox"
+            onChange={(event) => onSelect([member.id], event.target.checked)}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium break-all text-(--text)">
+                {member.relative_path.split('/').pop()}
+              </span>
+              {!member.available && (
+                <span className="rounded-full bg-rose-500/12 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:text-rose-300">
+                  Unavailable
+                </span>
+              )}
+            </span>
+            <span className="mt-1 block text-xs text-gray-500">
+              {member.format?.toUpperCase() ?? 'Unknown'} ·{' '}
+              {formatFileSize(member.size?.toString() ?? null) || 'Size unknown'}
+            </span>
+          </span>
+        </label>
+      ))}
+    </>
+  );
+};
+
+const SourceReview = ({
+  book,
+  activityId,
+  onClose,
+  onDelete,
+  onComplete,
+}: {
+  book: BookDetailResponse;
+  activityId: number;
+  onClose: () => void;
+  onDelete: () => void;
+  onComplete: () => Promise<void>;
+}) => {
+  const [review, setReview] = useState<ReleaseReviewResponse | null>(null);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [confirming, setConfirming] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useMountEffect(() => {
+    void getLibraryReleaseReview(book.book_id, activityId)
+      .then(setReview)
+      .catch((caught: unknown) =>
+        setError(caught instanceof Error ? caught.message : 'Failed to load retained source files'),
+      );
+  });
+
+  const selectMembers = (memberIds: number[], checked: boolean) => {
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const memberId of memberIds) {
+        if (checked) next.add(memberId);
+        else next.delete(memberId);
+      }
+      return [...next];
+    });
+  };
+
+  const confirm = async () => {
+    setSubmitting(true);
+    try {
+      await replaceLibraryRelease(book.book_id, activityId, selected);
+      await onComplete();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : 'Failed to replace release');
+      setSubmitting(false);
+    }
+  };
+
+  if (!review && !error) return <BookDetailSkeleton />;
+  if (!review) {
+    return (
+      <section className="mx-auto max-w-5xl px-4 py-10 sm:px-6 lg:px-10">
+        <p className="text-sm text-rose-700 dark:text-rose-300">{error}</p>
+        <button
+          type="button"
+          className="hover-action mt-4 rounded-md px-3 py-2 text-sm"
+          onClick={onClose}
+        >
+          Back to book
+        </button>
+      </section>
+    );
+  }
+
+  const tree = createSourceMemberTree(review.members);
+  const availableMemberIds = review.members
+    .filter((member) => member.available)
+    .map((member) => member.id);
+  const allAvailableSelected =
+    availableMemberIds.length > 0 &&
+    availableMemberIds.every((memberId) => selected.includes(memberId));
+
+  return (
+    <section className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-10">
+      <button type="button" className="hover-action rounded-md px-2 py-1 text-sm" onClick={onClose}>
+        <span aria-hidden="true">&larr;</span> Back to {book.title ?? 'book'}
+      </button>
+      <header className="mt-6">
+        <p className="text-xs font-bold tracking-[0.18em] text-violet-700 uppercase dark:text-violet-300">
+          Manual review
+        </p>
+        <h1 className="mt-2 text-3xl font-semibold tracking-tight text-(--text)">
+          Review source files
+        </h1>
+        <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
+          {book.title} {book.author ? `· ${book.author}` : ''}
+        </p>
+      </header>
+      <div className="mt-6 grid gap-4 sm:grid-cols-2">
+        <div className="rounded-lg bg-(--bg-soft) p-4">
+          <p className="text-xs font-bold text-gray-500 uppercase">Source</p>
+          <p className="mt-2 text-sm break-all text-(--text)">{review.source_key}</p>
+        </div>
+        <div className="rounded-lg bg-(--bg-soft) p-4">
+          <p className="text-xs font-bold text-gray-500 uppercase">Retention</p>
+          <p className="mt-2 text-sm text-(--text)">Original files available for correction</p>
+        </div>
+      </div>
+      <section className="mt-6 rounded-xl border border-(--border-muted) bg-(--bg-soft)">
+        <div className="border-b border-(--border-muted) px-4 py-3">
+          <p className="font-semibold text-(--text)">Choose files to import</p>
+          <p className="mt-1 text-xs text-gray-600 dark:text-gray-300">
+            Nothing is selected automatically. Replacing this release imports only checked files.
+          </p>
+        </div>
+        <div className="max-h-[min(60vh,36rem)] overflow-y-auto">
+          <SourceMemberTreeView tree={tree} selected={selected} onSelect={selectMembers} />
+        </div>
+        <div className="flex flex-wrap items-center justify-between gap-3 border-t border-(--border-muted) px-4 py-3">
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-(--text)">{selected.length} selected</span>
+            <button
+              type="button"
+              className="hover-action rounded-md px-2 py-1 text-sm"
+              onClick={() => selectMembers(availableMemberIds, !allAvailableSelected)}
+            >
+              {allAvailableSelected ? 'Clear selection' : 'Select all'}
+            </button>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              className="hover-action rounded-md px-3 py-2 text-sm text-rose-700 dark:text-rose-300"
+              onClick={onDelete}
+            >
+              Delete release
+            </button>
+            <button
+              disabled={!selected.length}
+              type="button"
+              className="rounded-md bg-violet-700 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-800"
+              data-button-highlight="none"
+              onClick={() => setConfirming(true)}
+            >
+              Review selection
+            </button>
+          </div>
+        </div>
+      </section>
+      {error && <p className="mt-4 text-sm text-rose-700 dark:text-rose-300">{error}</p>}
+      {confirming && (
+        <div
+          aria-modal="true"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4"
+          role="dialog"
+        >
+          <div className="w-full max-w-md rounded-xl bg-(--bg) p-6 shadow-xl">
+            <h2 className="text-lg font-semibold text-(--text)">Replace this release?</h2>
+            <p className="mt-2 text-sm text-gray-600 dark:text-gray-300">
+              {selected.length} selected file{selected.length === 1 ? '' : 's'} will be imported
+              into immutable storage under {review.destination}.
+            </p>
+            <div className="mt-6 flex justify-end gap-3">
+              <button
+                type="button"
+                className="hover-action rounded-md px-3 py-2 text-sm"
+                onClick={() => setConfirming(false)}
+              >
+                Cancel
+              </button>
+              <button
+                disabled={submitting}
+                type="button"
+                className="rounded-md bg-violet-700 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-800"
+                data-button-highlight="none"
+                onClick={() => void confirm()}
+              >
+                Import {selected.length} file{selected.length === 1 ? '' : 's'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   );
 };
@@ -445,6 +854,8 @@ export const BookDetailPage = ({
   const [loading, setLoading] = useState(true);
   const [autoOpenedFor, setAutoOpenedFor] = useState<number | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [sourceReviewActivityId, setSourceReviewActivityId] = useState<number | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const firstAddIntent = hasAutoFindReleasesIntent(location.state);
   const libraryUrl = `/library${location.search}`;
 
@@ -518,11 +929,11 @@ export const BookDetailPage = ({
     onFindReleases,
   ]);
 
-  const mutate = async (action: () => Promise<void>, success: string) => {
+  const mutate = async (action: () => Promise<void>, success: string, reload = true) => {
     try {
       await action();
       onShowToast(success, 'success');
-      await load();
+      if (reload) await load();
     } catch (caught) {
       onShowToast(caught instanceof Error ? caught.message : 'Action failed', 'error');
     }
@@ -556,6 +967,31 @@ export const BookDetailPage = ({
     );
   }
   if (!book) return null;
+
+  if (sourceReviewActivityId !== null) {
+    const reviewedFile = book.files.find(
+      (file) => file.import_activity_id === sourceReviewActivityId,
+    );
+    return (
+      <SourceReview
+        book={book}
+        activityId={sourceReviewActivityId}
+        onClose={() => setSourceReviewActivityId(null)}
+        onDelete={() => {
+          if (!reviewedFile) return;
+          void mutate(
+            () => deleteLibraryRelease(book.book_id, reviewedFile.history_id),
+            'Release deleted',
+          ).then(() => setSourceReviewActivityId(null));
+        }}
+        onComplete={async () => {
+          await load();
+          setSourceReviewActivityId(null);
+          onShowToast('Release replaced', 'success');
+        }}
+      />
+    );
+  }
 
   const metadata = [
     book.publish_year,
@@ -652,21 +1088,31 @@ export const BookDetailPage = ({
             void mutate(
               () => downloadLibraryFile(book.book_id, { historyId: file.history_id }),
               'Download started',
+              false,
             )
           }
           onFindReleases={() => onFindReleases(toReleaseBook(book))}
           onOpenSettings={onOpenSettings}
-          onSendToKindle={(format) =>
-            void mutate(async () => {
-              await sendLibraryBookToKindle(book.book_id, format);
-            }, 'Sent to Kindle')
-          }
+          onSendToKindle={async (selection) => {
+            await mutate(
+              async () => {
+                await sendLibraryBookToKindle(book.book_id, selection);
+              },
+              'Sent to Kindle',
+              false,
+            );
+          }}
           onDeleteRelease={(file) =>
             void mutate(
               () => deleteLibraryRelease(book.book_id, file.history_id),
               'Release deleted',
             )
           }
+          onReviewSource={(file) => {
+            if (file.import_activity_id) setSourceReviewActivityId(file.import_activity_id);
+          }}
+          advancedOpen={advancedOpen}
+          onAdvancedOpenChange={setAdvancedOpen}
         />
       )}
       <article className="mt-10 max-w-4xl border-t border-(--border-muted) pt-6">

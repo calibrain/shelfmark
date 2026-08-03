@@ -44,6 +44,7 @@ const book = {
       indexer_display_name: 'Indexer',
       protocol: null,
       downloaded_at: '2026-01-01T00:00:00+00:00',
+      download_path: '/books/1/release/Shared Book.epub',
       downloadable_by_me: true,
     },
   ],
@@ -403,5 +404,104 @@ describe('BookDetailPage release deletion', () => {
       '/api/library/books/1/purge',
       expect.objectContaining({ method: 'DELETE' }),
     );
+  });
+});
+
+describe('BookDetailPage source review', () => {
+  afterEach(() => {
+    cleanup();
+    vi.unstubAllGlobals();
+    socketListeners.clear();
+  });
+
+  it('requires an admin selection before confirming a source-release correction', async () => {
+    const user = userEvent.setup();
+    const reviewBook = {
+      ...book,
+      files: [{ ...book.files[0], import_activity_id: 22 }],
+    };
+    const fetchMock = vi.fn((url: string, init?: RequestInit) => {
+      if (url.endsWith('/releases/22/review') && init?.method === 'POST') {
+        return Promise.resolve(new Response(JSON.stringify({ status: 'completed' })));
+      }
+      if (url.endsWith('/releases/22/review')) {
+        return Promise.resolve(
+          new Response(
+            JSON.stringify({
+              activity_id: 22,
+              source: 'prowlarr',
+              source_key: 'prowlarr:source',
+              destination: '/books',
+              members: [
+                {
+                  id: 7,
+                  relative_path: 'epub/Dune.epub',
+                  format: 'epub',
+                  size: 1024,
+                  available: true,
+                  evidence: { match: 'manual' },
+                  evidence_summary: 'Previously selected',
+                },
+                {
+                  id: 8,
+                  relative_path: 'mobi/Dune.mobi',
+                  format: 'mobi',
+                  size: 2048,
+                  available: true,
+                  evidence: { match: 'manual' },
+                  evidence_summary: 'Previously selected',
+                },
+              ],
+            }),
+          ),
+        );
+      }
+      return Promise.resolve(new Response(JSON.stringify(reviewBook)));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    render(
+      <MemoryRouter initialEntries={['/library/1']}>
+        <Routes>
+          <Route
+            path="/library/:bookId"
+            element={
+              <BookDetailPage
+                autoFindReleases={false}
+                canFindReleases
+                canDeleteReleases
+                isRequestOnly={false}
+                isAdmin
+                onFindReleases={() => undefined}
+                onOpenSettings={() => undefined}
+                onShowToast={() => undefined}
+              />
+            }
+          />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    await screen.findByRole('heading', { name: 'Shared Book' });
+    await user.click(screen.getByText('Advanced: show all releases (1)'));
+    await user.click(screen.getByRole('button', { name: 'Review source files' }));
+
+    const review = await screen.findByRole('button', { name: 'Review selection' });
+    if (!(review instanceof HTMLButtonElement)) throw new Error('Expected selection button');
+    expect(review.disabled).toBe(true);
+    expect(screen.queryByText('Previously selected')).toBeNull();
+    expect(screen.getByRole('checkbox', { name: 'Select all files in epub' })).not.toBeNull();
+    expect(screen.getByRole('checkbox', { name: 'Select all files in mobi' })).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Select all' }));
+    await user.click(review);
+    expect(await screen.findByText(/2 selected files will be imported/)).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Import 2 files' }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        '/api/library/books/1/releases/22/review',
+        expect.objectContaining({ method: 'POST', body: JSON.stringify({ member_ids: [7, 8] }) }),
+      );
+    });
   });
 });

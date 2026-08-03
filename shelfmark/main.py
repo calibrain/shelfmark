@@ -529,6 +529,9 @@ if user_db is not None:
                 resolve_metadata_book=_resolve_metadata_book_for_library,
                 cancel_download=backend.cancel_download,
                 clear_completed_download=backend.clear_completed_download,
+                import_activity_service=import_activity_service,
+                storage_root=Path(str(app_config.get("DESTINATION", "/books"))),
+                hardlink_torrents=bool(app_config.get("HARDLINK_TORRENTS", False)),
             )
     except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.warning("Failed to register request routes: %s", e)
@@ -1337,6 +1340,9 @@ def _record_source_members(task: Any) -> dict[int, Path]:
             root = source_path
         else:
             return {}
+        import_activity_service.set_source_root(
+            source_release_id=activity["source_release_id"], source_root=root
+        )
         recorded: dict[int, Path] = {}
         for member in members:
             source_member = import_activity_service.record_source_member(

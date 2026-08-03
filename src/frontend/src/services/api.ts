@@ -2,6 +2,7 @@ import type {
   BookDetailResponse,
   LibraryBooksResponse,
   LibraryPurgePreview,
+  ReleaseReviewResponse,
 } from '../library/types';
 import type {
   Book,
@@ -533,13 +534,33 @@ export const deleteLibraryRelease = async (bookId: number, historyId: number): P
   await fetchJSON(`${API.libraryBooks}/${bookId}/downloads/${historyId}`, { method: 'DELETE' });
 };
 
+export const getLibraryReleaseReview = async (
+  bookId: number,
+  activityId: number,
+): Promise<ReleaseReviewResponse> => {
+  return fetchJSON<ReleaseReviewResponse>(
+    `${API.libraryBooks}/${bookId}/releases/${activityId}/review`,
+  );
+};
+
+export const replaceLibraryRelease = async (
+  bookId: number,
+  activityId: number,
+  memberIds: number[],
+): Promise<void> => {
+  await fetchJSON(`${API.libraryBooks}/${bookId}/releases/${activityId}/review`, {
+    method: 'POST',
+    body: JSON.stringify({ member_ids: memberIds }),
+  });
+};
+
 export const sendLibraryBookToKindle = async (
   bookId: number,
-  format: string,
+  selection: { format?: string; historyId?: number },
 ): Promise<{ recipient: string; format: string }> => {
   return fetchJSON(`${API.libraryBooks}/${bookId}/send-to-kindle`, {
     method: 'POST',
-    body: JSON.stringify({ format }),
+    body: JSON.stringify({ format: selection.format, history_id: selection.historyId }),
   });
 };
 
