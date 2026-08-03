@@ -290,6 +290,13 @@ class ProwlarrHandler(ExternalClientHandler):
         if title is None:
             return None
 
+        source_key = normalize_optional_text(getattr(task, "source_release_key", None))
+        release_id = (
+            source_key.removeprefix("prowlarr:")
+            if source_key and source_key.startswith("prowlarr:")
+            else task.task_id
+        )
+
         context = getattr(task, "retry_source_context", None)
         if not isinstance(context, dict):
             context = {}
@@ -314,7 +321,7 @@ class ProwlarrHandler(ExternalClientHandler):
             raw_release = get_release(release.source_id)
             if raw_release is None:
                 continue
-            if not self._raw_release_matches_task(raw_release, task.task_id):
+            if not self._raw_release_matches_task(raw_release, release_id):
                 continue
 
             cache_release(task.task_id, raw_release)
