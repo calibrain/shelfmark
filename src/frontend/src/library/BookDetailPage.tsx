@@ -96,11 +96,26 @@ const SendIcon = () => (
 );
 
 const SendingSpinner = () => (
-  <span
+  <svg
+    className="h-4 w-4 animate-spin"
+    viewBox="0 0 24 24"
+    fill="none"
+    stroke="currentColor"
+    strokeWidth="3"
     aria-label="Sending to Kindle"
-    className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
-  />
+    role="img"
+  >
+    <circle cx="12" cy="12" r="9" opacity="0.25" />
+    <path strokeLinecap="round" d="M21 12a9 9 0 0 0-9-9" />
+  </svg>
 );
+
+const kindleSendTitle = (format: string | null, isSending: boolean): string => {
+  if (isSending) return 'Sending to Kindle...';
+  return format?.toLowerCase() === 'epub'
+    ? 'Send this EPUB to Kindle'
+    : 'Send to Kindle is available for EPUB files only';
+};
 
 export const shouldAutoFindReleases = ({
   canFindReleases,
@@ -185,6 +200,8 @@ const AvailableFiles = ({
   onSendToKindle,
   onDeleteRelease,
   onReviewSource,
+  advancedOpen,
+  onAdvancedOpenChange,
 }: {
   book: BookDetailResponse;
   canFindReleases: boolean;
@@ -195,6 +212,8 @@ const AvailableFiles = ({
   onSendToKindle: (selection: { format?: string; historyId?: number }) => Promise<void>;
   onDeleteRelease: (file: LibraryFile) => void;
   onReviewSource: (file: LibraryFile) => void;
+  advancedOpen: boolean;
+  onAdvancedOpenChange: (open: boolean) => void;
 }) => {
   const [kindleFormat, setKindleFormat] = useState('epub');
   const [sendingKindle, setSendingKindle] = useState<number | 'latest' | null>(null);
@@ -316,7 +335,11 @@ const AvailableFiles = ({
           {book.in_flight.length ? 'A release is downloading.' : 'No files are available yet.'}
         </div>
       )}
-      <details className="mt-6">
+      <details
+        open={advancedOpen}
+        className="mt-6"
+        onToggle={(event) => onAdvancedOpenChange(event.currentTarget.open)}
+      >
         <summary className="cursor-pointer text-sm font-medium text-gray-600 dark:text-gray-300">
           Advanced: show all releases{releases.length ? ` (${releases.length})` : ''}
         </summary>
@@ -383,13 +406,7 @@ const AvailableFiles = ({
                       <button
                         type="button"
                         disabled={file.format?.toLowerCase() !== 'epub' || sendingKindle !== null}
-                        title={
-                          sendingKindle !== null
-                            ? 'Sending to Kindle...'
-                            : file.format?.toLowerCase() === 'epub'
-                              ? 'Send this EPUB to Kindle'
-                              : 'Send to Kindle is available for EPUB files only'
-                        }
+                        title={kindleSendTitle(file.format, sendingKindle !== null)}
                         aria-label="Send to Kindle"
                         className={`rounded-md p-2 text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-300 ${file.format?.toLowerCase() === 'epub' && sendingKindle === null ? 'hover-action cursor-pointer' : ''}`}
                         onClick={() =>
@@ -838,6 +855,7 @@ export const BookDetailPage = ({
   const [autoOpenedFor, setAutoOpenedFor] = useState<number | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [sourceReviewActivityId, setSourceReviewActivityId] = useState<number | null>(null);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
   const firstAddIntent = hasAutoFindReleasesIntent(location.state);
   const libraryUrl = `/library${location.search}`;
 
@@ -1088,6 +1106,8 @@ export const BookDetailPage = ({
           onReviewSource={(file) => {
             if (file.import_activity_id) setSourceReviewActivityId(file.import_activity_id);
           }}
+          advancedOpen={advancedOpen}
+          onAdvancedOpenChange={setAdvancedOpen}
         />
       )}
       <article className="mt-10 max-w-4xl border-t border-(--border-muted) pt-6">
