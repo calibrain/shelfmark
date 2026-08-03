@@ -452,11 +452,9 @@ const SourceReview = ({
                   </p>
                   <details className="mt-2 text-xs text-gray-600 dark:text-gray-300">
                     <summary className="cursor-pointer font-medium">
-                      {member.evidence.result}
+                      {member.evidence_summary}
                     </summary>
-                    <p className="mt-2 leading-5">
-                      The original source remains untouched until this selection is confirmed.
-                    </p>
+                    <p className="mt-2 leading-5">{JSON.stringify(member.evidence)}</p>
                   </details>
                 </div>
               </div>
@@ -477,6 +475,7 @@ const SourceReview = ({
               disabled={!selected.length}
               type="button"
               className="rounded-md bg-violet-700 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-800"
+              data-button-highlight="none"
               onClick={() => setConfirming(true)}
             >
               Review selection
@@ -509,6 +508,7 @@ const SourceReview = ({
                 disabled={submitting}
                 type="button"
                 className="rounded-md bg-violet-700 px-3 py-2 text-sm font-semibold text-white hover:bg-violet-800"
+                data-button-highlight="none"
                 onClick={() => void confirm()}
               >
                 Import {selected.length} file{selected.length === 1 ? '' : 's'}

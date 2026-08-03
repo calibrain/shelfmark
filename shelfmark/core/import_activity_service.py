@@ -272,17 +272,6 @@ class ImportActivityService:
         finally:
             conn.close()
 
-    def book_activities(self, *, book_id: int) -> list[dict[str, Any]]:
-        """Return the Book's attached activities newest first for release audit views."""
-        conn = self._connect()
-        try:
-            rows = conn.execute(
-                "SELECT id FROM import_activities WHERE book_id = ? ORDER BY id DESC", (book_id,)
-            ).fetchall()
-            return [self._activity(conn, row["id"]) for row in rows]
-        finally:
-            conn.close()
-
     def source_members(self, *, source_release_id: int) -> list[dict[str, Any]]:
         """Return the retained members available for an activity's default selection."""
         conn = self._connect()
@@ -303,6 +292,7 @@ class ImportActivityService:
         activity_id: int,
         storage_root: Path,
         selections: list[dict[str, Any]],
+        allow_existing_book_members: bool = False,
     ) -> dict[str, Any]:
         """Persist selection evidence and exact output paths before transfer starts."""
         with self._lock:
@@ -333,13 +323,16 @@ class ImportActivityService:
                         """,
                         (activity["book_id"], member_id),
                     ).fetchone()
-                    if duplicate is not None:
+                    if duplicate is not None and not allow_existing_book_members:
                         msg = "source member is already selected for this Book"
                         raise ValueError(msg)
                     path = self._planned_output_path(
                         storage_root=storage_root,
                         book_id=activity["book_id"],
                         source_release_id=activity["source_release_id"],
+                        activity_id=activity_id
+                        if activity["selected_by_user_id"] is not None
+                        else None,
                         relative_path=member["relative_path"],
                     )
                     conn.execute(
@@ -365,6 +358,7 @@ class ImportActivityService:
         storage_root: Path,
         book_id: int | None,
         source_release_id: int,
+        activity_id: int | None,
         relative_path: str,
     ) -> str:
         if book_id is None:
@@ -375,9 +369,10 @@ class ImportActivityService:
         if not components or any(not component for component in sanitized):
             msg = "source member path has an unusable component"
             raise ValueError(msg)
-        return str(
-            storage_root / "books" / str(book_id) / str(source_release_id) / Path(*sanitized)
-        )
+        root = storage_root / "books" / str(book_id) / str(source_release_id)
+        if activity_id is not None:
+            root /= str(activity_id)
+        return str(root / Path(*sanitized))
 
     def fail(self, *, activity_id: int, error_context: dict[str, Any]) -> dict[str, Any]:
         """Retain a retryable failure without changing the activity context."""

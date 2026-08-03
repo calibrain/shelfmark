@@ -579,6 +579,11 @@ def test_admin_can_review_and_replace_a_completed_source_release(
         file_format="epub",
         discovery_status="discovered",
     )
+    import_activity_service.plan_import(
+        activity_id=original["id"],
+        storage_root=tmp_path / "books",
+        selections=[{"source_member_id": member["id"], "evidence": {"match": "default"}}],
+    )
     import_activity_service.complete(activity_id=original["id"])
     old_path = tmp_path / "old.epub"
     old_path.write_bytes(b"old")
@@ -616,7 +621,8 @@ def test_admin_can_review_and_replace_a_completed_source_release(
     assert review.json["members"] == [
         {
             "available": True,
-            "evidence": {"result": "Previously selected"},
+            "evidence": {"match": "default"},
+            "evidence_summary": "Previously selected",
             "format": "epub",
             "id": member["id"],
             "relative_path": "Book.epub",

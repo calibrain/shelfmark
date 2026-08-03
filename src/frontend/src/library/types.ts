@@ -16,7 +16,8 @@ export interface SourceMemberReview {
   format: string | null;
   size: number | null;
   available: boolean;
-  evidence: { result: string };
+  evidence: Record<string, unknown>;
+  evidence_summary: string;
 }
 
 export interface ReleaseReviewResponse {

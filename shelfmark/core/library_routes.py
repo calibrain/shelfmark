@@ -725,6 +725,10 @@ def register_library_routes(
 
         supported_formats = set(get_supported_formats())
         root = Path(source_root)
+        selection_evidence = {
+            selection["source_member_id"]: selection["evidence"]
+            for selection in activity["selections"]
+        }
         members = [
             {
                 "id": member["id"],
@@ -732,7 +736,10 @@ def register_library_routes(
                 "format": member["format"],
                 "size": member["size"],
                 "available": (root / member["relative_path"]).is_file(),
-                "evidence": {"result": "Previously selected"},
+                "evidence": selection_evidence.get(member["id"], {}),
+                "evidence_summary": "Previously selected"
+                if member["id"] in selection_evidence
+                else "No prior selection evidence",
             }
             for member in import_activity_service.source_members(
                 source_release_id=activity["source_release_id"]
@@ -827,6 +834,7 @@ def register_library_routes(
                     {"source_member_id": member["id"], "evidence": {"match": "manual"}}
                     for member in selected_members
                 ],
+                allow_existing_book_members=True,
             )
             from shelfmark.download.postprocess.transfer import transfer_selected_source_members
 
@@ -841,16 +849,6 @@ def register_library_routes(
             )
             if error:
                 raise RuntimeError(error)
-            old_files = library_service.get_files_on_disk(book_id)
-            old_file = next(
-                (file for file in old_files if file.get("import_activity_id") == original["id"]),
-                None,
-            )
-            if old_file is None or not library_service.delete_release(
-                book_id=book_id, history_id=int(old_file["id"])
-            ):
-                msg = "Completed release could not be replaced"
-                raise RuntimeError(msg)
             download_history_service.record_download(
                 task_id=correction["task_id"],
                 user_id=gate.db_user_id,
@@ -880,6 +878,16 @@ def register_library_routes(
                     for member, path in zip(selected_members, paths, strict=True)
                 ],
             )
+            old_files = library_service.get_files_on_disk(book_id)
+            old_file = next(
+                (file for file in old_files if file.get("import_activity_id") == original["id"]),
+                None,
+            )
+            if old_file is None or not library_service.delete_release(
+                book_id=book_id, history_id=int(old_file["id"])
+            ):
+                msg = "Completed release could not be replaced"
+                raise RuntimeError(msg)
             import_activity_service.complete(activity_id=correction["id"])
         except _OPERATIONAL_ERRORS as exc:
             logger.warning("Library release replacement failed: %s", exc)
