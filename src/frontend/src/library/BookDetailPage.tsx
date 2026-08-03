@@ -95,6 +95,13 @@ const SendIcon = () => (
   </svg>
 );
 
+const SendingSpinner = () => (
+  <span
+    aria-label="Sending to Kindle"
+    className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent"
+  />
+);
+
 export const shouldAutoFindReleases = ({
   canFindReleases,
   autoFindReleases,
@@ -185,11 +192,12 @@ const AvailableFiles = ({
   onDownload: (file: LibraryFile) => void;
   onFindReleases: () => void;
   onOpenSettings: () => void;
-  onSendToKindle: (selection: { format?: string; historyId?: number }) => void;
+  onSendToKindle: (selection: { format?: string; historyId?: number }) => Promise<void>;
   onDeleteRelease: (file: LibraryFile) => void;
   onReviewSource: (file: LibraryFile) => void;
 }) => {
   const [kindleFormat, setKindleFormat] = useState('epub');
+  const [sendingKindle, setSendingKindle] = useState<number | 'latest' | null>(null);
   const releases = groupFilesByRelease(book.files);
   const latestFiles = latestFilesByFormat(book.files);
   const kindleFiles = latestFilesByFormat(book.files.filter((file) => file.downloadable_by_me));
@@ -203,6 +211,17 @@ const AvailableFiles = ({
   const selectedKindleFormat = kindleFormats.includes(kindleFormat)
     ? kindleFormat
     : (kindleFormats[0] ?? null);
+  const sendToKindle = async (
+    selection: { format?: string; historyId?: number },
+    sender: number | 'latest',
+  ) => {
+    setSendingKindle(sender);
+    try {
+      await onSendToKindle(selection);
+    } finally {
+      setSendingKindle(null);
+    }
+  };
 
   return (
     <section className="mt-10">
@@ -268,13 +287,20 @@ const AvailableFiles = ({
             </select>
             <button
               type="button"
-              disabled={!selectedKindleFormat}
-              className={`mt-2 w-full rounded-md border border-(--border-muted) px-3 py-2 text-sm font-medium text-(--text) disabled:cursor-not-allowed disabled:opacity-50 ${selectedKindleFormat ? 'hover-action cursor-pointer' : ''}`}
+              disabled={!selectedKindleFormat || sendingKindle !== null}
+              className={`mt-2 flex w-full items-center justify-center gap-2 rounded-md border border-(--border-muted) px-3 py-2 text-sm font-medium text-(--text) disabled:cursor-not-allowed disabled:opacity-50 ${selectedKindleFormat && sendingKindle === null ? 'hover-action cursor-pointer' : ''}`}
               onClick={() =>
-                selectedKindleFormat && onSendToKindle({ format: selectedKindleFormat })
+                selectedKindleFormat &&
+                void sendToKindle({ format: selectedKindleFormat }, 'latest')
               }
             >
-              Send {selectedKindleFormat?.toUpperCase() ?? 'file'} to Kindle
+              {sendingKindle === 'latest' ? (
+                <>
+                  <SendingSpinner /> Sending to Kindle
+                </>
+              ) : (
+                `Send ${selectedKindleFormat?.toUpperCase() ?? 'file'} to Kindle`
+              )}
             </button>
             <button
               type="button"
@@ -356,17 +382,21 @@ const AvailableFiles = ({
                       </button>
                       <button
                         type="button"
-                        disabled={file.format?.toLowerCase() !== 'epub'}
+                        disabled={file.format?.toLowerCase() !== 'epub' || sendingKindle !== null}
                         title={
-                          file.format?.toLowerCase() === 'epub'
-                            ? 'Send this EPUB to Kindle'
-                            : 'Send to Kindle is available for EPUB files only'
+                          sendingKindle !== null
+                            ? 'Sending to Kindle...'
+                            : file.format?.toLowerCase() === 'epub'
+                              ? 'Send this EPUB to Kindle'
+                              : 'Send to Kindle is available for EPUB files only'
                         }
                         aria-label="Send to Kindle"
-                        className={`rounded-md p-2 text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-300 ${file.format?.toLowerCase() === 'epub' ? 'hover-action cursor-pointer' : ''}`}
-                        onClick={() => onSendToKindle({ historyId: file.history_id })}
+                        className={`rounded-md p-2 text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 dark:text-emerald-300 ${file.format?.toLowerCase() === 'epub' && sendingKindle === null ? 'hover-action cursor-pointer' : ''}`}
+                        onClick={() =>
+                          void sendToKindle({ historyId: file.history_id }, file.history_id)
+                        }
                       >
-                        <SendIcon />
+                        {sendingKindle === file.history_id ? <SendingSpinner /> : <SendIcon />}
                       </button>
                     </div>
                   </div>
@@ -1044,11 +1074,11 @@ export const BookDetailPage = ({
           }
           onFindReleases={() => onFindReleases(toReleaseBook(book))}
           onOpenSettings={onOpenSettings}
-          onSendToKindle={(selection) =>
-            void mutate(async () => {
+          onSendToKindle={async (selection) => {
+            await mutate(async () => {
               await sendLibraryBookToKindle(book.book_id, selection);
-            }, 'Sent to Kindle')
-          }
+            }, 'Sent to Kindle');
+          }}
           onDeleteRelease={(file) =>
             void mutate(
               () => deleteLibraryRelease(book.book_id, file.history_id),
