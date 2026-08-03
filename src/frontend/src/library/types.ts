@@ -7,6 +7,7 @@ export interface LibraryFile {
   indexer_display_name: string | null;
   protocol: string | null;
   downloaded_at: string | null;
+  download_path: string | null;
   downloadable_by_me: boolean;
 }
 

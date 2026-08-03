@@ -158,7 +158,7 @@ const AvailableFiles = ({
   onDownload: (file: LibraryFile) => void;
   onFindReleases: () => void;
   onOpenSettings: () => void;
-  onSendToKindle: (format: string) => void;
+  onSendToKindle: (selection: { format?: string; historyId?: number }) => void;
   onDeleteRelease: (file: LibraryFile) => void;
   onReviewSource: (file: LibraryFile) => void;
 }) => {
@@ -243,7 +243,9 @@ const AvailableFiles = ({
               type="button"
               disabled={!selectedKindleFormat}
               className={`mt-2 w-full rounded-md border border-(--border-muted) px-3 py-2 text-sm font-medium text-(--text) disabled:cursor-not-allowed disabled:opacity-50 ${selectedKindleFormat ? 'hover-action cursor-pointer' : ''}`}
-              onClick={() => selectedKindleFormat && onSendToKindle(selectedKindleFormat)}
+              onClick={() =>
+                selectedKindleFormat && onSendToKindle({ format: selectedKindleFormat })
+              }
             >
               Send {selectedKindleFormat?.toUpperCase() ?? 'file'} to Kindle
             </button>
@@ -307,6 +309,9 @@ const AvailableFiles = ({
                     <span className="text-xs text-gray-500">
                       {formatFileSize(file.size) || 'Size unknown'}
                     </span>
+                    <span className="min-w-0 flex-1 truncate text-xs text-gray-500">
+                      {file.download_path || 'Path unknown'}
+                    </span>
                     {file.downloadable_by_me && (
                       <button
                         type="button"
@@ -314,6 +319,15 @@ const AvailableFiles = ({
                         onClick={() => onDownload(file)}
                       >
                         Download
+                      </button>
+                    )}
+                    {file.format?.toLowerCase() === 'epub' && (
+                      <button
+                        type="button"
+                        className="hover-action cursor-pointer rounded-md px-2 py-1 text-sm font-medium text-emerald-700 dark:text-emerald-300"
+                        onClick={() => onSendToKindle({ historyId: file.history_id })}
+                      >
+                        Send to Kindle
                       </button>
                     )}
                   </div>
@@ -324,6 +338,121 @@ const AvailableFiles = ({
         )}
       </details>
     </section>
+  );
+};
+
+interface SourceMemberTree {
+  directories: Map<string, SourceMemberTree>;
+  members: ReleaseReviewResponse['members'];
+}
+
+const createSourceMemberTree = (members: ReleaseReviewResponse['members']): SourceMemberTree => {
+  const root: SourceMemberTree = { directories: new Map(), members: [] };
+  for (const member of members) {
+    const path = member.relative_path.split('/').filter(Boolean);
+    const filename = path.pop();
+    if (!filename) continue;
+
+    let directory = root;
+    for (const segment of path) {
+      let child = directory.directories.get(segment);
+      if (!child) {
+        child = { directories: new Map(), members: [] };
+        directory.directories.set(segment, child);
+      }
+      directory = child;
+    }
+    directory.members.push(member);
+  }
+  return root;
+};
+
+const sourceMembers = (tree: SourceMemberTree): ReleaseReviewResponse['members'] => [
+  ...tree.members,
+  ...[...tree.directories.values()].flatMap(sourceMembers),
+];
+
+const SourceMemberTreeView = ({
+  tree,
+  selected,
+  onSelect,
+}: {
+  tree: SourceMemberTree;
+  selected: number[];
+  onSelect: (memberIds: number[], checked: boolean) => void;
+}) => {
+  const selectedIds = new Set(selected);
+  const directories = [...tree.directories.entries()].toSorted(([left], [right]) =>
+    left.localeCompare(right),
+  );
+  const members = tree.members.toSorted((left, right) =>
+    left.relative_path.localeCompare(right.relative_path),
+  );
+
+  return (
+    <>
+      {directories.map(([name, child]) => {
+        const selectableIds = sourceMembers(child)
+          .filter((member) => member.available)
+          .map((member) => member.id);
+        const selectedCount = selectableIds.filter((id) => selectedIds.has(id)).length;
+
+        return (
+          <details key={name} className="border-b border-(--border-muted) last:border-0" open>
+            <summary className="flex cursor-pointer items-center gap-3 px-4 py-3 hover:bg-(--hover-row)">
+              <input
+                checked={selectableIds.length > 0 && selectedCount === selectableIds.length}
+                disabled={!selectableIds.length}
+                aria-label={`Select all files in ${name}`}
+                className="h-4 w-4 accent-violet-700"
+                type="checkbox"
+                onClick={(event) => event.stopPropagation()}
+                onChange={(event) => onSelect(selectableIds, event.target.checked)}
+              />
+              <span className="text-sm font-medium text-(--text)">{name}</span>
+              <span className="text-xs text-gray-500">
+                {selectedCount ? `${selectedCount} of ` : ''}
+                {selectableIds.length} selectable
+              </span>
+            </summary>
+            <div className="border-l border-(--border-muted) pl-4">
+              <SourceMemberTreeView tree={child} selected={selected} onSelect={onSelect} />
+            </div>
+          </details>
+        );
+      })}
+      {members.map((member) => (
+        <label
+          key={member.id}
+          className={`flex gap-3 border-b border-(--border-muted) px-4 py-3 last:border-0 ${member.available ? 'cursor-pointer hover:bg-(--hover-row)' : 'opacity-55'}`}
+        >
+          <input
+            checked={selectedIds.has(member.id)}
+            disabled={!member.available}
+            aria-label={`Select ${member.relative_path}`}
+            className="mt-0.5 h-4 w-4 accent-violet-700"
+            type="checkbox"
+            onChange={(event) => onSelect([member.id], event.target.checked)}
+          />
+          <span className="min-w-0 flex-1">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="text-sm font-medium break-all text-(--text)">
+                {member.relative_path.split('/').pop()}
+              </span>
+              {!member.available && (
+                <span className="rounded-full bg-rose-500/12 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:text-rose-300">
+                  Unavailable
+                </span>
+              )}
+            </span>
+            <span className="mt-1 block text-xs text-gray-500">
+              {member.format?.toUpperCase() ?? 'Unknown'} ·{' '}
+              {formatFileSize(member.size?.toString() ?? null) || 'Size unknown'}
+            </span>
+          </span>
+        </label>
+      ))}
+    </>
   );
 };
 
@@ -354,10 +483,15 @@ const SourceReview = ({
       );
   });
 
-  const toggle = (memberId: number) => {
-    setSelected((current) =>
-      current.includes(memberId) ? current.filter((id) => id !== memberId) : [...current, memberId],
-    );
+  const selectMembers = (memberIds: number[], checked: boolean) => {
+    setSelected((current) => {
+      const next = new Set(current);
+      for (const memberId of memberIds) {
+        if (checked) next.add(memberId);
+        else next.delete(memberId);
+      }
+      return [...next];
+    });
   };
 
   const confirm = async () => {
@@ -386,6 +520,14 @@ const SourceReview = ({
       </section>
     );
   }
+
+  const tree = createSourceMemberTree(review.members);
+  const availableMemberIds = review.members
+    .filter((member) => member.available)
+    .map((member) => member.id);
+  const allAvailableSelected =
+    availableMemberIds.length > 0 &&
+    availableMemberIds.every((memberId) => selected.includes(memberId));
 
   return (
     <section className="mx-auto max-w-5xl px-4 py-8 sm:px-6 lg:px-10">
@@ -420,49 +562,20 @@ const SourceReview = ({
             Nothing is selected automatically. Replacing this release imports only checked files.
           </p>
         </div>
-        <div className="divide-y divide-(--border-muted)">
-          {review.members.map((member) => (
-            <label
-              key={member.id}
-              className={`block px-4 py-3 ${member.available ? 'cursor-pointer hover:bg-(--hover-row)' : 'opacity-55'}`}
-            >
-              <div className="flex gap-3">
-                <input
-                  checked={selected.includes(member.id)}
-                  disabled={!member.available}
-                  aria-label={`Select ${member.relative_path}`}
-                  className="mt-1 h-4 w-4 accent-violet-700"
-                  type="checkbox"
-                  onChange={() => toggle(member.id)}
-                />
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-sm font-medium break-all text-(--text)">
-                      {member.relative_path}
-                    </span>
-                    {!member.available && (
-                      <span className="rounded-full bg-rose-500/12 px-2 py-0.5 text-[11px] font-semibold text-rose-700 dark:text-rose-300">
-                        Unavailable
-                      </span>
-                    )}
-                  </div>
-                  <p className="mt-1 text-xs text-gray-500">
-                    {member.format?.toUpperCase() ?? 'Unknown'} ·{' '}
-                    {formatFileSize(member.size?.toString() ?? null) || 'Size unknown'}
-                  </p>
-                  <details className="mt-2 text-xs text-gray-600 dark:text-gray-300">
-                    <summary className="cursor-pointer font-medium">
-                      {member.evidence_summary}
-                    </summary>
-                    <p className="mt-2 leading-5">{JSON.stringify(member.evidence)}</p>
-                  </details>
-                </div>
-              </div>
-            </label>
-          ))}
+        <div className="max-h-[min(60vh,36rem)] overflow-y-auto">
+          <SourceMemberTreeView tree={tree} selected={selected} onSelect={selectMembers} />
         </div>
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-(--border-muted) px-4 py-3">
-          <span className="text-sm font-medium text-(--text)">{selected.length} selected</span>
+          <div className="flex items-center gap-3">
+            <span className="text-sm font-medium text-(--text)">{selected.length} selected</span>
+            <button
+              type="button"
+              className="hover-action rounded-md px-2 py-1 text-sm"
+              onClick={() => selectMembers(availableMemberIds, !allAvailableSelected)}
+            >
+              {allAvailableSelected ? 'Clear selection' : 'Select all'}
+            </button>
+          </div>
           <div className="flex gap-2">
             <button
               type="button"
@@ -892,9 +1005,9 @@ export const BookDetailPage = ({
           }
           onFindReleases={() => onFindReleases(toReleaseBook(book))}
           onOpenSettings={onOpenSettings}
-          onSendToKindle={(format) =>
+          onSendToKindle={(selection) =>
             void mutate(async () => {
-              await sendLibraryBookToKindle(book.book_id, format);
+              await sendLibraryBookToKindle(book.book_id, selection);
             }, 'Sent to Kindle')
           }
           onDeleteRelease={(file) =>

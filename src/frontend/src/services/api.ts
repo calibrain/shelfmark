@@ -556,11 +556,11 @@ export const replaceLibraryRelease = async (
 
 export const sendLibraryBookToKindle = async (
   bookId: number,
-  format: string,
+  selection: { format?: string; historyId?: number },
 ): Promise<{ recipient: string; format: string }> => {
   return fetchJSON(`${API.libraryBooks}/${bookId}/send-to-kindle`, {
     method: 'POST',
-    body: JSON.stringify({ format }),
+    body: JSON.stringify({ format: selection.format, history_id: selection.historyId }),
   });
 };
 

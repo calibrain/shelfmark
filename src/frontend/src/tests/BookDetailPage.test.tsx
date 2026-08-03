@@ -44,6 +44,7 @@ const book = {
       indexer_display_name: 'Indexer',
       protocol: null,
       downloaded_at: '2026-01-01T00:00:00+00:00',
+      download_path: '/books/1/release/Shared Book.epub',
       downloadable_by_me: true,
     },
   ],
@@ -434,9 +435,18 @@ describe('BookDetailPage source review', () => {
               members: [
                 {
                   id: 7,
-                  relative_path: 'Dune/Dune.epub',
+                  relative_path: 'epub/Dune.epub',
                   format: 'epub',
                   size: 1024,
+                  available: true,
+                  evidence: { match: 'manual' },
+                  evidence_summary: 'Previously selected',
+                },
+                {
+                  id: 8,
+                  relative_path: 'mobi/Dune.mobi',
+                  format: 'mobi',
+                  size: 2048,
                   available: true,
                   evidence: { match: 'manual' },
                   evidence_summary: 'Previously selected',
@@ -479,15 +489,18 @@ describe('BookDetailPage source review', () => {
     const review = await screen.findByRole('button', { name: 'Review selection' });
     if (!(review instanceof HTMLButtonElement)) throw new Error('Expected selection button');
     expect(review.disabled).toBe(true);
-    await user.click(screen.getByRole('checkbox', { name: 'Select Dune/Dune.epub' }));
+    expect(screen.queryByText('Previously selected')).toBeNull();
+    expect(screen.getByRole('checkbox', { name: 'Select all files in epub' })).not.toBeNull();
+    expect(screen.getByRole('checkbox', { name: 'Select all files in mobi' })).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Select all' }));
     await user.click(review);
-    expect(await screen.findByText(/1 selected file will be imported/)).not.toBeNull();
-    await user.click(screen.getByRole('button', { name: 'Import 1 file' }));
+    expect(await screen.findByText(/2 selected files will be imported/)).not.toBeNull();
+    await user.click(screen.getByRole('button', { name: 'Import 2 files' }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(
         '/api/library/books/1/releases/22/review',
-        expect.objectContaining({ method: 'POST', body: JSON.stringify({ member_ids: [7] }) }),
+        expect.objectContaining({ method: 'POST', body: JSON.stringify({ member_ids: [7, 8] }) }),
       );
     });
   });

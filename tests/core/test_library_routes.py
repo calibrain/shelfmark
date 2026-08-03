@@ -821,7 +821,8 @@ def test_admin_purge_cancels_active_work_deletes_artifact_and_detaches_activity(
     owner = user_db.create_user(username="owner")
     admin = user_db.create_user(username="admin", role="admin")
     book_id = client_post_book(app, owner, "hardcover", "purge-book")
-    artifact = tmp_path / "purge.epub"
+    artifact = tmp_path / "books" / str(book_id) / "release" / "epub" / "purge.epub"
+    artifact.parent.mkdir(parents=True)
     artifact.write_bytes(b"artifact")
     history_id = _seed_history_row(
         user_db,
@@ -852,6 +853,7 @@ def test_admin_purge_cancels_active_work_deletes_artifact_and_detaches_activity(
 
     assert response.status_code == 200
     assert not artifact.exists()
+    assert not (tmp_path / "books" / str(book_id)).exists()
     assert app.extensions["cancelled_tasks"] == ["purge-active"]
     history = library_service.get_download_history_row(history_id)
     assert history is not None
@@ -1087,13 +1089,27 @@ def test_send_to_kindle_success_path(app, user_db, library_service, tmp_path):
     library_service.link_download_to_user(
         user_id=alice["id"], book_id=book_id, history_id=history_id
     )
+    alternate_path = tmp_path / "enders-alternate.epub"
+    alternate_path.write_bytes(b"alternate-epub-bytes")
+    alternate_history_id = _seed_history_row(
+        user_db,
+        task_id="task-2",
+        user_id=alice["id"],
+        username="alice",
+        book_id=book_id,
+        fmt="epub",
+        download_path=str(alternate_path),
+    )
 
     # Also patch send_file_to_email so no real SMTP network call is made.
     with patch(
         "shelfmark.download.outputs.email.send_file_to_email",
         return_value="r***@example.test",
     ) as fake_send:
-        resp = _authed_client(app, alice).post(f"/api/library/books/{book_id}/send-to-kindle")
+        resp = _authed_client(app, alice).post(
+            f"/api/library/books/{book_id}/send-to-kindle",
+            json={"history_id": alternate_history_id},
+        )
 
     assert resp.status_code == 200
     assert resp.json["status"] == "sent"
@@ -1101,7 +1117,7 @@ def test_send_to_kindle_success_path(app, user_db, library_service, tmp_path):
     assert resp.json["format"] == "epub"
     fake_send.assert_called_once()
     args, _kwargs = fake_send.call_args
-    assert str(args[0]) == str(epub_path)
+    assert str(args[0]) == str(alternate_path)
     assert args[1] == "reader@example.test"
 
 
@@ -1174,8 +1190,12 @@ def test_admin_delete_release_removes_files_and_detaches_history(
     alice = user_db.create_user(username="alice")
     bob = user_db.create_user(username="bob")
     book_id = client_post_book(app, alice, "hardcover", "1")
-    paths = [tmp_path / "release.epub", tmp_path / "release.pdf"]
+    paths = [
+        tmp_path / "books" / str(book_id) / "release-delete" / "epub" / "release.epub",
+        tmp_path / "books" / str(book_id) / "release-delete" / "pdf" / "release.pdf",
+    ]
     for path in paths:
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(b"release")
     history_ids = _seed_multi_file_release(
         user_db,
@@ -1199,6 +1219,7 @@ def test_admin_delete_release_removes_files_and_detaches_history(
     assert response.json["status"] == "deleted"
     assert app.extensions["cleared_completed_tasks"] == ["release-delete"]
     assert all(not path.exists() for path in paths)
+    assert not (tmp_path / "books" / str(book_id)).exists()
     for history_id in history_ids:
         row = library_service.get_download_history_row(history_id)
         assert row is not None

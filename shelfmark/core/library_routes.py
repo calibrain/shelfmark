@@ -234,6 +234,7 @@ def _serialize_book_detail(
                 "indexer_display_name": f.get("source_display_name") or f.get("source"),
                 "protocol": f.get("content_type"),
                 "downloaded_at": f.get("terminal_at"),
+                "download_path": f.get("download_path"),
                 "downloadable_by_me": int(f["id"]) in downloadable_history_ids,
             }
             for f in files
@@ -594,12 +595,28 @@ def register_library_routes(
         requested_format = (
             normalize_optional_text(data.get("format")) if isinstance(data, dict) else None
         )
+        requested_history_id = (
+            normalize_positive_int(data.get("history_id")) if isinstance(data, dict) else None
+        )
+        if isinstance(data, dict) and "history_id" in data and requested_history_id is None:
+            return _error_response(
+                action=action,
+                status_code=400,
+                error="history_id must be a positive integer",
+                book_id=book_id,
+            )
 
         try:
-            resolved = library_service.resolve_kindle_format(
-                book_id=book_id,
-                requested_format=requested_format,
-                user_id=None,
+            resolved = (
+                library_service.resolve_kindle_history_id(
+                    book_id=book_id, history_id=requested_history_id
+                )
+                if requested_history_id is not None
+                else library_service.resolve_kindle_format(
+                    book_id=book_id,
+                    requested_format=requested_format,
+                    user_id=None,
+                )
             )
         except _OPERATIONAL_ERRORS as exc:
             return jsonify({"error": str(exc)}), 500
