@@ -44,6 +44,7 @@ _HASH_LENGTH_40 = 40
 _HASH_LENGTH_ED2K = 32
 _HTTP_STATUS_FORBIDDEN = HTTPStatus.FORBIDDEN
 _HTTP_STATUS_NOT_FOUND = HTTPStatus.NOT_FOUND
+_METADATA_DOWNLOAD_STATES = {"forcedMetaDL", "metaDL"}
 _ONE_WEEK_IN_SECONDS = 604800
 
 
@@ -92,6 +93,25 @@ def _hashes_match(hash1: str, hash2: str) -> bool:
     if len(h2) == _HASH_LENGTH_40 and len(h1) == _HASH_LENGTH_ED2K and h2.endswith("00000000"):
         return h2[:_HASH_LENGTH_ED2K] == h1
     return False
+
+
+def _torrent_matches_download_id(torrent: object, download_id: str) -> bool:
+    """Match an ID against every identity qBittorrent exposes.
+
+    For hybrid torrents, qBittorrent's primary `hash` can change from the v1
+    hash to the truncated v2 hash after metadata resolution. The full
+    `infohash_v1` and `infohash_v2` fields preserve the torrent's identities.
+    """
+    identifiers = (
+        getattr(torrent, "hash", None),
+        getattr(torrent, "infohash_v1", None),
+        getattr(torrent, "infohash_v2", None),
+    )
+
+    return any(
+        isinstance(identifier, str) and identifier and _hashes_match(identifier, download_id)
+        for identifier in identifiers
+    )
 
 
 def _raise_runtime_error(message: str) -> NoReturn:
@@ -166,63 +186,6 @@ def _build_qbittorrent_child_path(base_path: object, child_path: object) -> str 
 class QBittorrentClient(DownloadClient):
     """qBittorrent download client."""
 
-    def _is_torrent_loaded(self, torrent_hash: str) -> tuple[bool, str | None]:
-        """Check whether qBittorrent has registered a torrent yet.
-
-        Uses `/api/v2/torrents/properties?hash=<hash>`.
-
-        Returns:
-            (loaded, error_message)
-
-        Notes:
-            A false result with no error means "not loaded yet".
-
-        """
-        url = f"{self._base_url}/api/v2/torrents/properties"
-        params = {"hash": torrent_hash}
-
-        try:
-            self._ensure_authenticated()
-            response = self._client._session.get(url, params=params, timeout=10)
-
-            # Re-authenticate and retry once on 403
-            if response.status_code == _HTTP_STATUS_FORBIDDEN and self._can_reauthenticate:
-                logger.debug(
-                    "qBittorrent returned 403 for properties; re-authenticating and retrying"
-                )
-                self._ensure_authenticated()
-                response = self._client._session.get(url, params=params, timeout=10)
-
-            if response.status_code == _HTTP_STATUS_FORBIDDEN:
-                return False, "qBittorrent authentication failed (HTTP 403)"
-
-            # qBittorrent returns 404/409-ish responses depending on version when missing.
-            if response.status_code == _HTTP_STATUS_NOT_FOUND:
-                return False, None
-
-            response.raise_for_status()
-        except requests.exceptions.HTTPError as e:
-            status = getattr(getattr(e, "response", None), "status_code", None)
-            if status == _HTTP_STATUS_NOT_FOUND:
-                return False, None
-            if status:
-                return False, f"qBittorrent API request failed (HTTP {status})"
-            return False, "qBittorrent API request failed"
-        except requests.exceptions.ConnectionError:
-            return False, f"Cannot connect to qBittorrent at {self._base_url}"
-        except requests.exceptions.Timeout:
-            return False, f"qBittorrent request timed out at {self._base_url}"
-        except requests.exceptions.InvalidSchema:
-            return (
-                False,
-                "qBittorrent URL is invalid (missing http:// or https://). "
-                f"Configured: {self._base_url}",
-            )
-        except _QBITTORRENT_CLIENT_ERRORS as e:
-            return False, f"qBittorrent API error: {type(e).__name__}: {e}"
-        else:
-            return True, None
-
     protocol = "torrent"
     name = "qbittorrent"
 
@@ -274,37 +237,18 @@ class QBittorrentClient(DownloadClient):
             return
         self._client.auth_log_in()
 
-    def _get_torrents_info(
-        self, torrent_hash: str | None = None, category: str | None = None
+    def _request_torrent_info_records(
+        self, params: dict[str, str]
     ) -> tuple[list[SimpleNamespace], str | None]:
-        """Get torrent info using GET.
-
-        Behaviors:
-        - Retry once on HTTP 403 by re-authenticating.
-        - Keep "API/auth/connect" errors distinct from "torrent missing".
-        - If a hash-specific query returns empty, fall back to listing by category
-          and matching locally.
-        - Without a hash, `category` narrows the listing to that category.
-
-        Returns:
-            (torrents, error_message)
-
-        """
+        """Request torrent info records from qBittorrent."""
         url = f"{self._base_url}/api/v2/torrents/info"
-
-        def do_request(params: dict[str, str]) -> requests.Response:
+        try:
             self._ensure_authenticated()
-            return self._client._session.get(url, params=params, timeout=10)
-
-        def parse_response(
-            response: requests.Response,
-            *,
-            request_params: dict[str, str],
-        ) -> tuple[list[SimpleNamespace], str | None]:
+            response = self._client._session.get(url, params=params, timeout=10)
             if response.status_code == _HTTP_STATUS_FORBIDDEN and self._can_reauthenticate:
                 logger.debug("qBittorrent returned 403; re-authenticating and retrying")
                 self._ensure_authenticated()
-                response = self._client._session.get(url, params=request_params, timeout=10)
+                response = self._client._session.get(url, params=params, timeout=10)
 
             if response.status_code == _HTTP_STATUS_FORBIDDEN:
                 logger.warning("qBittorrent authentication failed (HTTP 403)")
@@ -313,43 +257,6 @@ class QBittorrentClient(DownloadClient):
             response.raise_for_status()
             torrents = response.json()
             return [SimpleNamespace(**t) for t in torrents], None
-
-        try:
-            primary_params: dict[str, str] = {}
-            if torrent_hash:
-                primary_params["hashes"] = torrent_hash
-            elif category:
-                primary_params["category"] = category
-
-            response = do_request(primary_params)
-            torrents, error = parse_response(response, request_params=primary_params)
-            if error:
-                return [], error
-
-            if torrent_hash and not torrents:
-                # Fallback 1: list by configured category
-                category_params: dict[str, str] = {}
-                if self._category:
-                    category_params["category"] = self._category
-
-                category_response = do_request(category_params)
-                category_torrents, category_error = parse_response(
-                    category_response, request_params=category_params
-                )
-                if category_error:
-                    return [], category_error
-
-                if category_torrents:
-                    return category_torrents, None
-
-                # Fallback 2: list everything (handles per-task categories like audiobooks)
-                all_response = do_request({})
-                all_torrents, all_error = parse_response(all_response, request_params={})
-                if all_error:
-                    return [], all_error
-
-                return all_torrents, None
-
         except requests.exceptions.HTTPError as e:
             status = getattr(getattr(e, "response", None), "status_code", None)
             if status:
@@ -374,12 +281,66 @@ class QBittorrentClient(DownloadClient):
         except _QBITTORRENT_CLIENT_ERRORS as e:
             logger.debug("Failed to get torrents info: %s", e)
             return [], f"qBittorrent API error: {type(e).__name__}: {e}"
-        else:
-            return torrents, None
+
+    def _get_torrent_info(self, download_id: str) -> tuple[SimpleNamespace | None, str | None]:
+        """Get one torrent by its current qBittorrent hash."""
+        torrents, error = self._request_torrent_info_records({"hashes": download_id})
+        if error or not torrents:
+            return None, error
+        return (
+            next(
+                (
+                    torrent
+                    for torrent in torrents
+                    if isinstance(getattr(torrent, "hash", None), str)
+                    and _hashes_match(torrent.hash, download_id)
+                ),
+                None,
+            ),
+            None,
+        )
+
+    def _list_torrents_by_category(
+        self, category: str | None
+    ) -> tuple[list[SimpleNamespace], str | None]:
+        """List torrent records in a category, or all records when unset."""
+        params = {"category": category} if category else {}
+        return self._request_torrent_info_records(params)
+
+    def _resolve_torrent(
+        self, download_id: str, category: str | None = None
+    ) -> tuple[SimpleNamespace | None, str | None]:
+        """Resolve any known torrent identity to its current qBittorrent record."""
+        torrent, error = self._get_torrent_info(download_id)
+        if error or torrent:
+            return torrent, error
+
+        categories = [candidate for candidate in (category, self._category) if candidate]
+        for candidate in dict.fromkeys(categories):
+            torrents, error = self._list_torrents_by_category(candidate)
+            if error:
+                return None, error
+            torrent = next(
+                (item for item in torrents if _torrent_matches_download_id(item, download_id)),
+                None,
+            )
+            if torrent:
+                return torrent, None
+
+        torrents, error = self._list_torrents_by_category(None)
+        if error:
+            return None, error
+        return (
+            next(
+                (item for item in torrents if _torrent_matches_download_id(item, download_id)),
+                None,
+            ),
+            None,
+        )
 
     def _list_category_hashes(self, category: str | None) -> set[str] | None:
         """Snapshot the hashes qBittorrent currently reports for a category."""
-        torrents, error = self._get_torrents_info(category=category)
+        torrents, error = self._list_torrents_by_category(category)
         if error:
             logger.debug("Could not snapshot qBittorrent torrents: %s", error)
             return None
@@ -397,7 +358,7 @@ class QBittorrentClient(DownloadClient):
         torrent matching the requested rename can identify the new arrival.
         """
         for _ in range(20):
-            torrents, error = self._get_torrents_info(category=category)
+            torrents, error = self._list_torrents_by_category(category)
             if error:
                 logger.debug("qBittorrent hash discovery: %s", error)
             else:
@@ -534,21 +495,22 @@ class QBittorrentClient(DownloadClient):
                     message = f"{message} (torrent file fetch failed: {torrent_info.fetch_error})"
                 _raise_runtime_error(message)
 
-            # Some qBittorrent-compatible clients return HTTP 200 with an empty body
-            # instead of qBittorrent's literal "Ok." response. Prefer verifying that
-            # the torrent becomes visible over trusting the response body alone.
-            for _ in range(10):
-                loaded, error = self._is_torrent_loaded(expected_hash)
+            # Wait until qBittorrent has resolved magnet metadata so the returned
+            # hash is its stable primary torrent ID, which may differ from the v1 hash.
+            for _ in range(20):
+                torrent, error = self._resolve_torrent(expected_hash, category)
                 if error:
                     logger.debug("qBittorrent add_download: %s", error)
-                if loaded:
-                    logger.info("Added torrent: %s", expected_hash)
-                    return expected_hash.lower()
+                elif torrent and getattr(torrent, "state", None) not in _METADATA_DOWNLOAD_STATES:
+                    torrent_hash = getattr(torrent, "hash", None)
+                    if isinstance(torrent_hash, str) and torrent_hash:
+                        logger.info("Added torrent: %s", torrent_hash)
+                        return torrent_hash.lower()
                 time.sleep(0.5)
 
-            logger.warning(
-                "Torrent add was not confirmed within the visibility grace period (response=%s), returning expected hash",
-                result_text,
+            _raise_runtime_error(
+                "Torrent metadata resolution was not confirmed within the visibility grace period "
+                f"(response={result_text})"
             )
         except _QBITTORRENT_CLIENT_ERRORS:
             logger.exception("qBittorrent add failed")
@@ -567,19 +529,9 @@ class QBittorrentClient(DownloadClient):
 
         """
         try:
-            torrents, error = self._get_torrents_info(download_id)
+            torrent, error = self._get_torrent_info(download_id)
             if error:
                 return DownloadStatus.error(error)
-
-            torrent = next(
-                (
-                    t
-                    for t in torrents
-                    if isinstance(getattr(t, "hash", None), str)
-                    and _hashes_match(t.hash, download_id)
-                ),
-                None,
-            )
             if not torrent:
                 return DownloadStatus.error("Torrent not found in qBittorrent")
 
@@ -705,20 +657,10 @@ class QBittorrentClient(DownloadClient):
         - join `save_path` with the torrent's top-level directory
         """
         try:
-            torrents, error = self._get_torrents_info(download_id)
+            torrent, error = self._get_torrent_info(download_id)
             if error:
                 logger.debug("qBittorrent get_download_path: %s", error)
                 return None
-
-            torrent = next(
-                (
-                    t
-                    for t in torrents
-                    if isinstance(getattr(t, "hash", None), str)
-                    and _hashes_match(t.hash, download_id)
-                ),
-                None,
-            )
             if not torrent:
                 return None
 
@@ -825,23 +767,19 @@ class QBittorrentClient(DownloadClient):
             if not torrent_info.info_hash:
                 return None
 
-            torrents, error = self._get_torrents_info(torrent_info.info_hash)
-            if error:
-                logger.debug("qBittorrent find_existing: %s", error)
-                return None
-
-            torrent = next(
-                (
-                    t
-                    for t in torrents
-                    if isinstance(getattr(t, "hash", None), str)
-                    and _hashes_match(t.hash, torrent_info.info_hash)
-                ),
-                None,
-            )
-            if torrent and isinstance(getattr(torrent, "hash", None), str):
-                torrent_hash = torrent.hash
-                return (torrent_hash.lower(), self.get_status(torrent_hash.lower()))
+            for _ in range(20):
+                torrent, error = self._resolve_torrent(torrent_info.info_hash, category)
+                if error:
+                    logger.debug("qBittorrent find_existing: %s", error)
+                    return None
+                if not torrent:
+                    return None
+                if getattr(torrent, "state", None) not in _METADATA_DOWNLOAD_STATES:
+                    torrent_hash = getattr(torrent, "hash", None)
+                    if isinstance(torrent_hash, str) and torrent_hash:
+                        torrent_hash = torrent_hash.lower()
+                        return (torrent_hash, self.get_status(torrent_hash))
+                time.sleep(0.5)
         except _QBITTORRENT_CLIENT_ERRORS as e:
             logger.debug("Error checking for existing torrent: %s", e)
             return None
