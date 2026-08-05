@@ -19,7 +19,7 @@ dependencies = [
     "psutil",
     "emoji",
     "rarfile",
-    "qbittorrent-api>=2026.5.3",
+    "qbittorrent-api>=2026.8.0",
     "transmission-rpc",
     "authlib>=1.7.2,<1.8",
     "apprise>=1.12.0",
@@ -40,7 +40,7 @@ dev = [
     "pytest",
     "pytest-cov",
     "pytest-xdist>=3.8.0",
-    "ruff==0.16.0",
+    "ruff==0.16.1",
     "vulture>=2.14",
 ]
 
