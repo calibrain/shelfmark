@@ -31,7 +31,7 @@
     "knip": "^6.29.0",
     "oxfmt": "^0.61.0",
     "oxlint": "^1.76.0",
-    "oxlint-tsgolint": "^0.25.0",
+    "oxlint-tsgolint": "^7.0.2001",
     "tailwindcss": "^4.2.2",
     "typescript": "^7.0.2",
     "vite": "^8.1.5",
