@@ -106,3 +106,38 @@ def test_remove_uses_torbox_delete_operation(monkeypatch):
 
     assert client.remove("42") is True
     assert mock_post.call_args.kwargs["json"] == {"torrent_id": 42, "operation": "delete"}
+
+
+def test_download_web_url_creates_then_fetches_cdn_link(monkeypatch):
+    client = _client(monkeypatch)
+    mock_post = MagicMock(return_value=_response({"success": True, "data": {"id": 42}}))
+    mock_get = MagicMock(side_effect=[
+        _response({"success": True, "data": {"download_state": "completed"}}),
+        _response({"success": True, "data": "https://cdn.example/book"}),
+    ])
+    monkeypatch.setattr("shelfmark.download.clients.torbox.requests.post", mock_post)
+    monkeypatch.setattr("shelfmark.download.clients.torbox.requests.get", mock_get)
+    expected = BytesIO(b"contents")
+    monkeypatch.setattr("shelfmark.download.clients.torbox.download_url", lambda *args, **kwargs: expected)
+
+    assert client.download_web_url("https://source.example/book.epub", "A Book") is expected
+    assert mock_post.call_args_list[0].kwargs["data"] == {
+        "link": "https://source.example/book.epub",
+        "name": "A Book",
+    }
+    assert mock_post.call_args_list[0].args[0].endswith("/webdl/createwebdownload")
+    assert mock_get.call_args_list[1].kwargs["params"] == {"token": "api-key", "web_id": "42"}
+    assert mock_post.call_args_list[1].kwargs["json"] == {"webdl_id": 42, "operation": "delete"}
+
+
+def test_download_web_url_does_not_create_job_when_cancelled(monkeypatch):
+    from threading import Event
+
+    client = _client(monkeypatch)
+    cancel_flag = Event()
+    cancel_flag.set()
+    mock_post = MagicMock()
+    monkeypatch.setattr("shelfmark.download.clients.torbox.requests.post", mock_post)
+
+    assert client.download_web_url("https://source.example/book.epub", "A Book", cancel_flag=cancel_flag) is None
+    mock_post.assert_not_called()

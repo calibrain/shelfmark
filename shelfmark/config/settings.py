@@ -1498,6 +1498,15 @@ def download_source_settings() -> list[SettingsField]:
             label="Account Donator Key",
             description="Enables fast download access on AA. Get this from your donator account page.",
         ),
+        CheckboxField(
+            key="TORBOX_DIRECT_DOWNLOAD_ENABLED",
+            label="Use Torbox for Direct Downloads",
+            description=(
+                "Send Anna's Archive book pages to Torbox first, then download from its CDN. "
+                "Requires a Torbox API key configured in Download Clients."
+            ),
+            default=False,
+        ),
         HeadingField(
             key="source_priority_heading",
             title="Source Priority",

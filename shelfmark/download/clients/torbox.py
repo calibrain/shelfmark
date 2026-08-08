@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import shutil
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, ClassVar, NoReturn
+from typing import TYPE_CHECKING, Any, ClassVar, NoReturn
 
 import requests
 
@@ -23,12 +24,20 @@ from shelfmark.download.clients._coercion import config_text
 from shelfmark.download.http import download_url
 from shelfmark.download.network import get_ssl_verify
 
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from io import BytesIO
+    from threading import Event
+
 logger = setup_logger(__name__)
 
 _API_BASE = "https://api.torbox.app/v1/api"
 _API_TIMEOUT = 30
 _STATUS_TIMEOUT = 15
 _READY_STATES = frozenset({"cached", "completed"})
+_WEBDL_READY_STATES = frozenset({"cached", "completed", "downloaded", "finished"})
+_WEBDL_ERROR_STATES = frozenset({"error", "failed", "virus"})
+_WEBDL_POLL_INTERVAL = 2
 _BOOK_EXTENSIONS = (
     ".aac", ".azw", ".azw3", ".cbr", ".cbz", ".djvu", ".doc", ".docx",
     ".epub", ".fb2", ".flac", ".lit", ".m4a", ".m4b", ".mobi", ".mp3",
@@ -214,6 +223,69 @@ class TorboxClient(DownloadClient):
         target_dir = TMP_DIR / f"torbox_{download_id}"
         return str(target_dir) if target_dir.exists() else None
 
+    def download_web_url(
+        self,
+        url: str,
+        name: str,
+        size: str = "",
+        progress_callback: Callable[[float], None] | None = None,
+        cancel_flag: Event | None = None,
+        status_callback: Callable[[str, str | None], None] | None = None,
+    ) -> BytesIO | None:
+        """Fetch a direct URL through Torbox's web-download service."""
+        if not self._api_key:
+            msg = "Torbox API key is not configured"
+            raise RuntimeError(msg)
+        if cancel_flag and cancel_flag.is_set():
+            return None
+
+        create_url = f"{_API_BASE}/webdl/createwebdownload"
+        response = requests.post(
+            create_url,
+            headers=self._auth_headers(),
+            data={"link": url, "name": name},
+            timeout=_API_TIMEOUT,
+            verify=get_ssl_verify(create_url),
+        )
+        response.raise_for_status()
+        data = self._response_data(response.json())
+        if not isinstance(data, dict):
+            msg = "Unexpected Torbox web download response"
+            _raise_type_error(msg)
+        web_id = str(data.get("webdownload_id", data.get("web_id", data.get("id", ""))))
+        if not web_id:
+            msg = "No web download ID returned from Torbox"
+            _raise_runtime_error(msg)
+
+        try:
+            while True:
+                if cancel_flag and cancel_flag.is_set():
+                    return None
+                web_download = self._get_web_download(web_id)
+                state = str(web_download.get("download_state", web_download.get("status", ""))).lower()
+                if state in _WEBDL_ERROR_STATES:
+                    msg = str(web_download.get("error") or "Torbox web download failed")
+                    _raise_runtime_error(msg)
+                if state in _WEBDL_READY_STATES:
+                    break
+                if status_callback:
+                    status_callback("resolving", "Torbox is retrieving the file")
+                time.sleep(_WEBDL_POLL_INTERVAL)
+
+            if status_callback:
+                status_callback("downloading", "Downloading via Torbox")
+            direct_url = self._request_web_download_link(web_id)
+            return download_url(
+                direct_url,
+                size,
+                progress_callback,
+                cancel_flag,
+                status_callback=status_callback,
+                referer="https://torbox.app/",
+            )
+        finally:
+            self._remove_web_download(web_id)
+
     @staticmethod
     def _response_data(payload: dict[str, Any]) -> Any:
         """Return Torbox's data envelope or surface its API error detail."""
@@ -306,6 +378,52 @@ class TorboxClient(DownloadClient):
             msg = "Torbox did not return a download link"
             _raise_runtime_error(msg)
         return data
+
+    def _get_web_download(self, web_id: str) -> dict[str, Any]:
+        url = f"{_API_BASE}/webdl/mylist"
+        response = requests.get(
+            url,
+            headers=self._auth_headers(),
+            params={"id": web_id, "bypass_cache": "true"},
+            timeout=_STATUS_TIMEOUT,
+            verify=get_ssl_verify(url),
+        )
+        response.raise_for_status()
+        data = self._response_data(response.json())
+        if isinstance(data, list):
+            data = data[0] if data else {}
+        if not isinstance(data, dict):
+            msg = "Unexpected Torbox web download status response"
+            _raise_type_error(msg)
+        return data
+
+    def _request_web_download_link(self, web_id: str) -> str:
+        url = f"{_API_BASE}/webdl/requestdl"
+        response = requests.get(
+            url,
+            params={"token": self._api_key, "web_id": web_id},
+            timeout=_API_TIMEOUT,
+            verify=get_ssl_verify(url),
+        )
+        response.raise_for_status()
+        data = self._response_data(response.json())
+        if not isinstance(data, str) or not data:
+            msg = "Torbox did not return a web download link"
+            _raise_runtime_error(msg)
+        return data
+
+    def _remove_web_download(self, web_id: str) -> None:
+        url = f"{_API_BASE}/webdl/controlwebdownload"
+        try:
+            requests.post(
+                url,
+                headers=self._auth_headers(),
+                json={"webdl_id": int(web_id), "operation": "delete"},
+                timeout=_STATUS_TIMEOUT,
+                verify=get_ssl_verify(url),
+            ).raise_for_status()
+        except (requests.exceptions.RequestException, ValueError):
+            logger.warning("Failed to delete Torbox web download %s", web_id)
 
     @staticmethod
     def _safe_filename(filename: str) -> Path:
