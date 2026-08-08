@@ -135,7 +135,7 @@ def _absolute_url(url: str | None) -> str | None:
 
 
 def _valid_isbn(candidate: str) -> str | None:
-    """Return the digits of a plausible ISBN-10/13, else None."""
+    """Return a normalized ISBN-10/13 (digits, with optional X check digit), else None."""
     digits = candidate.replace("-", "").strip()
     if len(digits) == ISBN_13_LENGTH and digits.isdigit():
         return digits
