@@ -228,7 +228,10 @@ class MolyProvider(MetadataProvider):
             if slug in seen:
                 continue
 
-            text = _clean_text(anchor.get_text(" ")) or ""
+            # No separator: moly wraps matched search terms in <strong> even
+            # mid-word ("Lis<strong>a</strong> Jewell"), so inserting one
+            # would split words at highlight boundaries.
+            text = _clean_text(anchor.get_text()) or ""
             author, _, title = text.partition(":")
             if not title:
                 # Result rows are "Author: Title"; skip anything else.

@@ -29,7 +29,11 @@ SEARCH_HTML = """
       <a class="book_selector" data-id="3"
          href="/konyvek/mocsidzuki-mai-az-igazi-kivansag">Mocsidzuki Mai: Az igazi kívánság</a>
     </p>
-    <p><a class="book_selector" data-id="4" href="/konyvek/broken">Not a book row</a></p>
+    <p>
+      <a class="book_selector" data-id="4"
+         href="/konyvek/lisa-jewell-a-fold-nyelte-el">Lis<strong class="highlight">a</strong> Jew<strong class="highlight">el</strong>l: <strong class="highlight">A föld nyelte el</strong></a>
+    </p>
+    <p><a class="book_selector" data-id="5" href="/konyvek/broken">Not a book row</a></p>
   </div>
 </div>
 </body></html>
@@ -112,7 +116,12 @@ class TestMolySearch:
 
         books = provider.search(MetadataSearchOptions(query="telihold kávézó"))
 
-        assert len(books) == 2  # duplicate slug deduped, colon-less row skipped
+        assert len(books) == 3  # duplicate slug deduped, colon-less row skipped
+
+        # Mid-word <strong class="highlight"> wrapping must not split words
+        highlighted = books[2]
+        assert highlighted.title == "A föld nyelte el"
+        assert highlighted.authors == ["Lisa Jewell"]
         book = books[0]
         assert book.provider == "moly"
         assert book.provider_id == "mocsidzuki-mai-a-telihold-kavezo"
@@ -143,6 +152,7 @@ class TestMolySearch:
         assert [book.provider_id for book in books] == [
             "mocsidzuki-mai-a-telihold-kavezo",
             "mocsidzuki-mai-az-igazi-kivansag",
+            "lisa-jewell-a-fold-nyelte-el",
         ]
 
 
