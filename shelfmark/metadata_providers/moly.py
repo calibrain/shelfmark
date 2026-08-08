@@ -206,13 +206,14 @@ class MolyProvider(MetadataProvider):
 
         fields_key = ":".join(f"{k}={v}" for k, v in sorted(options.fields.items()))
         cache_key = f"{query}:{options.search_type.value}:{options.limit}:{fields_key}"
-        return self._search_cached(cache_key, query, options.limit)
+        return self._search_cached(cache_key, query, options.limit) or []
 
     @cacheable(ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="moly:search")
-    def _search_cached(self, cache_key: str, query: str, limit: int) -> list[BookMetadata]:
+    def _search_cached(self, cache_key: str, query: str, limit: int) -> list[BookMetadata] | None:
+        # Return None (not []) on fetch failure so the failure is not cached.
         html = self._fetch(MOLY_SEARCH_URL + quote(query.encode("utf-8")))
         if html is None:
-            return []
+            return None
 
         soup = BeautifulSoup(html, "html.parser")
         books: list[BookMetadata] = []
