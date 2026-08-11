@@ -1,6 +1,7 @@
 """Hardcover.app metadata provider. Requires API key."""
 
 import re
+import time
 from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -552,6 +553,31 @@ AUTHOR_SUGGESTION_SORT = "_text_match:desc,books_count:desc"
 TITLE_SUGGESTION_FIELDS = "title,alternative_titles"
 TITLE_SUGGESTION_WEIGHTS = "5,2"
 TITLE_SUGGESTION_SORT = "_text_match:desc,users_count:desc"
+
+# Hardcover forwards `sort` to Typesense's `sort_by` and rejects the whole search
+# if it does not like the value -- an unknown field, a bare field name with no
+# direction, more than three keys. A rejected search comes back as HTTP 200 with
+# no GraphQL errors and a null `results` body, which is otherwise indistinguishable
+# from "nothing matched". An empty sort is always accepted, so fall back to it and
+# keep the fallback sticky for a while rather than paying for a doomed request on
+# every search.
+SORT_FALLBACK = ""
+SORT_FALLBACK_TTL = 900.0
+_sort_fallback_until = 0.0
+
+
+def _search_payload_rejected(result: dict[str, Any] | None) -> bool:
+    """Report whether Hardcover answered a search with a null results body.
+
+    A search that genuinely matched nothing still returns a results object with
+    ``found: 0``; only a rejected search nulls it out entirely.
+    """
+    if not isinstance(result, dict):
+        return False
+    root = result.get("search", result)
+    if not isinstance(root, dict) or "results" not in root:
+        return False
+    return root["results"] is None
 
 
 def _combine_headline_description(headline: str | None, description: str | None) -> str | None:
@@ -1200,7 +1226,7 @@ class HardcoverProvider(MetadataProvider):
         if not self.api_key or len(normalized_query) < HARDCOVER_MIN_TYPEAHEAD_QUERY_LENGTH:
             return []
 
-        result = self._execute_query(
+        result = self._execute_search_query(
             SEARCH_FIELD_OPTIONS_QUERY,
             {
                 "query": normalized_query,
@@ -1431,7 +1457,7 @@ class HardcoverProvider(MetadataProvider):
                 logger.debug("Invalid Hardcover series id field value: %s", normalized_value)
                 return None
 
-        result = self._execute_query(
+        result = self._execute_search_query(
             SEARCH_FIELD_OPTIONS_QUERY,
             {
                 "query": normalized_value,
@@ -2386,7 +2412,7 @@ class HardcoverProvider(MetadataProvider):
             variables["weights"] = search_weights
 
         try:
-            result = self._execute_query(graphql_query, variables)
+            result = self._execute_search_query(graphql_query, variables)
             if not result:
                 logger.debug("Hardcover search: No result from API")
                 return SearchResult(books=[], page=options.page, total_found=0, has_more=False)
@@ -2653,6 +2679,45 @@ class HardcoverProvider(MetadataProvider):
                 msg = "Hardcover API request failed"
                 raise RuntimeError(msg) from e
             return None
+
+    def _execute_search_query(self, query: str, variables: dict[str, Any]) -> dict | None:
+        """Execute a search query, retrying without ``sort`` if Hardcover rejects it.
+
+        Returns None when the search was rejected, so callers report an empty
+        result rather than silently treating a failure as "nothing matched".
+        """
+        global _sort_fallback_until
+
+        sort = variables.get("sort")
+        if sort and time.monotonic() < _sort_fallback_until:
+            variables = {**variables, "sort": SORT_FALLBACK}
+            sort = None
+
+        result = self._execute_query(query, variables)
+        if not _search_payload_rejected(result):
+            return result
+
+        if not sort:
+            logger.error(
+                "Hardcover rejected this search (query_type=%s, fields=%s) and returned "
+                "no result body",
+                variables.get("queryType", "Book"),
+                variables.get("fields"),
+            )
+            return None
+
+        logger.warning(
+            "Hardcover rejected sort '%s'; retrying searches without a sort order for %ss",
+            sort,
+            int(SORT_FALLBACK_TTL),
+        )
+        _sort_fallback_until = time.monotonic() + SORT_FALLBACK_TTL
+
+        retry = self._execute_query(query, {**variables, "sort": SORT_FALLBACK})
+        if _search_payload_rejected(retry):
+            logger.error("Hardcover rejected this search even without a sort order")
+            return None
+        return retry
 
     def _parse_search_result(self, item: dict) -> BookMetadata | None:
         """Parse a search result item into BookMetadata."""

@@ -59,6 +59,10 @@ ENV FLASK_PORT=8084
 # Configure locale, timezone, and perform initial cleanup in a single layer
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
+    # For building C-extensions (cffi, gevent, etc.)
+    gcc \
+    libffi-dev \
+    python3-dev \
     # For locale
     locales tzdata \
     # For healthcheck
