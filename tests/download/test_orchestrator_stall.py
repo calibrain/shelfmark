@@ -93,10 +93,7 @@ def test_set_activity_grace_is_clamped(monkeypatch):
     monkeypatch.setattr(orchestrator.time, "time", lambda: 1000.0)
     orchestrator.set_activity_grace("book", 10_000_000.0)
 
-    assert (
-        orchestrator._activity_grace["book"]
-        == 1000.0 + orchestrator._MAX_ACTIVITY_GRACE_SECONDS
-    )
+    assert orchestrator._activity_grace["book"] == 1000.0 + orchestrator._MAX_ACTIVITY_GRACE_SECONDS
 
 
 def test_max_activity_grace_covers_the_largest_bypass_budget():

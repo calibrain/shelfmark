@@ -68,7 +68,7 @@ def parse_activity_grace(status: str, message: str | None) -> float | None:
         return None
     try:
         return max(float(message or 0), 0.0)
-    except (TypeError, ValueError):
+    except TypeError, ValueError:
         return 0.0
 
 
