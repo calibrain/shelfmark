@@ -47,6 +47,22 @@ def _coerce_timeout_ms(value: object, default: int) -> int:
     return default
 
 
+def max_duration_seconds() -> float:
+    """Upper bound on how long get_bypassed_page() can take for one URL.
+
+    MAX_RETRY attempts at the configured read timeout, plus the exponential backoff waited
+    between them (jitter is < 1s per gap, counted as a full second to stay conservative).
+    Callers use this to declare a stall-detection grace; see shelfmark.download.activity.
+    """
+    bypasser_timeout = _coerce_timeout_ms(config.get("EXT_BYPASSER_TIMEOUT", 60000), 60000)
+    read_timeout = min((bypasser_timeout / 1000) + READ_TIMEOUT_BUFFER, MAX_READ_TIMEOUT)
+    backoff_total = sum(
+        min(BACKOFF_CAP, BACKOFF_BASE * (2 ** (attempt - 1))) + 1.0
+        for attempt in range(1, MAX_RETRY)
+    )
+    return MAX_RETRY * read_timeout + backoff_total
+
+
 def _fetch_via_bypasser(target_url: str) -> str | None:
     """Make a single request to the external bypasser service. Returns HTML or None."""
     raw_bypasser_url = _coerce_config_str(

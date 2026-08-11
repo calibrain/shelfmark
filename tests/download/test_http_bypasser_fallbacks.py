@@ -11,22 +11,13 @@ class _FakeResponse:
         self.url = url
 
 
-class _ImmediateThread:
-    def __init__(self, *args, **kwargs) -> None:
-        self._target = kwargs["target"]
-
-    def start(self) -> None:
-        self._target()
-
-    def join(self, timeout: float | None = None) -> None:
-        del timeout
-
-
-def test_html_get_page_ignores_heartbeat_callback_failure(monkeypatch):
+def test_html_get_page_ignores_status_callback_failure(monkeypatch):
+    """A raising status_callback must not break the bypass it was reporting on."""
     import shelfmark.download.http as http
+    from shelfmark.download.activity import ACTIVITY_GRACE_STATUS
 
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
-    monkeypatch.setattr(http, "Thread", _ImmediateThread)
+    monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 330.0)
     monkeypatch.setattr(http, "get_bypassed_page", lambda *_args, **_kwargs: "OK")
 
     calls: list[tuple[str, str | None]] = []
@@ -46,8 +37,90 @@ def test_html_get_page_ignores_heartbeat_callback_failure(monkeypatch):
     assert html == "OK"
     assert calls == [
         ("resolving", "Bypassing protection..."),
-        ("resolving", "Bypassing protection..."),
+        (ACTIVITY_GRACE_STATUS, "330.0"),
+        (ACTIVITY_GRACE_STATUS, "0.0"),
     ]
+
+
+def test_html_get_page_requests_and_releases_activity_grace(monkeypatch):
+    """The bypass declares its budget before blocking and releases it afterwards."""
+    import shelfmark.download.http as http
+    from shelfmark.download.activity import ACTIVITY_GRACE_STATUS
+
+    monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
+    monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 424.0)
+
+    calls: list[tuple[str, str | None]] = []
+
+    def fake_bypass(*_args, **_kwargs):
+        # The grace must already be in place before the long blocking call starts.
+        assert calls[-1] == (ACTIVITY_GRACE_STATUS, "424.0")
+        return "OK"
+
+    monkeypatch.setattr(http, "get_bypassed_page", fake_bypass)
+
+    html = http.html_get_page(
+        "https://example.com",
+        retry=1,
+        use_bypasser=True,
+        status_callback=lambda status, message: calls.append((status, message)),
+    )
+
+    assert html == "OK"
+    assert calls[-1] == (ACTIVITY_GRACE_STATUS, "0.0")
+
+
+def test_html_get_page_releases_grace_and_reports_error_when_bypasser_fails(monkeypatch):
+    """A failing bypasser surfaces its real error instead of a silent empty result."""
+    import shelfmark.download.http as http
+    from shelfmark.download.activity import ACTIVITY_GRACE_STATUS
+
+    monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
+    monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 100.0)
+
+    def failing_bypasser(*_args, **_kwargs):
+        raise requests.exceptions.RequestException("500 Server Error")
+
+    monkeypatch.setattr(http, "get_bypassed_page", failing_bypasser)
+
+    calls: list[tuple[str, str | None]] = []
+    html = http.html_get_page(
+        "https://example.com",
+        retry=1,
+        use_bypasser=True,
+        status_callback=lambda status, message: calls.append((status, message)),
+    )
+
+    assert html == ""
+    errors = [message for status, message in calls if status == "error"]
+    assert len(errors) == 1
+    assert "500 Server Error" in (errors[0] or "")
+    # The grace is always released, even on the failure path.
+    assert calls[-1] == (ACTIVITY_GRACE_STATUS, "0.0")
+
+
+def test_html_get_page_does_not_report_error_when_bypass_is_cancelled(monkeypatch):
+    """Cancellation is a user action, not a failure worth surfacing as an error."""
+    import shelfmark.download.http as http
+
+    monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
+    monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 100.0)
+
+    def cancelled_bypasser(*_args, **_kwargs):
+        raise BypassCancelledError("Bypass cancelled")
+
+    monkeypatch.setattr(http, "get_bypassed_page", cancelled_bypasser)
+
+    calls: list[tuple[str, str | None]] = []
+    html = http.html_get_page(
+        "https://example.com",
+        retry=1,
+        use_bypasser=True,
+        status_callback=lambda status, message: calls.append((status, message)),
+    )
+
+    assert html == ""
+    assert [status for status, _message in calls if status == "error"] == []
 
 
 def test_html_get_page_returns_empty_on_bypass_cancellation(monkeypatch):

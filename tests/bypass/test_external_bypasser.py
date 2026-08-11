@@ -101,3 +101,36 @@ def test_get_bypassed_page_retries_and_rotates_selector_between_attempts(monkeyp
     ]
     assert selector.rotate_calls == 1
     assert sleeps == [1.0]
+
+
+def _stub_ext_bypasser_timeout(monkeypatch, external_bypasser, value: int) -> None:
+    """Override only EXT_BYPASSER_TIMEOUT on the shared config singleton."""
+    real_get = external_bypasser.config.get
+    monkeypatch.setattr(
+        external_bypasser.config,
+        "get",
+        lambda key, default="": value if key == "EXT_BYPASSER_TIMEOUT" else real_get(key, default),
+    )
+
+
+def test_max_duration_seconds_covers_every_attempt_and_backoff(monkeypatch):
+    """The declared budget must not undercut what get_bypassed_page() can actually take."""
+    import shelfmark.bypass.external_bypasser as external_bypasser
+
+    _stub_ext_bypasser_timeout(monkeypatch, external_bypasser, 60000)
+
+    budget = external_bypasser.max_duration_seconds()
+
+    # 5 attempts at min(60 + 15, 120) = 75s, plus the 1+2+4+8 backoff and its jitter.
+    assert budget == 5 * 75.0 + (1 + 1) + (2 + 1) + (4 + 1) + (8 + 1)
+
+
+def test_max_duration_seconds_respects_the_read_timeout_ceiling(monkeypatch):
+    import shelfmark.bypass.external_bypasser as external_bypasser
+
+    _stub_ext_bypasser_timeout(monkeypatch, external_bypasser, 300000)
+
+    budget = external_bypasser.max_duration_seconds()
+
+    # 300s + 15s buffer is clamped to MAX_READ_TIMEOUT, not used raw.
+    assert budget == 5 * external_bypasser.MAX_READ_TIMEOUT + 19.0

@@ -50,6 +50,9 @@ _LOADING_BODY_LENGTH_MAX = 50
 _PAGE_BODY_PREVIEW_CHARS = 500
 _BROWSER_START_TIMEOUT_SECONDS = 45.0
 _BYPASS_SUBPROCESS_TIMEOUT_SECONDS = 420.0
+# Same budget as the Docker helper process, applied to the in-process CDP path so both
+# branches of get() are bounded the same way.
+_IN_PROCESS_BYPASS_TIMEOUT_SECONDS = _BYPASS_SUBPROCESS_TIMEOUT_SECONDS
 _BYPASS_CHILD_ENV = "SHELFMARK_INTERNAL_BYPASSER_CHILD"
 
 # Challenge detection indicators
@@ -217,7 +220,13 @@ class _CdpWorker:
             msg = "CDP worker loop not available"
             raise RuntimeError(msg)
         future = asyncio.run_coroutine_threadsafe(coro, self._loop)
-        return future.result(timeout=timeout)
+        try:
+            return future.result(timeout=timeout)
+        except TimeoutError:
+            # Otherwise the coroutine keeps running in the worker loop after we stop
+            # waiting, holding the browser and racing the next bypass.
+            future.cancel()
+            raise
 
 
 _CDP_WORKER = _CdpWorker()
@@ -896,7 +905,11 @@ def _run_bypass_in_current_process(url: str, retry: int, cancel_flag: Event | No
 
     if os.environ.get(_BYPASS_CHILD_ENV) == "1":
         return asyncio.run(_run_bypass())
-    return _CDP_WORKER.run(_run_bypass())
+    # Bound the wait: this path runs in-process (non-Docker installs), holds the module-wide
+    # LOCKED for its whole duration, and neither page.get() nor page.wait() has a timeout of
+    # its own. Without a deadline here a single wedged CDP session blocks every subsequent
+    # bypass in the process forever.
+    return _CDP_WORKER.run(_run_bypass(), timeout=_IN_PROCESS_BYPASS_TIMEOUT_SECONDS)
 
 
 def _store_child_bypass_state(payload: dict[str, Any]) -> None:
@@ -1254,6 +1267,16 @@ def _try_with_cached_cookies(url: str, hostname: str) -> str | None:
         logger.debug("Cached cookie retry failed for %s: %s", url, exc)
 
     return None
+
+
+def max_duration_seconds() -> float:
+    """Upper bound on how long get_bypassed_page() can take for one URL.
+
+    Both branches of get() are capped at _BYPASS_SUBPROCESS_TIMEOUT_SECONDS, and
+    get_bypassed_page() may call it twice (once, then again after a mirror/DNS rotation).
+    Callers use this to declare a stall-detection grace; see shelfmark.download.activity.
+    """
+    return 2 * _BYPASS_SUBPROCESS_TIMEOUT_SECONDS
 
 
 def get_bypassed_page(

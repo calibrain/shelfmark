@@ -4,7 +4,6 @@ import random
 import time
 from http import HTTPStatus
 from io import BytesIO
-from threading import Event, Thread
 from typing import TYPE_CHECKING, NoReturn
 from urllib.parse import urljoin, urlparse
 
@@ -16,10 +15,12 @@ from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import coerce_bool, normalize_positive_int
 from shelfmark.download import network
+from shelfmark.download.activity import release_activity_grace, request_activity_grace
 from shelfmark.download.network import get_proxies, get_ssl_verify
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from threading import Event
     from types import ModuleType
 
 logger = setup_logger(__name__)
@@ -34,6 +35,9 @@ _HTTP_STATUS_RANGE_NOT_SATISFIABLE = HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE
 _HTTP_STATUS_PARTIAL_CONTENT = HTTPStatus.PARTIAL_CONTENT
 _HTTP_STATUS_NON_RETRYABLE = (_HTTP_STATUS_FORBIDDEN, _HTTP_STATUS_NOT_FOUND)
 _STATUS_CALLBACK_ERRORS = (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError)
+# Added on top of the active bypasser's own budget so it reports its real failure before
+# stall detection cancels the download.
+_BYPASS_GRACE_SLACK_SECONDS = 30.0
 _BYPASSER_ERRORS = (
     AttributeError,
     BypassCancelledError,
@@ -97,6 +101,19 @@ def _is_using_external_bypasser() -> bool:
 def _is_cf_bypass_enabled() -> bool:
     """Check if Cloudflare bypass is enabled."""
     return coerce_bool(app_config.get("USE_CF_BYPASS", True))
+
+
+def _bypass_grace_seconds() -> float:
+    """How long a bypass may block before stall detection should give up on it.
+
+    Each bypasser knows its own retry/timeout budget, so ask the active one rather than
+    duplicating the arithmetic here. The slack keeps the bypasser's own deadline expiring
+    first, so the user sees its real error instead of a generic "Download stalled".
+    """
+    bypasser = (
+        _get_external_bypasser() if _is_using_external_bypasser() else _get_internal_bypasser()
+    )
+    return bypasser.max_duration_seconds() + _BYPASS_GRACE_SLACK_SECONDS
 
 
 def get_bypassed_page(
@@ -273,34 +290,27 @@ def html_get_page(
             if use_bypasser_now and _is_cf_bypass_enabled():
                 if status_callback:
                     status_callback("resolving", "Bypassing protection...")
-                heartbeat_stop = Event()
-                heartbeat_thread: Thread | None = None
-                if status_callback:
-
-                    def _heartbeat() -> None:
-                        # Keep the download "alive" during long bypass operations so the orchestrator
-                        # doesn't flag it as stalled.
-                        if cancel_flag and cancel_flag.is_set():
-                            return
-                        try:
-                            status_callback("resolving", "Bypassing protection...")
-                        except _STATUS_CALLBACK_ERRORS:
-                            return
-
-                    heartbeat_thread = Thread(
-                        target=_heartbeat, daemon=True, name="BypassHeartbeat"
-                    )
-                    heartbeat_thread.start()
                 try:
+                    # A bypass is one long blocking call with no incremental progress, so
+                    # tell the orchestrator up front how long it may legitimately take
+                    # instead of trying to fake activity while it runs. Inside the try so a
+                    # bypasser that fails to load is still reported as a bypasser error.
+                    request_activity_grace(status_callback, _bypass_grace_seconds())
                     result = get_bypassed_page(current_url, selector, cancel_flag)
                     return _result(result or "", current_url)
                 except _BYPASSER_ERRORS as e:
                     logger.warning("Bypasser error: %s: %s", type(e).__name__, e)
+                    # Surface the real reason. Without this the caller only sees an empty
+                    # page and the download dies with a generic failure, hiding e.g. a
+                    # FlareSolverr 500 behind a silent wait.
+                    if status_callback and not isinstance(e, BypassCancelledError):
+                        try:
+                            status_callback("error", f"Bypass failed: {type(e).__name__}: {e}")
+                        except _STATUS_CALLBACK_ERRORS:
+                            logger.debug("Bypass error status callback failed", exc_info=True)
                     return _result("", current_url)
                 finally:
-                    heartbeat_stop.set()
-                    if heartbeat_thread:
-                        heartbeat_thread.join(timeout=1)
+                    release_activity_grace(status_callback)
 
             logger.debug("GET: %s", current_url)
 

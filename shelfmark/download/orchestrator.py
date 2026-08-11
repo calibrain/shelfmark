@@ -12,7 +12,7 @@ from concurrent.futures import Future, ThreadPoolExecutor
 from email.utils import parseaddr
 from pathlib import Path
 from threading import Event, Lock
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -24,6 +24,7 @@ from shelfmark.core.request_helpers import (
 )
 from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.core.utils import transform_cover_url
+from shelfmark.download.activity import parse_activity_grace
 from shelfmark.download.fs import run_blocking_io
 from shelfmark.download.postprocess.pipeline import is_torrent_source, safe_cleanup_path
 from shelfmark.download.postprocess.router import post_process_download
@@ -32,6 +33,9 @@ from shelfmark.release_sources import (
     get_source,
     get_source_display_name,
 )
+
+if TYPE_CHECKING:
+    from collections.abc import Iterable
 
 logger = setup_logger(__name__)
 _RNG = random.SystemRandom()
@@ -65,7 +69,16 @@ _last_progress_value: dict[str, float] = {}
 # De-duplicate status updates (keep-alive updates shouldn't spam clients)
 _last_status_event: dict[str, tuple[str, str | None]] = {}
 STALL_TIMEOUT = 300  # 5 minutes without progress/status update = stalled
+# Absolute deadlines (time.time()) until which stall detection is suppressed for a task.
+# Long single-shot operations (protection bypass, etc.) declare their own upper bound via
+# `shelfmark.download.activity` instead of faking progress. See set_activity_grace().
+_activity_grace: dict[str, float] = {}
+# A caller cannot buy immortality: the largest grace any operation may request. Must stay
+# above the largest budget any caller can declare (see http._bypass_grace_seconds).
+_MAX_ACTIVITY_GRACE_SECONDS = 960.0
 COORDINATOR_LOOP_ERROR_RETRY_DELAY = 1.0
+# Ceiling for the exponential backoff applied to repeated coordinator loop failures.
+_COORDINATOR_LOOP_ERROR_MAX_DELAY = 30.0
 _PROGRESS_BROADCAST_START_PERCENT = 1
 _PROGRESS_BROADCAST_COMPLETE_PERCENT = 99
 _PROGRESS_BROADCAST_MIN_DELTA = 10
@@ -649,6 +662,17 @@ def _download_task(task_id: str, cancel_flag: Event) -> str | None:
         update_download_progress(task_id, progress)
 
     def status_callback(status: str, message: str | None = None) -> None:
+        # Liveness hint from a long single-shot operation, not a user-visible status.
+        # Handled here so it never reaches update_download_status (which dedupes status
+        # transitions on purpose). See shelfmark.download.activity.
+        grace = parse_activity_grace(status, message)
+        if grace is not None:
+            if grace > 0:
+                set_activity_grace(task_id, grace)
+            else:
+                clear_activity_grace(task_id)
+            return
+
         status_key = status.lower()
         if status_key == "error":
             _capture_task_error(
@@ -886,6 +910,7 @@ def _cleanup_progress_tracking(task_id: str) -> None:
         _last_activity.pop(task_id, None)
         _last_progress_value.pop(task_id, None)
         _last_status_event.pop(task_id, None)
+        _activity_grace.pop(task_id, None)
 
 
 def _finalize_download_failure(task_id: str) -> None:
@@ -933,6 +958,66 @@ def _process_single_download(task_id: str, cancel_flag: Event) -> None:
         ws_manager.broadcast_status_update(queue_status())
 
 
+def set_activity_grace(book_id: str, seconds: float) -> None:
+    """Suppress stall detection for `book_id` for up to `seconds` from now.
+
+    For long single-shot operations that cannot report incremental progress (protection
+    bypass being the motivating case). The grace is a single absolute deadline computed
+    once, so it cannot be extended into immortality by a keep-alive that carries no real
+    liveness information - an operation that hangs forever is still cancelled once its
+    declared budget expires.
+
+    Deliberately touches neither the queue nor the WebSocket: this is a liveness
+    assertion, not a user-visible status transition.
+    """
+    grace = _config_float(seconds, 0.0)
+    grace = min(max(grace, 0.0), _MAX_ACTIVITY_GRACE_SECONDS)
+    with _progress_lock:
+        _activity_grace[book_id] = time.time() + grace
+
+
+def clear_activity_grace(book_id: str) -> None:
+    """Drop any activity grace for `book_id` and count this moment as activity.
+
+    Resetting `_last_activity` means a nested or abandoned grace degrades to a fresh
+    full STALL_TIMEOUT window rather than an immediate stall.
+    """
+    with _progress_lock:
+        _activity_grace.pop(book_id, None)
+        _last_activity[book_id] = time.time()
+
+
+def _find_stalled_tasks(task_ids: Iterable[str], now: float) -> list[str]:
+    """Return the task ids with no activity inside STALL_TIMEOUT and no active grace.
+
+    Holds `_progress_lock` for dict reads only - never call into `book_queue` from here,
+    see _cancel_stalled_task().
+    """
+    stalled: list[str] = []
+    with _progress_lock:
+        for task_id in task_ids:
+            last_active = _last_activity.get(task_id, now)
+            deadline = max(last_active + STALL_TIMEOUT, _activity_grace.get(task_id, 0.0))
+            if now > deadline:
+                stalled.append(task_id)
+    return stalled
+
+
+def _cancel_stalled_task(task_id: str) -> None:
+    """Cancel a stalled download.
+
+    Must be called WITHOUT `_progress_lock` held. `book_queue.cancel_download` runs the
+    terminal-status hooks, which reach a sqlite write that gevent does not patch; holding
+    the progress lock across that blocks the hub and every other download worker.
+    """
+    logger.warning("Download stalled for %s, cancelling", task_id)
+    book_queue.cancel_download(task_id)
+    book_queue.update_status_message(
+        task_id,
+        f"Download stalled (no activity for {STALL_TIMEOUT}s)",
+    )
+
+
 def concurrent_download_loop() -> None:
     """Run the main concurrent download coordinator."""
     max_workers = normalize_positive_int(config.MAX_CONCURRENT_DOWNLOADS) or 1
@@ -942,6 +1027,7 @@ def concurrent_download_loop() -> None:
     with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="Download") as executor:
         active_futures: dict[Future, tuple[str, Event]] = {}  # Track active download futures
         stalled_tasks: set[str] = set()  # Track tasks already cancelled due to stall
+        consecutive_errors = 0
 
         while True:
             try:
@@ -992,19 +1078,14 @@ def concurrent_download_loop() -> None:
 
                 # Check for stalled downloads (no activity in STALL_TIMEOUT seconds)
                 current_time = time.time()
-                with _progress_lock:
-                    for _future, (task_id, _cancel_flag) in list(active_futures.items()):
-                        if task_id in stalled_tasks:
-                            continue
-                        last_active = _last_activity.get(task_id, current_time)
-                        if current_time - last_active > STALL_TIMEOUT:
-                            logger.warning("Download stalled for %s, cancelling", task_id)
-                            book_queue.cancel_download(task_id)
-                            book_queue.update_status_message(
-                                task_id,
-                                f"Download stalled (no activity for {STALL_TIMEOUT}s)",
-                            )
-                            stalled_tasks.add(task_id)
+                candidates = [
+                    task_id
+                    for _future, (task_id, _cancel_flag) in list(active_futures.items())
+                    if task_id not in stalled_tasks
+                ]
+                for task_id in _find_stalled_tasks(candidates, current_time):
+                    _cancel_stalled_task(task_id)
+                    stalled_tasks.add(task_id)
 
                 # Start new downloads if we have capacity
                 while len(active_futures) < max_workers:
@@ -1027,9 +1108,24 @@ def concurrent_download_loop() -> None:
 
                 # Brief sleep to prevent busy waiting
                 time.sleep(main_loop_sleep_time)
-            except (AttributeError, KeyError, OSError, RuntimeError, TypeError, ValueError) as e:
+                consecutive_errors = 0
+            # This loop is the only thing driving the download queue; if it exits, nothing
+            # is ever picked up again and the app looks healthy while doing nothing (#823,
+            # #1166). A narrow exception list let gevent's LoopExit and friends through, so
+            # catch everything short of BaseException - GreenletExit and gevent.Timeout must
+            # still propagate, and the tests' loop-stopping sentinels derive from
+            # BaseException for exactly this reason.
+            except Exception as e:  # noqa: BLE001 - coordinator loop must never die
+                consecutive_errors += 1
                 logger.error_trace("Download coordinator loop error: %s", e)
-                time.sleep(COORDINATOR_LOOP_ERROR_RETRY_DELAY)
+                # Back off when the failure is persistent so we don't spin at 1Hz forever,
+                # but keep the first delay unchanged for a normal transient blip.
+                time.sleep(
+                    min(
+                        COORDINATOR_LOOP_ERROR_RETRY_DELAY * 2 ** min(consecutive_errors - 1, 5),
+                        _COORDINATOR_LOOP_ERROR_MAX_DELAY,
+                    )
+                )
 
 
 # Download coordinator thread (started explicitly via start())
