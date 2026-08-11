@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import contextlib
-import uuid
 from typing import TYPE_CHECKING
 
 from shelfmark.core.logger import setup_logger
@@ -13,7 +12,11 @@ from shelfmark.core.utils import (
 from shelfmark.core.utils import (
     is_audiobook as check_audiobook,
 )
-from shelfmark.download.fs import run_blocking_io
+from shelfmark.download.fs import (
+    clear_delete_denied,
+    mark_delete_denied,
+    run_blocking_io,
+)
 from shelfmark.download.permissions_debug import log_path_permission_context
 from shelfmark.release_sources import get_source
 
@@ -24,6 +27,8 @@ if TYPE_CHECKING:
     from shelfmark.core.models import DownloadTask
 
 logger = setup_logger("shelfmark.download.postprocess.pipeline")
+
+_WRITE_PROBE_NAME = ".shelfmark_write_test.tmp"
 
 
 def validate_destination(
@@ -52,7 +57,9 @@ def validate_destination(
             status_callback("error", f"Cannot create destination: {destination} ({exc})")
             return False
 
-    test_path = destination / f".shelfmark_write_test_{uuid.uuid4().hex}.tmp"
+    # Stable name: on shares that refuse deletes the probe file cannot be cleaned
+    # up, so reusing one name bounds the leftovers at a single hidden file.
+    test_path = destination / _WRITE_PROBE_NAME
 
     try:
         test_content = (
@@ -60,7 +67,6 @@ def validate_destination(
             "It should've been automatically deleted. Feel free to delete it.\n"
         )
         run_blocking_io(test_path.write_text, test_content)
-        run_blocking_io(test_path.unlink, missing_ok=True)
     except OSError as exc:
         logger.debug("Destination write probe path: %s", test_path)
         log_path_permission_context("destination_write_probe", destination)
@@ -70,6 +76,23 @@ def validate_destination(
             with contextlib.suppress(OSError):
                 run_blocking_io(destination.rmdir)
         return False
+
+    try:
+        run_blocking_io(test_path.unlink, missing_ok=True)
+    except OSError as exc:
+        # Writable but not deletable, e.g. a Synology share with "Delete
+        # subfolders and files" unticked. Not fatal: record it so transfers write
+        # files in place instead of publishing a temp file via rename.
+        mark_delete_denied(destination)
+        logger.warning(
+            "Destination %s is writable but refuses deletes (%s); leaving probe file %s "
+            "behind and writing files in place",
+            destination,
+            exc,
+            test_path.name,
+        )
+    else:
+        clear_delete_denied(destination)
 
     return True
 

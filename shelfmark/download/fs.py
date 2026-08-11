@@ -4,6 +4,7 @@ These utilities handle file collisions atomically, avoiding TOCTOU race conditio
 when multiple workers may try to write to the same path simultaneously.
 """
 
+import contextlib
 import errno
 import os
 import shutil
@@ -103,6 +104,57 @@ _VERIFY_IO_WAIT_SECONDS = 3.0
 _PUBLISH_VERIFY_RETRY_SECONDS = 0.25
 _TEMPFILE_PREFIX = ".shelfmark."
 _TEMPFILE_SUFFIX = ".tmp"
+
+# Destinations that accept writes but reject unlink/rename, e.g. a Synology share
+# with "Delete subfolders and files" unticked. Publishing a temp file into place
+# removes a directory entry, so those paths must be written in place instead.
+_DELETE_DENIED_DIRS: set[str] = set()
+
+
+class _PublishDeniedError(Exception):
+    """A fully-written temp file could not be renamed onto its final path."""
+
+
+def _is_delete_denied_error(error: Exception) -> bool:
+    return isinstance(error, OSError) and error.errno in {errno.EACCES, errno.EPERM}
+
+
+def mark_delete_denied(directory: Path) -> None:
+    """Record that `directory` rejects deletes so later writes skip the temp file."""
+    key = str(directory)
+    if key in _DELETE_DENIED_DIRS:
+        return
+    _DELETE_DENIED_DIRS.add(key)
+    logger.warning(
+        "Destination %s rejects delete/rename; writing files in place instead of "
+        "publishing atomically. Grant delete permission to restore atomic writes.",
+        directory,
+    )
+
+
+def clear_delete_denied(directory: Path) -> None:
+    """Forget recorded denials for `directory` and anything beneath it.
+
+    Subdirectories get marked independently (an `organize` layout publishes into
+    per-author folders), so clearing only the exact key would leave a fixed
+    destination writing in place until restart.
+    """
+    if not _DELETE_DENIED_DIRS:
+        return
+    key = str(directory)
+    prefix = f"{key}{os.sep}"
+    _DELETE_DENIED_DIRS.difference_update(
+        {marked for marked in _DELETE_DENIED_DIRS if marked == key or marked.startswith(prefix)}
+    )
+
+
+def is_delete_denied(directory: Path) -> bool:
+    """True if `directory` or one of its ancestors is known to reject deletes."""
+    if not _DELETE_DENIED_DIRS:
+        return False
+    if str(directory) in _DELETE_DENIED_DIRS:
+        return True
+    return any(str(parent) in _DELETE_DENIED_DIRS for parent in directory.parents)
 
 
 def _verify_transfer_size(
@@ -361,10 +413,40 @@ def _create_temp_path(dest_path: Path) -> Path:
     return Path(temp_path)
 
 
+def _discard_path(path: Path) -> None:
+    """Best-effort unlink that tolerates destinations which reject deletes."""
+    try:
+        run_blocking_io(path.unlink, missing_ok=True)
+    except OSError as exc:
+        logger.warning("Could not remove %s: %s", path, exc)
+
+
+def _copy_into_claimed(source_path: Path, dest_path: Path, expected_size: int) -> None:
+    """Copy content straight into an already-claimed destination path.
+
+    Used when the destination rejects rename/unlink: there is no temp file to
+    publish, so the final name is written in place. This is not atomic - a
+    watcher can observe a partial file - but it is the only way to deliver on
+    such a share. `copyfile` (not `copy2`) because metadata copying needs chmod,
+    which those shares also tend to refuse.
+    """
+    try:
+        run_blocking_io(shutil.copyfile, str(source_path), str(dest_path))
+        _verify_transfer_size(dest_path, expected_size, "copy")
+    except Exception:
+        with contextlib.suppress(OSError):
+            run_blocking_io(dest_path.unlink, missing_ok=True)
+        raise
+
+
 def _publish_temp_file(temp_path: Path, dest_path: Path) -> bool:
     """Publish a temp file to its final path without overwriting existing files.
 
     Returns True on success, False if the destination already exists.
+
+    Raises `_PublishDeniedError` when the rename is refused for lack of delete
+    permission. The claimed destination is left in place so the caller can write
+    into it directly instead.
     """
     claimed = _claim_destination(dest_path)
     if not claimed:
@@ -374,7 +456,19 @@ def _publish_temp_file(temp_path: Path, dest_path: Path) -> bool:
         # Publish by renaming the fully-written temp file into place. This gives
         # watchers an IN_MOVED_TO-style event on the final path instead of relying
         # on hardlink support in the destination filesystem.
-        run_blocking_io(os.replace, str(temp_path), str(dest_path))
+        try:
+            run_blocking_io(os.replace, str(temp_path), str(dest_path))
+        except OSError as e:
+            if _is_delete_denied_error(e):
+                log_transfer_permission_context(
+                    "publish_replace",
+                    source=temp_path,
+                    dest=dest_path,
+                    error=e,
+                )
+                mark_delete_denied(dest_path.parent)
+                raise _PublishDeniedError(str(e)) from e
+            raise
 
         # Best-effort nudge for watchers that only react to close-write on the
         # final filename rather than rename/move events.
@@ -383,6 +477,8 @@ def _publish_temp_file(temp_path: Path, dest_path: Path) -> bool:
             run_blocking_io(os.close, fd)
         except OSError:
             pass
+    except _PublishDeniedError:
+        raise
     except Exception as e:
         if _is_permission_error(e):
             log_transfer_permission_context(
@@ -391,10 +487,21 @@ def _publish_temp_file(temp_path: Path, dest_path: Path) -> bool:
                 dest=dest_path,
                 error=e,
             )
-        run_blocking_io(dest_path.unlink, missing_ok=True)
+        _discard_path(dest_path)
         raise
     else:
         return True
+
+
+def _move_via_copy(source_path: Path, dest_path: Path, max_attempts: int) -> Path:
+    """Deliver a move as copy + source unlink.
+
+    For destinations that reject rename. The source lives in TMP_DIR (which we
+    own and can delete), so only the destination-side semantics change.
+    """
+    final_path = atomic_copy(source_path, dest_path, max_attempts=max_attempts)
+    _discard_path(source_path)
+    return final_path
 
 
 def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> Path:
@@ -423,6 +530,11 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
     ext = dest_path.suffix
     parent = dest_path.parent
 
+    # rename() removes a directory entry, so a destination that refuses deletes
+    # cannot be moved into. Deliver it as copy + source unlink instead.
+    if is_delete_denied(parent):
+        return _move_via_copy(source_path, dest_path, max_attempts)
+
     for attempt in range(max_attempts):
         try_path = dest_path if attempt == 0 else parent / f"{base}_{attempt}{ext}"
 
@@ -449,6 +561,13 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                 run_blocking_io(try_path.unlink, missing_ok=True)
             continue
         except OSError as e:
+            if _is_delete_denied_error(e):
+                # Destination refuses the rename; fall back to copy + unlink source.
+                mark_delete_denied(parent)
+                if claimed:
+                    _discard_path(try_path)
+                return _move_via_copy(source_path, dest_path, max_attempts)
+
             # Cross-filesystem - copy to temp and publish atomically.
             if e.errno != errno.EXDEV:
                 if claimed:
@@ -497,7 +616,7 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                     try:
                         _verify_published_file(try_path, expected_size, "move")
                     except Exception:
-                        run_blocking_io(try_path.unlink, missing_ok=True)
+                        _discard_path(try_path)
                         raise
 
                     run_blocking_io(source_path.unlink)
@@ -508,9 +627,18 @@ def atomic_move(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
                     if temp_path:
                         run_blocking_io(temp_path.unlink, missing_ok=True)
                     continue
+                except _PublishDeniedError:
+                    # Destination is claimed but unrenameable; write into it directly.
+                    _copy_into_claimed(source_path, try_path, expected_size)
+                    if temp_path:
+                        _discard_path(temp_path)
+                    _discard_path(source_path)
+                    if attempt > 0:
+                        logger.info("File collision resolved: %s", try_path.name)
+                    return try_path
                 except Exception:
                     if temp_path:
-                        run_blocking_io(temp_path.unlink, missing_ok=True)
+                        _discard_path(temp_path)
                     raise
                 else:
                     return try_path
@@ -629,6 +757,17 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
         try_path = dest_path if attempt == 0 else parent / f"{base}_{attempt}{ext}"
         if run_blocking_io(try_path.exists):
             continue
+
+        # Known-undeletable destination: skip the temp file entirely, otherwise
+        # every transfer would strand a `.shelfmark.*.tmp` we cannot clean up.
+        if is_delete_denied(parent):
+            if not _claim_destination(try_path):
+                continue
+            _copy_into_claimed(source_path, try_path, expected_size)
+            if attempt > 0:
+                logger.info("File collision resolved: %s", try_path.name)
+            return try_path
+
         temp_path: Path | None = None
         try:
             temp_path = _create_temp_path(try_path)
@@ -680,14 +819,22 @@ def atomic_copy(source_path: Path, dest_path: Path, max_attempts: int = 100) -> 
             try:
                 _verify_published_file(try_path, expected_size, "copy")
             except Exception:
-                run_blocking_io(try_path.unlink, missing_ok=True)
+                _discard_path(try_path)
                 raise
 
             if attempt > 0:
                 logger.info("File collision resolved: %s", try_path.name)
+        except _PublishDeniedError:
+            # The destination is claimed but unrenameable; write into it directly.
+            _copy_into_claimed(source_path, try_path, expected_size)
+            if temp_path:
+                _discard_path(temp_path)
+            if attempt > 0:
+                logger.info("File collision resolved: %s", try_path.name)
+            return try_path
         except Exception:
             if temp_path:
-                run_blocking_io(temp_path.unlink, missing_ok=True)
+                _discard_path(temp_path)
             raise
         else:
             return try_path
