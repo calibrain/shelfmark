@@ -1,4 +1,5 @@
 import asyncio
+import threading
 
 import pytest
 
@@ -430,3 +431,54 @@ def test_get_bypassed_page_retries_next_mirror_after_runtime_error(monkeypatch):
         "https://mirror-one.example/book",
         "https://mirror-two.example/book",
     ]
+
+
+def test_max_duration_seconds_allows_for_a_mirror_rotation_retry():
+    """get_bypassed_page() may call get() twice, so the budget must cover both."""
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    assert internal_bypasser.max_duration_seconds() == (
+        2 * internal_bypasser._BYPASS_SUBPROCESS_TIMEOUT_SECONDS
+    )
+
+
+def test_cdp_worker_run_times_out_and_cancels_the_orphaned_coroutine(monkeypatch):
+    """A wedged in-process bypass must not block forever holding LOCKED.
+
+    Regression guard: _CDP_WORKER.run() used to wait with timeout=None, so one hung CDP
+    session blocked every subsequent bypass in the process indefinitely.
+    """
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    started = threading.Event()
+
+    async def _never_finish():
+        started.set()
+        await asyncio.Event().wait()
+
+    coro = _never_finish()
+    with pytest.raises(TimeoutError):
+        internal_bypasser._CDP_WORKER.run(coro, timeout=0.05)
+
+    assert started.is_set(), "coroutine should have been scheduled before timing out"
+
+
+def test_run_bypass_in_current_process_bounds_its_wait(monkeypatch):
+    """The in-process path passes a deadline rather than waiting forever."""
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    observed: dict[str, float | None] = {}
+
+    class _FakeWorker:
+        def run(self, coro, timeout=None):
+            observed["timeout"] = timeout
+            coro.close()
+            return "html"
+
+    monkeypatch.setattr(internal_bypasser, "_CDP_WORKER", _FakeWorker())
+    monkeypatch.delenv("SHELFMARK_INTERNAL_BYPASSER_CHILD", raising=False)
+
+    result = internal_bypasser._run_bypass_in_current_process("https://example.com", 1)
+
+    assert result == "html"
+    assert observed["timeout"] == internal_bypasser._IN_PROCESS_BYPASS_TIMEOUT_SECONDS

@@ -9,6 +9,10 @@ class _StopLoop(BaseException):
     """Sentinel used to stop the infinite coordinator loop during tests."""
 
 
+class _UnexpectedCall(BaseException):
+    """Guard-rail failure that the coordinator's `except Exception` must not swallow."""
+
+
 class _FakeExecutor:
     def __init__(self, *args, **kwargs) -> None:
         self.args = args
@@ -21,7 +25,7 @@ class _FakeExecutor:
         return False
 
     def submit(self, *args, **kwargs):  # pragma: no cover - not expected in these tests
-        raise AssertionError("submit() should not be called in this test")
+        raise _UnexpectedCall("submit() should not be called in this test")
 
 
 class _StopCoordinator(BaseException):
@@ -68,6 +72,69 @@ def test_concurrent_download_loop_logs_and_recovers_after_loop_error(monkeypatch
     ]
 
 
+def test_concurrent_download_loop_survives_exceptions_outside_the_legacy_list(monkeypatch):
+    """Regression for #823/#1166: the coordinator must not die on an unlisted exception.
+
+    `gevent.exceptions.LoopExit` and `StopIteration` are Exceptions that the old narrow
+    except tuple let through, silently killing the only thread that drives the queue.
+    """
+    import shelfmark.download.orchestrator as orchestrator
+
+    raised: list[type[BaseException]] = []
+    escapes = [StopIteration, ZeroDivisionError, KeyboardInterrupt]
+
+    def fake_get_next():
+        if escapes:
+            exc = escapes.pop(0)
+            if exc is KeyboardInterrupt:
+                # BaseException: must still propagate and stop the loop.
+                raise KeyboardInterrupt
+            raised.append(exc)
+            raise exc("boom")
+        return None
+
+    mock_queue = MagicMock()
+    mock_queue.get_next.side_effect = fake_get_next
+
+    monkeypatch.setattr(orchestrator, "book_queue", mock_queue)
+    monkeypatch.setattr(orchestrator, "ThreadPoolExecutor", _FakeExecutor)
+    monkeypatch.setattr(orchestrator.time, "sleep", lambda _delay: None)
+    monkeypatch.setattr(orchestrator.logger, "error_trace", MagicMock())
+
+    with pytest.raises(KeyboardInterrupt):
+        orchestrator.concurrent_download_loop()
+
+    assert raised == [StopIteration, ZeroDivisionError]
+
+
+def test_concurrent_download_loop_backs_off_on_repeated_errors(monkeypatch):
+    """A persistent failure must not spin the loop at 1Hz forever."""
+    import shelfmark.download.orchestrator as orchestrator
+
+    sleep_delays: list[float] = []
+
+    def fake_sleep(delay: float) -> None:
+        sleep_delays.append(delay)
+        if len(sleep_delays) >= 4:
+            raise _StopLoop()
+
+    mock_queue = MagicMock()
+    mock_queue.get_next.side_effect = RuntimeError("persistent boom")
+
+    monkeypatch.setattr(orchestrator, "book_queue", mock_queue)
+    monkeypatch.setattr(orchestrator, "ThreadPoolExecutor", _FakeExecutor)
+    monkeypatch.setattr(orchestrator.time, "sleep", fake_sleep)
+    monkeypatch.setattr(orchestrator.logger, "error_trace", MagicMock())
+
+    with pytest.raises(_StopLoop):
+        orchestrator.concurrent_download_loop()
+
+    base = orchestrator.COORDINATOR_LOOP_ERROR_RETRY_DELAY
+    # First delay stays unchanged for a normal transient blip, then doubles.
+    assert sleep_delays == [base, base * 2, base * 4, base * 8]
+    assert max(sleep_delays) <= orchestrator._COORDINATOR_LOOP_ERROR_MAX_DELAY
+
+
 def test_concurrent_download_loop_recovers_and_processes_task_after_transient_loop_error(
     monkeypatch,
 ):
@@ -91,13 +158,16 @@ def test_concurrent_download_loop_recovers_and_processes_task_after_transient_lo
                 raise _StopCoordinator()
             return None
 
+        # These raise _UnexpectedCall rather than AssertionError because the coordinator
+        # loop catches Exception: an AssertionError here would be swallowed and logged,
+        # letting the test pass vacuously instead of reporting the unexpected call.
         def cancel_download(self, task_id: str) -> None:  # pragma: no cover - unused
-            raise AssertionError(f"cancel_download unexpectedly called for {task_id}")
+            raise _UnexpectedCall(f"cancel_download unexpectedly called for {task_id}")
 
         def update_status_message(
             self, task_id: str, message: str
         ) -> None:  # pragma: no cover - unused
-            raise AssertionError(
+            raise _UnexpectedCall(
                 f"update_status_message unexpectedly called for {task_id}: {message}"
             )
 

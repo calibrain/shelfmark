@@ -61,6 +61,7 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends \
     # For building C-extensions (cffi, gevent, etc.)
     gcc \
+    g++ \
     libffi-dev \
     python3-dev \
     # For locale
