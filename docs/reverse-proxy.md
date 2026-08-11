@@ -23,10 +23,11 @@ server {
     location / {
         proxy_pass http://shelfmark:8084;
         proxy_http_version 1.1;
-        proxy_set_header Host $host;
+        proxy_set_header Host $http_host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $http_host;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection $connection_upgrade;
     }
@@ -56,11 +57,11 @@ All Shelfmark paths (UI, API, assets, Socket.IO) are served under the base path.
 location /shelfmark/ {
     proxy_pass http://shelfmark:8084/shelfmark/;
     proxy_http_version 1.1;
-    proxy_set_header Host $host;
+    proxy_set_header Host $http_host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Host $http_host;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection $connection_upgrade;
     proxy_read_timeout 86400;
@@ -136,11 +137,11 @@ location /shelfmark/ {
 
     proxy_pass http://shelfmark:8084/shelfmark/;
     proxy_http_version 1.1;
-    proxy_set_header Host $host;
+    proxy_set_header Host $http_host;
     proxy_set_header X-Real-IP $remote_addr;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto $scheme;
-    proxy_set_header X-Forwarded-Host $host;
+    proxy_set_header X-Forwarded-Host $http_host;
     proxy_set_header Upgrade $http_upgrade;
     proxy_set_header Connection $connection_upgrade;
     proxy_read_timeout 86400;
@@ -158,6 +159,7 @@ If login, settings saves, or downloads appear to fail in the browser but the act
 - Do not force `Connection: upgrade` on every request. That can break normal `POST` and `PUT` responses while the backend still processes them.
 - If your proxy UI does not support conditional websocket headers, remove the forced websocket headers entirely and let Shelfmark fall back to polling.
 - Keep the standard forwarded headers: `Host`, `X-Forwarded-For`, `X-Forwarded-Proto`, and `X-Forwarded-Host` when using a subpath or OIDC.
+- Preserve the original port in `Host` and `X-Forwarded-Host` by using `$http_host` rather than `$host` when Shelfmark is exposed on a custom port.
 
 This is especially relevant for Nginx Proxy Manager or custom advanced config snippets that add websocket headers globally.
 

@@ -118,7 +118,7 @@ BASE_PATH = normalize_base_path(normalize_optional_text(app_config.get("URL_BASE
 app = Flask(__name__)
 app.config["SEND_FILE_MAX_AGE_DEFAULT"] = 0  # Disable caching
 app.config["APPLICATION_ROOT"] = BASE_PATH or "/"
-wsgi_app = cast(Any, ProxyFix(app.wsgi_app))
+wsgi_app = cast(Any, ProxyFix(app.wsgi_app, x_host=1, x_port=1))
 if BASE_PATH:
     wsgi_app = cast(Any, PrefixMiddleware(wsgi_app, BASE_PATH, bypass_paths={"/api/health"}))
 app.wsgi_app = wsgi_app
