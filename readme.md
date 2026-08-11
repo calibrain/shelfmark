@@ -44,6 +44,7 @@ Works great alongside the following library tools, with support for automatic im
 ### Prerequisites
 
 - Docker & Docker Compose
+- At least 2 GB of RAM available to the container when using the standard image — see [Memory Requirements](#memory-requirements)
 
 ### Installation
 
@@ -138,6 +139,17 @@ docker compose up -d
 
 The full-featured image with all network capabilities included.
 
+#### Memory Requirements
+
+The standard image ships a real Chromium browser, which it launches to solve Cloudflare challenges for Direct Download. Chromium needs room to run:
+
+- **2 GB of RAM available to the container** is a safe minimum; 1 GB or less is where problems usually start
+- Only relevant if you use Direct Download. Prowlarr, IRC and audiobook sources don't start the browser
+
+When the container is starved of memory, Chromium fails to start and every Direct Download fails with unrelated-looking errors — repeated `403 detected; switching to bypasser` followed by `No download URL found`, and downloads that never complete. If you're seeing that, check the container's memory limit and the host's free memory before suspecting your ISP or DNS.
+
+If you can't spare the memory, use the [Lite](#lite) image with an external resolver (e.g. FlareSolverr) running elsewhere.
+
 #### Tor Routing
 Optional Tor support for network privacy:
 ```bash
@@ -175,6 +187,7 @@ A lighter image without the built-in browser automation. Ideal for:
 - **External services** - Already running FlareSolverr or similar for other applications
 - **Alternative sources** - Using Prowlarr, IRC, or other configured sources
 - **Audiobooks** - Using Shelfmark primarily for audiobooks
+- **Constrained hosts** - No bundled browser, so it runs comfortably below the standard image's [memory requirements](#memory-requirements)
 
 ```bash
 curl -O https://raw.githubusercontent.com/calibrain/shelfmark/main/compose/docker-compose.lite.yml
