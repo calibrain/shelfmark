@@ -261,7 +261,12 @@ test_write() {
     fi
 
     FILE_CONTENT=$(cat "$test_file" 2>/dev/null || echo "")
-    rm -f "$test_file"
+    # A folder can be writable but not deletable (e.g. a Synology share without
+    # "Delete subfolders and files"). That is not a boot failure - the app writes
+    # files in place on such shares - so don't let a failed cleanup print an
+    # alarming error or fail the probe.
+    run_as_target_user rm -f "$test_file" 2>/dev/null || \
+        echo "Note: could not remove test file in $folder (folder is writable but not deletable)"
     [ "$FILE_CONTENT" = "0123456789_TEST" ]
     result=$?
     if [ $result -eq 0 ]; then
