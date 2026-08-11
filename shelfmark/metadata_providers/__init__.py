@@ -709,3 +709,6 @@ with suppress(ImportError):
 
 with suppress(ImportError):
     from shelfmark.metadata_providers import googlebooks as googlebooks
+
+with suppress(ImportError):
+    from shelfmark.metadata_providers import moly as moly

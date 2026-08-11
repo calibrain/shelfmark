@@ -12,7 +12,7 @@ With a subpath (`URL_BASE=/shelfmark/`):
 https://<your-shelfmark-domain>/shelfmark/api/auth/oidc/callback
 ```
 
-The callback URL is constructed from the incoming request, so your reverse proxy must forward `X-Forwarded-Proto` and `X-Forwarded-Host` correctly. PKCE (S256) is used automatically.
+The callback URL is constructed from the incoming request, so your reverse proxy must forward `X-Forwarded-Proto` and `X-Forwarded-Host` correctly, including the external port when it is not the protocol default. PKCE (S256) is used automatically.
 
 ## Settings
 
