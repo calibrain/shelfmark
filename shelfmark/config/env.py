@@ -6,10 +6,29 @@ import shutil
 import tempfile
 from pathlib import Path
 
+LOG_LEVELS = ("DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL")
+
 
 def string_to_bool(s: str) -> bool:
     """Convert string to boolean."""
     return s.lower() in ["true", "yes", "1", "y"]
+
+
+def _read_advanced_config(key: str) -> object | None:
+    """Read a key from the advanced settings file (import-time safe)."""
+    config_dir = Path(os.getenv("CONFIG_DIR", "/config"))
+    config_file = config_dir / "plugins" / "advanced.json"
+
+    if config_file.exists():
+        try:
+            with config_file.open() as f:
+                config = json.load(f)
+                if key in config:
+                    return config[key]
+        except json.JSONDecodeError, OSError:
+            pass
+
+    return None
 
 
 def _read_debug_from_config() -> bool:
@@ -18,20 +37,45 @@ def _read_debug_from_config() -> bool:
     if env_debug is not None:
         return string_to_bool(env_debug)
 
-    # Try to read from config file
-    config_dir = Path(os.getenv("CONFIG_DIR", "/config"))
-    config_file = config_dir / "plugins" / "advanced.json"
-
-    if config_file.exists():
-        try:
-            with config_file.open() as f:
-                config = json.load(f)
-                if "DEBUG" in config:
-                    return bool(config["DEBUG"])
-        except json.JSONDecodeError, OSError:
-            pass
+    value = _read_advanced_config("DEBUG")
+    if value is not None:
+        return bool(value)
 
     return False
+
+
+def normalize_log_level(raw: str | None) -> str:
+    """Normalize a log level name, falling back to INFO when unrecognized."""
+    if raw is None:
+        return "INFO"
+
+    normalized = raw.strip().upper()
+    # "WARN" is a logging alias, but gunicorn only accepts "warning".
+    if normalized == "WARN":
+        normalized = "WARNING"
+
+    if normalized not in LOG_LEVELS:
+        return "INFO"
+
+    return normalized
+
+
+def _read_log_level_from_config(debug: bool) -> str:
+    """Resolve the app log level from DEBUG, env var, or config file.
+
+    DEBUG wins when enabled, mirroring how entrypoint.sh picks gunicorn's level.
+    Otherwise LOG_LEVEL is read from the env var, then the settings file, and
+    falls back to INFO when unset or unrecognized.
+    """
+    if debug:
+        return "DEBUG"
+
+    raw = os.environ.get("LOG_LEVEL")
+    if raw is None:
+        value = _read_advanced_config("LOG_LEVEL")
+        raw = value if isinstance(value, str) else None
+
+    return normalize_log_level(raw)
 
 
 def _is_sqlite_file(path: Path) -> bool:
@@ -101,7 +145,7 @@ INGEST_DIR = Path(os.getenv("INGEST_DIR", "/books"))
 # =============================================================================
 
 DEBUG = _read_debug_from_config()
-LOG_LEVEL = "DEBUG" if DEBUG else "INFO"
+LOG_LEVEL = _read_log_level_from_config(DEBUG)
 ENABLE_LOGGING = string_to_bool(os.getenv("ENABLE_LOGGING", "true"))
 
 

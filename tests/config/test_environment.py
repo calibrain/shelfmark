@@ -8,12 +8,22 @@ Run with: uv run pytest tests/config/test_environment.py -v
 """
 
 import importlib
+import json
 import os
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+
+
+def _restore_env(monkeypatch, name: str, value: str | None) -> None:
+    """Restore an env var to its pre-test value."""
+    if value is None:
+        monkeypatch.delenv(name, raising=False)
+    else:
+        monkeypatch.setenv(name, value)
+
 
 # =============================================================================
 # Directory Setup Tests
@@ -436,6 +446,7 @@ class TestDebugConfiguration:
         original_debug = os.environ.get("DEBUG")
 
         try:
+            monkeypatch.delenv("LOG_LEVEL", raising=False)
             monkeypatch.setenv("DEBUG", "true")
             importlib.reload(env_module)
             assert env_module.DEBUG is True
@@ -450,6 +461,76 @@ class TestDebugConfiguration:
                 monkeypatch.delenv("DEBUG", raising=False)
             else:
                 monkeypatch.setenv("DEBUG", original_debug)
+            importlib.reload(env_module)
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("error", "ERROR"),
+            ("ERROR", "ERROR"),
+            ("  Warning  ", "WARNING"),
+            ("warn", "WARNING"),
+            ("critical", "CRITICAL"),
+            ("nonsense", "INFO"),
+            ("", "INFO"),
+            (None, "INFO"),
+        ],
+    )
+    def test_normalize_log_level(self, raw, expected):
+        """Log level names are case-insensitive and fall back to INFO."""
+        from shelfmark.config.env import normalize_log_level
+
+        assert normalize_log_level(raw) == expected
+
+    def test_log_level_from_env_var(self, monkeypatch):
+        """LOG_LEVEL env var should set the app log level when DEBUG is off."""
+        import shelfmark.config.env as env_module
+
+        original_debug = os.environ.get("DEBUG")
+        original_level = os.environ.get("LOG_LEVEL")
+
+        try:
+            monkeypatch.setenv("DEBUG", "false")
+            monkeypatch.setenv("LOG_LEVEL", "error")
+            importlib.reload(env_module)
+            assert env_module.LOG_LEVEL == "ERROR"
+
+            # DEBUG wins over LOG_LEVEL, matching entrypoint.sh.
+            monkeypatch.setenv("DEBUG", "true")
+            importlib.reload(env_module)
+            assert env_module.LOG_LEVEL == "DEBUG"
+        finally:
+            _restore_env(monkeypatch, "DEBUG", original_debug)
+            _restore_env(monkeypatch, "LOG_LEVEL", original_level)
+            importlib.reload(env_module)
+
+    def test_log_level_from_config_file(self, monkeypatch, tmp_path):
+        """LOG_LEVEL should fall back to the advanced settings file."""
+        import shelfmark.config.env as env_module
+
+        original_debug = os.environ.get("DEBUG")
+        original_level = os.environ.get("LOG_LEVEL")
+        original_config_dir = os.environ.get("CONFIG_DIR")
+
+        advanced = tmp_path / "plugins" / "advanced.json"
+        advanced.parent.mkdir(parents=True)
+        advanced.write_text(json.dumps({"LOG_LEVEL": "WARNING"}))
+
+        try:
+            monkeypatch.setenv("DEBUG", "false")
+            monkeypatch.delenv("LOG_LEVEL", raising=False)
+            monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+            importlib.reload(env_module)
+            assert env_module.LOG_LEVEL == "WARNING"
+
+            # Env var takes precedence over the stored setting.
+            monkeypatch.setenv("LOG_LEVEL", "critical")
+            importlib.reload(env_module)
+            assert env_module.LOG_LEVEL == "CRITICAL"
+        finally:
+            _restore_env(monkeypatch, "DEBUG", original_debug)
+            _restore_env(monkeypatch, "LOG_LEVEL", original_level)
+            _restore_env(monkeypatch, "CONFIG_DIR", original_config_dir)
             importlib.reload(env_module)
 
 

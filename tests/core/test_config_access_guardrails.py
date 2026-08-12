@@ -28,6 +28,9 @@ _BOOTSTRAP_ENV_ACCESS_ALLOWLIST = {
 }
 _BOOTSTRAP_ENV_ACCESS_KEY_ALLOWLIST = {
     (Path("shelfmark/config/settings.py"), "USING_TOR"),
+    # Loggers are configured while settings_registry itself is still importing,
+    # so the level has to come from the bootstrap env module.
+    (Path("shelfmark/core/logger.py"), "LOG_LEVEL"),
 }
 _RAW_CONFIG_READ_ALLOWLIST = {
     Path("shelfmark/config/notifications_settings.py"),
@@ -205,7 +208,10 @@ class ConfigAccessVisitor(ast.NodeVisitor):
                 return
             for alias in node.names:
                 imported_name = alias.name
-                if imported_name in self.registered_keys:
+                if (
+                    imported_name in self.registered_keys
+                    and imported_name not in self._bootstrap_env_key_allowlist
+                ):
                     self._record_violation(
                         node,
                         "direct env-module import",

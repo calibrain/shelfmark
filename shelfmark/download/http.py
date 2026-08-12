@@ -27,9 +27,14 @@ logger = setup_logger(__name__)
 _RNG = random.SystemRandom()
 
 _MAX_REDIRECTS = 5
+# Z-Library answers the first hit with a 503 whose only real payload is a Set-Cookie; echoing
+# that cookie back returns the 302 to the real page. Two attempts cover the handshake without
+# letting a server that keeps re-issuing cookies hold us in the loop.
+_MAX_COOKIE_HANDSHAKE_RETRIES = 2
 _HTTP_STATUS_FORBIDDEN = HTTPStatus.FORBIDDEN
 _HTTP_STATUS_NOT_FOUND = HTTPStatus.NOT_FOUND
 _HTTP_STATUS_RATE_LIMITED = HTTPStatus.TOO_MANY_REQUESTS
+_HTTP_STATUS_SERVICE_UNAVAILABLE = HTTPStatus.SERVICE_UNAVAILABLE
 _HTTP_STATUS_OK = HTTPStatus.OK
 _HTTP_STATUS_RANGE_NOT_SATISFIABLE = HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE
 _HTTP_STATUS_PARTIAL_CONTENT = HTTPStatus.PARTIAL_CONTENT
@@ -56,6 +61,18 @@ _external_bypasser = None
 
 def _raise_too_many_redirects(message: str) -> NoReturn:
     raise requests.exceptions.TooManyRedirects(message)
+
+
+def _new_cookies(response: requests.Response, already_sent: dict[str, str]) -> dict[str, str]:
+    """Cookies a response set that we were not already echoing back.
+
+    Returning only the *new* ones is what makes the retry terminate: a server that keeps
+    re-issuing the same cookie yields nothing here, so we stop instead of spinning.
+    """
+    jar = getattr(response, "cookies", None)
+    if not jar:
+        return {}
+    return {name: value for name, value in jar.items() if already_sent.get(name) != value}
 
 
 def _get_internal_bypasser() -> ModuleType:
@@ -278,6 +295,9 @@ def html_get_page(
     original_url = url
     current_url = selector.rewrite(original_url)
     use_bypasser_now = use_bypasser
+    # Survives across attempts so a cookie won once is still presented on later retries.
+    handshake_cookies: dict[str, str] = {}
+    handshake_retries = 0
 
     for attempt in range(1, retry_limit + 1):
         # Check for cancellation before each attempt
@@ -332,11 +352,30 @@ def html_get_page(
                     current_url,
                     proxies=get_proxies(current_url),
                     timeout=REQUEST_TIMEOUT,
-                    cookies=cookies,
+                    # Bypasser-derived cookies win: they came from a real solved challenge.
+                    cookies={**handshake_cookies, **cookies},
                     headers=headers,
                     allow_redirects=allow_redirects,
                     verify=get_ssl_verify(current_url),
                 )
+
+                # Z-Library gates the first hit with a 503 that carries nothing but a
+                # Set-Cookie; echoing it back yields the 302 to the real page. Without this
+                # the cookie is dropped and every retry re-runs the same rejected request.
+                if (
+                    response.status_code == _HTTP_STATUS_SERVICE_UNAVAILABLE
+                    and handshake_retries < _MAX_COOKIE_HANDSHAKE_RETRIES
+                ):
+                    issued = _new_cookies(response, handshake_cookies)
+                    if issued:
+                        handshake_cookies.update(issued)
+                        handshake_retries += 1
+                        logger.debug(
+                            "503 set %s cookie(s); retrying with them: %s",
+                            len(issued),
+                            current_url,
+                        )
+                        continue
 
                 if is_aa_url and response.is_redirect:
                     location = response.headers.get("Location", "")
@@ -366,6 +405,7 @@ def html_get_page(
                             current_url = new_url
                             # Reset per-request state for the new host.
                             headers = {"User-Agent": DOWNLOAD_HEADERS["User-Agent"]}
+                            handshake_cookies.clear()
                             is_aa_url = network.should_rotate_dns_for_url(current_url)
                             allow_redirects = not is_aa_url
                             redirects_followed = 0
@@ -435,6 +475,7 @@ def html_get_page(
                 new_url = _try_rotation(original_url, current_url, selector)
                 if new_url:
                     current_url = new_url
+                    handshake_cookies.clear()
                     continue
 
             # Retry with backoff
