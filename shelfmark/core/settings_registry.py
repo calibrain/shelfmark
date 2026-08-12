@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from werkzeug.utils import secure_filename
 
+from shelfmark.config.env import normalize_log_level
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import coerce_bool, normalize_optional_text
 
@@ -898,6 +899,9 @@ def _get_env_value_for_field(field: FieldBase) -> tuple[bool, object | None]:
             "WELIB_MIRROR_URLS",
         } and isinstance(parsed, list):
             parsed = _normalize_mirror_env_urls(parsed)
+        if field.key == "LOG_LEVEL" and isinstance(parsed, str):
+            # LOG_LEVEL is commonly set lowercase; the field options are uppercase.
+            parsed = normalize_log_level(parsed)
         return True, parsed
 
     if field.key == "AA_MIRROR_URLS":

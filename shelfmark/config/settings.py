@@ -1761,6 +1761,23 @@ def advanced_settings() -> list[SettingsField]:
             default=False,
             requires_restart=True,
         ),
+        SelectField(
+            key="LOG_LEVEL",
+            label="Log Level",
+            description=(
+                "Lowest severity written to the console and log file. "
+                "Ignored while Debug Mode is on, which forces Debug."
+            ),
+            options=[
+                {"value": "DEBUG", "label": "Debug", "description": "Everything, very noisy."},
+                {"value": "INFO", "label": "Info", "description": "Normal activity (default)."},
+                {"value": "WARNING", "label": "Warning", "description": "Warnings and problems."},
+                {"value": "ERROR", "label": "Error", "description": "Failures only."},
+                {"value": "CRITICAL", "label": "Critical", "description": "Fatal errors only."},
+            ],
+            default="INFO",
+            requires_restart=True,
+        ),
         NumberField(
             key="MAIN_LOOP_SLEEP_TIME",
             label="Queue Check Interval (seconds)",

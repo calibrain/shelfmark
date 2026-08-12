@@ -260,7 +260,10 @@ Logs are available via:
 - `docker logs <container-name>`
 - `/var/log/shelfmark/` inside the container (when `ENABLE_LOGGING=true`)
 
-Log level is configurable via Settings or `LOG_LEVEL` environment variable.
+Log level is configurable under Settings → Advanced or via the `LOG_LEVEL` environment
+variable (`DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`; case-insensitive, defaults to
+`INFO`). The environment variable wins over the setting, and `DEBUG=true` forces `DEBUG`
+regardless of either. Changes take effect on restart.
 
 ## Development
 

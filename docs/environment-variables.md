@@ -23,6 +23,7 @@ This document lists all configuration options that can be set via environment va
   - [Hardcover](#metadata-providers-hardcover)
   - [Open Library](#metadata-providers-open-library)
   - [Google Books](#metadata-providers-google-books)
+  - [Moly.hu](#metadata-providers-moly.hu)
 - [Direct Download](#direct-download)
   - [Download Sources](#direct-download-download-sources)
   - [Cloudflare Bypass](#direct-download-cloudflare-bypass)
@@ -1046,6 +1047,7 @@ Comma-separated hosts to bypass proxy (e.g., localhost,127.0.0.1,10.*,*.local)
 |----------|-------------|------|---------|
 | `URL_BASE` | Optional URL path prefix. Use a path like /shelfmark (no hostname). Leave blank for root. | string | _none_ |
 | `DEBUG` | Enable verbose logging to console and file. Not recommended for normal use. | boolean | `false` |
+| `LOG_LEVEL` | Lowest severity written to the console and log file. Ignored while Debug Mode is on, which forces Debug. | string (choice) | `INFO` |
 | `MAIN_LOOP_SLEEP_TIME` | How often the download queue is checked for new items. | number | `5` |
 | `DOWNLOAD_PROGRESS_UPDATE_INTERVAL` | How often download progress is broadcast to the UI. | number | `1` |
 | `CUSTOM_SCRIPT` | Path to a script to run after each successful download. Must be executable. | string | _none_ |
@@ -1081,6 +1083,17 @@ Enable verbose logging to console and file. Not recommended for normal use.
 - **Type:** boolean
 - **Default:** `false`
 - **Requires restart:** Yes
+
+#### `LOG_LEVEL`
+
+**Log Level**
+
+Lowest severity written to the console and log file. Ignored while Debug Mode is on, which forces Debug.
+
+- **Type:** string (choice)
+- **Default:** `INFO`
+- **Requires restart:** Yes
+- **Options:** `DEBUG` (Debug), `INFO` (Info), `WARNING` (Warning), `ERROR` (Error), `CRITICAL` (Critical)
 
 #### `MAIN_LOOP_SLEEP_TIME`
 
@@ -1508,6 +1521,8 @@ How long to keep cached search results before they expire.
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
 | `PROWLARR_TORRENT_CLIENT` | Choose which torrent client to use | string (choice) | _empty string_ |
+| `ALLDEBRID_API_KEY` | AllDebrid API Key (apiv4) from your AllDebrid account settings | string (secret) | _none_ |
+| `REALDEBRID_API_KEY` | Real-Debrid API Key (Secret Token) from your Real-Debrid account settings | string (secret) | _none_ |
 | `QBITTORRENT_URL` | Web UI URL of your qBittorrent instance | string | _none_ |
 | `QBITTORRENT_USERNAME` | qBittorrent Web UI username | string | _none_ |
 | `QBITTORRENT_PASSWORD` | qBittorrent Web UI password | string (secret) | _none_ |
@@ -1559,7 +1574,25 @@ Choose which torrent client to use
 
 - **Type:** string (choice)
 - **Default:** _empty string_
-- **Options:** `""` (None), `qbittorrent` (qBittorrent), `transmission` (Transmission), `deluge` (Deluge), `rtorrent` (rTorrent)
+- **Options:** `""` (None), `alldebrid` (AllDebrid), `qbittorrent` (qBittorrent), `realdebrid` (Real-Debrid), `transmission` (Transmission), `deluge` (Deluge), `rtorrent` (rTorrent)
+
+#### `ALLDEBRID_API_KEY`
+
+**API Key**
+
+AllDebrid API Key (apiv4) from your AllDebrid account settings
+
+- **Type:** string (secret)
+- **Default:** _none_
+
+#### `REALDEBRID_API_KEY`
+
+**API Key**
+
+Real-Debrid API Key (Secret Token) from your Real-Debrid account settings
+
+- **Type:** string (secret)
+- **Default:** _none_
 
 #### `QBITTORRENT_URL`
 
@@ -2061,6 +2094,26 @@ Default sort order for Google Books search results.
 - **Type:** string (choice)
 - **Default:** `relevance`
 - **Options:** `relevance` (Most relevant), `newest` (Newest)
+
+</details>
+
+### Metadata Providers: Moly.hu
+
+| Variable | Description | Type | Default |
+|----------|-------------|------|---------|
+| `MOLY_ENABLED` | Enable Moly.hu as a metadata provider for book searches | boolean | `false` |
+
+<details>
+<summary>Detailed descriptions</summary>
+
+#### `MOLY_ENABLED`
+
+**Enable Moly.hu**
+
+Enable Moly.hu as a metadata provider for book searches
+
+- **Type:** boolean
+- **Default:** `false`
 
 </details>
 
