@@ -59,8 +59,17 @@ fi
 
 echo "==> [$PROFILE] waiting for shelfmark health"
 HEALTHY=0
-for _ in $(seq 1 60); do
-  if curl -fsS http://localhost:8084/api/health >/dev/null 2>&1; then HEALTHY=1; break; fi
+# The curl timeouts are load-bearing, not belt-and-braces. A container that
+# binds 8084 but never answers (e.g. a broken C-extension wheel wedging the
+# gunicorn worker) blocks a bare `curl` forever on read, so an iteration-counted
+# loop never reaches iteration 2 and the wait becomes unbounded — that hung CI
+# for the full 6h job limit on PR #1169. Bound each probe AND the whole wait.
+HEALTH_DEADLINE=$((SECONDS + 120))
+while ((SECONDS < HEALTH_DEADLINE)); do
+  if curl -fsS --connect-timeout 3 --max-time 5 http://localhost:8084/api/health >/dev/null 2>&1; then
+    HEALTHY=1
+    break
+  fi
   sleep 2
 done
 

@@ -60,6 +60,9 @@ jobs:
   e2e:
     needs: select-profiles
     runs-on: ubuntu-latest
+    # A wedged app under test must not burn GitHub's 6h max job limit. A healthy
+    # profile run finishes in ~3-5 min; anything past 25 is hung, not slow.
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
@@ -87,6 +90,8 @@ jobs:
     needs: changes
     if: needs.changes.outputs.relevant == 'true' || github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    # Real Chrome + qBittorrent is the slowest profile; still nowhere near 40 min.
+    timeout-minutes: 40
     name: e2e (full — real Chrome + qBittorrent)
     steps:
       - name: Checkout
