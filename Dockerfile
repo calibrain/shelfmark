@@ -24,10 +24,14 @@ COPY src/frontend/ ./
 # Build the frontend
 RUN npm run build
 
+# uv is a build-time tool only, so it is mounted into the RUNs that need it rather
+# than copied into the image. A COPY here would land ~24 MB in a `base` layer that
+# every published image inherits, and a later `rm` cannot take it back out again --
+# a RUN adds a layer, it does not rewrite the one underneath.
+FROM ghcr.io/astral-sh/uv:0.11.3@sha256:90bbb3c16635e9627f49eec6539f956d70746c409209041800a0280b93152823 AS uv
+
 # Use python-slim as the base image
 FROM python:3.14.7-slim@sha256:83c1cebb322d099ac9e3a3a532ba74b0146d702838b25e4c75c02fa81ffeb910 AS base
-
-COPY --from=ghcr.io/astral-sh/uv:0.11.3@sha256:90bbb3c16635e9627f49eec6539f956d70746c409209041800a0280b93152823 /uv /uvx /bin/
 
 # Add build argument for version
 ARG BUILD_VERSION
@@ -111,6 +115,7 @@ WORKDIR /app
 # Install core Python dependencies first for better layer caching
 COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
     uv sync --locked --no-default-groups
 
 # Runtime dependencies are installed into /app/.venv during the build. Remove the
@@ -199,6 +204,7 @@ RUN echo "deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-
 
 # Install the browser automation stack used by the full image
 RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
     uv sync --locked --no-default-groups --extra browser
 
 # Deterministically resolve the Xlib namespace collision.
@@ -212,12 +218,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # and force python-xlib 0.33 to own the namespace. pyautogui runs fine against
 # 0.33 (superset API).
 RUN --mount=type=cache,target=/root/.cache/uv \
+    --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
     uv pip uninstall --python /app/.venv/bin/python python3-xlib && \
     uv pip install --python /app/.venv/bin/python --reinstall python-xlib==0.33 && \
     /app/.venv/bin/python -c "import Xlib.X; assert hasattr(Xlib.X, 'FamilyServerInterpreted'), 'Xlib.X.FamilyServerInterpreted missing after fix'; print('Xlib namespace OK:', Xlib.__version__)"
-
-# uv is only needed while building the image.
-RUN rm -f /usr/bin/uv /usr/bin/uvx
 
 # Keep SeleniumBase's bundled driver cache writable for the fixed non-root user.
 RUN SELENIUMBASE_DRIVERS_DIR=$(/app/.venv/bin/python -c "import pathlib, seleniumbase; print(pathlib.Path(seleniumbase.__file__).resolve().parent / 'drivers')") && \
@@ -234,8 +238,5 @@ CMD ["/app/entrypoint.sh"]
 FROM base AS shelfmark-lite
 
 ENV USING_EXTERNAL_BYPASSER=true
-
-# uv is only needed while building the image.
-RUN rm -f /usr/bin/uv /usr/bin/uvx
 
 CMD ["/app/entrypoint.sh"]
