@@ -138,6 +138,47 @@ def test_html_get_page_returns_empty_on_bypass_cancellation(monkeypatch):
     assert html == ""
 
 
+def test_challenged_search_switches_to_bypasser(monkeypatch):
+    """AA gates /search behind DDoS-Guard; the 403 must reach the bypasser, not a 503.
+
+    Guards the regression where search passed allow_bypasser_fallback=False, so a
+    challenge on every mirror surfaced as "mirrors are blocked" with no solve attempted.
+    """
+    import shelfmark.download.http as http
+
+    monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
+    monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 100.0)
+    monkeypatch.setattr(http, "get_cf_cookies_for_domain", lambda _hostname: {})
+    monkeypatch.setattr(http, "_apply_cf_bypass", lambda _url, _headers: {})
+    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
+    monkeypatch.setattr(http, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: False)
+    monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
+
+    def ddos_guarded(url: str, **_kwargs):
+        error = requests.exceptions.HTTPError("forbidden")
+        error.response = _FakeResponse(403, url=url)
+        raise error
+
+    bypassed: list[str] = []
+    monkeypatch.setattr(http.requests, "get", ddos_guarded)
+    monkeypatch.setattr(
+        http,
+        "get_bypassed_page",
+        lambda url, *_a, **_k: bypassed.append(url) or "<table>results</table>",
+    )
+
+    html = http.html_get_page(
+        "https://annas-archive.gl/search?q=dune",
+        retry=10,
+        allow_bypasser_fallback=True,
+        success_delay=0,
+    )
+
+    assert html == "<table>results</table>"
+    assert bypassed == ["https://annas-archive.gl/search?q=dune"]
+
+
 def test_download_url_ignores_zlib_cookie_refresh_failure(monkeypatch):
     import shelfmark.download.http as http
 

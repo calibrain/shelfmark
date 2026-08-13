@@ -87,12 +87,14 @@ end-to-end (`docker compose up` + suite + teardown) and passes.
 | `full` | **real Chrome solves Cloudflare** + DoH + **real qBittorrent** download → /books (Moby-Dick) | 1,4,5 + DoH | **#284 #1030** #386 #1040 #214 | ✅ 6 passed |
 | *(every profile)* | boots healthy under PUID/PGID, no perm errors | 6 entrypoint | #171 #447 #801 | ✅ |
 
-> **The bypasser is download-time, not search-time.** Running the stack revealed
-> that shelfmark fetches AA search/detail with `allow_bypasser_fallback=False`, so a
-> search behind Cloudflare returns 503 **regardless** of the bypasser; the bypasser
-> (internal Chrome or external FlareSolverr) only runs during a file *download*
-> (`use_bypasser=True`). The bypasser profiles therefore assert a *clean*
-> CF-gated-search failure, while the **`full` profile exercises the real end-to-end
+> **The bypasser now runs for search too.** AA search/detail used to be fetched with
+> `allow_bypasser_fallback=False`, so a search behind Cloudflare returned 503
+> regardless of the bypasser — which left search dead when AA put DDoS-Guard in front
+> of `/search`. Both now pass `allow_bypasser_fallback=True`, so a 403 switches
+> straight to the bypasser rather than rotating to another mirror behind the same
+> gate. The bypasser profiles therefore assert that a gated search *recovers* when the
+> external bypasser is available and still fails cleanly when it is off, while the
+> **`full` profile exercises the real end-to-end
 > CF solve**: AA search/detail are reachable, but the AA slow-download link points
 > at the gate, so downloading Moby-Dick forces the in-image headless Chromium to
 > detect the challenge, solve it (`_bypass_method_cdp_solve`), and fetch the file —

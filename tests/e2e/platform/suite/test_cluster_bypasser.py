@@ -1,20 +1,18 @@
-"""Cluster 1 — Cloudflare bypasser wiring + clean-failure behavior.
+"""Cluster 1 — Cloudflare bypasser wiring + gated-search behavior.
 
-Reality discovered by running the stack: shelfmark's AA *search* and *detail*
-fetches use ``html_get_page(allow_bypasser_fallback=False)``, so a search behind a
-Cloudflare gate returns 503 **regardless** of the bypasser. The bypasser (internal
-Chrome or external FlareSolverr) is a *download-time* mechanism
-(``html_get_page(use_bypasser=True)``); it never runs for search.
+AA search/detail used to be fetched with ``allow_bypasser_fallback=False``, so a
+search behind a Cloudflare gate returned 503 no matter how the bypasser was
+configured — which left search dead when AA put DDoS-Guard in front of ``/search``.
+Both now pass ``allow_bypasser_fallback=True``: a 403 switches straight to the
+bypasser instead of rotating to another mirror behind the same gate.
 
-So these tests assert what is actually true and host-observable:
-  * the external bypasser is configured from env, and
-  * a CF-gated search fails *cleanly* (a 503 the client can act on, not a hang or
-    a crash) — both with the bypasser on (it isn't used for search) and off.
+So these tests assert:
+  * the external bypasser is configured from env,
+  * a CF-gated search *recovers* once the external bypasser is available, and
+  * with the bypasser off it still fails *cleanly* (a 503 the client can act on,
+    not a hang or a crash) — the negative control that the gate is not ignored.
 
-Exercising shelfmark's *use* of the bypasser end-to-end (a real CF solve during a
-download) needs the AA slow-download HTML flow mocked — see the README roadmap.
-The bypass *mechanism* itself is verified to work: the mock FlareSolverr solves
-the gate (manually confirmed; see README). Guards: #284 #226 #202 #1030 #410 #369.
+Guards: #284 #226 #202 #1030 #410 #369.
 """
 
 from __future__ import annotations
@@ -70,10 +68,26 @@ def test_external_bypasser_is_configured(client) -> None:
 
 
 @pytest.mark.profiles("bypasser-external")
-def test_cf_gated_search_fails_cleanly_with_external_bypasser(client) -> None:
-    """Even with the external bypasser configured, a CF-gated *search* yields no
-    releases (the bypasser is download-time) — but it must fail cleanly."""
-    assert _cf_gated_search_has_no_releases(client)
+def test_cf_gated_search_recovers_via_external_bypasser(client) -> None:
+    """A CF-gated search is solved through the bypasser instead of returning 503.
+
+    The mock FlareSolverr refetches with the clearance cookie, which the cloudflare
+    role then passes through to the AA origin — so the 403 that used to end the
+    search now turns into real results.
+    """
+    resp = client.get(
+        "/api/releases",
+        params={"source": "direct_download", "query": "Mistborn"},
+        timeout=120,
+    )
+    assert resp.status_code == 200, (
+        f"CF-gated search did not recover through the external bypasser: "
+        f"{resp.status_code} {resp.text[:200]}"
+    )
+    assert client.releases_from(resp), (
+        "external bypasser was configured but the gated search returned no releases — "
+        "the 403 did not switch search over to the bypasser"
+    )
 
 
 @pytest.mark.profiles("bypasser-disabled")

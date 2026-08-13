@@ -601,7 +601,9 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
         f"{filters_query}"
     )
 
-    html = downloader.html_get_page(url, selector=selector, allow_bypasser_fallback=False)
+    # AA gates /search behind a DDoS-Guard JS challenge, which every mirror shares. Rotating
+    # to another mirror only collects another 403, so let the bypasser solve it.
+    html = downloader.html_get_page(url, selector=selector, allow_bypasser_fallback=True)
     if not html:
         # Network/mirror exhaustion path bubbles up so API can notify clients
         msg = "Unable to reach download source. Network restricted or mirrors are blocked."
@@ -657,7 +659,8 @@ def get_book_info(book_id: str, *, fetch_download_count: bool = True) -> BrowseR
     """
     url = f"{network.get_aa_base_url()}/md5/{book_id}"
     selector = network.AAMirrorSelector()
-    html = downloader.html_get_page(url, selector=selector, allow_bypasser_fallback=False)
+    # Same challenge as search: the detail page is gated on every mirror, so bypass it.
+    html = downloader.html_get_page(url, selector=selector, allow_bypasser_fallback=True)
 
     if not html:
         msg = "Unable to reach download source. Network restricted or mirrors are blocked."
@@ -885,6 +888,9 @@ def _parse_book_info_page(
     if fetch_download_count:
         try:
             summary_url = f"{network.get_aa_base_url()}/dyn/md5/summary/{book_id}"
+            # Unlike search and the detail page above, this one stays off the bypasser: a
+            # download count is decoration on the details modal, not worth holding the
+            # modal open for a browser solve. If it is gated, drop it and move on.
             summary_response = downloader.html_get_page(
                 summary_url, selector=network.AAMirrorSelector(), allow_bypasser_fallback=False
             )
