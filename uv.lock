@@ -1504,15 +1504,15 @@ wheels = [
 
 [[package]]
 name = "transmission-rpc"
-version = "7.0.11"
+version = "7.0.12"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "requests" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/68/b8/dc4debf525c3bb8a676f4fd0ab8534845e3b067c78a81ad05ac39014d849/transmission_rpc-7.0.11.tar.gz", hash = "sha256:5872322e60b42e368bc9c4724773aea4593113cb19bd2da589f0ffcdabe57963", size = 113744, upload-time = "2024-08-20T22:41:07.485Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/bb/9d/c4e24d5bd0a1166935ca146dfb99b7041e54a38a6eed600e6c9798e98f58/transmission_rpc-7.0.12.tar.gz", hash = "sha256:b65f195a26bf3db792f88ee93211929144321fbc3a4f018bf7029996304fcfa5", size = 26897, upload-time = "2026-08-09T14:37:41.519Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/9f/4c/6319bcb1026e3f78c9cbcc9c24de77a76f09954e67ffc5ebfc29f7ce4b90/transmission_rpc-7.0.11-py3-none-any.whl", hash = "sha256:94fd008b54640dd9fff14d7ae26848f901e9d130a70950b8930f9b395988914f", size = 28231, upload-time = "2024-08-20T22:41:05.777Z" },
+    { url = "https://files.pythonhosted.org/packages/80/9c/edc8ee0d9ab7a05f0cb334fc506ce3749ff869a8d41683108313096ce5ab/transmission_rpc-7.0.12-py3-none-any.whl", hash = "sha256:85e26b7ca13e1e102a695fe19f19f4236bd42bb4920b0edb9e35f6bb46bbe86e", size = 29103, upload-time = "2026-08-09T14:37:40.272Z" },
 ]
 
 [[package]]
