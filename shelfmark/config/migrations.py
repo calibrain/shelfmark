@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any, Protocol
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Sequence
     from os import PathLike
 
 _DEPRECATED_SETTINGS_RESTRICTION_KEYS = (
@@ -15,6 +15,13 @@ _DEPRECATED_SETTINGS_RESTRICTION_KEYS = (
     "CWA_RESTRICT_SETTINGS_TO_ADMIN",
     "RESTRICT_SETTINGS_TO_ADMIN",
 )
+
+# The audiobook format list shipped as the default until the format sets were unified.
+# It only covered m4b/mp3, so FLAC/OPUS/OGG/M4A releases were dropped from search results
+# and rejected after download - and the wider default alone would never reach existing
+# installs, because initialize_default_configs() only writes defaults when the config
+# file does not exist yet.
+_LEGACY_AUDIOBOOK_FORMATS_DEFAULT = ("m4b", "mp3")
 
 
 class MigrationLogger(Protocol):
@@ -55,6 +62,51 @@ def _pick_legacy_settings_restriction(config: dict[str, Any]) -> bool | None:
         return _as_bool(config.get("CWA_RESTRICT_SETTINGS_TO_ADMIN"))
 
     return None
+
+
+def migrate_audiobook_formats(
+    *,
+    load_general_config: Callable[[], dict[str, Any]],
+    save_general_config: Callable[[dict[str, Any]], None],
+    widened_formats: Sequence[str],
+    logger: MigrationLogger,
+) -> None:
+    """Widen an untouched audiobook format list to the current, fuller default.
+
+    Only a list that still matches the old default exactly is rewritten. Any other value
+    means someone chose it deliberately, and a migration that "helpfully" re-enabled
+    formats a user had turned off would be worse than leaving them on the narrow list.
+    """
+    try:
+        config = load_general_config()
+
+        if "SUPPORTED_AUDIOBOOK_FORMATS" not in config:
+            # Nothing persisted, so the field default already applies.
+            logger.debug("No persisted audiobook formats - the current default applies")
+            return
+
+        current = config.get("SUPPORTED_AUDIOBOOK_FORMATS")
+        if not isinstance(current, list):
+            return
+
+        normalized = {str(fmt).strip().lower() for fmt in current if str(fmt).strip()}
+        if normalized != set(_LEGACY_AUDIOBOOK_FORMATS_DEFAULT):
+            logger.debug(
+                "Audiobook formats were customized (%s) - left unchanged", sorted(normalized)
+            )
+            return
+
+        save_general_config({"SUPPORTED_AUDIOBOOK_FORMATS": list(widened_formats)})
+        logger.info(
+            "Widened audiobook formats from the legacy default %s to %s",
+            list(_LEGACY_AUDIOBOOK_FORMATS_DEFAULT),
+            list(widened_formats),
+        )
+
+    except FileNotFoundError:
+        logger.debug("No existing general config file found - nothing to migrate")
+    except Exception:
+        logger.exception("Failed to migrate audiobook formats")
 
 
 def migrate_security_settings(

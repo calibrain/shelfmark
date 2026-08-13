@@ -11,6 +11,7 @@ from typing import TYPE_CHECKING
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import ARCHIVE_FORMATS, AUDIOBOOK_FORMATS
 from shelfmark.core.utils import is_audiobook as check_audiobook
 
 if TYPE_CHECKING:
@@ -18,11 +19,8 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 
-# All recognized formats for parsing IRC result lines.
-# This comprehensive list is used to identify file extensions in results.
-# User-configured formats are used separately for filtering.
-ALL_RECOGNIZED_FORMATS = {
-    # Ebook formats
+# Ebook formats recognized in IRC result lines.
+EBOOK_FORMATS = (
     "epub",
     "mobi",
     "azw3",
@@ -41,19 +39,17 @@ ALL_RECOGNIZED_FORMATS = {
     "cbz",
     "cdr",
     "jpg",
-    "rar",
-    "zip",
-    # Audiobook formats
-    "m4b",
-    "mp3",
-    "m4a",
-    "flac",
-    "ogg",
-    "wma",
-    "aac",
-    "wav",
-    "opus",
-}
+)
+
+# All recognized formats for parsing IRC result lines.
+# This comprehensive list is used to identify file extensions in results.
+# User-configured formats are used separately for filtering.
+# Ordered longest-first so that scanning a line matches "azw3" before "azw" and "docx"
+# before "doc". It used to be a set, which made the winning format for a line naming more
+# than one extension depend on set iteration order, and therefore vary between restarts.
+ALL_RECOGNIZED_FORMATS = tuple(
+    sorted({*EBOOK_FORMATS, *ARCHIVE_FORMATS, *AUDIOBOOK_FORMATS}, key=len, reverse=True)
+)
 
 
 def _normalize_config_formats(raw_formats: object) -> set[str]:
@@ -84,13 +80,22 @@ def _get_supported_formats(content_type: str | None = None) -> set[str]:
 
 # Regex to parse result lines
 # Format: !Server Author - Title.format ::INFO:: size
+#
+# The extension is matched against the known formats rather than a bare \w+. A bare \w+
+# happily matched the decimal point in the size, so a line with no file extension parsed
+# as format="5mb" out of "::INFO:: 620.5MB" - taking the title and size down with it, and
+# leaving the result to be discarded by every format filter downstream. Restricting the
+# alternation makes such a line fall through to SIMPLE_RESULT_REGEX and come back as
+# "unknown", which is what the rest of the parser already expects.
+_FORMAT_ALTERNATION = "|".join(re.escape(fmt) for fmt in ALL_RECOGNIZED_FORMATS)
 RESULT_LINE_REGEX = re.compile(
     r"^!(\S+)\s+"  # !ServerName
     r"(.+?)\s+-\s+"  # Author Name -
-    r"(.+?)\.(\w+)"  # Title.format
+    rf"(.+?)\.({_FORMAT_ALTERNATION})\b"  # Title.format
     r"(?:\s+::INFO::\s*(.+?))?"  # Optional ::INFO:: metadata
     r"(?:\s+::HASH::\s*(\S+))?"  # Optional ::HASH::
-    r"\s*$"
+    r"\s*$",
+    re.IGNORECASE,
 )
 
 # Simpler fallback pattern
@@ -187,18 +192,54 @@ def parse_result_line(line: str) -> SearchResult | None:
     return None
 
 
+# Words that mark an archive as holding an audiobook rather than an ebook. Multi-file
+# audiobooks ship as .rar/.zip, so for those the extension says nothing about the content
+# and the release name is the only evidence there is.
+_AUDIOBOOK_MARKER_REGEX = re.compile(
+    r"\b(?:audio ?books?|unabridged|abridged|narrat(?:ed|or)|audible|\d+ ?kbps|"
+    + "|".join(re.escape(fmt) for fmt in AUDIOBOOK_FORMATS)
+    + r")\b",
+    re.IGNORECASE,
+)
+
+_AUDIOBOOK_FORMAT_SET = frozenset(AUDIOBOOK_FORMATS)
+_EBOOK_FORMAT_SET = frozenset(EBOOK_FORMATS)
+
+
+def detect_content_type(result: SearchResult) -> str:
+    """Classify a parsed result as an audiobook or an ebook.
+
+    Extension alone is not enough. It settles the plain cases, but the common audiobook
+    release is a .rar or .zip of MP3s, which is indistinguishable by extension from an
+    ebook archive - so for containers (and for lines with no usable extension) the
+    release name decides.
+    """
+    if result.format in _AUDIOBOOK_FORMAT_SET:
+        return "audiobook"
+    if result.format in _EBOOK_FORMAT_SET:
+        return "ebook"
+    return "audiobook" if _AUDIOBOOK_MARKER_REGEX.search(result.full_line) else "ebook"
+
+
 def parse_results_file(content: str, content_type: str | None = None) -> list[SearchResult]:
     """Parse a search results file into SearchResult objects."""
     results = []
     supported = _get_supported_formats(content_type)
+    requested = "audiobook" if check_audiobook(content_type) else "ebook"
 
     for line in content.splitlines():
         result = parse_result_line(line)
-        if result and (result.format in supported or result.format == "unknown"):
-            # Filter to user's configured formats
+        if not result:
+            continue
+        # Classify first, then apply the user's format filter within that bucket. Doing it
+        # the other way round is what lost audiobooks entirely: an audiobook .rar matched
+        # neither the ebook nor the audiobook format list, so it fell out of both.
+        if detect_content_type(result) != requested:
+            continue
+        if result.format in supported or result.format == "unknown":
             results.append(result)
 
-    logger.info("Parsed %s results from search file", len(results))
+    logger.info("Parsed %s %s results from search file", len(results), requested)
     return results
 
 

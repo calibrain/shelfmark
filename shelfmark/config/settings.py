@@ -14,6 +14,7 @@ from shelfmark.config.download_settings_handlers import (
     check_books_destination,
 )
 from shelfmark.config.email_settings import check_email_connection
+from shelfmark.config.migrations import migrate_audiobook_formats
 from shelfmark.core.languages import supported_book_languages
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import (
@@ -35,6 +36,7 @@ from shelfmark.core.settings_registry import (
     register_on_save,
     register_settings,
 )
+from shelfmark.core.utils import ARCHIVE_FORMATS, AUDIOBOOK_FORMATS
 
 _DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT_DEFAULT = 60
 _DOWNLOAD_CLIENT_COMPLETED_PATH_TIMEOUT_MAX = 3600
@@ -134,6 +136,20 @@ def _on_save_advanced(values: dict[str, Any]) -> dict[str, Any]:
 
 
 logger = setup_logger(__name__)
+
+
+def migrate_audiobook_format_settings() -> None:
+    """Bring installs created before the audiobook format sets were unified up to date."""
+    from shelfmark.core.settings_registry import load_config_file, save_config_file
+
+    migrate_audiobook_formats(
+        load_general_config=lambda: load_config_file("general"),
+        save_general_config=lambda values: save_config_file("general", values),
+        widened_formats=[*AUDIOBOOK_FORMATS, *ARCHIVE_FORMATS],
+        logger=logger,
+    )
+
+
 _SMTP_PORT_MAX = 65535
 _EMAIL_ATTACHMENT_LIMIT_MB_MAX = 600
 
@@ -215,11 +231,7 @@ _FORMAT_OPTIONS = [
 ]
 
 _AUDIOBOOK_FORMAT_OPTIONS = [
-    {"value": "m4b", "label": "M4B"},
-    {"value": "mp3", "label": "MP3"},
-    {"value": "m4a", "label": "M4A"},
-    {"value": "zip", "label": "ZIP"},
-    {"value": "rar", "label": "RAR"},
+    {"value": fmt, "label": fmt.upper()} for fmt in (*AUDIOBOOK_FORMATS, *ARCHIVE_FORMATS)
 ]
 
 _DOWNLOAD_TO_BROWSER_CONTENT_TYPE_OPTIONS = [
@@ -416,7 +428,7 @@ def general_settings() -> list[SettingsField]:
             label="Supported Audiobook Formats",
             description="Audiobook formats to include in search results. ZIP/RAR archives are extracted automatically and audiobook files are used if found.",
             options=_AUDIOBOOK_FORMAT_OPTIONS,
-            default=["m4b", "mp3"],
+            default=[*AUDIOBOOK_FORMATS, *ARCHIVE_FORMATS],
         ),
         MultiSelectField(
             key="BOOK_LANGUAGE",

@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import AUDIOBOOK_FORMATS
 from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.download.archive import ArchiveExtractionError, extract_archive, is_archive
 from shelfmark.download.fs import run_blocking_io
@@ -142,7 +143,7 @@ def scan_directory_tree(
 
     is_audiobook = check_audiobook(content_type)
     if is_audiobook:
-        trackable_exts = {".m4b", ".mp3", ".m4a", ".flac", ".ogg", ".wma", ".aac", ".wav"}
+        trackable_exts = {f".{fmt}" for fmt in AUDIOBOOK_FORMATS}
     else:
         trackable_exts = {
             ".pdf",
@@ -367,7 +368,7 @@ def collect_staged_files(
 
     is_audiobook = check_audiobook(task.content_type)
     if is_audiobook:
-        trackable_exts = {".m4b", ".mp3", ".m4a", ".flac", ".ogg", ".wma", ".aac", ".wav"}
+        trackable_exts = {f".{fmt}" for fmt in AUDIOBOOK_FORMATS}
     else:
         trackable_exts = {
             ".pdf",

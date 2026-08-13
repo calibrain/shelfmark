@@ -38,7 +38,10 @@ from shelfmark.config.env import (
     string_to_bool,
 )
 from shelfmark.config.security import _migrate_security_settings
-from shelfmark.config.settings import _SUPPORTED_BOOK_LANGUAGE
+from shelfmark.config.settings import (
+    _SUPPORTED_BOOK_LANGUAGE,
+    migrate_audiobook_format_settings,
+)
 from shelfmark.core.activity_view_state_service import ActivityViewStateService
 from shelfmark.core.auth_modes import (
     get_auth_check_admin_status,
@@ -80,7 +83,7 @@ from shelfmark.core.requests_service import (
     sync_delivery_states_from_queue_status,
 )
 from shelfmark.core.user_db import UserDB
-from shelfmark.core.utils import normalize_base_path
+from shelfmark.core.utils import AUDIOBOOK_FORMATS, normalize_base_path
 from shelfmark.download import orchestrator as backend
 from shelfmark.release_sources import (
     BrowseRecord,
@@ -167,6 +170,9 @@ except ImportError as e:
 
 # Migrate legacy security settings if needed
 _migrate_security_settings()
+
+# Widen audiobook formats for installs that still carry the old m4b/mp3-only default
+migrate_audiobook_format_settings()
 
 # Initialize user database and register multi-user routes
 # If CONFIG_DIR doesn't exist or is read-only, multi-user features will be disabled
@@ -319,19 +325,7 @@ def get_auth_mode() -> str:
 
 
 _AUDIOBOOK_CATEGORY_RANGE = (3030, 3049)
-_AUDIOBOOK_FORMAT_HINTS = frozenset(
-    {
-        "m4b",
-        "mp3",
-        "m4a",
-        "flac",
-        "ogg",
-        "wma",
-        "aac",
-        "wav",
-        "opus",
-    }
-)
+_AUDIOBOOK_FORMAT_HINTS = frozenset(AUDIOBOOK_FORMATS)
 
 
 def _contains_audiobook_format_hint(value: Any) -> bool:

@@ -115,6 +115,21 @@ def is_audiobook(content_type: str | None) -> bool:
     return bool(content_type and "audiobook" in content_type.lower())
 
 
+# Every audio format an audiobook can legitimately arrive in, and the single source of
+# truth for that list. The settings UI, release-source parsing, archive extraction and
+# post-download scanning all derive from it, so a format added here becomes selectable,
+# searchable AND downloadable at once. These used to be four hand-maintained copies that
+# had drifted apart: the settings UI only offered m4b/mp3/m4a, which meant a FLAC
+# audiobook could never be enabled, was silently dropped from every search result, and
+# was rejected after download as "format not supported".
+AUDIOBOOK_FORMATS = ("m4b", "mp3", "m4a", "flac", "ogg", "wma", "aac", "wav", "opus")
+
+# Multi-file audiobooks are almost always distributed as an archive. These are containers
+# rather than formats: they are what a *release* looks like, and the formats above are
+# what comes out of one after extraction.
+ARCHIVE_FORMATS = ("zip", "rar")
+
+
 CONTENT_TYPES = [
     "book (fiction)",
     "book (non-fiction)",

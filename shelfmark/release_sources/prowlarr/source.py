@@ -16,6 +16,7 @@ from shelfmark.core.languages import normalize_language
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import normalize_optional_text
 from shelfmark.core.search_plan import ReleaseSearchVariant
+from shelfmark.core.utils import AUDIOBOOK_FORMATS as CORE_AUDIOBOOK_FORMATS
 from shelfmark.core.utils import normalize_http_url
 from shelfmark.release_sources import (
     ColumnAlign,
@@ -222,7 +223,7 @@ EBOOK_FORMATS = [
 ]
 
 # Common audiobook formats
-AUDIOBOOK_FORMATS = ["m4b", "mp3", "m4a", "flac", "ogg", "wma", "aac", "wav", "opus"]
+AUDIOBOOK_FORMATS = list(CORE_AUDIOBOOK_FORMATS)
 
 # Combined list for format detection (audiobook formats first for priority)
 ALL_BOOK_FORMATS = AUDIOBOOK_FORMATS + EBOOK_FORMATS

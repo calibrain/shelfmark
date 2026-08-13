@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import AUDIOBOOK_FORMATS
 from shelfmark.core.utils import is_audiobook as check_audiobook
 from shelfmark.download.fs import atomic_move
 from shelfmark.download.postprocess.policy import (
@@ -98,7 +99,7 @@ ALL_EBOOK_EXTENSIONS = {
 }
 
 # All known audio extensions (superset of what user might enable for audiobooks)
-ALL_AUDIO_EXTENSIONS = {".m4b", ".mp3", ".m4a", ".aac", ".flac", ".ogg", ".wma", ".wav", ".opus"}
+ALL_AUDIO_EXTENSIONS = {f".{fmt}" for fmt in AUDIOBOOK_FORMATS}
 
 
 def _filter_files(
