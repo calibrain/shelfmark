@@ -443,15 +443,21 @@ def html_get_page(
             # A redirect loop on an AA URL is the DDoS-Guard challenge served against stale
             # bypasser cookies: they override the fresh handshake ones, so every hop re-issues
             # ?check=1. No status to gate on, so retrying alone just repeats it. Drop the stale
-            # cookies and solve the challenge properly.
+            # cookies and solve the challenge properly. Scoped to the hosts we follow redirects
+            # manually for, so a loop on any other site keeps the plain retry path.
+            redirect_loop_host = urlparse(current_url).hostname or ""
             if (
                 isinstance(e, requests.exceptions.TooManyRedirects)
+                and redirect_loop_host
+                and network.should_rotate_dns_for_url(current_url)
                 and allow_bypasser_fallback
                 and _is_cf_bypass_enabled()
                 and not use_bypasser_now
             ):
                 if not _is_using_external_bypasser():
-                    _get_internal_bypasser().clear_cf_cookies(urlparse(current_url).hostname or "")
+                    # An empty domain means "clear every host" in the bypasser, hence the
+                    # hostname guard above.
+                    _get_internal_bypasser().clear_cf_cookies(redirect_loop_host)
                 logger.info("Redirect loop detected; switching to bypasser: %s", current_url)
                 use_bypasser_now = True
                 continue
