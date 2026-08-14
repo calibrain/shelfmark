@@ -420,6 +420,12 @@ def html_get_page(
                         return _result("", current_url)
 
                     # Same-host redirect (relative or absolute) - follow manually.
+                    # DDoS-Guard gates AA /search behind a cookie probe: the 302 to
+                    # ?check=1 carries Set-Cookie (__ddg*) which must be echoed back on
+                    # the next hop, or the server just re-issues the redirect forever.
+                    issued = _new_cookies(response, handshake_cookies)
+                    if issued:
+                        handshake_cookies.update(issued)
                     redirects_followed += 1
                     if redirects_followed > _MAX_REDIRECTS:
                         _raise_too_many_redirects(f"Too many redirects for {current_url}")
@@ -433,6 +439,22 @@ def html_get_page(
 
         except Exception as e:
             status = _get_status_code(e)
+
+            # A redirect loop on an AA URL is the DDoS-Guard challenge served against stale
+            # bypasser cookies: they override the fresh handshake ones, so every hop re-issues
+            # ?check=1. No status to gate on, so retrying alone just repeats it. Drop the stale
+            # cookies and solve the challenge properly.
+            if (
+                isinstance(e, requests.exceptions.TooManyRedirects)
+                and allow_bypasser_fallback
+                and _is_cf_bypass_enabled()
+                and not use_bypasser_now
+            ):
+                if not _is_using_external_bypasser():
+                    _get_internal_bypasser().clear_cf_cookies(urlparse(current_url).hostname or "")
+                logger.info("Redirect loop detected; switching to bypasser: %s", current_url)
+                use_bypasser_now = True
+                continue
 
             # 403 = Cloudflare/DDoS-Guard protection
             if status == _HTTP_STATUS_FORBIDDEN:

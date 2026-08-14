@@ -224,3 +224,67 @@ def test_get_bypassed_page_uses_external_bypasser_when_enabled(monkeypatch):
 
     assert http.get_bypassed_page("https://example.com", selector, cancel_flag) == "EXT"
     assert calls == [("https://example.com", selector, cancel_flag)]
+
+
+def test_html_get_page_redirect_loop_purges_cookies_and_bypasses(monkeypatch):
+    """A redirect loop is the challenge served against stale cookies, not a retryable error.
+
+    TooManyRedirects carries no status code, so without an explicit branch it falls through
+    to the generic retry path and repeats the identical failure for the whole retry budget.
+    """
+    import shelfmark.download.http as http
+
+    monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
+    monkeypatch.setattr(http, "_is_using_external_bypasser", lambda: False)
+    monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 330.0)
+    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
+    monkeypatch.setattr(http.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: True)
+    monkeypatch.setattr(http.network, "get_aa_base_url", lambda: "https://annas-archive.li")
+    monkeypatch.setattr(http.network, "is_aa_auto_mode", lambda: False)
+
+    cleared: list[str] = []
+
+    class FakeInternalBypasser:
+        def clear_cf_cookies(self, domain: str) -> None:
+            cleared.append(domain)
+
+        def get_cf_cookies_for_domain(self, _domain: str) -> dict[str, str]:
+            return {"__ddg2_": "stale"}
+
+        def get_cf_user_agent_for_domain(self, _domain: str) -> str | None:
+            return None
+
+    monkeypatch.setattr(http, "_get_internal_bypasser", lambda: FakeInternalBypasser())
+    monkeypatch.setattr(http, "get_bypassed_page", lambda *_args, **_kwargs: "SOLVED")
+
+    class _FakeRedirect:
+        """A 302 that always points at the same ?check=1 URL, cookies unchanged."""
+
+        is_redirect = True
+        status_code = 302
+        cookies = {"__ddg2_": "stale"}
+
+        def __init__(self, url: str) -> None:
+            self.url = url
+            self.headers = {"Location": "https://annas-archive.li/search?q=test&check=1"}
+
+    hits: list[str] = []
+
+    def fake_get(url: str, **kwargs):
+        hits.append(url)
+        # Stale cookies: the server keeps re-issuing the same ?check=1 redirect.
+        return _FakeRedirect(url)
+
+    monkeypatch.setattr(http.requests, "get", fake_get)
+
+    html = http.html_get_page(
+        "https://annas-archive.li/search?q=test",
+        retry=2,
+        success_delay=0,
+    )
+
+    assert html == "SOLVED"
+    assert cleared == ["annas-archive.li"]
+    # The loop is cut short: no second attempt spent repeating the same redirects.
+    assert len(hits) == http._MAX_REDIRECTS + 1
