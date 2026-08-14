@@ -39,6 +39,7 @@ def upsert_cwa_user(
         email=normalized_email,
         role=role,
         allow_email_link=True,
+        sync_username=True,
         collision_strategy=collision_strategy,
         alias_suffix=_CWA_ALIAS_SUFFIX,
         context=context,

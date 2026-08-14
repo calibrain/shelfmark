@@ -108,6 +108,7 @@ def _build_updates(
     auth_source: str,
     role: str,
     sync_role: bool,
+    username: str | object,
     email: str | None | object,
     display_name: str | None | object,
     subject_field: str | None,
@@ -116,6 +117,8 @@ def _build_updates(
     updates: dict[str, Any] = {"auth_source": auth_source}
     if sync_role:
         updates["role"] = _normalize_role(role)
+    if username is not UNSET:
+        updates["username"] = _normalize_username(username)
     if email is not UNSET:
         updates["email"] = _normalize_email(email)
     if display_name is not UNSET:
@@ -125,10 +128,17 @@ def _build_updates(
     return updates
 
 
-def _next_suffix_username(user_db: UserDB, base_username: str) -> str:
+def _next_suffix_username(
+    user_db: UserDB,
+    base_username: str,
+    *,
+    exclude_user_id: int | None = None,
+) -> str:
     candidate = base_username
     suffix = 1
-    while user_db.get_user(username=candidate):
+    while existing := user_db.get_user(username=candidate):
+        if exclude_user_id is not None and int(existing.get("id") or 0) == exclude_user_id:
+            return candidate
         candidate = f"{base_username}_{suffix}"
         suffix += 1
     return candidate
@@ -185,6 +195,38 @@ def _resolve_create_username(
     return _next_suffix_username(user_db, alias_base), None, "username_collision_alias"
 
 
+def _resolve_update_username(
+    user_db: UserDB,
+    *,
+    current_user: dict[str, Any],
+    requested_username: str,
+    strategy: CollisionStrategy,
+    alias_suffix: str,
+) -> str:
+    current_user_id = int(current_user["id"])
+    existing = user_db.get_user(username=requested_username)
+    if existing is None or int(existing.get("id") or 0) == current_user_id:
+        return requested_username
+
+    if strategy == "suffix":
+        return _next_suffix_username(
+            user_db,
+            requested_username,
+            exclude_user_id=current_user_id,
+        )
+    if strategy == "alias":
+        return _next_suffix_username(
+            user_db,
+            f"{requested_username}{alias_suffix}",
+            exclude_user_id=current_user_id,
+        )
+
+    # `takeover` can select an existing row during creation, but once an
+    # identity is already matched it must never replace a different username
+    # owner. Preserve the matched row's current collision-free name instead.
+    return str(current_user["username"])
+
+
 def upsert_external_user(
     user_db: UserDB,
     *,
@@ -197,6 +239,7 @@ def upsert_external_user(
     subject: str | None = None,
     allow_email_link: bool = False,
     sync_role: bool = True,
+    sync_username: bool = False,
     allow_create: bool = True,
     collision_strategy: CollisionStrategy = "takeover",
     alias_suffix: str | None = None,
@@ -229,10 +272,26 @@ def upsert_external_user(
         subject=subject,
         allow_email_link=allow_email_link,
     )
+    resolved_alias_suffix = alias_suffix or f"__{auth_source}"
+    update_username: str | object = UNSET
+    if (
+        matched is not None
+        and sync_username
+        and normalize_auth_source(matched.get("auth_source"), matched.get("oidc_subject"))
+        == auth_source
+    ):
+        update_username = _resolve_update_username(
+            user_db,
+            current_user=matched,
+            requested_username=normalized_username,
+            strategy=collision_strategy,
+            alias_suffix=resolved_alias_suffix,
+        )
     updates = _build_updates(
         auth_source=auth_source,
         role=normalized_role,
         sync_role=sync_role,
+        username=update_username,
         email=normalized_email if email is not UNSET else UNSET,
         display_name=normalized_display_name if display_name is not UNSET else UNSET,
         subject_field=subject_field,
@@ -261,7 +320,6 @@ def upsert_external_user(
         )
         return None, "not_found"
 
-    resolved_alias_suffix = alias_suffix or f"__{auth_source}"
     create_username, takeover_target, create_reason = _resolve_create_username(
         user_db,
         auth_source=auth_source,

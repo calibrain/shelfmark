@@ -95,6 +95,64 @@ def test_upsert_updates_existing_cwa_user_by_username_before_email(user_db):
     assert user["role"] == "admin"
 
 
+def test_upsert_renames_existing_cwa_user_matched_by_email(user_db):
+    cwa_user = user_db.create_user(
+        username="old_reader",
+        email="reader@example.com",
+        role="user",
+        auth_source="cwa",
+    )
+
+    user, action = upsert_cwa_user(
+        user_db,
+        cwa_username="renamed_reader",
+        cwa_email="reader@example.com",
+        role="user",
+    )
+
+    assert action == "updated"
+    assert user["id"] == cwa_user["id"]
+    assert user["username"] == "renamed_reader"
+    assert user_db.get_user(username="old_reader") is None
+
+
+def test_upsert_uses_stable_alias_when_renamed_cwa_username_is_taken(user_db):
+    cwa_user = user_db.create_user(
+        username="old_reader",
+        email="reader@example.com",
+        role="user",
+        auth_source="cwa",
+    )
+    local_user = user_db.create_user(
+        username="renamed_reader",
+        email="local@example.com",
+        role="user",
+        auth_source="builtin",
+    )
+
+    first, first_action = upsert_cwa_user(
+        user_db,
+        cwa_username="renamed_reader",
+        cwa_email="reader@example.com",
+        role="admin",
+    )
+    second, second_action = upsert_cwa_user(
+        user_db,
+        cwa_username="renamed_reader",
+        cwa_email="reader@example.com",
+        role="admin",
+    )
+
+    assert first_action == second_action == "updated"
+    assert first["id"] == second["id"] == cwa_user["id"]
+    assert first["username"] == second["username"] == "renamed_reader__cwa"
+    assert first["role"] == second["role"] == "admin"
+    local_after = user_db.get_user(user_id=local_user["id"])
+    assert local_after is not None
+    assert local_after["username"] == "renamed_reader"
+    assert local_after["email"] == "local@example.com"
+
+
 def test_sync_prunes_cwa_users_missing_from_source(user_db):
     active_cwa = user_db.create_user(
         username="active_cwa",

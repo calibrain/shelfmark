@@ -568,11 +568,13 @@ class TestUserCRUD:
         user = user_db.create_user(username="john", role="user")
         user_db.update_user(
             user["id"],
+            username="jane",
             role="admin",
             email="new@example.com",
             auth_source="proxy",
         )
         updated = user_db.get_user(user_id=user["id"])
+        assert updated["username"] == "jane"
         assert updated["role"] == "admin"
         assert updated["email"] == "new@example.com"
         assert updated["auth_source"] == "proxy"

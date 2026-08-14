@@ -344,6 +344,7 @@ class UserDB:
 
     _ALLOWED_UPDATE_COLUMNS: ClassVar[frozenset[str]] = frozenset(
         {
+            "username",
             "email",
             "display_name",
             "password_hash",
@@ -353,6 +354,7 @@ class UserDB:
         }
     )
     _USER_UPDATE_STATEMENTS: ClassVar[dict[str, str]] = {
+        "username": "UPDATE users SET username = ? WHERE id = ?",
         "email": "UPDATE users SET email = ? WHERE id = ?",
         "display_name": "UPDATE users SET display_name = ? WHERE id = ?",
         "password_hash": "UPDATE users SET password_hash = ? WHERE id = ?",
