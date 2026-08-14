@@ -434,6 +434,24 @@ def html_get_page(
         except Exception as e:
             status = _get_status_code(e)
 
+            # DDoS-Guard also answers stale clearance cookies with an endless `?check=1`
+            # redirect. TooManyRedirects carries no status, so the 403 rescue below never
+            # fires and every retry re-sends the dead cookies.
+            if (
+                isinstance(e, requests.exceptions.TooManyRedirects)
+                and allow_bypasser_fallback
+                and _is_cf_bypass_enabled()
+                and not use_bypasser_now
+            ):
+                if not _is_using_external_bypasser():
+                    hostname = urlparse(current_url).hostname or ""
+                    _get_internal_bypasser().clear_cf_cookies(hostname)
+                logger.info("Redirect loop detected; switching to bypasser: %s", current_url)
+                if status_callback:
+                    status_callback("resolving", "Bypassing protection...")
+                use_bypasser_now = True
+                continue
+
             # 403 = Cloudflare/DDoS-Guard protection
             if status == _HTTP_STATUS_FORBIDDEN:
                 # If bypasser fallback is disabled, try mirrors instead
