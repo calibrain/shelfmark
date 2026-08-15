@@ -144,6 +144,11 @@ const mapApiErrorToActionResult = (error: unknown): ActionResult | null => {
 // Default request timeout in milliseconds (30 seconds)
 const DEFAULT_TIMEOUT_MS = 30000;
 
+// Release searches can be long-running: a source behind Cloudflare/DDoS-Guard has
+// to spin up the bypasser and solve the challenge before any results come back,
+// which routinely takes well over the default timeout.
+const SEARCH_TIMEOUT_MS = 180000;
+
 // Utility function for JSON fetch with credentials and timeout
 async function fetchJSON<T>(
   url: string,
@@ -235,6 +240,8 @@ export const searchBooks = async (query: string): Promise<Book[]> => {
   if (!query) return [];
   const response = await fetchJSON<ReleasesResponse>(
     `${API_BASE}/releases?source=direct_download&${query}`,
+    {},
+    SEARCH_TIMEOUT_MS,
   );
   return response.releases.map(transformReleaseToDirectBook);
 };
