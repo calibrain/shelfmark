@@ -272,8 +272,11 @@ def html_get_page(
         selector: Mirror selector used for AA mirror and DNS rotation.
         cancel_flag: Optional event used to abort retries early.
         status_callback: Optional callback for UI status updates.
-        allow_bypasser_fallback: If False, 403 errors will trigger mirror rotation
-            instead of switching to the bypasser. Use for search operations.
+        allow_bypasser_fallback: Whether a challenge may be handed to the bypasser.
+            If False, a 403 triggers mirror rotation instead, and an AA redirect loop
+            gives up immediately rather than waiting on a browser solve. Use False for
+            best-effort fetches whose result is optional (e.g. the download count on
+            the details modal); search and detail pages pass True.
         use_bypasser: Whether to start with the bypasser instead of direct HTTP.
         include_response_url: If True, return `(html, final_url)` to expose the
             resolved response URL after redirects.
@@ -318,6 +321,29 @@ def html_get_page(
             return _result("", bypass_url)
         finally:
             release_activity_grace(status_callback)
+
+    def _bypass_handoff_allowed() -> bool:
+        """Whether a challenge on the current URL may be handed to the bypasser.
+
+        allow_bypasser_fallback is honoured for the same reason the 403 path honours it:
+        callers such as the /dyn/md5/summary fetch behind the details modal pass False
+        precisely so a best-effort request fails fast instead of holding the UI open for
+        a minutes-long browser solve.
+        """
+        return allow_bypasser_fallback and _is_cf_bypass_enabled() and not use_bypasser_now
+
+    def _redirect_loop_handoff(bypass_url: str) -> str | tuple[str, str]:
+        """Drop the host's stale clearance cookies, then bypass `bypass_url`.
+
+        A `?check=1` loop is how DDoS-Guard answers a clearance cookie that has gone
+        stale, so the dead cookie has to go before the solve — otherwise it is merged
+        back over the fresh one on the next request and the loop simply resumes. Purging
+        is internal-bypasser only; with an external one get_cf_cookies_for_domain()
+        already returns {}.
+        """
+        if not _is_using_external_bypasser():
+            _get_internal_bypasser().clear_cf_cookies(urlparse(bypass_url).hostname or "")
+        return _run_bypasser(bypass_url)
 
     configured_retry = normalize_positive_int(app_config.MAX_RETRY)
     retry_limit = (
@@ -433,25 +459,26 @@ def html_get_page(
                     redirects_followed += 1
                     if redirects_followed > _MAX_REDIRECTS:
                         # A same-host redirect loop on AA is not a network fault — it is
-                        # how an unsolved DDoS-Guard handshake presents: /search redirects
-                        # to /search&check=1, which redirects back, indefinitely. Raising
-                        # sends it down the retry path, which re-runs the whole loop on
-                        # every attempt (10 x 6 = ~60 requests to AA) and never once offers
-                        # the URL to the bypasser, so it can only ever fail. Hand it over
-                        # directly — not via `continue`, which would target this inner
-                        # redirect loop rather than the retry branch above.
-                        # allow_bypasser_fallback is honoured here for the same
-                        # reason the 403 path honours it: callers such as the
-                        # /dyn/md5/summary fetch behind the details modal pass False
-                        # precisely so a best-effort request fails fast instead of
-                        # holding the UI open for a minutes-long browser solve.
-                        if allow_bypasser_fallback and _is_cf_bypass_enabled() and not use_bypasser_now:
+                        # how DDoS-Guard presents a handshake that is unsolved, or whose
+                        # clearance cookie has gone stale: /search redirects to
+                        # /search&check=1, which redirects back, indefinitely. Hand it
+                        # straight to the bypasser rather than raising, which would send it
+                        # down the retry path to re-run the whole loop on every attempt
+                        # (10 x 6 = ~60 requests to AA) without ever offering the URL to the
+                        # bypasser. `continue` is no use here either — it would target this
+                        # inner redirect loop rather than the retry branch below.
+                        if _bypass_handoff_allowed():
                             logger.info(
-                                "redirect loop on %s; switching to bypasser", current_url
+                                "Redirect loop detected; switching to bypasser: %s", current_url
                             )
-                            use_bypasser_now = True
-                            return _run_bypasser(current_url)
-                        _raise_too_many_redirects(f"Too many redirects for {current_url}")
+                            return _redirect_loop_handoff(current_url)
+                        # No bypasser to hand it to. Every AA mirror shares the challenge,
+                        # so rotating only collects another loop — give up now instead of
+                        # raising and burning the same ~60 requests over the retry budget.
+                        logger.warning(
+                            "Redirect loop and no bypasser available, giving up: %s", current_url
+                        )
+                        return _result("", current_url)
                     current_url = redirect_url
                     continue
 
@@ -463,23 +490,14 @@ def html_get_page(
         except Exception as e:
             status = _get_status_code(e)
 
-            # DDoS-Guard also answers stale clearance cookies with an endless `?check=1`
-            # redirect. TooManyRedirects carries no status, so the 403 rescue below never
-            # fires and every retry re-sends the dead cookies.
-            if (
-                isinstance(e, requests.exceptions.TooManyRedirects)
-                and allow_bypasser_fallback
-                and _is_cf_bypass_enabled()
-                and not use_bypasser_now
-            ):
-                if not _is_using_external_bypasser():
-                    hostname = urlparse(current_url).hostname or ""
-                    _get_internal_bypasser().clear_cf_cookies(hostname)
+            # The same DDoS-Guard rescue for loops the manual AA follower above does not
+            # see: non-AA hosts keep allow_redirects=True, so `requests` follows the loop
+            # itself and raises, and an AA redirect missing its Location header raises
+            # too. TooManyRedirects carries no status, so the 403 rescue below never fires
+            # and every retry would re-send the dead cookies.
+            if isinstance(e, requests.exceptions.TooManyRedirects) and _bypass_handoff_allowed():
                 logger.info("Redirect loop detected; switching to bypasser: %s", current_url)
-                if status_callback:
-                    status_callback("resolving", "Bypassing protection...")
-                use_bypasser_now = True
-                continue
+                return _redirect_loop_handoff(current_url)
 
             # 403 = Cloudflare/DDoS-Guard protection
             if status == _HTTP_STATUS_FORBIDDEN:
@@ -505,12 +523,11 @@ def html_get_page(
                         )
                         continue
                     logger.info("403 detected; switching to bypasser: %s", current_url)
-                    # Invoke it here rather than setting the flag and continuing. The
-                    # branch that acts on the flag runs at the top of the *next* retry
-                    # attempt, so under the supported MAX_RETRY=1 there is no next
-                    # attempt and the bypasser was never reached — a 403 simply ended
-                    # the search. Same reasoning as the redirect-loop handoff below.
-                    use_bypasser_now = True
+                    # Invoke it here rather than setting use_bypasser_now and continuing.
+                    # The branch that acts on that flag runs at the top of the *next* retry
+                    # attempt, so under the supported MAX_RETRY=1 there is no next attempt
+                    # and the bypasser was never reached — a 403 simply ended the search.
+                    # Same reasoning as the redirect-loop handoffs.
                     return _run_bypasser(current_url)
                 logger.warning("403 error, giving up: %s", current_url)
                 return _result("", current_url)

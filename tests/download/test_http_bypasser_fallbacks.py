@@ -283,3 +283,96 @@ def test_get_bypassed_page_uses_external_bypasser_when_enabled(monkeypatch):
 
     assert http.get_bypassed_page("https://example.com", selector, cancel_flag) == "EXT"
     assert calls == [("https://example.com", selector, cancel_flag)]
+
+
+def test_redirect_loop_gives_up_immediately_when_bypasser_not_allowed(monkeypatch):
+    """A loop the bypasser may not rescue must fail fast, not burn the retry budget.
+
+    Guards the regression where the unrescued loop raised TooManyRedirects into the
+    retry path: that error is not retryable and carries no status, so every attempt
+    re-ran the full 6-redirect loop for ~60 requests to AA before giving up.
+    """
+    import shelfmark.download.http as http
+
+    monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
+    monkeypatch.setattr(http, "_apply_cf_bypass", lambda _url, _headers: {})
+    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
+    monkeypatch.setattr(http, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: True)
+    monkeypatch.setattr(http.network, "is_aa_auto_mode", lambda: True)
+    monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
+
+    requested: list[str] = []
+
+    def check_redirect(url: str, **_kwargs):
+        requested.append(url)
+        response = _FakeResponse(302, url=url)
+        response.is_redirect = True
+        response.headers = {"Location": f"{url}&check=1"}
+        return response
+
+    def unreachable_bypasser(*_args, **_kwargs):
+        msg = "bypasser must not run when allow_bypasser_fallback is False"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(http.requests, "get", check_redirect)
+    monkeypatch.setattr(http, "get_bypassed_page", unreachable_bypasser)
+
+    html = http.html_get_page(
+        "https://annas-archive.gl/dyn/md5/summary/abc",
+        retry=10,
+        allow_bypasser_fallback=False,
+        success_delay=0,
+    )
+
+    assert html == ""
+    # One pass through the redirect cap, not one pass per retry attempt.
+    assert len(requested) == http._MAX_REDIRECTS + 1
+
+
+def test_requests_raised_redirect_loop_still_reaches_bypasser(monkeypatch):
+    """Non-AA hosts keep allow_redirects=True, so `requests` raises the loop itself.
+
+    The AA follower above never sees that one, so the rescue in the exception path has
+    to stay — and it must purge the stale cookie exactly like the inline AA handoff.
+    """
+    import shelfmark.download.http as http
+
+    cleared: list[str] = []
+
+    class _FakeInternalBypasser:
+        @staticmethod
+        def clear_cf_cookies(domain: str) -> None:
+            cleared.append(domain)
+
+    monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
+    monkeypatch.setattr(http, "_is_using_external_bypasser", lambda: False)
+    monkeypatch.setattr(http, "_get_internal_bypasser", lambda: _FakeInternalBypasser)
+    monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 100.0)
+    monkeypatch.setattr(http, "_apply_cf_bypass", lambda _url, _headers: {})
+    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
+    monkeypatch.setattr(http, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: False)
+    monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
+
+    def looping(_url: str, **_kwargs):
+        raise requests.exceptions.TooManyRedirects("too many redirects")
+
+    bypassed: list[str] = []
+    monkeypatch.setattr(http.requests, "get", looping)
+    monkeypatch.setattr(
+        http,
+        "get_bypassed_page",
+        lambda url, *_a, **_k: bypassed.append(url) or "<html>ok</html>",
+    )
+
+    html = http.html_get_page(
+        "https://z-lib.fm/s/dune",
+        retry=1,
+        allow_bypasser_fallback=True,
+        success_delay=0,
+    )
+
+    assert html == "<html>ok</html>"
+    assert cleared == ["z-lib.fm"]
+    assert bypassed == ["https://z-lib.fm/s/dune"]
