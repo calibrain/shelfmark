@@ -111,11 +111,12 @@ def _resolve_content_type(
     ranges, so trust the searched content type when the result carries a category we
     explicitly asked for.
     """
-    detected = _detect_content_type_from_categories(categories, content_type)
+    category_list = list(categories) if isinstance(categories, (list, tuple)) else []
+    detected = _detect_content_type_from_categories(category_list, content_type)
     if (
         detected == "other"
         and searched_categories
-        and _result_category_ids(categories) & set(searched_categories)
+        and _result_category_ids(category_list) & set(searched_categories)
     ):
         return "audiobook" if content_type == "audiobook" else "book"
     return detected
