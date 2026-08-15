@@ -23,6 +23,9 @@ dependencies = [
     "transmission-rpc",
     "authlib>=1.7.2,<1.8",
     "apprise>=1.12.0",
+    # HTTP/2 client for RFC 8484 DoH: quad9 rejects HTTP/1.1 outright (505), which
+    # requests cannot speak. See shelfmark/download/doh_wireformat.py.
+    "httpx[http2]>=0.27",
 ]
 
 [project.optional-dependencies]

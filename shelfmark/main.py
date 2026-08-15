@@ -85,6 +85,7 @@ from shelfmark.core.requests_service import (
 from shelfmark.core.user_db import UserDB
 from shelfmark.core.utils import AUDIOBOOK_FORMATS, normalize_base_path
 from shelfmark.download import orchestrator as backend
+from shelfmark.download import warmup
 from shelfmark.release_sources import (
     BrowseRecord,
     Release,
@@ -205,6 +206,10 @@ except (sqlite3.OperationalError, OSError) as e:
 
 # Start download coordinator
 backend.start()
+
+# Pre-solve the direct-download source's protection challenge in the background so the
+# first user search does not pay for a cold Chrome bypass. Never blocks startup.
+warmup.start()
 
 # Rate limiting for login attempts
 # Map usernames to their failed-attempt counters and lockout timestamps.

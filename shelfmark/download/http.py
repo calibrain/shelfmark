@@ -234,13 +234,50 @@ def _is_retryable_error(e: Exception) -> bool:
     return status is not None and status in RETRYABLE_CODES
 
 
+# Statuses that mean the host is gone rather than busy: 410 Gone and 451 Unavailable
+# For Legal Reasons are what a seized domain answers with.
+_DEAD_MIRROR_CODES = (410, 451)
+
+
+def _fatal_mirror_reason(e: Exception) -> str | None:
+    """Return why ``e`` proves the mirror is unusable, or None if it may recover.
+
+    Hard evidence only - the name does not resolve, nothing is listening, or the host
+    says it is gone for good. A timeout, a 5xx or a challenge all mean the mirror is
+    alive, and rotating off it discards the bypass clearance held for that domain.
+    """
+    status = _get_status_code(e)
+    if status is not None and status in _DEAD_MIRROR_CODES:
+        return f"HTTP {status}"
+
+    # requests wraps the real cause; a read timeout subclasses ConnectionError for
+    # some adapters, so exclude timeouts explicitly before inspecting the message.
+    if isinstance(e, requests.exceptions.Timeout):
+        return None
+    if not isinstance(e, requests.exceptions.ConnectionError):
+        return None
+
+    text = str(e).lower()
+    if "nameresolutionerror" in text or "failed to resolve" in text or "name or service" in text:
+        return "DNS does not resolve"
+    if "connection refused" in text or "no route to host" in text:
+        return "connection refused"
+    return None
+
+
 def _try_rotation(
-    original_url: str, current_url: str, selector: network.AAMirrorSelector
+    original_url: str,
+    current_url: str,
+    selector: network.AAMirrorSelector,
+    *,
+    fatal_reason: str | None = None,
 ) -> str | None:
     """Try mirror/DNS rotation. Returns new URL or None."""
     aa_base_url = network.get_aa_base_url()
     if aa_base_url and current_url.startswith(aa_base_url):
-        new_base, action = selector.next_mirror_or_rotate_dns()
+        new_base, action = selector.next_mirror_or_rotate_dns(
+            fatal=fatal_reason is not None, reason=fatal_reason or ""
+        )
         if action in ("mirror", "dns") and new_base:
             new_url = selector.rewrite(original_url)
             logger.info("[%s] switching to: %s", action, new_url)
@@ -552,9 +589,14 @@ def html_get_page(
                 logger.warning("404 error: %s", current_url)
                 return _result("", current_url)
 
-            # Try mirror/DNS rotation on retryable errors
-            if _is_retryable_error(e):
-                new_url = _try_rotation(original_url, current_url, selector)
+            # Try mirror/DNS rotation on retryable errors. A failure that proves the
+            # mirror is unusable also drops it from this process's rotation, so the
+            # next search does not pay for it again.
+            fatal_reason = _fatal_mirror_reason(e)
+            if fatal_reason or _is_retryable_error(e):
+                new_url = _try_rotation(
+                    original_url, current_url, selector, fatal_reason=fatal_reason
+                )
                 if new_url:
                     current_url = new_url
                     handshake_cookies.clear()

@@ -539,6 +539,79 @@ class SearchUnavailableError(SourceUnavailableError):
     """Raised when Anna's Archive cannot be reached via any mirror/DNS."""
 
 
+# Markers that prove a 200 really came from Anna's Archive, and markers that mean we
+# are looking at a protection interstitial rather than the site. A page with neither
+# is a domain that answers but is not AA - seized, parked or for sale.
+#
+# Deliberately structural rather than the domain name: a parking page's whole job is
+# to display the domain it is squatting on, so "annas-archive" matches the very pages
+# this is meant to catch. These paths only exist on the real site.
+_AA_PAGE_MARKERS = (
+    "/md5/",
+    "aarecord",
+    "anna's archive",
+    "/dyn/",
+    "/datasets",
+    "/fast_download",
+    "/slow_download",
+)
+_CHALLENGE_MARKERS = (
+    "ddos-guard",
+    "just a moment",
+    "cloudflare",
+    "checking your browser",
+    "cf-browser-verification",
+)
+
+
+def _looks_like_aa_page(html: str) -> bool:
+    """Whether ``html`` is recognisably Anna's Archive, or a challenge in front of it."""
+    lowered = html.lower()
+    return any(marker in lowered for marker in (*_AA_PAGE_MARKERS, *_CHALLENGE_MARKERS))
+
+
+def _fetch_search_table(url: str, selector: network.AAMirrorSelector) -> tuple[str, Tag | None]:
+    """Fetch the AA search page, retrying past mirrors that are not actually AA.
+
+    A parked or seized domain answers 200 with a page that has no results table and no
+    "No files found." - indistinguishable from a broken search unless we check whether
+    the response looks like AA at all. Those mirrors are quarantined for the session so
+    later searches skip them instead of paying the timeout again.
+    """
+    attempt_url = url
+    for _ in range(len(network.get_available_aa_urls()) or 1):
+        response = downloader.html_get_page(
+            attempt_url, selector=selector, allow_bypasser_fallback=True
+        )
+        if not response:
+            # Network/mirror exhaustion path bubbles up so API can notify clients
+            msg = "Unable to reach download source. Network restricted or mirrors are blocked."
+            raise SearchUnavailableError(msg)
+
+        html = _html_response_text(response)
+        soup = BeautifulSoup(html, "html.parser")
+        table = soup.find("table")
+        if isinstance(table, Tag):
+            return html, table
+        if table is not None:
+            msg = f"Expected results table tag, got {type(table).__name__}"
+            raise TypeError(msg)
+        if "No files found." in html or _looks_like_aa_page(html):
+            # A real AA response - either genuinely empty, or a shape the caller
+            # should report as drift. Not the mirror's fault.
+            return html, None
+
+        new_base, action = selector.next_mirror_or_rotate_dns(
+            fatal=True, reason="responded without an Anna's Archive page"
+        )
+        if action not in ("mirror", "dns") or not new_base:
+            return html, None
+        attempt_url = selector.rewrite(url)
+        logger.info("Retrying search on %s", new_base)
+
+    return "", None
+
+
 def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
     """Search for books matching the query.
 
@@ -603,15 +676,7 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
 
     # AA gates /search behind a DDoS-Guard JS challenge, which every mirror shares. Rotating
     # to another mirror only collects another 403, so let the bypasser solve it.
-    html = downloader.html_get_page(url, selector=selector, allow_bypasser_fallback=True)
-    if not html:
-        # Network/mirror exhaustion path bubbles up so API can notify clients
-        msg = "Unable to reach download source. Network restricted or mirrors are blocked."
-        raise SearchUnavailableError(msg)
-
-    soup = BeautifulSoup(_html_response_text(html), "html.parser")
-    tbody = soup.find("table")
-
+    html, tbody = _fetch_search_table(url, selector)
     if tbody is None:
         if "No files found." in html:
             logger.info("No books found for query: %s", query)

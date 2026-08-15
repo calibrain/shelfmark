@@ -27,6 +27,7 @@ class _DummySelector:
         self._index = 0
         self.current_base = bases[0]
         self.attempts_this_dns = 0
+        self.quarantined: list[tuple[str, str]] = []
 
     def rewrite(self, url: str) -> str:
         for base in self._bases:
@@ -34,7 +35,11 @@ class _DummySelector:
                 return url.replace(base, self.current_base, 1)
         return url
 
-    def next_mirror_or_rotate_dns(self, allow_dns: bool = True) -> tuple[str | None, str]:
+    def next_mirror_or_rotate_dns(
+        self, allow_dns: bool = True, *, fatal: bool = False, reason: str = ""
+    ) -> tuple[str | None, str]:
+        if fatal:
+            self.quarantined.append((self.current_base, reason))
         self.attempts_this_dns += 1
         self._index = (self._index + 1) % len(self._bases)
         self.current_base = self._bases[self._index]
