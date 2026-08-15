@@ -8,6 +8,7 @@ from shelfmark.core.settings_registry import (
     HeadingField,
     PasswordField,
     SettingsField,
+    TagListField,
     TextField,
     register_settings,
 )
@@ -84,6 +85,30 @@ def newznab_config_settings() -> list[SettingsField]:
             description="Verify your Newznab configuration",
             style="primary",
             callback=_test_newznab_connection,
+            show_when={"field": "NEWZNAB_ENABLED", "value": True},
+        ),
+        TagListField(
+            key="NEWZNAB_EBOOK_CATEGORIES",
+            label="Ebook Categories",
+            description=(
+                "Newznab category IDs searched for ebooks. Most indexers use the standard 7000, "
+                "but some use custom IDs. Leave empty to use 7000."
+            ),
+            placeholder="7000",
+            default=["7000"],
+            normalize_urls=False,
+            show_when={"field": "NEWZNAB_ENABLED", "value": True},
+        ),
+        TagListField(
+            key="NEWZNAB_AUDIOBOOK_CATEGORIES",
+            label="Audiobook Categories",
+            description=(
+                "Newznab category IDs searched for audiobooks. Most indexers use the standard "
+                "3030, but some use custom IDs. Leave empty to use 3030."
+            ),
+            placeholder="3030",
+            default=["3030"],
+            normalize_urls=False,
             show_when={"field": "NEWZNAB_ENABLED", "value": True},
         ),
         CheckboxField(

@@ -14,10 +14,6 @@ from shelfmark.release_sources.prowlarr.torznab import parse_torznab_xml
 
 logger = setup_logger(__name__)
 
-# Newznab standard book category IDs
-NEWZNAB_BOOKS = 7000
-NEWZNAB_AUDIOBOOKS = 3030
-
 
 class NewznabClient:
     """Client for any Newznab-compatible indexer API."""

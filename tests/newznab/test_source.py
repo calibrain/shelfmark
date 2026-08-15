@@ -10,6 +10,7 @@ from shelfmark.release_sources import ReleaseProtocol
 from shelfmark.release_sources.newznab.source import (
     NewznabSource,
     _newznab_result_to_release,
+    _parse_category_ids,
 )
 
 # ── fixtures / helpers ─────────────────────────────────────────────────────────
@@ -99,6 +100,18 @@ class TestResultToRelease:
     def test_no_categories_uses_content_type_fallback(self):
         r = _newznab_result_to_release(_make_result(categories=[]), "audiobook")
         assert r.content_type == "audiobook"
+
+    def test_custom_searched_category_treated_as_book(self):
+        r = _newznab_result_to_release(_make_result(categories=[8010]), "ebook", [8010])
+        assert r.content_type == "book"
+
+    def test_custom_searched_category_treated_as_audiobook(self):
+        r = _newznab_result_to_release(_make_result(categories=[{"id": 3040}]), "audiobook", [3040])
+        assert r.content_type == "audiobook"
+
+    def test_unsearched_out_of_range_category_stays_other(self):
+        r = _newznab_result_to_release(_make_result(categories=[2000]), "ebook", [8010])
+        assert r.content_type == "other"
 
     def test_freeleech_flag_detected_via_download_volume(self):
         r = _newznab_result_to_release(_make_result(downloadVolumeFactor=0.0))
@@ -209,6 +222,31 @@ class TestIsAvailable:
         assert NewznabSource().is_available() is False
 
 
+# ── category parsing ───────────────────────────────────────────────────────────
+
+
+class TestParseCategoryIds:
+    def test_parses_list_of_strings(self):
+        assert _parse_category_ids(["7100", "7120"]) == [7100, 7120]
+
+    def test_parses_comma_separated_string(self):
+        assert _parse_category_ids("7100, 7120") == [7100, 7120]
+
+    def test_parses_comma_separated_entry_inside_list(self):
+        assert _parse_category_ids(["7100,7120", "8010"]) == [7100, 7120, 8010]
+
+    def test_drops_duplicates_and_keeps_order(self):
+        assert _parse_category_ids(["7120", "7100", "7120"]) == [7120, 7100]
+
+    def test_skips_non_numeric_and_non_positive_values(self):
+        assert _parse_category_ids(["books", "0", "-7000", "7100"]) == [7100]
+
+    def test_returns_empty_for_unset_or_blank(self):
+        assert _parse_category_ids(None) == []
+        assert _parse_category_ids([]) == []
+        assert _parse_category_ids("   ") == []
+
+
 # ── NewznabSource.search ───────────────────────────────────────────────────────
 
 
@@ -271,6 +309,44 @@ class TestSearch:
         client = MagicMock()
         client.search.return_value = []
         src = self._patched_source(monkeypatch, client)
+        book = _make_book()
+        src.search(book, _make_plan(book), content_type="audiobook")
+        _, kwargs = client.search.call_args
+        assert kwargs["categories"] == [3030]
+
+    def test_searches_with_configured_ebook_categories(self, monkeypatch):
+        client = MagicMock()
+        client.search.return_value = []
+        src = self._patched_source(
+            monkeypatch, client, {"NEWZNAB_EBOOK_CATEGORIES": ["7100", "7120"]}
+        )
+        book = _make_book()
+        src.search(book, _make_plan(book), content_type="ebook")
+        _, kwargs = client.search.call_args
+        assert kwargs["categories"] == [7100, 7120]
+
+    def test_searches_with_configured_audiobook_categories(self, monkeypatch):
+        client = MagicMock()
+        client.search.return_value = []
+        src = self._patched_source(monkeypatch, client, {"NEWZNAB_AUDIOBOOK_CATEGORIES": "3040"})
+        book = _make_book()
+        src.search(book, _make_plan(book), content_type="audiobook")
+        _, kwargs = client.search.call_args
+        assert kwargs["categories"] == [3040]
+
+    def test_falls_back_to_default_when_categories_cleared(self, monkeypatch):
+        client = MagicMock()
+        client.search.return_value = []
+        src = self._patched_source(monkeypatch, client, {"NEWZNAB_EBOOK_CATEGORIES": []})
+        book = _make_book()
+        src.search(book, _make_plan(book), content_type="ebook")
+        _, kwargs = client.search.call_args
+        assert kwargs["categories"] == [7000]
+
+    def test_ebook_categories_do_not_affect_audiobook_search(self, monkeypatch):
+        client = MagicMock()
+        client.search.return_value = []
+        src = self._patched_source(monkeypatch, client, {"NEWZNAB_EBOOK_CATEGORIES": ["7100"]})
         book = _make_book()
         src.search(book, _make_plan(book), content_type="audiobook")
         _, kwargs = client.search.call_args

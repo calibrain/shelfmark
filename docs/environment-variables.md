@@ -1304,6 +1304,8 @@ Apply per-indexer seed time and ratio preferences from Prowlarr when sending tor
 | `NEWZNAB_ENABLED` | Enable searching for books via a Newznab-compatible indexer | boolean | `false` |
 | `NEWZNAB_URL` | Base URL of your Newznab indexer or aggregator | string | _none_ |
 | `NEWZNAB_API_KEY` | Your Newznab API key (leave blank if not required) | string (secret) | _none_ |
+| `NEWZNAB_EBOOK_CATEGORIES` | Newznab category IDs searched for ebooks. Most indexers use the standard 7000, but some use custom IDs. Leave empty to use 7000. | string (comma-separated) | `7000` |
+| `NEWZNAB_AUDIOBOOK_CATEGORIES` | Newznab category IDs searched for audiobooks. Most indexers use the standard 3030, but some use custom IDs. Leave empty to use 3030. | string (comma-separated) | `3030` |
 | `NEWZNAB_AUTO_EXPAND` | Automatically retry search without category filtering if no results are found | boolean | `false` |
 
 <details>
@@ -1336,6 +1338,24 @@ Your Newznab API key (leave blank if not required)
 
 - **Type:** string (secret)
 - **Default:** _none_
+
+#### `NEWZNAB_EBOOK_CATEGORIES`
+
+**Ebook Categories**
+
+Newznab category IDs searched for ebooks. Most indexers use the standard 7000, but some use custom IDs. Leave empty to use 7000.
+
+- **Type:** string (comma-separated)
+- **Default:** `7000`
+
+#### `NEWZNAB_AUDIOBOOK_CATEGORIES`
+
+**Audiobook Categories**
+
+Newznab category IDs searched for audiobooks. Most indexers use the standard 3030, but some use custom IDs. Leave empty to use 3030.
+
+- **Type:** string (comma-separated)
+- **Default:** `3030`
 
 #### `NEWZNAB_AUTO_EXPAND`
 

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import time
 from typing import TYPE_CHECKING, ClassVar
 
@@ -39,15 +40,92 @@ from shelfmark.release_sources.prowlarr.source import (
 
 logger = setup_logger(__name__)
 
-# Newznab category IDs
-_AUDIOBOOK_CATS = [3030]
-_BOOK_CATS = [7000]
+# Standard Newznab category IDs, used when the indexer's categories aren't configured.
+_DEFAULT_AUDIOBOOK_CATS = [3030]
+_DEFAULT_BOOK_CATS = [7000]
 
 # Reuse the same timeout constant as Prowlarr.
 NEWZNAB_SEARCH_TIMEOUT_SECONDS = _SEARCH_TIMEOUT
 
 
-def _newznab_result_to_release(result: dict, content_type: str = "ebook") -> Release:
+def _parse_category_ids(raw: object) -> list[int]:
+    """Parse a configured category setting into Newznab category IDs.
+
+    Accepts a list of values or a comma/whitespace separated string. Entries that
+    aren't positive integers are skipped, and duplicates are dropped.
+    """
+    if raw is None:
+        return []
+
+    values = list(raw) if isinstance(raw, (list, tuple)) else [raw]
+
+    category_ids: list[int] = []
+    for value in values:
+        for token in re.split(r"[,\s]+", str(value).strip()):
+            if not token:
+                continue
+            try:
+                category_id = int(token)
+            except ValueError:
+                logger.warning("Newznab: ignoring invalid category ID '%s'", token)
+                continue
+            if category_id > 0 and category_id not in category_ids:
+                category_ids.append(category_id)
+
+    return category_ids
+
+
+def _configured_categories(content_type: str) -> list[int]:
+    """Return the categories to search for a content type, falling back to defaults."""
+    if content_type == "audiobook":
+        key, defaults = "NEWZNAB_AUDIOBOOK_CATEGORIES", _DEFAULT_AUDIOBOOK_CATS
+    else:
+        key, defaults = "NEWZNAB_EBOOK_CATEGORIES", _DEFAULT_BOOK_CATS
+
+    return _parse_category_ids(config.get(key, None)) or list(defaults)
+
+
+def _result_category_ids(categories: object) -> set[int]:
+    """Extract numeric category IDs from a result's categories field."""
+    if not isinstance(categories, (list, tuple)):
+        return set()
+
+    category_ids: set[int] = set()
+    for cat in categories:
+        raw = cat.get("id") if isinstance(cat, dict) else cat
+        try:
+            category_ids.add(int(raw))  # type: ignore[arg-type]
+        except TypeError, ValueError:
+            continue
+    return category_ids
+
+
+def _resolve_content_type(
+    categories: object,
+    content_type: str,
+    searched_categories: list[int] | None,
+) -> str:
+    """Resolve a result's content type, honouring custom indexer categories.
+
+    Indexers using non-standard IDs (e.g. 7100 for ebooks) fall outside the standard
+    ranges, so trust the searched content type when the result carries a category we
+    explicitly asked for.
+    """
+    detected = _detect_content_type_from_categories(categories, content_type)
+    if (
+        detected == "other"
+        and searched_categories
+        and _result_category_ids(categories) & set(searched_categories)
+    ):
+        return "audiobook" if content_type == "audiobook" else "book"
+    return detected
+
+
+def _newznab_result_to_release(
+    result: dict,
+    content_type: str = "ebook",
+    searched_categories: list[int] | None = None,
+) -> Release:
     """Convert a parsed Newznab XML result dict to a Release object."""
     raw_title = result.get("title", "Unknown")
     size_bytes = result.get("size")
@@ -125,7 +203,7 @@ def _newznab_result_to_release(result: dict, content_type: str = "ebook") -> Rel
         indexer=indexer,
         seeders=seeders if is_torrent else None,
         peers=peers_display,
-        content_type=_detect_content_type_from_categories(categories, content_type),
+        content_type=_resolve_content_type(categories, content_type, searched_categories),
         extra={
             "publish_date": result.get("publishDate"),
             "categories": categories,
@@ -230,12 +308,7 @@ class NewznabSource(ReleaseSource):
             return []
 
         # Category selection — omit categories when expanding search
-        if expand_search:
-            categories = None
-        elif content_type == "audiobook":
-            categories = [3030]
-        else:
-            categories = [7000]
+        categories = None if expand_search else _configured_categories(content_type)
 
         auto_expand = config.get("NEWZNAB_AUTO_EXPAND", False)
         deadline = time.monotonic() + NEWZNAB_SEARCH_TIMEOUT_SECONDS
@@ -283,7 +356,7 @@ class NewznabSource(ReleaseSource):
             logger.exception("Newznab search failed")
             return []
 
-        results = [_newznab_result_to_release(r, content_type) for r in all_results]
+        results = [_newznab_result_to_release(r, content_type, categories) for r in all_results]
 
         if results:
             nzb_count = sum(1 for r in results if r.protocol == ReleaseProtocol.NZB)
