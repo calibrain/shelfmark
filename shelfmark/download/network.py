@@ -708,11 +708,7 @@ def create_custom_getaddrinfo(
                 ip = sockaddr[0]
                 if isinstance(ip, str):
                     ips.append(ip)
-            msg = f"Resolved {host_str} via {source} [{provider_label}]: {ips}"
-            if is_bypass:
-                logger.debug(msg)
-            else:
-                logger.info(msg)
+            logger.debug("Resolved %s via %s [%s]: %s", host_str, source, provider_label, ips)
 
         # Skip custom resolution for IP addresses, local addresses, or if skip check passes
         if (
