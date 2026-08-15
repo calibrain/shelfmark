@@ -240,11 +240,11 @@ class IRCReleaseSource(ReleaseSource):
         nick = _config_text("IRC_NICK")
         search_bot = _config_text("IRC_SEARCH_BOT")
 
-        # Audiobooks may be indexed in a separate channel from ebooks on some networks
-        # (e.g. #ebooks for ebooks, #bookz for audiobooks). When an audiobook channel is
-        # configured and an audiobook was requested, route the search there (with its own
-        # search bot if set). Otherwise fall back to the main channel/bot, which keeps the
-        # single-channel networks that index both formats working unchanged.
+        # A few networks index audiobooks in a separate channel from ebooks (Undernet's
+        # #bookz, say). When an audiobook channel is configured and an audiobook was
+        # requested, route the search there (with its own search bot if set). Otherwise
+        # fall back to the main channel/bot — that is the common case, since most networks
+        # (irchighway included) serve both formats from the one channel.
         if is_audiobook(content_type):
             audiobook_channel = _config_text("IRC_AUDIOBOOK_CHANNEL")
             if audiobook_channel:

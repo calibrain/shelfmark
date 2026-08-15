@@ -102,10 +102,13 @@ def irc_settings() -> list[SettingsField]:
             key="audiobook_heading",
             title="Audiobooks",
             description=(
-                "Some networks index audiobooks in a separate channel from ebooks "
-                "(for example #ebooks for ebooks and #bookz for audiobooks). "
-                "Configure that channel here to search it for audiobook requests. "
-                "Leave these blank to search the main channel above for both."
+                "Most networks index audiobooks in the same channel as ebooks, so leaving "
+                "these blank is the right setting for almost everyone. On irc.irchighway.net "
+                "the audiobooks are in #ebooks and #bookz is effectively inactive — pointing "
+                "this at an empty channel just returns no results. Only fill these in when "
+                "your network really does index audiobooks elsewhere (Undernet's #bookz, for "
+                "example). Audiobooks are usually posted as archives, so keep ZIP and RAR "
+                "enabled under Supported Audiobook Formats or the releases are filtered out."
             ),
         ),
         TextField(
@@ -113,8 +116,9 @@ def irc_settings() -> list[SettingsField]:
             label="Audiobook channel",
             placeholder="e.g. bookz",
             description=(
-                "Optional. Channel name (without the # prefix) to use for audiobook "
-                "searches. Leave blank to use the main channel above for audiobooks too."
+                "Optional. Channel name (without the # prefix) for networks that index "
+                "audiobooks separately, such as Undernet's bookz. Leave blank (the usual "
+                "setting) to search the main channel above for audiobooks too."
             ),
             required=False,
             env_supported=True,

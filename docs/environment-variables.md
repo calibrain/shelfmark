@@ -1441,7 +1441,7 @@ Delay between requests in seconds to avoid rate limiting (0-10).
 | `IRC_CHANNEL` | Channel name without the # prefix. Used for all searches unless a separate audiobook channel is configured below. | string | _none_ |
 | `IRC_NICK` | Your IRC nickname (required). Must be unique on the IRC network. | string | _none_ |
 | `IRC_SEARCH_BOT` | The search bot to address queries to (required). Searches are sent as "@<bot> <query>". | string | _none_ |
-| `IRC_AUDIOBOOK_CHANNEL` | Optional. Channel name (without the # prefix) to use for audiobook searches. Leave blank to use the main channel above for audiobooks too. | string | _none_ |
+| `IRC_AUDIOBOOK_CHANNEL` | Optional. Channel name (without the # prefix) for networks that index audiobooks separately, such as Undernet's bookz. Leave blank (the usual setting) to search the main channel above for audiobooks too. | string | _none_ |
 | `IRC_AUDIOBOOK_SEARCH_BOT` | Optional. Search bot for the audiobook channel. Leave blank to reuse the main search bot above. Only used when an audiobook channel is set. | string | _none_ |
 | `IRC_CACHE_TTL` | How long to keep cached search results before they expire. | string (choice) | `2592000` |
 
@@ -1510,7 +1510,7 @@ The search bot to address queries to (required). Searches are sent as "@<bot> <q
 
 **Audiobook channel**
 
-Optional. Channel name (without the # prefix) to use for audiobook searches. Leave blank to use the main channel above for audiobooks too.
+Optional. Channel name (without the # prefix) for networks that index audiobooks separately, such as Undernet's bookz. Leave blank (the usual setting) to search the main channel above for audiobooks too.
 
 - **Type:** string
 - **Default:** _none_
