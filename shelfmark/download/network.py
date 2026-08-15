@@ -683,8 +683,6 @@ def create_custom_getaddrinfo(
             source: str,
             provider_label: str,
             res: Sequence[tuple[AddressFamily, SocketKind, int, str, tuple[Any, ...]]],
-            *,
-            is_bypass: bool = False,
         ) -> None:
             """Emit a unified resolver log with the IPs returned.
 
@@ -692,7 +690,6 @@ def create_custom_getaddrinfo(
                 source: Description of resolver source
                 provider_label: Label for the DNS provider
                 res: Resolution results
-                is_bypass: If True, log at DEBUG level (for local/IP addresses)
 
             """
             # Skip logging entirely for localhost to reduce noise
@@ -718,7 +715,7 @@ def create_custom_getaddrinfo(
         ):
             # Quietly bypass custom resolution for IP/local targets
             res = original_getaddrinfo(host, port, family, socket_type, proto, flags)
-            _log_results("system resolver (bypass)", "system", res, is_bypass=True)
+            _log_results("system resolver (bypass)", "system", res)
             return res
 
         results: list[tuple[AddressFamily, SocketKind, int, str, tuple[Any, ...]]] = []
