@@ -67,7 +67,10 @@ def _pick_legacy_settings_restriction(config: dict[str, Any]) -> bool | None:
 def migrate_audiobook_formats(
     *,
     load_general_config: Callable[[], dict[str, Any]],
-    save_general_config: Callable[[dict[str, Any]], None],
+    # `object` rather than `None`: the result is discarded, and savers that report
+    # success (settings_registry.save_config_file returns bool) are not assignable to a
+    # `-> None` callable.
+    save_general_config: Callable[[dict[str, Any]], object],
     widened_formats: Sequence[str],
     logger: MigrationLogger,
 ) -> None:
