@@ -15,6 +15,7 @@ source that is down at boot must not affect startup or health.
 
 from __future__ import annotations
 
+import os
 import threading
 
 from shelfmark.core.config import config
@@ -43,13 +44,27 @@ def _as_bool(value: object, *, default: bool) -> bool:
     return bool(value)
 
 
+def _setting(key: str, default: object) -> object:
+    """Read a warm-up setting, preferring the deployment environment.
+
+    These keys are not in the settings registry, and ``config.get`` only consults the
+    environment for keys it knows about - so reading config alone silently ignored
+    SEARCH_WARMUP_ENABLED and always returned the default. Check os.environ first so
+    the documented switches actually work.
+    """
+    raw = os.environ.get(key)
+    if raw is not None and raw.strip():
+        return raw
+    return config.get(key, default)
+
+
 def is_enabled() -> bool:
     """Whether the boot-time warm-up search should run."""
-    if not _as_bool(config.get("SEARCH_WARMUP_ENABLED", True), default=True):
+    if not _as_bool(_setting("SEARCH_WARMUP_ENABLED", True), default=True):
         return False
     # Nothing to warm if the source is off, and no challenge to pre-solve without
     # the bypasser - a plain search is fast enough not to need this.
-    if not _as_bool(config.get("DIRECT_DOWNLOAD_ENABLED", True), default=True):
+    if not _as_bool(_setting("DIRECT_DOWNLOAD_ENABLED", True), default=True):
         logger.debug("Search warm-up skipped: direct download disabled")
         return False
     return True
@@ -57,7 +72,7 @@ def is_enabled() -> bool:
 
 def warmup_query() -> str:
     """The query used to warm the source."""
-    raw = config.get("SEARCH_WARMUP_QUERY", _DEFAULT_QUERY)
+    raw = _setting("SEARCH_WARMUP_QUERY", _DEFAULT_QUERY)
     query = str(raw).strip() if raw else ""
     return query or _DEFAULT_QUERY
 

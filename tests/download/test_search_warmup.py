@@ -144,3 +144,27 @@ def test_start_does_not_run_the_search_inline(monkeypatch, warmup):
 
     if warmup._warmup_thread:
         warmup._warmup_thread.cancel()
+
+
+def test_env_var_can_disable_the_warmup(monkeypatch, warmup):
+    """SEARCH_WARMUP_ENABLED is not in the settings registry, so config.get never
+    sees it - the documented off-switch only works if os.environ is consulted."""
+    _patch_config(monkeypatch, warmup, {})  # config knows nothing about the key
+    monkeypatch.setenv("SEARCH_WARMUP_ENABLED", "false")
+
+    assert warmup.is_enabled() is False
+    assert warmup.start() is False
+
+
+def test_env_var_can_set_the_query(monkeypatch, warmup):
+    _patch_config(monkeypatch, warmup, {})
+    monkeypatch.setenv("SEARCH_WARMUP_QUERY", "Moby Dick")
+
+    assert warmup.warmup_query() == "Moby Dick"
+
+
+def test_env_var_absent_falls_back_to_config(monkeypatch, warmup):
+    monkeypatch.delenv("SEARCH_WARMUP_QUERY", raising=False)
+    _patch_config(monkeypatch, warmup, {"SEARCH_WARMUP_QUERY": "From Config"})
+
+    assert warmup.warmup_query() == "From Config"

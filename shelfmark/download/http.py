@@ -369,20 +369,29 @@ def html_get_page(
         """
         return allow_bypasser_fallback and _is_cf_bypass_enabled() and not use_bypasser_now
 
+    def _purge_clearance(target_url: str) -> None:
+        """Drop the host's stored clearance cookies.
+
+        Called whenever the protection answered a request that *carried* cookies:
+        being challenged while presenting them proves they no longer work, so keeping
+        them only guarantees the same rejection on every later request. Purging is
+        internal-bypasser only; with an external one get_cf_cookies_for_domain()
+        already returns {}.
+        """
+        hostname = urlparse(target_url).hostname or ""
+        # An empty domain means "clear every host" to the bypasser, so skip the purge
+        # rather than wipe clearance for sites that are working fine.
+        if hostname and not _is_using_external_bypasser():
+            _get_internal_bypasser().clear_cf_cookies(hostname)
+
     def _redirect_loop_handoff(bypass_url: str) -> str | tuple[str, str]:
         """Drop the host's stale clearance cookies, then bypass `bypass_url`.
 
         A `?check=1` loop is how DDoS-Guard answers a clearance cookie that has gone
         stale, so the dead cookie has to go before the solve — otherwise it is merged
-        back over the fresh one on the next request and the loop simply resumes. Purging
-        is internal-bypasser only; with an external one get_cf_cookies_for_domain()
-        already returns {}.
+        back over the fresh one on the next request and the loop simply resumes.
         """
-        hostname = urlparse(bypass_url).hostname or ""
-        # An empty domain means "clear every host" to the bypasser, so skip the purge
-        # rather than wipe clearance for sites that are working fine.
-        if hostname and not _is_using_external_bypasser():
-            _get_internal_bypasser().clear_cf_cookies(hostname)
+        _purge_clearance(bypass_url)
         return _run_bypasser(bypass_url)
 
     configured_retry = normalize_positive_int(app_config.MAX_RETRY)
@@ -574,6 +583,14 @@ def html_get_page(
                             current_url,
                         )
                         continue
+                    if cookies:
+                        # Challenged *while presenting* clearance: those cookies are
+                        # dead. Without this they survive the solve and get merged back
+                        # over the fresh ones, so every later request re-presents a
+                        # known-rejected cookie and is challenged again - the stale
+                        # retry that never ends.
+                        logger.debug("403 with cookies presented; purging: %s", current_url)
+                        _purge_clearance(current_url)
                     logger.info("403 detected; switching to bypasser: %s", current_url)
                     # Invoke it here rather than setting use_bypasser_now and continuing.
                     # The branch that acts on that flag runs at the top of the *next* retry

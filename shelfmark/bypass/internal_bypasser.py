@@ -253,6 +253,26 @@ DDG_COOKIE_NAMES = {
     "ddg_last_challenge",
 }
 
+# DDoS-Guard cookies that describe *one* check rather than granting clearance, and so
+# must never be replayed on a later request. Observed live on Anna's Archive:
+#
+#   __ddg9_   the client IP address
+#   __ddg10_  the unix timestamp the check was issued
+#   __ddg8_   an opaque token issued with them, same ~40 minute expiry
+#
+# Clearance itself lives in __ddg1_/__ddg2_/__ddgid_ (roughly a year) and __ddg5_.
+# Replaying the trio is actively harmful: once the timestamp ages out - or the egress
+# IP changes, which happens routinely behind a VPN - the values no longer describe the
+# caller, DDoS-Guard re-arms its check and answers every request with a ?check=1
+# redirect. That is the redirect loop, and it is self-inflicted. Dropping them simply
+# lets DDoS-Guard issue a fresh set, exactly as it does for a browser.
+DDG_EPHEMERAL_COOKIE_NAMES = {
+    "__ddg8_",
+    "__ddg9_",
+    "__ddg10_",
+    "ddg_last_challenge",
+}
+
 
 def _get_base_domain(domain: str) -> str:
     """Extract base domain from hostname (e.g., 'www.example.com' -> 'example.com')."""
@@ -268,6 +288,10 @@ def _get_full_cookie_domains() -> set[str]:
 
 def _should_extract_cookie(name: str, *, extract_all: bool) -> bool:
     """Determine if a cookie should be extracted based on its name."""
+    # Checked before extract_all: a per-check token is wrong to replay for every
+    # domain, including the full-session ones.
+    if name in DDG_EPHEMERAL_COOKIE_NAMES:
+        return False
     if extract_all:
         return True
     is_cf = name in CF_COOKIE_NAMES or name.startswith("cf_")
@@ -342,6 +366,16 @@ async def _extract_cookies_from_cdp(driver: Any, page: Any, url: str) -> None:
         logger.debug("Failed to extract cookies: %s", e)
 
 
+def _is_cookie_expired(cookie: dict[str, Any]) -> bool:
+    """Whether a stored cookie's expiry has passed. Session cookies never expire here."""
+    expiry = cookie.get("expiry")
+    if expiry is None:
+        expiry = cookie.get("expires")
+    if not expiry or expiry <= 0:
+        return False
+    return time.time() > expiry
+
+
 def get_cf_cookies_for_domain(domain: str) -> dict[str, str]:
     """Get stored cookies for a domain. Returns empty dict if none available."""
     if not domain:
@@ -355,16 +389,25 @@ def get_cf_cookies_for_domain(domain: str) -> dict[str, str]:
             return {}
 
         cf_clearance = cookies.get("cf_clearance", {})
-        if cf_clearance:
-            expiry = cf_clearance.get("expiry")
-            if expiry is None:
-                expiry = cf_clearance.get("expires")
-            if expiry and expiry > 0 and time.time() > expiry:
-                logger.debug("CF cookies expired for %s", base_domain)
-                _cf_cookies.pop(base_domain, None)
-                return {}
+        if cf_clearance and _is_cookie_expired(cf_clearance):
+            logger.debug("CF cookies expired for %s", base_domain)
+            _cf_cookies.pop(base_domain, None)
+            return {}
 
-        return {name: c["value"] for name, c in cookies.items()}
+        # Expiry applies to every cookie, not just Cloudflare's. DDoS-Guard domains
+        # have no cf_clearance, so the check above never fired for them and dead
+        # cookies were replayed indefinitely - the server answers those with a
+        # challenge, which is indistinguishable from having sent nothing at all.
+        live = {name: c for name, c in cookies.items() if not _is_cookie_expired(c)}
+        if len(live) != len(cookies):
+            expired = sorted(set(cookies) - set(live))
+            logger.debug("Dropping expired cookies for %s: %s", base_domain, expired)
+            if live:
+                _cf_cookies[base_domain] = live
+            else:
+                _cf_cookies.pop(base_domain, None)
+
+        return {name: c["value"] for name, c in live.items()}
 
 
 def has_valid_cf_cookies(domain: str) -> bool:
@@ -1263,9 +1306,23 @@ def _try_with_cached_cookies(url: str, hostname: str) -> str | None:
         if response.status_code == HTTPStatus.OK:
             logger.debug("Cached cookies worked, skipped Chrome bypass")
             return response.text
+        logger.debug(
+            "Cached cookies rejected (%s) for %s; discarding them",
+            response.status_code,
+            url,
+        )
     except _REQUEST_OPERATION_ERRORS as exc:
+        # A redirect loop lands here too: DDoS-Guard answers a dead clearance cookie
+        # with an endless ?check=1 bounce rather than a status we can read.
         logger.debug("Cached cookie retry failed for %s: %s", url, exc)
 
+    # Reached only when the cached cookies did not produce a page, so they are no
+    # longer clearance. Dropping them now means the imminent Chrome solve starts from
+    # a clean slate and later requests cannot re-present the same rejected cookie.
+    # Guarded because clear_cf_cookies("") means "every host", which would wipe
+    # clearance for sites that are working fine.
+    if hostname:
+        clear_cf_cookies(hostname)
     return None
 
 
