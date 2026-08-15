@@ -287,6 +287,38 @@ def html_get_page(
             return html, response_url
         return html
 
+    def _run_bypasser(bypass_url: str) -> str | tuple[str, str]:
+        """Run the active bypasser for one URL and return its result.
+
+        Factored out so the redirect-loop handoff below can invoke it directly. That
+        call site sits inside the inner redirect `while`, so it cannot reach the
+        retry-loop branch above with `continue`, and with MAX_RETRY=1 there is no
+        later attempt for that branch to run on either.
+        """
+        if status_callback:
+            status_callback("resolving", "Bypassing protection...")
+        try:
+            # A bypass is one long blocking call with no incremental progress, so
+            # tell the orchestrator up front how long it may legitimately take
+            # instead of trying to fake activity while it runs. Inside the try so a
+            # bypasser that fails to load is still reported as a bypasser error.
+            request_activity_grace(status_callback, _bypass_grace_seconds())
+            result = get_bypassed_page(bypass_url, selector, cancel_flag)
+            return _result(result or "", bypass_url)
+        except _BYPASSER_ERRORS as e:
+            logger.warning("Bypasser error: %s: %s", type(e).__name__, e)
+            # Surface the real reason. Without this the caller only sees an empty
+            # page and the download dies with a generic failure, hiding e.g. a
+            # FlareSolverr 500 behind a silent wait.
+            if status_callback and not isinstance(e, BypassCancelledError):
+                try:
+                    status_callback("error", f"Bypass failed: {type(e).__name__}: {e}")
+                except _STATUS_CALLBACK_ERRORS:
+                    logger.debug("Bypass error status callback failed", exc_info=True)
+            return _result("", bypass_url)
+        finally:
+            release_activity_grace(status_callback)
+
     configured_retry = normalize_positive_int(app_config.MAX_RETRY)
     retry_limit = (
         retry if retry is not None else (configured_retry if configured_retry is not None else 1)
@@ -308,29 +340,7 @@ def html_get_page(
         cookies: dict[str, str] = {}
         try:
             if use_bypasser_now and _is_cf_bypass_enabled():
-                if status_callback:
-                    status_callback("resolving", "Bypassing protection...")
-                try:
-                    # A bypass is one long blocking call with no incremental progress, so
-                    # tell the orchestrator up front how long it may legitimately take
-                    # instead of trying to fake activity while it runs. Inside the try so a
-                    # bypasser that fails to load is still reported as a bypasser error.
-                    request_activity_grace(status_callback, _bypass_grace_seconds())
-                    result = get_bypassed_page(current_url, selector, cancel_flag)
-                    return _result(result or "", current_url)
-                except _BYPASSER_ERRORS as e:
-                    logger.warning("Bypasser error: %s: %s", type(e).__name__, e)
-                    # Surface the real reason. Without this the caller only sees an empty
-                    # page and the download dies with a generic failure, hiding e.g. a
-                    # FlareSolverr 500 behind a silent wait.
-                    if status_callback and not isinstance(e, BypassCancelledError):
-                        try:
-                            status_callback("error", f"Bypass failed: {type(e).__name__}: {e}")
-                        except _STATUS_CALLBACK_ERRORS:
-                            logger.debug("Bypass error status callback failed", exc_info=True)
-                    return _result("", current_url)
-                finally:
-                    release_activity_grace(status_callback)
+                return _run_bypasser(current_url)
 
             logger.debug("GET: %s", current_url)
 
@@ -422,6 +432,25 @@ def html_get_page(
                     # Same-host redirect (relative or absolute) - follow manually.
                     redirects_followed += 1
                     if redirects_followed > _MAX_REDIRECTS:
+                        # A same-host redirect loop on AA is not a network fault — it is
+                        # how an unsolved DDoS-Guard handshake presents: /search redirects
+                        # to /search&check=1, which redirects back, indefinitely. Raising
+                        # sends it down the retry path, which re-runs the whole loop on
+                        # every attempt (10 x 6 = ~60 requests to AA) and never once offers
+                        # the URL to the bypasser, so it can only ever fail. Hand it over
+                        # directly — not via `continue`, which would target this inner
+                        # redirect loop rather than the retry branch above.
+                        # allow_bypasser_fallback is honoured here for the same
+                        # reason the 403 path honours it: callers such as the
+                        # /dyn/md5/summary fetch behind the details modal pass False
+                        # precisely so a best-effort request fails fast instead of
+                        # holding the UI open for a minutes-long browser solve.
+                        if allow_bypasser_fallback and _is_cf_bypass_enabled() and not use_bypasser_now:
+                            logger.info(
+                                "redirect loop on %s; switching to bypasser", current_url
+                            )
+                            use_bypasser_now = True
+                            return _run_bypasser(current_url)
                         _raise_too_many_redirects(f"Too many redirects for {current_url}")
                     current_url = redirect_url
                     continue
@@ -458,10 +487,13 @@ def html_get_page(
                         )
                         continue
                     logger.info("403 detected; switching to bypasser: %s", current_url)
-                    if status_callback:
-                        status_callback("resolving", "Bypassing protection...")
+                    # Invoke it here rather than setting the flag and continuing. The
+                    # branch that acts on the flag runs at the top of the *next* retry
+                    # attempt, so under the supported MAX_RETRY=1 there is no next
+                    # attempt and the bypasser was never reached — a 403 simply ended
+                    # the search. Same reasoning as the redirect-loop handoff below.
                     use_bypasser_now = True
-                    continue
+                    return _run_bypasser(current_url)
                 logger.warning("403 error, giving up: %s", current_url)
                 return _result("", current_url)
 
