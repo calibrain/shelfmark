@@ -17,13 +17,14 @@ import time
 
 import pytest
 
+import shelfmark.bypass.cookie_store as cs
 import shelfmark.bypass.internal_bypasser as ib
 
 
 @pytest.fixture(autouse=True)
 def _clean_cookie_store(monkeypatch):
-    monkeypatch.setattr(ib, "_cf_cookies", {})
-    monkeypatch.setattr(ib, "_cf_user_agents", {})
+    monkeypatch.setattr(cs, "_cf_cookies", {})
+    monkeypatch.setattr(cs, "_cf_user_agents", {})
 
 
 class _Cookie:
@@ -39,7 +40,7 @@ class _Cookie:
 
 
 def _store(cookies, url="https://annas-archive.gl/search"):
-    ib._store_extracted_cookies(url=url, cookies=cookies, user_agent="UA/1.0")
+    cs.store_extracted_cookies(url=url, cookies=cookies, user_agent="UA/1.0")
 
 
 # --------------------------------------------------------------------------- #
@@ -83,7 +84,7 @@ def test_cloudflare_cookies_are_unaffected():
 
 def test_per_check_cookies_are_excluded_even_for_full_session_domains(monkeypatch):
     """extract_all exists for Z-Library sessions; it must not resurrect the trio."""
-    monkeypatch.setattr(ib, "_get_full_cookie_domains", lambda: {"annas-archive.gl"})
+    monkeypatch.setattr(cs, "_get_full_cookie_domains", lambda: {"annas-archive.gl"})
     _store([_Cookie("sessionid", "s"), _Cookie("__ddg9_", "203.0.113.7")])
 
     stored = ib.get_cf_cookies_for_domain("annas-archive.gl")
@@ -111,7 +112,7 @@ def test_all_cookies_expired_returns_empty_so_caller_re_solves():
     _store([_Cookie("__ddg1_", "dead", expires=past)])
 
     assert ib.get_cf_cookies_for_domain("annas-archive.gl") == {}
-    assert ib.has_valid_cf_cookies("annas-archive.gl") is False
+    assert cs.has_valid_cf_cookies("annas-archive.gl") is False
 
 
 def test_unexpired_cookies_are_kept():
@@ -143,7 +144,7 @@ def test_expired_cookies_are_pruned_from_the_store():
 
     ib.get_cf_cookies_for_domain("annas-archive.gl")
 
-    assert set(ib._cf_cookies["annas-archive.gl"]) == {"__ddg1_"}
+    assert set(cs._cf_cookies["annas-archive.gl"]) == {"__ddg1_"}
 
 
 def test_solve_that_yields_only_per_check_cookies_stores_nothing():

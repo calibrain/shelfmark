@@ -565,9 +565,15 @@ _CHALLENGE_MARKERS = (
 
 
 def _looks_like_aa_page(html: str) -> bool:
-    """Whether ``html`` is recognisably Anna's Archive, or a challenge in front of it."""
+    """Whether ``html`` is recognisably Anna's Archive itself."""
     lowered = html.lower()
-    return any(marker in lowered for marker in (*_AA_PAGE_MARKERS, *_CHALLENGE_MARKERS))
+    return any(marker in lowered for marker in _AA_PAGE_MARKERS)
+
+
+def _looks_like_challenge_page(html: str) -> bool:
+    """Whether ``html`` is a protection interstitial rather than the site behind it."""
+    lowered = html.lower()
+    return any(marker in lowered for marker in _CHALLENGE_MARKERS)
 
 
 def _fetch_search_table(url: str, selector: network.AAMirrorSelector) -> tuple[str, Tag | None]:
@@ -596,9 +602,22 @@ def _fetch_search_table(url: str, selector: network.AAMirrorSelector) -> tuple[s
         if table is not None:
             msg = f"Expected results table tag, got {type(table).__name__}"
             raise TypeError(msg)
-        if "No files found." in html or _looks_like_aa_page(html):
-            # A real AA response - either genuinely empty, or a shape the caller
-            # should report as drift. Not the mirror's fault.
+        if "No files found." in html:
+            # A real, genuinely empty answer from a healthy mirror.
+            return html, None
+        if _looks_like_challenge_page(html):
+            # The bypass did not actually clear the protection - the interstitial is
+            # what came back. Rotating is pointless (every mirror shares the same
+            # protection) and reporting it as an empty result is worse: the user is
+            # told their query found nothing when the search never ran.
+            msg = (
+                "Anna's Archive answered with an unsolved protection challenge. "
+                "Check that the bypasser is reachable and working."
+            )
+            raise SearchUnavailableError(msg)
+        if _looks_like_aa_page(html):
+            # A real AA response in a shape the caller should report as drift.
+            # Not the mirror's fault.
             return html, None
 
         new_base, action = selector.next_mirror_or_rotate_dns(

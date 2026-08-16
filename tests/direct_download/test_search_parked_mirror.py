@@ -5,6 +5,7 @@ parking page is indistinguishable from a broken search, so the mirror stays in
 rotation and every later search pays for it again.
 """
 
+import pytest
 from bs4 import Tag
 
 PARKED_PAGE = """<!doctype html><html><head><title>annas-archive.li</title></head>
@@ -85,15 +86,19 @@ def test_genuinely_empty_aa_result_does_not_quarantine(monkeypatch):
     assert "No files found." in html
 
 
-def test_challenge_page_does_not_quarantine(monkeypatch):
-    """A DDoS-Guard interstitial means the mirror is alive and holds our clearance."""
+def test_challenge_page_is_reported_not_passed_off_as_an_empty_result(monkeypatch):
+    """An unsolved interstitial means the search never ran.
+
+    The mirror is alive and holds our clearance, so it must not be quarantined - but
+    returning it as "no table" made the caller tell the user their query found nothing.
+    """
     dd, _calls = _patch_pages(monkeypatch, [DDOS_GUARD_PAGE])
     selector = _Selector(["https://real.test", "https://other.test"])
 
-    _html, table = dd._fetch_search_table("https://real.test/search?q=dune", selector)
+    with pytest.raises(dd.SearchUnavailableError, match="protection challenge"):
+        dd._fetch_search_table("https://real.test/search?q=dune", selector)
 
     assert selector.quarantined == []
-    assert table is None
 
 
 def test_unreachable_mirror_raises_search_unavailable(monkeypatch):

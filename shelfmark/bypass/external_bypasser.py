@@ -2,17 +2,19 @@
 
 import random
 import time
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import requests
 
 from shelfmark.bypass import BypassCancelledError
+from shelfmark.bypass.cookie_store import store_extracted_cookies
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.network import get_ssl_verify
 
 if TYPE_CHECKING:
+    from collections.abc import Mapping
     from threading import Event
 
     from shelfmark.download import network
@@ -61,6 +63,31 @@ def max_duration_seconds() -> float:
         for attempt in range(1, MAX_RETRY)
     )
     return MAX_RETRY * read_timeout + backoff_total
+
+
+def _store_solution_clearance(target_url: str, solution: Mapping[str, Any]) -> None:
+    """Keep the clearance the solver won, so later requests do not re-solve.
+
+    A solve is the expensive part of an external bypass - tens of seconds of real
+    browser - and FlareSolverr-compatible services hand back the cookies and the
+    User-Agent that earned it. Dropping them meant every single request paid a 403
+    plus a full solve, and a file download (which the solver cannot proxy, being
+    binary) never presented clearance at all.
+
+    The UA matters as much as the cookies: Cloudflare ties cf_clearance to the UA
+    that solved the challenge, so replaying the cookie under our own UA is rejected.
+    """
+    cookies = solution.get("cookies") or []
+    if not isinstance(cookies, list):
+        logger.debug("External bypasser returned no usable cookie list for '%s'", target_url)
+        return
+
+    user_agent = solution.get("userAgent")
+    store_extracted_cookies(
+        url=target_url,
+        cookies=cookies,
+        user_agent=user_agent if isinstance(user_agent, str) else None,
+    )
 
 
 def _fetch_via_bypasser(target_url: str) -> str | None:
@@ -115,6 +142,8 @@ def _fetch_via_bypasser(target_url: str) -> str | None:
         if not html:
             logger.warning("External bypasser returned empty response for '%s'", target_url)
             return None
+
+        _store_solution_clearance(target_url, solution)
 
     except requests.exceptions.Timeout:
         logger.warning(

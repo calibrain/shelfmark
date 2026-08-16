@@ -28,6 +28,14 @@ from seleniumbase import cdp_driver
 from seleniumbase.undetected.cdp_driver.connection import ProtocolException
 
 from shelfmark.bypass import BypassCancelledError
+from shelfmark.bypass.cookie_store import (
+    clear_cf_cookies,
+    export_store,
+    get_cf_cookies_for_domain,
+    get_cf_user_agent_for_domain,
+    import_store,
+    store_extracted_cookies,
+)
 from shelfmark.bypass.fingerprint import get_screen_size
 from shelfmark.config import env
 from shelfmark.config.env import LOG_DIR
@@ -231,120 +239,6 @@ class _CdpWorker:
 
 _CDP_WORKER = _CdpWorker()
 
-# Cookie storage - shared with requests library for Cloudflare bypass
-# Nested mapping of domain to cookie name to cookie metadata.
-_cf_cookies: dict[str, dict] = {}
-_cf_cookies_lock = threading.Lock()
-
-# User-Agent storage - Cloudflare ties cf_clearance to the UA that solved the challenge
-_cf_user_agents: dict[str, str] = {}
-
-# Protection cookie names we care about (Cloudflare and DDoS-Guard)
-CF_COOKIE_NAMES = {"cf_clearance", "__cf_bm", "cf_chl_2", "cf_chl_prog"}
-DDG_COOKIE_NAMES = {
-    "__ddg1_",
-    "__ddg2_",
-    "__ddg5_",
-    "__ddg8_",
-    "__ddg9_",
-    "__ddg10_",
-    "__ddgid_",
-    "__ddgmark_",
-    "ddg_last_challenge",
-}
-
-# DDoS-Guard cookies that describe *one* check rather than granting clearance, and so
-# must never be replayed on a later request. Observed live on Anna's Archive:
-#
-#   __ddg9_   the client IP address
-#   __ddg10_  the unix timestamp the check was issued
-#   __ddg8_   an opaque token issued with them, same ~40 minute expiry
-#
-# Clearance itself lives in __ddg1_/__ddg2_/__ddgid_ (roughly a year) and __ddg5_.
-# Replaying the trio is actively harmful: once the timestamp ages out - or the egress
-# IP changes, which happens routinely behind a VPN - the values no longer describe the
-# caller, DDoS-Guard re-arms its check and answers every request with a ?check=1
-# redirect. That is the redirect loop, and it is self-inflicted. Dropping them simply
-# lets DDoS-Guard issue a fresh set, exactly as it does for a browser.
-DDG_EPHEMERAL_COOKIE_NAMES = {
-    "__ddg8_",
-    "__ddg9_",
-    "__ddg10_",
-    "ddg_last_challenge",
-}
-
-
-def _get_base_domain(domain: str) -> str:
-    """Extract base domain from hostname (e.g., 'www.example.com' -> 'example.com')."""
-    return ".".join(domain.split(".")[-2:]) if "." in domain else domain
-
-
-def _get_full_cookie_domains() -> set[str]:
-    """Return mirror domains that need full-session cookie extraction."""
-    from shelfmark.core.mirrors import get_zlib_cookie_domains
-
-    return {_get_base_domain(domain) for domain in get_zlib_cookie_domains()}
-
-
-def _should_extract_cookie(name: str, *, extract_all: bool) -> bool:
-    """Determine if a cookie should be extracted based on its name."""
-    # Checked before extract_all: a per-check token is wrong to replay for every
-    # domain, including the full-session ones.
-    if name in DDG_EPHEMERAL_COOKIE_NAMES:
-        return False
-    if extract_all:
-        return True
-    is_cf = name in CF_COOKIE_NAMES or name.startswith("cf_")
-    is_ddg = name in DDG_COOKIE_NAMES or name.startswith("__ddg")
-    return is_cf or is_ddg
-
-
-def _store_extracted_cookies(
-    *,
-    url: str,
-    cookies: list[Any],
-    user_agent: str | None = None,
-) -> None:
-    """Store filtered bypass cookies (and optional UA) for a URL domain."""
-    parsed = urlparse(url)
-    domain = parsed.hostname or ""
-    if not domain:
-        return
-
-    base_domain = _get_base_domain(domain)
-    extract_all = base_domain in _get_full_cookie_domains()
-
-    cookies_found: dict[str, dict[str, Any]] = {}
-    for cookie in cookies:
-        name = getattr(cookie, "name", "") or ""
-        if not _should_extract_cookie(name, extract_all=extract_all):
-            continue
-        expires = getattr(cookie, "expires", None)
-        if expires is not None and expires <= 0:
-            expires = None
-        cookies_found[name] = {
-            "value": getattr(cookie, "value", ""),
-            "domain": getattr(cookie, "domain", None) or domain,
-            "path": getattr(cookie, "path", None) or "/",
-            "expiry": expires,
-            "secure": bool(getattr(cookie, "secure", True)),
-            "httpOnly": True,
-        }
-
-    if not cookies_found:
-        return
-
-    with _cf_cookies_lock:
-        _cf_cookies[base_domain] = cookies_found
-        if user_agent:
-            _cf_user_agents[base_domain] = user_agent
-            logger.debug("Stored UA for %s: %s...", base_domain, str(user_agent)[:60])
-        else:
-            logger.debug("No UA captured for %s", base_domain)
-
-    cookie_type = "all" if extract_all else "protection"
-    logger.debug("Extracted %s %s cookies for %s", len(cookies_found), cookie_type, base_domain)
-
 
 async def _extract_cookies_from_cdp(driver: Any, page: Any, url: str) -> None:
     """Extract cookies from a CDP browser after successful bypass."""
@@ -360,79 +254,10 @@ async def _extract_cookies_from_cdp(driver: Any, page: Any, url: str) -> None:
         except _CDP_OPERATION_ERRORS:
             user_agent = None
 
-        _store_extracted_cookies(url=url, cookies=all_cookies, user_agent=user_agent)
+        store_extracted_cookies(url=url, cookies=all_cookies, user_agent=user_agent)
 
     except _CDP_OPERATION_ERRORS as e:
         logger.debug("Failed to extract cookies: %s", e)
-
-
-def _is_cookie_expired(cookie: dict[str, Any]) -> bool:
-    """Whether a stored cookie's expiry has passed. Session cookies never expire here."""
-    expiry = cookie.get("expiry")
-    if expiry is None:
-        expiry = cookie.get("expires")
-    if not expiry or expiry <= 0:
-        return False
-    return time.time() > expiry
-
-
-def get_cf_cookies_for_domain(domain: str) -> dict[str, str]:
-    """Get stored cookies for a domain. Returns empty dict if none available."""
-    if not domain:
-        return {}
-
-    base_domain = _get_base_domain(domain)
-
-    with _cf_cookies_lock:
-        cookies = _cf_cookies.get(base_domain, {})
-        if not cookies:
-            return {}
-
-        cf_clearance = cookies.get("cf_clearance", {})
-        if cf_clearance and _is_cookie_expired(cf_clearance):
-            logger.debug("CF cookies expired for %s", base_domain)
-            _cf_cookies.pop(base_domain, None)
-            return {}
-
-        # Expiry applies to every cookie, not just Cloudflare's. DDoS-Guard domains
-        # have no cf_clearance, so the check above never fired for them and dead
-        # cookies were replayed indefinitely - the server answers those with a
-        # challenge, which is indistinguishable from having sent nothing at all.
-        live = {name: c for name, c in cookies.items() if not _is_cookie_expired(c)}
-        if len(live) != len(cookies):
-            expired = sorted(set(cookies) - set(live))
-            logger.debug("Dropping expired cookies for %s: %s", base_domain, expired)
-            if live:
-                _cf_cookies[base_domain] = live
-            else:
-                _cf_cookies.pop(base_domain, None)
-
-        return {name: c["value"] for name, c in live.items()}
-
-
-def has_valid_cf_cookies(domain: str) -> bool:
-    """Check if we have valid Cloudflare cookies for a domain."""
-    return bool(get_cf_cookies_for_domain(domain))
-
-
-def get_cf_user_agent_for_domain(domain: str) -> str | None:
-    """Get the User-Agent that was used during bypass for a domain."""
-    if not domain:
-        return None
-    with _cf_cookies_lock:
-        return _cf_user_agents.get(_get_base_domain(domain))
-
-
-def clear_cf_cookies(domain: str | None = None) -> None:
-    """Clear stored Cloudflare cookies and User-Agent. If domain is None, clear all."""
-    with _cf_cookies_lock:
-        if domain:
-            base_domain = _get_base_domain(domain)
-            _cf_cookies.pop(base_domain, None)
-            _cf_user_agents.pop(base_domain, None)
-        else:
-            _cf_cookies.clear()
-            _cf_user_agents.clear()
 
 
 def _cleanup_orphan_processes() -> int:
@@ -956,17 +781,7 @@ def _run_bypass_in_current_process(url: str, retry: int, cancel_flag: Event | No
 
 
 def _store_child_bypass_state(payload: dict[str, Any]) -> None:
-    cookies = payload.get("cookies")
-    if isinstance(cookies, dict):
-        with _cf_cookies_lock:
-            _cf_cookies.update(cookies)
-
-    user_agents = payload.get("user_agents")
-    if isinstance(user_agents, dict):
-        with _cf_cookies_lock:
-            _cf_user_agents.update(
-                {str(domain): str(agent) for domain, agent in user_agents.items()}
-            )
+    import_store(payload.get("cookies"), payload.get("user_agents"))
 
 
 def _prepare_child_browser_env(env_vars: dict[str, str]) -> dict[str, str]:
@@ -1407,11 +1222,12 @@ def _run_child_process() -> int:
 
     try:
         html = get(url, retry=retry)
+        cookies, user_agents = export_store()
         payload = {
             "ok": True,
             "html": html,
-            "cookies": _cf_cookies,
-            "user_agents": _cf_user_agents,
+            "cookies": cookies,
+            "user_agents": user_agents,
         }
         result_path.write_text(json.dumps(payload), encoding="utf-8")
     except Exception as exc:  # noqa: BLE001 - helper boundary must serialize failures.

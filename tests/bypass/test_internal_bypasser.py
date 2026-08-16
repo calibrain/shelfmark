@@ -113,7 +113,9 @@ def test_extract_cookies_from_cdp_keeps_full_session_cookies_for_configured_zlib
         async def evaluate(self, _expr):
             return "TestUA/1.0"
 
-    monkeypatch.setattr(internal_bypasser, "_get_full_cookie_domains", lambda: {"z-lib.fm"})
+    from shelfmark.bypass import cookie_store
+
+    monkeypatch.setattr(cookie_store, "_get_full_cookie_domains", lambda: {"z-lib.fm"})
 
     internal_bypasser.clear_cf_cookies()
     asyncio.run(
@@ -165,12 +167,14 @@ def test_extract_cookies_from_cdp_normalizes_session_expiry():
         )
     )
 
-    stored = internal_bypasser._cf_cookies.get("example.com", {})
+    from shelfmark.bypass import cookie_store
+
+    stored = cookie_store._cf_cookies.get("example.com", {})
     assert stored["cf_clearance"]["expiry"] is None
     assert internal_bypasser.get_cf_cookies_for_domain("example.com") == {"cf_clearance": "abc"}
 
     # Verify fallback to "expires" key for expiry checks
-    internal_bypasser._cf_cookies["example.com"]["cf_clearance"]["expires"] = int(time.time()) - 10
+    cookie_store._cf_cookies["example.com"]["cf_clearance"]["expires"] = int(time.time()) - 10
     assert internal_bypasser.get_cf_cookies_for_domain("example.com") == {}
 
 
@@ -374,7 +378,9 @@ def test_try_with_cached_cookies_returns_none_on_request_exception(monkeypatch):
     import shelfmark.bypass.internal_bypasser as internal_bypasser
 
     internal_bypasser.clear_cf_cookies()
-    internal_bypasser._cf_cookies["example.com"] = {
+    from shelfmark.bypass import cookie_store
+
+    cookie_store._cf_cookies["example.com"] = {
         "cf_clearance": {
             "value": "abc",
             "domain": "example.com",

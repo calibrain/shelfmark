@@ -11,6 +11,94 @@ class _FakeResponse:
         self.url = url
 
 
+def test_external_bypasser_clearance_is_presented_on_the_next_request(monkeypatch):
+    """Clearance is read from the shared store whichever bypasser filled it.
+
+    Guards the regression where the external path returned {} unconditionally: every
+    request re-paid a 403 plus a full solve, and a download - which the solver cannot
+    proxy - presented no clearance at all.
+    """
+    import shelfmark.bypass.cookie_store as cookie_store
+    import shelfmark.download.http as http
+
+    monkeypatch.setattr(cookie_store, "_cf_cookies", {})
+    monkeypatch.setattr(cookie_store, "_cf_user_agents", {})
+    monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
+    monkeypatch.setattr(http, "_is_using_external_bypasser", lambda: True)
+
+    cookie_store.store_extracted_cookies(
+        url="https://annas-archive.gl/search",
+        cookies=[{"name": "__ddg1_", "value": "clearance"}],
+        user_agent="Mozilla/5.0 (solver)",
+    )
+
+    headers: dict[str, str] = {}
+    cookies = http._apply_cf_bypass("https://annas-archive.gl/md5/abc", headers)
+
+    assert cookies == {"__ddg1_": "clearance"}
+    assert headers["User-Agent"] == "Mozilla/5.0 (solver)"
+
+
+def test_external_bypasser_solve_is_reused_instead_of_re_solved(monkeypatch):
+    """One solve should clear the following requests, not just the one that paid for it.
+
+    A solve is tens of seconds of real browser, so re-running it per request is what
+    made direct download unusable behind an external bypasser.
+    """
+    import shelfmark.bypass.cookie_store as cookie_store
+    import shelfmark.download.http as http
+
+    monkeypatch.setattr(cookie_store, "_cf_cookies", {})
+    monkeypatch.setattr(cookie_store, "_cf_user_agents", {})
+    monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
+    monkeypatch.setattr(http, "_is_using_external_bypasser", lambda: True)
+    monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 100.0)
+    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
+    monkeypatch.setattr(http, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: False)
+    monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
+
+    class _Cleared:
+        is_redirect = False
+        status_code = 200
+        cookies: dict[str, str] = {}
+        text = "<table>results</table>"
+        url = "https://annas-archive.gl/search?q=dune"
+
+        def raise_for_status(self) -> None:
+            return None
+
+    def gated_get(url: str, **kwargs):
+        if kwargs.get("cookies", {}).get("cf_clearance") != "token":
+            error = requests.exceptions.HTTPError("forbidden")
+            error.response = _FakeResponse(403, url=url)
+            raise error
+        return _Cleared()
+
+    solves: list[str] = []
+
+    def fake_solve(url: str, *_args, **_kwargs):
+        solves.append(url)
+        cookie_store.store_extracted_cookies(
+            url=url,
+            cookies=[{"name": "cf_clearance", "value": "token"}],
+            user_agent="Mozilla/5.0 (solver)",
+        )
+        return "<table>results</table>"
+
+    monkeypatch.setattr(http.requests, "get", gated_get)
+    monkeypatch.setattr(http, "get_bypassed_page", fake_solve)
+
+    url = "https://annas-archive.gl/search?q=dune"
+    first = http.html_get_page(url, retry=2, allow_bypasser_fallback=True, success_delay=0)
+    second = http.html_get_page(url, retry=2, allow_bypasser_fallback=True, success_delay=0)
+
+    assert first == "<table>results</table>"
+    assert second == "<table>results</table>"
+    # The second request rode the stored clearance instead of paying for another solve.
+    assert solves == [url]
+
+
 def test_html_get_page_ignores_status_callback_failure(monkeypatch):
     """A raising status_callback must not break the bypass it was reporting on."""
     import shelfmark.download.http as http
@@ -190,15 +278,13 @@ def test_redirect_loop_purges_stale_cookies_and_switches_to_bypasser(monkeypatch
     stale = {"__ddg8_": "stale"}
     cleared: list[str] = []
 
-    class _FakeInternalBypasser:
-        @staticmethod
-        def clear_cf_cookies(domain: str) -> None:
-            cleared.append(domain)
-            stale.clear()
+    def fake_clear(domain: str) -> None:
+        cleared.append(domain)
+        stale.clear()
 
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
     monkeypatch.setattr(http, "_is_using_external_bypasser", lambda: False)
-    monkeypatch.setattr(http, "_get_internal_bypasser", lambda: _FakeInternalBypasser)
+    monkeypatch.setattr(http.cookie_store, "clear_cf_cookies", fake_clear)
     monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 100.0)
     monkeypatch.setattr(http, "_apply_cf_bypass", lambda _url, _headers: dict(stale))
     monkeypatch.setattr(http, "get_proxies", lambda _url: {})
@@ -349,17 +435,11 @@ def test_html_get_page_redirect_loop_purges_cookies_and_bypasses(monkeypatch):
 
     cleared: list[str] = []
 
-    class FakeInternalBypasser:
-        def clear_cf_cookies(self, domain: str) -> None:
-            cleared.append(domain)
-
-        def get_cf_cookies_for_domain(self, _domain: str) -> dict[str, str]:
-            return {"__ddg2_": "stale"}
-
-        def get_cf_user_agent_for_domain(self, _domain: str) -> str | None:
-            return None
-
-    monkeypatch.setattr(http, "_get_internal_bypasser", lambda: FakeInternalBypasser())
+    monkeypatch.setattr(http.cookie_store, "clear_cf_cookies", cleared.append)
+    monkeypatch.setattr(
+        http.cookie_store, "get_cf_cookies_for_domain", lambda _domain: {"__ddg2_": "stale"}
+    )
+    monkeypatch.setattr(http.cookie_store, "get_cf_user_agent_for_domain", lambda _domain: None)
     monkeypatch.setattr(http, "get_bypassed_page", lambda *_args, **_kwargs: "SOLVED")
 
     class _FakeRedirect:

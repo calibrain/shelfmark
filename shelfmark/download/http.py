@@ -10,7 +10,7 @@ from urllib.parse import urljoin, urlparse
 import requests
 from tqdm import tqdm
 
-from shelfmark.bypass import BypassCancelledError
+from shelfmark.bypass import BypassCancelledError, cookie_store
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import coerce_bool, normalize_positive_int
@@ -145,19 +145,13 @@ def get_bypassed_page(
 
 
 def get_cf_cookies_for_domain(domain: str) -> dict[str, str]:
-    """Get CF cookies - only available with internal bypasser."""
-    if _is_using_external_bypasser():
-        logger.debug("External bypasser in use, CF cookies not available for %s", domain)
-        return {}
-    return _get_internal_bypasser().get_cf_cookies_for_domain(domain)
+    """Get the clearance cookies won by whichever bypasser solved this domain."""
+    return cookie_store.get_cf_cookies_for_domain(domain)
 
 
 def get_cf_user_agent_for_domain(domain: str) -> str | None:
-    """Get CF user agent - only available with internal bypasser."""
-    if _is_using_external_bypasser():
-        logger.debug("External bypasser in use, CF user agent not available for %s", domain)
-        return None
-    return _get_internal_bypasser().get_cf_user_agent_for_domain(domain)
+    """Get the User-Agent that solved this domain's challenge, if one is stored."""
+    return cookie_store.get_cf_user_agent_for_domain(domain)
 
 
 def _apply_cf_bypass(url: str, headers: dict) -> dict:
@@ -374,15 +368,14 @@ def html_get_page(
 
         Called whenever the protection answered a request that *carried* cookies:
         being challenged while presenting them proves they no longer work, so keeping
-        them only guarantees the same rejection on every later request. Purging is
-        internal-bypasser only; with an external one get_cf_cookies_for_domain()
-        already returns {}.
+        them only guarantees the same rejection on every later request. Applies to
+        either bypasser, since both fill the same store.
         """
         hostname = urlparse(target_url).hostname or ""
-        # An empty domain means "clear every host" to the bypasser, so skip the purge
+        # An empty domain means "clear every host" to the store, so skip the purge
         # rather than wipe clearance for sites that are working fine.
-        if hostname and not _is_using_external_bypasser():
-            _get_internal_bypasser().clear_cf_cookies(hostname)
+        if hostname:
+            cookie_store.clear_cf_cookies(hostname)
 
     def _redirect_loop_handoff(bypass_url: str) -> str | tuple[str, str]:
         """Drop the host's stale clearance cookies, then bypass `bypass_url`.
