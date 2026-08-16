@@ -569,8 +569,12 @@ def html_get_page(
                     # (another concurrent download may have completed bypass and extracted cookies)
                     parsed = urlparse(current_url)
                     fresh_cookies = get_cf_cookies_for_domain(parsed.hostname or "")
-                    if fresh_cookies and not cookies:
-                        # Cookies are now available - retry with cookies before using bypasser
+                    if fresh_cookies and not cookies and attempt < retry_limit:
+                        # Cookies are now available - retry with cookies before using bypasser.
+                        # Guarded on there being a next attempt: `continue` on the last one
+                        # ends the retry loop and abandons the request without ever offering
+                        # the URL to the bypasser, and MAX_RETRY=1 is the supported setting.
+                        # Same reasoning as the bypasser invocation below.
                         logger.debug(
                             "403 but cookies now available - retrying with cookies: %s",
                             current_url,

@@ -88,12 +88,38 @@ def _cookie_field(cookie: Any, name: str) -> Any:
     """Read one field from a cookie in either shape we are handed.
 
     The internal bypasser extracts CDP cookie objects; an external bypasser returns
-    the same fields as JSON objects. Both use these field names, so the only
-    difference is attribute versus key access.
+    the same fields as JSON objects, so the difference is attribute versus key access.
     """
     if isinstance(cookie, Mapping):
         return cookie.get(name)
     return getattr(cookie, name, None)
+
+
+def _cookie_expiry(cookie: Any) -> float | None:
+    """A cookie's absolute expiry, or None when it is a session cookie.
+
+    The two spellings are not interchangeable and both reach this store. CDP and
+    Playwright cookies carry `expires`; the WebDriver cookie object - what a
+    Selenium-based solver such as FlareSolverr returns - carries `expiry`. Reading
+    only one silently turns every cookie from the other into a never-expiring one,
+    which is exactly how dead clearance ends up replayed forever (see
+    get_cf_cookies_for_domain).
+
+    The value is coerced rather than trusted: it arrives as JSON from a service we
+    do not control, and a string here used to raise straight out of the store.
+    """
+    for field in ("expires", "expiry"):
+        raw = _cookie_field(cookie, field)
+        if raw is None:
+            continue
+        try:
+            expiry = float(raw)
+        except TypeError, ValueError:
+            logger.debug("Unreadable cookie expiry %r; treating as a session cookie", raw)
+            return None
+        # <= 0 is how both shapes spell "session cookie", not "expired in 1970".
+        return expiry if expiry > 0 else None
+    return None
 
 
 def store_extracted_cookies(
@@ -116,15 +142,12 @@ def store_extracted_cookies(
         name = _cookie_field(cookie, "name") or ""
         if not _should_extract_cookie(name, extract_all=extract_all):
             continue
-        expires = _cookie_field(cookie, "expires")
-        if expires is not None and expires <= 0:
-            expires = None
         secure = _cookie_field(cookie, "secure")
         cookies_found[name] = {
             "value": _cookie_field(cookie, "value") or "",
             "domain": _cookie_field(cookie, "domain") or domain,
             "path": _cookie_field(cookie, "path") or "/",
-            "expiry": expires,
+            "expiry": _cookie_expiry(cookie),
             "secure": True if secure is None else bool(secure),
             "httpOnly": True,
         }

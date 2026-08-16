@@ -143,7 +143,14 @@ def _fetch_via_bypasser(target_url: str) -> str | None:
             logger.warning("External bypasser returned empty response for '%s'", target_url)
             return None
 
-        _store_solution_clearance(target_url, solution)
+        try:
+            _store_solution_clearance(target_url, solution)
+        except AttributeError, KeyError, TypeError, ValueError:
+            # Storing clearance is an optimisation; the page is the product. The
+            # solution JSON comes from a service we do not control, so a surprise in
+            # its cookie shape must not discard HTML that already cost a ~30s solve
+            # and send the caller round for up to MAX_RETRY more of them.
+            logger.debug("Could not store bypass clearance for '%s'", target_url, exc_info=True)
 
     except requests.exceptions.Timeout:
         logger.warning(

@@ -99,6 +99,46 @@ def test_external_bypasser_solve_is_reused_instead_of_re_solved(monkeypatch):
     assert solves == [url]
 
 
+def test_403_with_a_concurrently_won_clearance_still_reaches_the_bypasser(monkeypatch):
+    """The last attempt must hand off, not `continue` into the end of the loop.
+
+    Another worker's solve can land between our request and its 403, which used to
+    send this branch back round the retry loop - but on the final attempt (and
+    MAX_RETRY=1 is the supported setting) `continue` just ends it, abandoning the
+    request without ever offering the URL to the bypasser.
+    """
+    import shelfmark.download.http as http
+
+    monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
+    monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 100.0)
+    # A concurrent solve has filled the store, but this request went out before it did.
+    monkeypatch.setattr(http, "get_cf_cookies_for_domain", lambda _hostname: {"__ddg1_": "fresh"})
+    monkeypatch.setattr(http, "_apply_cf_bypass", lambda _url, _headers: {})
+    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
+    monkeypatch.setattr(http, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: False)
+    monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
+
+    def gated(url: str, **_kwargs):
+        error = requests.exceptions.HTTPError("forbidden")
+        error.response = _FakeResponse(403, url=url)
+        raise error
+
+    bypassed: list[str] = []
+    monkeypatch.setattr(http.requests, "get", gated)
+    monkeypatch.setattr(
+        http,
+        "get_bypassed_page",
+        lambda url, *_a, **_k: bypassed.append(url) or "<table>results</table>",
+    )
+
+    url = "https://annas-archive.gl/search?q=dune"
+    html = http.html_get_page(url, retry=1, allow_bypasser_fallback=True, success_delay=0)
+
+    assert html == "<table>results</table>"
+    assert bypassed == [url]
+
+
 def test_html_get_page_ignores_status_callback_failure(monkeypatch):
     """A raising status_callback must not break the bypass it was reporting on."""
     import shelfmark.download.http as http

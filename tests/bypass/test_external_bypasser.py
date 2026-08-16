@@ -1,5 +1,7 @@
 """Tests for the external bypasser flow."""
 
+import pytest
+
 
 class _FakeResponse:
     def __init__(self, payload: dict) -> None:
@@ -111,7 +113,18 @@ def test_solved_clearance_is_stored_for_reuse(monkeypatch):
     assert cookie_store.get_cf_user_agent_for_domain("annas-archive.gl") == "Mozilla/5.0 (solver)"
 
 
-def test_expired_solution_cookie_is_not_replayed(monkeypatch):
+@pytest.mark.parametrize(
+    ("field", "shape"),
+    [
+        # Byparr drives Playwright/camoufox, whose cookies spell it "expires".
+        ("expires", "playwright"),
+        # FlareSolverr assigns driver.get_cookies() - the WebDriver cookie object,
+        # which spells it "expiry". Reading only "expires" made every FlareSolverr
+        # cookie immortal, so dead clearance was replayed forever.
+        ("expiry", "webdriver"),
+    ],
+)
+def test_expired_solution_cookie_is_not_replayed(monkeypatch, field, shape):
     import time
 
     import shelfmark.bypass.cookie_store as cookie_store
@@ -124,16 +137,68 @@ def test_expired_solution_cookie_is_not_replayed(monkeypatch):
         external_bypasser,
         {
             "response": "<html>ok</html>",
-            # FlareSolverr reports expiry as "expires", the same field name CDP uses.
-            "cookies": [
-                {"name": "__ddg1_", "value": "dead", "expires": int(time.time()) - 60},
-            ],
+            "cookies": [{"name": "__ddg1_", "value": "dead", field: int(time.time()) - 60}],
         },
     )
 
     external_bypasser._fetch_via_bypasser("https://annas-archive.gl/search?q=dune")
 
-    assert cookie_store.get_cf_cookies_for_domain("annas-archive.gl") == {}
+    assert cookie_store.get_cf_cookies_for_domain("annas-archive.gl") == {}, (
+        f"a dead {shape} cookie was kept for replay"
+    )
+
+
+def test_solution_cookie_expiry_is_coerced_not_trusted(monkeypatch):
+    """The solver is not ours; a stringified expiry must be read, not raised on."""
+    import time
+
+    import shelfmark.bypass.cookie_store as cookie_store
+    import shelfmark.bypass.external_bypasser as external_bypasser
+
+    monkeypatch.setattr(cookie_store, "_cf_cookies", {})
+    monkeypatch.setattr(cookie_store, "_cf_user_agents", {})
+    _stub_solution(
+        monkeypatch,
+        external_bypasser,
+        {
+            "response": "<html>ok</html>",
+            "cookies": [
+                {"name": "__ddg1_", "value": "live", "expires": str(int(time.time()) + 3600)},
+                {"name": "__ddg2_", "value": "dead", "expires": str(int(time.time()) - 60)},
+            ],
+        },
+    )
+
+    result = external_bypasser._fetch_via_bypasser("https://annas-archive.gl/search?q=dune")
+
+    assert result == "<html>ok</html>"
+    assert cookie_store.get_cf_cookies_for_domain("annas-archive.gl") == {"__ddg1_": "live"}
+
+
+def test_storing_clearance_can_never_discard_the_solved_page(monkeypatch):
+    """A solve costs ~30s; a surprise in the cookie shape must not throw it away.
+
+    The store call sits inside the request try/except, whose handler returns None -
+    so without its own guard a raising store turned a good page into a failed fetch
+    and sent the caller round for up to MAX_RETRY more solves.
+    """
+    import shelfmark.bypass.external_bypasser as external_bypasser
+
+    _stub_solution(
+        monkeypatch,
+        external_bypasser,
+        {"response": "<html>ok</html>", "cookies": [{"name": "__ddg1_", "value": "v"}]},
+    )
+
+    def boom(*_args, **_kwargs):
+        raise TypeError("unexpected cookie shape")
+
+    monkeypatch.setattr(external_bypasser, "store_extracted_cookies", boom)
+
+    assert (
+        external_bypasser._fetch_via_bypasser("https://annas-archive.gl/search?q=dune")
+        == "<html>ok</html>"
+    )
 
 
 def test_solution_without_cookies_is_still_returned(monkeypatch):
