@@ -537,14 +537,6 @@ SORT_MAPPING: dict[SortOrder, str] = {
     SortOrder.OLDEST: "release_year:asc",
 }
 
-# Mapping from abstract search type to Hardcover fields parameter
-SEARCH_TYPE_FIELDS: dict[SearchType, str] = {
-    SearchType.GENERAL: "title,isbns,series_names,author_names,alternative_titles",
-    SearchType.TITLE: "title,alternative_titles",
-    SearchType.AUTHOR: "author_names",
-    # ISBN is handled separately via search_by_isbn()
-}
-
 # `fields` becomes Typesense's `query_by`, but Hardcover keeps `num_typos` and
 # `query_by_weights` as fixed-length presets per query_type. Passing a different
 # number of fields than the preset expects makes Typesense reject the whole search,
