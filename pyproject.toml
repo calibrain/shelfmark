@@ -38,12 +38,12 @@ browser = [
 
 [dependency-groups]
 dev = [
-    "basedpyright>=1.39.9",
+    "basedpyright>=1.39.10",
     "prek",
     "pytest",
     "pytest-cov",
     "pytest-xdist>=3.8.0",
-    "ruff==0.16.2",
+    "ruff==0.16.3",
     "vulture>=2.14",
 ]
 
