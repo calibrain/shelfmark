@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.14"
 
 [[package]]
@@ -1510,7 +1510,7 @@ requires-dist = [
     { name = "gevent" },
     { name = "gevent-websocket" },
     { name = "gunicorn" },
-    { name = "httpx", extras = ["http2"], specifier = ">=0.27" },
+    { name = "httpx", extras = ["http2"], specifier = ">=0.28.1" },
     { name = "psutil" },
     { name = "pyautogui", marker = "extra == 'browser'" },
     { name = "python-socketio" },
