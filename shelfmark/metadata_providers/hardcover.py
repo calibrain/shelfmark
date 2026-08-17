@@ -318,6 +318,7 @@ query SearchFieldOptions(
         fields: $fields,
         weights: $weights
     ) {
+        error
         results
     }
 }
@@ -544,26 +545,46 @@ SEARCH_TYPE_FIELDS: dict[SearchType, str] = {
     # ISBN is handled separately via search_by_isbn()
 }
 
+# `fields` becomes Typesense's `query_by`, but Hardcover keeps `num_typos` and
+# `query_by_weights` as fixed-length presets per query_type. Passing a different
+# number of fields than the preset expects makes Typesense reject the whole search,
+# complaining that the number of num_typos values does not match the number of
+# query_by fields. So a Book search may only ever narrow to *these five* names --
+# a shorter list is rejected outright rather than searched, and any weights sent
+# alongside must match one-for-one.
+# Weights only bias ranking: a field weighted 0 still matches, so `fields` can no
+# longer restrict which fields a Book query looks at.
+BOOK_SEARCH_FIELDS = "title,alternative_titles,author_names,series_names,isbns"
+BOOK_SEARCH_FIELD_COUNT = 5
+BOOK_TITLE_WEIGHTS = "5,1,0,0,0"
+BOOK_TITLE_AUTHOR_WEIGHTS = "5,1,3,0,0"
+
 SERIES_SEARCH_FIELDS = "name,books,author_name"
 SERIES_SEARCH_WEIGHTS = "2,1,1"
 SERIES_SEARCH_SORT = "_text_match:desc,readers_count:desc"
 AUTHOR_SUGGESTION_FIELDS = "name,name_personal,alternate_names"
 AUTHOR_SUGGESTION_WEIGHTS = "4,3,2"
 AUTHOR_SUGGESTION_SORT = "_text_match:desc,books_count:desc"
-TITLE_SUGGESTION_FIELDS = "title,alternative_titles"
-TITLE_SUGGESTION_WEIGHTS = "5,2"
+TITLE_SUGGESTION_FIELDS = BOOK_SEARCH_FIELDS
+TITLE_SUGGESTION_WEIGHTS = "5,2,0,0,0"
 TITLE_SUGGESTION_SORT = "_text_match:desc,users_count:desc"
 
 # Hardcover forwards `sort` to Typesense's `sort_by` and rejects the whole search
 # if it does not like the value -- an unknown field, a bare field name with no
 # direction, more than three keys. A rejected search comes back as HTTP 200 with
 # no GraphQL errors and a null `results` body, which is otherwise indistinguishable
-# from "nothing matched". An empty sort is always accepted, so fall back to it and
-# keep the fallback sticky for a while rather than paying for a doomed request on
-# every search.
-SORT_FALLBACK = ""
+# from "nothing matched"; the reason only shows up in the sibling `error` field,
+# so every search asks for it. Dropping `sort` from the request is the one shape
+# Hardcover always accepts -- an empty string is a value like any other and has
+# been rejected too -- so retry that way and keep the fallback sticky for a while
+# rather than paying for a doomed request on every search.
 SORT_FALLBACK_TTL = 900.0
 _sort_fallback_until = 0.0
+
+
+def _without_sort(variables: dict[str, Any]) -> dict[str, Any]:
+    """Drop `sort` entirely so Hardcover applies its own default ordering."""
+    return {key: value for key, value in variables.items() if key != "sort"}
 
 
 def _search_payload_rejected(result: dict[str, Any] | None) -> bool:
@@ -578,6 +599,17 @@ def _search_payload_rejected(result: dict[str, Any] | None) -> bool:
     if not isinstance(root, dict) or "results" not in root:
         return False
     return root["results"] is None
+
+
+def _search_rejection_reason(result: dict[str, Any] | None) -> str:
+    """Return Hardcover's explanation for a rejected search, if it sent one."""
+    if not isinstance(result, dict):
+        return ""
+    root = result.get("search", result)
+    if not isinstance(root, dict):
+        return ""
+    error = root.get("error")
+    return error.strip() if isinstance(error, str) else ""
 
 
 def _combine_headline_description(headline: str | None, description: str | None) -> str | None:
@@ -1012,13 +1044,15 @@ class HardcoverProvider(MetadataProvider):
         """Build search query, fields, and weights based on provided values.
 
         Returns (query, fields, weights) tuple. Fields/weights are None for general search.
+        A narrowed search still sends all of BOOK_SEARCH_FIELDS -- Hardcover rejects a
+        shorter list outright -- and leans on the weights to rank the wanted field first.
         """
         if author and not title and not series:
             return author, None, None
         if title and not author and not series:
-            return title, "title,alternative_titles", "5,1"
+            return title, BOOK_SEARCH_FIELDS, BOOK_TITLE_WEIGHTS
         if author and title and not series:
-            return f"{title} {author}", "title,alternative_titles,author_names", "5,1,3"
+            return f"{title} {author}", BOOK_SEARCH_FIELDS, BOOK_TITLE_AUTHOR_WEIGHTS
         return default_query, None, None
 
     def _detect_list_url(self, query: str) -> tuple[str | None, str] | None:
@@ -2384,6 +2418,7 @@ class HardcoverProvider(MetadataProvider):
             graphql_query = """
             query SearchBooks($query: String!, $limit: Int!, $page: Int!, $sort: String, $fields: String, $weights: String) {
                 search(query: $query, query_type: "Book", per_page: $limit, page: $page, sort: $sort, fields: $fields, weights: $weights) {
+                    error
                     results
                 }
             }
@@ -2392,6 +2427,7 @@ class HardcoverProvider(MetadataProvider):
             graphql_query = """
             query SearchBooks($query: String!, $limit: Int!, $page: Int!, $sort: String) {
                 search(query: $query, query_type: "Book", per_page: $limit, page: $page, sort: $sort) {
+                    error
                     results
                 }
             }
@@ -2690,33 +2726,42 @@ class HardcoverProvider(MetadataProvider):
 
         sort = variables.get("sort")
         if sort and time.monotonic() < _sort_fallback_until:
-            variables = {**variables, "sort": SORT_FALLBACK}
+            variables = _without_sort(variables)
             sort = None
 
         result = self._execute_query(query, variables)
         if not _search_payload_rejected(result):
             return result
 
+        reason = _search_rejection_reason(result)
         if not sort:
             logger.error(
-                "Hardcover rejected this search (query_type=%s, fields=%s) and returned "
-                "no result body",
+                "Hardcover rejected this search (query_type=%s, fields=%s): %s",
                 variables.get("queryType", "Book"),
                 variables.get("fields"),
+                reason or "no error message",
+            )
+            return None
+
+        retry = self._execute_query(query, _without_sort(variables))
+        if _search_payload_rejected(retry):
+            # The sort was not the culprit, so leave sorting alone for other searches.
+            logger.error(
+                "Hardcover rejected this search (query_type=%s, fields=%s) with and without "
+                "a sort order: %s",
+                variables.get("queryType", "Book"),
+                variables.get("fields"),
+                _search_rejection_reason(retry) or reason or "no error message",
             )
             return None
 
         logger.warning(
-            "Hardcover rejected sort '%s'; retrying searches without a sort order for %ss",
+            "Hardcover rejected sort '%s' (%s); dropping the sort order from searches for %ss",
             sort,
+            reason or "no error message",
             int(SORT_FALLBACK_TTL),
         )
         _sort_fallback_until = time.monotonic() + SORT_FALLBACK_TTL
-
-        retry = self._execute_query(query, {**variables, "sort": SORT_FALLBACK})
-        if _search_payload_rejected(retry):
-            logger.error("Hardcover rejected this search even without a sort order")
-            return None
         return retry
 
     def _parse_search_result(self, item: dict) -> BookMetadata | None:

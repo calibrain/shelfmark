@@ -1,4 +1,8 @@
-from shelfmark.metadata_providers.hardcover import HardcoverProvider
+from shelfmark.metadata_providers.hardcover import (
+    TITLE_SUGGESTION_FIELDS,
+    TITLE_SUGGESTION_WEIGHTS,
+    HardcoverProvider,
+)
 
 
 class TestHardcoverFieldOptions:
@@ -130,8 +134,10 @@ class TestHardcoverFieldOptions:
             "limit": 7,
             "page": 1,
             "sort": "_text_match:desc,users_count:desc",
-            "fields": "title,alternative_titles",
-            "weights": "5,2",
+            # Hardcover rejects a Book search that narrows to fewer fields than its
+            # preset expects, so the typeahead sends the full list and leans on weights.
+            "fields": TITLE_SUGGESTION_FIELDS,
+            "weights": TITLE_SUGGESTION_WEIGHTS,
         }
 
     def test_get_search_field_options_skips_short_text_queries(self):
