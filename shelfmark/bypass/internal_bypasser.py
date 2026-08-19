@@ -5,7 +5,6 @@ import asyncio
 import json
 import os
 import random
-import shutil
 import signal
 import socket
 import stat
@@ -62,6 +61,7 @@ _BYPASS_SUBPROCESS_TIMEOUT_SECONDS = 420.0
 # branches of get() are bounded the same way.
 _IN_PROCESS_BYPASS_TIMEOUT_SECONDS = _BYPASS_SUBPROCESS_TIMEOUT_SECONDS
 _BYPASS_CHILD_ENV = "SHELFMARK_INTERNAL_BYPASSER_CHILD"
+_PARENT_WATCHDOG_INTERVAL_SECONDS = 5.0
 
 # Challenge detection indicators
 CLOUDFLARE_INDICATORS = [
@@ -98,8 +98,8 @@ DISPLAY: _DisplayState = {
     "ffmpeg_output": None,
 }
 LOCKED = threading.Lock()
-_PGREP_PATH = shutil.which("pgrep")
-_PKILL_PATH = shutil.which("pkill")
+_PROC_ROOT = Path("/proc")
+_BROWSER_PROCESS_PATTERNS = ("chrome", "chromium", "Xvfb", "ffmpeg")
 _RNG = random.SystemRandom()
 
 _CDP_OPERATION_ERRORS = (
@@ -260,61 +260,110 @@ async def _extract_cookies_from_cdp(driver: Any, page: Any, url: str) -> None:
         logger.debug("Failed to extract cookies: %s", e)
 
 
+def _read_process_cmdline(proc_dir: Path) -> str:
+    """Return a process's full command line, or "" when it cannot be read."""
+    try:
+        raw = (proc_dir / "cmdline").read_bytes()
+    except OSError:
+        return ""
+    return raw.replace(b"\x00", b" ").decode("utf-8", "replace").strip()
+
+
+def _read_process_pgid(proc_dir: Path) -> int | None:
+    """Return a process's group id from /proc/<pid>/stat, or None when unreadable."""
+    try:
+        stat_line = (proc_dir / "stat").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    # Field 2 (comm) is parenthesised and may itself contain spaces and parens, so the
+    # fields are only unambiguous after the last ')': state, ppid, pgrp, ...
+    fields = stat_line.rpartition(")")[2].split()
+    pgrp_index = 2
+    if len(fields) <= pgrp_index:
+        return None
+    try:
+        return int(fields[pgrp_index])
+    except ValueError:
+        return None
+
+
+def _find_browser_processes() -> list[tuple[int, int, str]]:
+    """Return (pid, pgid, cmdline) for every browser-ish process visible in /proc."""
+    found: list[tuple[int, int, str]] = []
+    try:
+        entries = list(_PROC_ROOT.iterdir())
+    except OSError as e:
+        logger.debug("Could not list %s: %s", _PROC_ROOT, e)
+        return found
+
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        cmdline = _read_process_cmdline(entry)
+        if not cmdline or not any(name in cmdline for name in _BROWSER_PROCESS_PATTERNS):
+            continue
+        pgid = _read_process_pgid(entry)
+        if pgid is None:
+            continue
+        found.append((int(entry.name), pgid, cmdline))
+    return found
+
+
+def _kill_process(pid: int, cmdline: str) -> bool:
+    """SIGKILL one process, reporting whether it was actually signalled."""
+    try:
+        os.kill(pid, signal.SIGKILL)
+    except ProcessLookupError:
+        return False
+    except OSError as e:
+        logger.warning("Failed to kill pid %s: %s", pid, e)
+        return False
+    logger.debug("Killed leftover process %s: %s", pid, cmdline[:120])
+    return True
+
+
 def _cleanup_orphan_processes() -> int:
-    """Kill orphan Chrome/Xvfb/ffmpeg processes. Only runs in Docker mode."""
+    """Kill leftover Chrome/Xvfb/ffmpeg processes. Only runs in Docker mode.
+
+    Scoped to this bypass session's process group plus groups whose leader has died.
+    A container-wide sweep (the old `pkill -9 -f chrome`) also matched the browsers a
+    concurrently running bypass was still driving, so with MAX_CONCURRENT_DOWNLOADS > 1
+    every worker that started a solve killed the others' browsers (#1231).
+    """
     if not env.DOCKERMODE:
         return 0
 
     _stop_ffmpeg_recording()
 
-    processes_to_kill = ["chrome", "chromium", "Xvfb", "ffmpeg"]
-    total_killed = 0
-
-    logger.debug("Checking for orphan processes...")
+    logger.debug("Checking for leftover browser processes...")
     logger.log_resource_usage()
 
-    if _PGREP_PATH is None or _PKILL_PATH is None:
-        logger.warning("Skipping orphan-process cleanup because pgrep/pkill are unavailable")
+    if not _PROC_ROOT.is_dir():
+        logger.warning("Skipping browser-process cleanup because %s is unavailable", _PROC_ROOT)
         return 0
 
-    for proc_name in processes_to_kill:
-        try:
-            result = subprocess.run(
-                [_PGREP_PATH, "-f", proc_name],
-                capture_output=True,
-                check=False,
-                text=True,
-                timeout=5,
-            )
-            if result.returncode != 0 or not result.stdout.strip():
-                continue
+    own_pid = os.getpid()
+    own_pgid = os.getpgrp()
+    total_killed = 0
 
-            pids = result.stdout.strip().split("\n")
-            count = len(pids)
-            logger.info("Found %s orphan %s process(es), killing...", count, proc_name)
-
-            kill_result = subprocess.run(
-                [_PKILL_PATH, "-9", "-f", proc_name],
-                capture_output=True,
-                check=False,
-                timeout=5,
-            )
-            if kill_result.returncode == 0:
-                total_killed += count
-            else:
-                logger.warning("pkill for %s returned %s", proc_name, kill_result.returncode)
-
-        except subprocess.TimeoutExpired:
-            logger.warning("Timeout while checking for %s processes", proc_name)
-        except _SUBPROCESS_OPERATION_ERRORS as e:
-            logger.debug("Error checking for %s processes: %s", proc_name, e)
+    for pid, pgid, cmdline in _find_browser_processes():
+        if pid == own_pid:
+            continue
+        # Another live process group means another bypass session: its browsers are in
+        # use, not orphans. Only our own group and groups whose leader is gone (a helper
+        # that died or was killed, leaving its browser behind) are ours to clean up.
+        if pgid != own_pgid and (_PROC_ROOT / str(pgid)).exists():
+            logger.debug("Leaving pid %s to its live bypass session (pgid %s)", pid, pgid)
+            continue
+        if _kill_process(pid, cmdline):
+            total_killed += 1
 
     if total_killed > 0:
         time.sleep(1)
-        logger.info("Cleaned up %s orphan process(es)", total_killed)
+        logger.info("Cleaned up %s leftover browser process(es)", total_killed)
         logger.log_resource_usage()
     else:
-        logger.debug("No orphan processes found")
+        logger.debug("No leftover browser processes found")
 
     return total_killed
 
@@ -804,6 +853,21 @@ def _prepare_child_browser_env(env_vars: dict[str, str]) -> dict[str, str]:
     return env_vars
 
 
+def _terminate_helper_session(proc: subprocess.Popen[str]) -> None:
+    """Kill the bypass helper and every process it spawned.
+
+    start_new_session makes the helper a session leader, so its pid doubles as the
+    process-group id of the browser tree underneath it and one killpg reaches all of it.
+    """
+    if hasattr(os, "killpg"):
+        with suppress(OSError):
+            os.killpg(proc.pid, signal.SIGKILL)
+    with suppress(OSError):
+        proc.kill()
+    with suppress(OSError, subprocess.SubprocessError):
+        proc.wait(timeout=5)
+
+
 def _get_via_subprocess(url: str, retry: int, cancel_flag: Event | None = None) -> str:
     """Run the browser bypass in a helper process isolated from gunicorn/gevent."""
     _check_cancellation(cancel_flag, "Bypass cancelled before helper process")
@@ -830,14 +894,25 @@ def _get_via_subprocess(url: str, retry: int, cancel_flag: Event | None = None) 
         stdin=subprocess.PIPE,
         text=True,
         env=env_vars,
+        # Give the helper its own session: Chrome, Xvfb and ffmpeg inherit its process
+        # group, which is what lets the cleanup sweep tell this bypass's browsers apart
+        # from a concurrent worker's (#1231) and lets us kill the whole tree below.
+        start_new_session=True,
     )
+    timed_out = False
     try:
         proc.communicate(json.dumps(payload), timeout=_BYPASS_SUBPROCESS_TIMEOUT_SECONDS)
     except subprocess.TimeoutExpired:
-        proc.kill()
-        proc.wait()
+        timed_out = True
+    finally:
+        # Always tear the session down, not just on timeout: killing the helper alone
+        # leaves its Chrome and Xvfb running, and those leftovers are what made the next
+        # worker's browser fail to start in the first place.
+        _terminate_helper_session(proc)
+
+    if timed_out:
         msg = "Internal bypasser helper process timed out"
-        raise TimeoutError(msg) from None
+        raise TimeoutError(msg)
 
     try:
         result = json.loads(result_path.read_text())
@@ -1207,6 +1282,38 @@ def _apply_parent_dns_config(dns_config: dict[str, Any]) -> None:
         logger.warning("Could not apply parent DNS config (%s): %s", provider, exc)
 
 
+def _terminate_own_session() -> None:
+    """SIGKILL this process and every process it spawned, browser included."""
+    if hasattr(os, "killpg") and os.getpgrp() == os.getpid():
+        with suppress(OSError):
+            os.killpg(os.getpgrp(), signal.SIGKILL)
+    # A thread cannot end the process any other way; sys.exit would only end itself.
+    os._exit(1)
+
+
+def _watch_parent_process(original_ppid: int, interval: float) -> None:
+    """Take the browser down with us once the app process that spawned us is gone.
+
+    Cleanup only reclaims process groups whose leader has died, so a helper that outlives
+    its parent (worker restart, OOM kill) would sit there holding a browser that no later
+    bypass is allowed to touch.
+    """
+    while os.getppid() == original_ppid:
+        time.sleep(interval)
+    logger.warning("Bypass helper lost its parent process; taking the browser down")
+    _terminate_own_session()
+
+
+def _start_parent_watchdog() -> None:
+    """Watch the spawning process in the background for the life of this helper."""
+    threading.Thread(
+        target=_watch_parent_process,
+        args=(os.getppid(), _PARENT_WATCHDOG_INTERVAL_SECONDS),
+        daemon=True,
+        name="BypassParentWatchdog",
+    ).start()
+
+
 def _run_child_process() -> int:
     """CLI entrypoint used by the Docker helper subprocess."""
     request = json.loads(sys.stdin.read() or "{}")
@@ -1243,4 +1350,7 @@ def _run_child_process() -> int:
 
 
 if __name__ == "__main__":
+    # Started here rather than in _run_child_process() so it only ever watches a real
+    # spawned helper, never a test or an embedded call.
+    _start_parent_watchdog()
     raise SystemExit(_run_child_process())
