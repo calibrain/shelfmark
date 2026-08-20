@@ -1,6 +1,5 @@
 import asyncio
 import json
-import subprocess
 import threading
 from pathlib import Path
 
