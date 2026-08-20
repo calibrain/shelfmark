@@ -843,6 +843,9 @@ class ExternalClientHandler(DownloadHandler, ABC):
                             expected_hash=request.expected_hash,
                             seeding_time_limit=request.seeding_time_limit,
                             ratio_limit=request.ratio_limit,
+                            # rTorrent has no category concept, so its audiobook label
+                            # can only be chosen from the content type (#1235).
+                            content_type=task.content_type,
                         )
                     except Exception as e:
                         if not refresh_attempted:
