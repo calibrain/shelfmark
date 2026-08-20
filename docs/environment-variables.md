@@ -1977,7 +1977,7 @@ Move deletes the job from your usenet client after import; Copy keeps it in the 
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
 | `HARDCOVER_ENABLED` | Enable Hardcover as a metadata provider for book searches | boolean | `false` |
-| `HARDCOVER_API_KEY` | Get your API key from hardcover.app/account/api | string (secret) | _none_ |
+| `HARDCOVER_API_KEY` | Get your API key from hardcover.app/account/api (starts with hc_pat_) | string (secret) | _none_ |
 | `HARDCOVER_DEFAULT_SORT` | Default sort order for Hardcover search results. | string (choice) | `relevance` |
 | `HARDCOVER_EXCLUDE_COMPILATIONS` | Filter out compilations, anthologies, and omnibus editions from search results | boolean | `false` |
 | `HARDCOVER_EXCLUDE_UNRELEASED` | Filter out books with a release year in the future | boolean | `false` |
@@ -1999,7 +1999,7 @@ Enable Hardcover as a metadata provider for book searches
 
 **API Key**
 
-Get your API key from hardcover.app/account/api
+Get your API key from hardcover.app/account/api (starts with hc_pat_)
 
 - **Type:** string (secret)
 - **Default:** _none_
