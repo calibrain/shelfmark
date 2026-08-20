@@ -23,7 +23,11 @@ from shelfmark.release_sources import (
     register_source,
 )
 from shelfmark.release_sources.audiobookbay import scraper
-from shelfmark.release_sources.audiobookbay.utils import normalize_hostname, parse_size
+from shelfmark.release_sources.audiobookbay.utils import (
+    normalize_hostname,
+    normalize_search_punctuation,
+    parse_size,
+)
 
 logger = setup_logger(__name__)
 MIN_RELEVANCE_QUERY_WORD_LENGTH = 2
@@ -227,10 +231,12 @@ class AudiobookBaySource(ReleaseSource):
                         deduped_queries[index + 1].lower(),
                     )
 
-            # Extract query words for relevance checking
+            # Extract query words for relevance checking. Both sides of the
+            # comparison are punctuation-normalized: scraped titles carry the
+            # typographic forms WordPress renders, queries carry the ASCII ones.
             query_words = {
                 word.lower()
-                for word in query_lower.split()
+                for word in normalize_search_punctuation(query_lower).split()
                 if len(word) > MIN_RELEVANCE_QUERY_WORD_LENGTH
             }
 
@@ -239,7 +245,7 @@ class AudiobookBaySource(ReleaseSource):
                 try:
                     raw_title = result["title"]
                     title, author = _split_title_and_author(raw_title)
-                    title_for_filter = raw_title.lower()
+                    title_for_filter = normalize_search_punctuation(raw_title).lower()
 
                     # Basic relevance check: ensure title contains at least one query word
                     # This filters out homepage "Latest" feed items that may leak through
