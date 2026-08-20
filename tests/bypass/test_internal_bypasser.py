@@ -545,30 +545,59 @@ def test_cleanup_is_skipped_without_proc(monkeypatch, tmp_path):
     assert internal_bypasser._cleanup_orphan_processes() == 0
 
 
+class _FakeHelperStdin:
+    """The request pipe: a write is how the helper receives one request."""
+
+    def __init__(self, process):
+        self._process = process
+        self.closed = False
+
+    def write(self, data):
+        self._process.serve(data)
+
+    def flush(self):
+        return None
+
+    def close(self):
+        self.closed = True
+
+
 class _FakeHelperProcess:
-    """Stand-in for the bypass helper subprocess."""
+    """Stand-in for the bypass helper subprocess.
+
+    The helper serves one request per line of stdin and answers by writing the result file
+    the request named, so that is what this fakes: a write produces an answer.
+    """
 
     def __init__(self, *_args, **kwargs):
         self.kwargs = kwargs
         self.pid = 4242
-        self.returncode = 0
-        self.timed_out = False
+        self.returncode = None
+        self.answers = True
         self.killed = False
         self.waited = False
+        self.stdin = _FakeHelperStdin(self)
+        self.requests: list[dict] = []
 
-    def communicate(self, payload, timeout=None):
-        if self.timed_out:
-            raise subprocess.TimeoutExpired(cmd="helper", timeout=timeout)
+    def serve(self, payload):
         request = json.loads(payload)
+        self.requests.append(request)
+        if not self.answers:
+            return
         result = {"ok": True, "html": "<html>solved</html>", "cookies": {}, "user_agents": {}}
         Path(request["result_path"]).write_text(json.dumps(result), encoding="utf-8")
-        return "", ""
+
+    def poll(self):
+        return self.returncode
 
     def kill(self):
         self.killed = True
+        self.returncode = -9
 
     def wait(self, timeout=None):
         self.waited = True
+        if self.returncode is None:
+            self.returncode = 0
         return self.returncode
 
 
@@ -578,13 +607,47 @@ def _patch_helper_subprocess(monkeypatch, internal_bypasser, process, killed_gro
     monkeypatch.setattr(
         internal_bypasser.os, "killpg", lambda pgid, _sig: killed_groups.append(pgid)
     )
+    # A fresh helper per test: the module-level one is shared, and a process parked by one
+    # test would be handed to the next.
+    helper = internal_bypasser._BypassHelper()
+    monkeypatch.setattr(internal_bypasser._BypassHelper, "_idle_timeout", lambda _self: 0.0)
+    monkeypatch.setattr(internal_bypasser, "_BYPASS_HELPER", helper)
+    return helper
 
 
 def test_helper_runs_in_its_own_session_and_is_torn_down(monkeypatch):
     """Regression test for issue #1231: the helper's Chrome and Xvfb must belong to the
     helper's own process group, and the whole group must die with it - otherwise the
     leftovers break the next worker's browser and can only be cleared by a sweep broad
-    enough to kill a concurrent worker's browser too."""
+    enough to kill a concurrent worker's browser too.
+
+    The helper outlives a single request, so the teardown happens when it is dropped rather
+    than after every solve. Each bypass still closes its own browser, so what survives in
+    between is the process, not a Chrome.
+    """
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    processes: list[_FakeHelperProcess] = []
+    killed_groups: list[int] = []
+
+    def _make_process(*args, **kwargs):
+        process = _FakeHelperProcess(*args, **kwargs)
+        processes.append(process)
+        return process
+
+    helper = _patch_helper_subprocess(monkeypatch, internal_bypasser, _make_process, killed_groups)
+
+    assert internal_bypasser._get_via_subprocess("https://example.com", 1) == "<html>solved</html>"
+    assert processes[0].kwargs["start_new_session"] is True
+    assert killed_groups == [], "the helper was torn down after a single request"
+
+    helper._discard()
+
+    assert killed_groups == [processes[0].pid]
+
+
+def test_helper_serves_a_second_request_without_respawning(monkeypatch):
+    """The interpreter start and imports are paid once, not per protected request."""
     import shelfmark.bypass.internal_bypasser as internal_bypasser
 
     processes: list[_FakeHelperProcess] = []
@@ -597,9 +660,14 @@ def test_helper_runs_in_its_own_session_and_is_torn_down(monkeypatch):
 
     _patch_helper_subprocess(monkeypatch, internal_bypasser, _make_process, killed_groups)
 
-    assert internal_bypasser._get_via_subprocess("https://example.com", 1) == "<html>solved</html>"
-    assert processes[0].kwargs["start_new_session"] is True
-    assert killed_groups == [processes[0].pid]
+    internal_bypasser._get_via_subprocess("https://example.com/one", 1)
+    internal_bypasser._get_via_subprocess("https://example.com/two", 1)
+
+    assert len(processes) == 1
+    assert [request["url"] for request in processes[0].requests] == [
+        "https://example.com/one",
+        "https://example.com/two",
+    ]
 
 
 def test_helper_timeout_kills_the_whole_session(monkeypatch):
@@ -611,11 +679,12 @@ def test_helper_timeout_kills_the_whole_session(monkeypatch):
 
     def _make_process(*args, **kwargs):
         process = _FakeHelperProcess(*args, **kwargs)
-        process.timed_out = True
+        process.answers = False  # accepts the request, never writes a result
         processes.append(process)
         return process
 
     _patch_helper_subprocess(monkeypatch, internal_bypasser, _make_process, killed_groups)
+    monkeypatch.setattr(internal_bypasser, "_BYPASS_SUBPROCESS_TIMEOUT_SECONDS", 0.1)
 
     with pytest.raises(TimeoutError):
         internal_bypasser._get_via_subprocess("https://example.com", 1)

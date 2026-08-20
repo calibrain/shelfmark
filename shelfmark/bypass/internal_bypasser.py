@@ -62,6 +62,19 @@ _BYPASS_SUBPROCESS_TIMEOUT_SECONDS = 420.0
 # branches of get() are bounded the same way.
 _IN_PROCESS_BYPASS_TIMEOUT_SECONDS = _BYPASS_SUBPROCESS_TIMEOUT_SECONDS
 _BYPASS_CHILD_ENV = "SHELFMARK_INTERNAL_BYPASSER_CHILD"
+# The helper bounds each bypass below the parent's deadline, so it is the side that gives
+# up first: it still gets to report the timeout and close its browser, and stays available
+# for the next request. A parent that hit its deadline first could only kill the helper,
+# throwing away a process the next request would have to start again.
+_CHILD_BYPASS_TIMEOUT_SECONDS = _BYPASS_SUBPROCESS_TIMEOUT_SECONDS - 30.0
+# The helper publishes its answer by writing the result file the request named, so the
+# parent waits by watching for that file rather than by reading a stream it would have to
+# demultiplex from the helper's log output.
+_HELPER_RESULT_POLL_SECONDS = 0.05
+# Closing the helper's stdin asks it to shut down; this is how long it may take to finish
+# what it is doing and exit before its session is killed instead.
+_HELPER_SHUTDOWN_GRACE_SECONDS = 15.0
+_HELPER_IDLE_TIMEOUT_DEFAULT = 180.0
 _PARENT_WATCHDOG_INTERVAL_SECONDS = 5.0
 
 
@@ -805,13 +818,21 @@ def _run_bypass_in_current_process(url: str, retry: int, cancel_flag: Event | No
             if driver:
                 await _close_cdp_driver(driver)
 
-    if os.environ.get(_BYPASS_CHILD_ENV) == "1":
-        return asyncio.run(_run_bypass())
-    # Bound the wait: this path runs in-process (non-Docker installs), holds the module-wide
-    # LOCKED for its whole duration, and neither page.get() nor page.wait() has a timeout of
-    # its own. Without a deadline here a single wedged CDP session blocks every subsequent
-    # bypass in the process forever.
-    return _CDP_WORKER.run(_run_bypass(), timeout=_IN_PROCESS_BYPASS_TIMEOUT_SECONDS)
+    # Bound the wait: this holds the module-wide LOCKED for its whole duration, and neither
+    # page.get() nor page.wait() has a timeout of its own. Without a deadline here a single
+    # wedged CDP session blocks every subsequent bypass in the process forever.
+    #
+    # The helper goes through the worker too, rather than asyncio.run: that owns a loop for
+    # one call and closes it on the way out, so a helper serving many requests would build
+    # and tear down a loop per bypass and would carry no deadline of its own. The worker's
+    # loop lives in a thread, outlives any single bypass, and cancels the coroutine when the
+    # deadline passes.
+    timeout = (
+        _CHILD_BYPASS_TIMEOUT_SECONDS
+        if os.environ.get(_BYPASS_CHILD_ENV) == "1"
+        else _IN_PROCESS_BYPASS_TIMEOUT_SECONDS
+    )
+    return _CDP_WORKER.run(_run_bypass(), timeout=timeout)
 
 
 def _store_child_bypass_state(payload: dict[str, Any]) -> None:
@@ -853,6 +874,192 @@ def _terminate_helper_session(proc: subprocess.Popen[str]) -> None:
         proc.wait(timeout=5)
 
 
+class _BypassHelper:
+    """The helper subprocess that runs the bypasses, kept alive across them.
+
+    Spawning it costs about 4.5 seconds of interpreter start and imports before any work
+    begins, paid on every protected request - and a single search issues several. What it
+    keeps is the process, not the browser: each bypass still starts and closes its own
+    Chrome, so nothing accumulates between requests.
+
+    Protocol: one JSON request per line on stdin, answered by writing the result file that
+    request named. stdout and stderr stay attached to the parent's, so helper logs keep
+    showing up in `docker logs` as before.
+
+    Only one request is ever in flight - get() serializes every bypass behind LOCKED. The
+    lock here is for the idle reaper, which runs on a timer thread.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.RLock()
+        self._proc: subprocess.Popen[str] | None = None
+        self._last_used = 0.0
+        self._idle_timer: threading.Timer | None = None
+
+    def _idle_timeout(self) -> float:
+        return _coerce_non_negative_float(
+            app_config.get("BYPASS_BROWSER_IDLE_TIMEOUT", _HELPER_IDLE_TIMEOUT_DEFAULT),
+            _HELPER_IDLE_TIMEOUT_DEFAULT,
+        )
+
+    def _spawn(self) -> subprocess.Popen[str]:
+        env_vars = os.environ.copy()
+        env_vars[_BYPASS_CHILD_ENV] = "1"
+        env_vars = _prepare_child_browser_env(env_vars)
+        return subprocess.Popen(
+            [sys.executable, "-m", "shelfmark.bypass.internal_bypasser"],
+            stdin=subprocess.PIPE,
+            text=True,
+            env=env_vars,
+            # Give the helper its own session: Chrome, Xvfb and ffmpeg inherit its process
+            # group, which is what lets the cleanup sweep tell this helper's browsers apart
+            # from a concurrent worker's (#1231) and lets us kill the whole tree below.
+            start_new_session=True,
+        )
+
+    def _running(self) -> subprocess.Popen[str] | None:
+        proc = self._proc
+        if proc is None:
+            return None
+        if proc.poll() is not None or proc.stdin is None or proc.stdin.closed:
+            return None
+        return proc
+
+    def _ensure_running(self) -> subprocess.Popen[str]:
+        proc = self._running()
+        if proc is not None:
+            return proc
+        if self._proc is not None:
+            logger.info("Bypass helper exited (code %s), starting a new one", self._proc.returncode)
+            self._discard()
+        self._proc = self._spawn()
+        return self._proc
+
+    def _discard(self) -> None:
+        """Stop the helper and forget it."""
+        proc = self._proc
+        self._proc = None
+        if proc is None:
+            return
+
+        # Closing stdin ends the helper's request loop, so an idle helper gets to exit on
+        # its own. One mid-bypass cannot answer, and is killed below once the grace passes.
+        with suppress(OSError):
+            if proc.stdin is not None and not proc.stdin.closed:
+                proc.stdin.close()
+        try:
+            proc.wait(timeout=_HELPER_SHUTDOWN_GRACE_SECONDS)
+        except subprocess.TimeoutExpired:
+            logger.warning("Bypass helper did not exit on request, killing its session")
+
+        # Tear the session down either way: a helper killed mid-bypass leaves its Chrome
+        # and Xvfb running, and those leftovers are what made the next worker's browser
+        # fail to start. Harmless once it has already exited.
+        _terminate_helper_session(proc)
+
+    def _cancel_idle_timer(self) -> None:
+        if self._idle_timer is not None:
+            self._idle_timer.cancel()
+            self._idle_timer = None
+
+    def _arm_idle_timer(self) -> None:
+        self._cancel_idle_timer()
+        timeout = self._idle_timeout()
+        if self._proc is None or timeout <= 0:
+            return
+        timer = threading.Timer(timeout, self._reap_if_idle)
+        timer.daemon = True
+        self._idle_timer = timer
+        timer.start()
+
+    def _reap_if_idle(self) -> None:
+        with self._lock:
+            if self._proc is None:
+                return
+            idle_for = time.monotonic() - self._last_used
+            timeout = self._idle_timeout()
+            if idle_for < timeout:
+                # A bypass started while this timer was waiting for the lock.
+                self._arm_idle_timer()
+                return
+            logger.info("Closing idle bypass helper after %.0fs without work", idle_for)
+            self._discard()
+
+    def run(
+        self,
+        payload: dict[str, Any],
+        timeout: float,
+        cancel_flag: Event | None,
+    ) -> dict[str, Any]:
+        with self._lock:
+            self._cancel_idle_timer()
+            try:
+                return self._exchange(payload, timeout, cancel_flag)
+            finally:
+                self._last_used = time.monotonic()
+                self._arm_idle_timer()
+
+    def _exchange(
+        self,
+        payload: dict[str, Any],
+        timeout: float,
+        cancel_flag: Event | None,
+    ) -> dict[str, Any]:
+        request_line = json.dumps(payload) + "\n"
+        proc = self._ensure_running()
+        try:
+            self._write(proc, request_line)
+        except OSError as exc:
+            # A live helper can die between the liveness check and the write, so one retry
+            # on a fresh process. A fresh one failing here is a real failure.
+            logger.info("Bypass helper closed its pipe (%s), retrying on a new one", exc)
+            self._discard()
+            proc = self._ensure_running()
+            self._write(proc, request_line)
+
+        return self._await_result(proc, Path(str(payload["result_path"])), timeout, cancel_flag)
+
+    def _write(self, proc: subprocess.Popen[str], request_line: str) -> None:
+        if proc.stdin is None:
+            msg = "Bypass helper has no stdin pipe"
+            raise OSError(msg)
+        proc.stdin.write(request_line)
+        proc.stdin.flush()
+
+    def _await_result(
+        self,
+        proc: subprocess.Popen[str],
+        result_path: Path,
+        timeout: float,
+        cancel_flag: Event | None,
+    ) -> dict[str, Any]:
+        deadline = time.monotonic() + timeout
+        while not result_path.exists():
+            if proc.poll() is not None:
+                returncode = proc.returncode
+                self._discard()
+                msg = f"Internal bypasser helper exited without a result (code {returncode})"
+                raise RuntimeError(msg)
+            if cancel_flag is not None and cancel_flag.is_set():
+                # The helper is mid-bypass and cannot be told to stop, so it goes.
+                self._discard()
+                _check_cancellation(cancel_flag, "Bypass cancelled while waiting for helper")
+            if time.monotonic() >= deadline:
+                self._discard()
+                msg = "Internal bypasser helper process timed out"
+                raise TimeoutError(msg)
+            time.sleep(_HELPER_RESULT_POLL_SECONDS)
+
+        try:
+            return json.loads(result_path.read_text(encoding="utf-8"))
+        finally:
+            with suppress(OSError):
+                result_path.unlink()
+
+
+_BYPASS_HELPER = _BypassHelper()
+
+
 def _get_via_subprocess(url: str, retry: int, cancel_flag: Event | None = None) -> str:
     """Run the browser bypass in a helper process isolated from gunicorn/gevent."""
     _check_cancellation(cancel_flag, "Bypass cancelled before helper process")
@@ -863,50 +1070,15 @@ def _get_via_subprocess(url: str, retry: int, cancel_flag: Event | None = None) 
     # freshly spawned helper would otherwise pre-resolve AA hostnames against the system
     # resolver - which may be blocked or hijacked by the user's ISP. Pass the parent's
     # active DNS config so the helper mirrors it (e.g. DoH) when building Chrome's host
-    # resolver rules.
+    # resolver rules. Sent with every request, not just at spawn, because a helper outlives
+    # changes the parent makes to its DNS provider.
     payload = {
         "url": url,
         "retry": retry,
         "result_path": str(result_path),
         "dns_config": network.get_dns_config(),
     }
-    env_vars = os.environ.copy()
-    env_vars[_BYPASS_CHILD_ENV] = "1"
-    env_vars = _prepare_child_browser_env(env_vars)
-
-    proc = subprocess.Popen(
-        [sys.executable, "-m", "shelfmark.bypass.internal_bypasser"],
-        stdin=subprocess.PIPE,
-        text=True,
-        env=env_vars,
-        # Give the helper its own session: Chrome, Xvfb and ffmpeg inherit its process
-        # group, which is what lets the cleanup sweep tell this bypass's browsers apart
-        # from a concurrent worker's (#1231) and lets us kill the whole tree below.
-        start_new_session=True,
-    )
-    timed_out = False
-    try:
-        proc.communicate(json.dumps(payload), timeout=_BYPASS_SUBPROCESS_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired:
-        timed_out = True
-    finally:
-        # Always tear the session down, not just on timeout: killing the helper alone
-        # leaves its Chrome and Xvfb running, and those leftovers are what made the next
-        # worker's browser fail to start in the first place.
-        _terminate_helper_session(proc)
-
-    if timed_out:
-        msg = "Internal bypasser helper process timed out"
-        raise TimeoutError(msg)
-
-    try:
-        result = json.loads(result_path.read_text())
-    except FileNotFoundError as exc:
-        msg = f"Internal bypasser helper exited without a result (code {proc.returncode})"
-        raise RuntimeError(msg) from exc
-    finally:
-        with suppress(OSError):
-            result_path.unlink()
+    result = _BYPASS_HELPER.run(payload, _BYPASS_SUBPROCESS_TIMEOUT_SECONDS, cancel_flag)
 
     if not isinstance(result, dict):
         msg = "Internal bypasser helper returned an invalid result"
@@ -1299,9 +1471,20 @@ def _start_parent_watchdog() -> None:
     ).start()
 
 
-def _run_child_process() -> int:
-    """CLI entrypoint used by the Docker helper subprocess."""
-    request = json.loads(sys.stdin.read() or "{}")
+def _publish_result(result_path: Path, payload: dict[str, Any]) -> None:
+    """Write the result file atomically.
+
+    The parent decides the request is answered the moment this path exists, so it must
+    never observe a half-written file. Rename within the same directory is atomic.
+    """
+    tmp_path = result_path.with_name(result_path.name + ".part")
+    tmp_path.write_text(json.dumps(payload), encoding="utf-8")
+    tmp_path.replace(result_path)
+
+
+def _handle_child_request(request_line: str) -> int:
+    """Answer one request from the parent."""
+    request = json.loads(request_line or "{}")
     result_path = Path(str(request["result_path"]))
     url = str(request["url"])
     retry = _coerce_positive_int(
@@ -1321,7 +1504,7 @@ def _run_child_process() -> int:
             "cookies": cookies,
             "user_agents": user_agents,
         }
-        result_path.write_text(json.dumps(payload), encoding="utf-8")
+        _publish_result(result_path, payload)
     except Exception as exc:  # noqa: BLE001 - helper boundary must serialize failures.
         payload = {
             "ok": False,
@@ -1329,9 +1512,26 @@ def _run_child_process() -> int:
             "error": str(exc),
             "traceback": traceback.format_exc(),
         }
-        result_path.write_text(json.dumps(payload), encoding="utf-8")
+        _publish_result(result_path, payload)
         return 1
     return 0
+
+
+def _run_child_process() -> int:
+    """CLI entrypoint used by the Docker helper subprocess.
+
+    Serves one request per line of stdin until the parent closes the pipe, so a burst of
+    protected requests - a single search is several - pays the interpreter start and imports
+    once instead of per request. Each bypass still gets its own browser, closed before the
+    answer is published.
+    """
+    exit_code = 0
+    for line in sys.stdin:
+        request_line = line.strip()
+        if not request_line:
+            continue
+        exit_code = _handle_child_request(request_line)
+    return exit_code
 
 
 if __name__ == "__main__":

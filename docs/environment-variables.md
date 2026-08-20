@@ -2304,6 +2304,7 @@ Override destination based on content type metadata.
 | `EXT_BYPASSER_URL` | URL of the external bypasser service (e.g., FlareSolverr). | string | `http://flaresolverr:8191` |
 | `EXT_BYPASSER_PATH` | API path for the external bypasser. | string | `/v1` |
 | `EXT_BYPASSER_TIMEOUT` | Timeout for external bypasser requests in milliseconds. | number | `60000` |
+| `BYPASS_BROWSER_IDLE_TIMEOUT` | How long the bypass helper process may sit unused before it is shut down. Higher keeps more searches fast, lower frees memory sooner. | number | `180` |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -2358,6 +2359,17 @@ Timeout for external bypasser requests in milliseconds.
 - **Default:** `60000`
 - **Requires restart:** Yes
 - **Constraints:** min: 10000, max: 300000
+
+#### `BYPASS_BROWSER_IDLE_TIMEOUT`
+
+**Bypasser Idle Timeout (seconds)**
+
+How long the bypass helper process may sit unused before it is shut down. Higher keeps more searches fast, lower frees memory sooner.
+
+- **Type:** number
+- **Default:** `180`
+- **Requires restart:** Yes
+- **Constraints:** min: 30, max: 3600
 
 </details>
 
