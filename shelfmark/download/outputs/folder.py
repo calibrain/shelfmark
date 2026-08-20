@@ -205,6 +205,7 @@ def process_folder_output(
         is_torrent=is_torrent,
         preserve_source=preserve_source,
         organization_mode=plan.organization_mode,
+        source_root=source_path,
     )
 
     if error:

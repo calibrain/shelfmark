@@ -169,6 +169,7 @@ def transfer_book_files(
     is_torrent: bool,
     preserve_source: bool = False,
     organization_mode: str | None = None,
+    source_root: Path | None = None,
 ) -> tuple[list[Path], str | None, dict[str, int]]:
     """Transfer discovered book files into their final destination layout."""
     if not book_files:
@@ -238,6 +239,19 @@ def transfer_book_files(
 
         return final_paths, None, op_counts
 
+    transfer_destination = destination
+    if (
+        is_torrent
+        and is_audiobook
+        and len(book_files) > 1
+        and organization_mode in {"none", "rename"}
+        and source_root is not None
+    ):
+        source_folder = sanitize_filename(source_root.name)
+        if source_folder:
+            transfer_destination = destination / source_folder
+            run_blocking_io(transfer_destination.mkdir, parents=True, exist_ok=True)
+
     for book_file in book_files:
         if len(book_files) == 1 and organization_mode != "none":
             if not task.format:
@@ -256,7 +270,7 @@ def transfer_book_files(
         else:
             filename = book_file.name
 
-        dest_path = destination / filename
+        dest_path = transfer_destination / filename
         final_path, op = _transfer_single_file(
             book_file,
             dest_path,
