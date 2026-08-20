@@ -27,6 +27,7 @@ from seleniumbase import cdp_driver
 from seleniumbase.undetected.cdp_driver.connection import ProtocolException
 
 from shelfmark.bypass import BypassCancelledError
+from shelfmark.bypass.challenge import CLOUDFLARE_INDICATORS, DDOS_GUARD_INDICATORS
 from shelfmark.bypass.cookie_store import (
     clear_cf_cookies,
     export_store,
@@ -62,22 +63,6 @@ _BYPASS_SUBPROCESS_TIMEOUT_SECONDS = 420.0
 _IN_PROCESS_BYPASS_TIMEOUT_SECONDS = _BYPASS_SUBPROCESS_TIMEOUT_SECONDS
 _BYPASS_CHILD_ENV = "SHELFMARK_INTERNAL_BYPASSER_CHILD"
 _PARENT_WATCHDOG_INTERVAL_SECONDS = 5.0
-
-# Challenge detection indicators
-CLOUDFLARE_INDICATORS = [
-    "just a moment",
-    "verify you are human",
-    "verifying you are human",
-    "cloudflare.com/products/turnstile",
-]
-
-DDOS_GUARD_INDICATORS = [
-    "ddos-guard",
-    "ddos guard",
-    "checking your browser before accessing",
-    "complete the manual check to continue",
-    "could not verify your browser automatically",
-]
 
 
 class _DisplayState(TypedDict):
