@@ -11,6 +11,7 @@ import requests
 from tqdm import tqdm
 
 from shelfmark.bypass import BypassCancelledError, cookie_store
+from shelfmark.bypass.challenge import challenge_marker
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import coerce_bool, normalize_positive_int
@@ -231,6 +232,22 @@ def _is_retryable_error(e: Exception) -> bool:
 # Statuses that mean the host is gone rather than busy: 410 Gone and 451 Unavailable
 # For Legal Reasons are what a seized domain answers with.
 _DEAD_MIRROR_CODES = (410, 451)
+
+
+def _response_challenge_marker(response: requests.Response) -> str | None:
+    """The challenge marker in a response body, or None if it carries no challenge.
+
+    Content type is checked first so a JSON or octet-stream error body is never
+    decoded just to be scanned; a missing header is scanned anyway, since an
+    interstitial served without one is still an interstitial.
+    """
+    content_type = response.headers.get("Content-Type", "")
+    if content_type and "html" not in content_type.lower():
+        return None
+    try:
+        return challenge_marker(response.text)
+    except UnicodeDecodeError, ValueError:
+        return None
 
 
 def _fatal_mirror_reason(e: Exception) -> str | None:
@@ -454,6 +471,35 @@ def html_get_page(
                             current_url,
                         )
                         continue
+
+                # A 503 still serving a challenge is protection, not a busy origin. The
+                # handshake above has nothing left to echo back, and 503 is in
+                # RETRYABLE_CODES, so without this the request spends every attempt on
+                # the same wall: the bypasser is only ever reached from the 403 branch
+                # and the AA redirect rescues. Gate on the body, not the status, so a
+                # genuine overloaded-origin 503 keeps its retry path.
+                if response.status_code == _HTTP_STATUS_SERVICE_UNAVAILABLE:
+                    marker = _response_challenge_marker(response)
+                    if marker and _bypass_handoff_allowed():
+                        if cookies:
+                            # Challenged while presenting clearance means those cookies
+                            # are dead; same reasoning as the 403 branch below.
+                            logger.debug(
+                                "503 challenge with cookies presented; purging: %s", current_url
+                            )
+                            _purge_clearance(current_url)
+                        logger.info(
+                            "503 challenge detected (%s); switching to bypasser: %s",
+                            marker,
+                            current_url,
+                        )
+                        return _run_bypasser(current_url)
+                    if marker:
+                        logger.debug(
+                            "503 challenge (%s) but no bypasser handoff available: %s",
+                            marker,
+                            current_url,
+                        )
 
                 if is_aa_url and response.is_redirect:
                     location = response.headers.get("Location", "")

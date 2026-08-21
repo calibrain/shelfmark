@@ -319,6 +319,44 @@ class TestSearchAudiobookbay:
 
     @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
     @patch("shelfmark.release_sources.audiobookbay.scraper.config.get")
+    def test_search_audiobookbay_normalizes_curly_apostrophe(self, mock_config_get, mock_html_get):
+        """Test curly apostrophes are searched as the ASCII form ABB stores."""
+        mock_config_get.return_value = 0.0
+        mock_html_get.return_value = (SAMPLE_SEARCH_HTML, "https://audiobookbay.lu/?s=x")
+
+        scraper.search_audiobookbay(
+            "the stranger’s wife",
+            max_pages=1,
+            hostname="audiobookbay.lu",
+        )
+
+        requested_url = mock_html_get.call_args.args[0]
+        assert "s=the+stranger%27s+wife" in requested_url
+        assert "%E2%80%99" not in requested_url
+
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
+    @patch("shelfmark.release_sources.audiobookbay.scraper.config.get")
+    def test_search_audiobookbay_percent_encodes_reserved_characters(
+        self, mock_config_get, mock_html_get
+    ):
+        """Test reserved characters cannot break out of the search parameter."""
+        mock_config_get.return_value = 0.0
+        mock_html_get.return_value = (SAMPLE_SEARCH_HTML, "https://audiobookbay.lu/?s=x")
+
+        scraper.search_audiobookbay(
+            "sense & sensibility 100% c++",
+            max_pages=1,
+            hostname="audiobookbay.lu",
+        )
+
+        requested_url = mock_html_get.call_args.args[0]
+        assert "s=sense+%26+sensibility+100%25+c%2B%2B" in requested_url
+        # The only surviving '&' introduces the legacy category parameter.
+        assert requested_url.count("&") == 1
+        assert requested_url.endswith("&cat=undefined%2Cundefined")
+
+    @patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page")
+    @patch("shelfmark.release_sources.audiobookbay.scraper.config.get")
     def test_search_audiobookbay_always_uses_legacy_category_query(
         self, mock_config_get, mock_html_get
     ):

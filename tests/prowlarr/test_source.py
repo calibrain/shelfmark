@@ -6,10 +6,13 @@ Tests the utility functions for parsing release metadata.
 
 # Import the functions to test
 import pytest
+import requests
 
 from shelfmark.metadata_providers import BookMetadata
-from shelfmark.release_sources.prowlarr.api import ProwlarrClient
+from shelfmark.release_sources import SourceUnavailableError
+from shelfmark.release_sources.prowlarr.api import ProwlarrClient, ProwlarrSearchError
 from shelfmark.release_sources.prowlarr.source import (
+    PROWLARR_SEARCH_TIMEOUT_SECONDS,
     ProwlarrSource,
     _build_indexer_priority,
     _collapse_duplicate_indexer_results,
@@ -21,6 +24,7 @@ from shelfmark.release_sources.prowlarr.source import (
     _parse_size,
     _release_identity,
     _result_dedup_key,
+    _search_budget_seconds,
 )
 from shelfmark.release_sources.prowlarr.utils import (
     build_source_id,
@@ -244,6 +248,7 @@ class FakeTorznabClient:
         self.seed_settings_calls: list[object] = []
         self.search_results = search_results or []
         self.seed_settings = seed_settings or {}
+        self.indexer_timeout = 90
 
     def get_enabled_indexers_detailed(self, *, raise_on_error=False):
         return [
@@ -788,6 +793,7 @@ class _MultiIndexerClient:
     def __init__(self, results_by_indexer: dict[int, list[dict]], priorities=None):
         self.results_by_indexer = results_by_indexer
         self.priorities = priorities or {}
+        self.indexer_timeout = 90
 
     def get_enabled_indexers_detailed(self, *, raise_on_error=False):
         del raise_on_error
@@ -1222,3 +1228,173 @@ class TestIndexerPrioritySortOption:
         assert options["Indexer priority"]["sort_key"] == "extra.indexer_priority"
         assert options["Indexer priority"]["default_direction"] == "asc"
         assert options["Peers"]["default_direction"] == "desc"
+
+
+class _FailingIndexerClient:
+    """Torznab client where chosen indexers raise instead of answering.
+
+    Mirrors #1249: Prowlarr proxies the search to a Cloudflare-fronted tracker,
+    FlareSolverr is still solving the challenge when the HTTP read times out.
+    """
+
+    def __init__(self, failing_indexers: set[int], results_by_indexer=None):
+        self.failing_indexers = failing_indexers
+        self.results_by_indexer = results_by_indexer or {}
+        self.indexer_timeout = 90
+        self.calls: list[tuple[int, object]] = []
+
+    def get_enabled_indexers_detailed(self, *, raise_on_error=False):
+        del raise_on_error
+        indexer_ids = sorted(self.failing_indexers | set(self.results_by_indexer))
+        return [
+            {
+                "id": indexer_id,
+                "enable": True,
+                "capabilities": {"categories": [{"id": 7000, "subCategories": []}]},
+            }
+            for indexer_id in indexer_ids
+        ]
+
+    def torznab_search(
+        self,
+        *,
+        indexer_id: int,
+        query: str,
+        categories=None,
+        search_type="book",
+        limit=100,
+        offset=0,
+    ):
+        del query, search_type, limit, offset
+        self.calls.append((indexer_id, categories))
+        if indexer_id in self.failing_indexers:
+            msg = f"indexer {indexer_id} did not respond within 90s"
+            raise ProwlarrSearchError(msg)
+        return self.results_by_indexer.get(indexer_id, [])
+
+    def get_enriched_indexer_ids(self, restrict_to=None, indexers=None):
+        del restrict_to, indexers
+        return []
+
+    def get_indexer_seed_settings(self, restrict_to=None):
+        del restrict_to
+        return {}
+
+
+class TestFailedIndexerSearchIsNotNoResults:
+    """A Torznab timeout must not read as "this book has no releases" (#1249)."""
+
+    def _search(self, monkeypatch, client, config_values=None):
+        import shelfmark.release_sources.prowlarr.source as prowlarr_source
+        from shelfmark.core.search_plan import build_release_search_plan
+
+        values = {"PROWLARR_INDEXERS": "", "PROWLARR_AUTO_EXPAND": False}
+        values.update(config_values or {})
+        monkeypatch.setattr(
+            prowlarr_source.config, "get", lambda key, default=None: values.get(key, default)
+        )
+
+        source = ProwlarrSource()
+        monkeypatch.setattr(source, "_get_client", lambda: client)
+
+        book = BookMetadata(
+            provider="hardcover", provider_id="123", title="Dune", authors=["Frank Herbert"]
+        )
+        plan = build_release_search_plan(book, languages=["en"])
+        return source.search(book, plan)
+
+    def test_sole_indexer_timing_out_raises_instead_of_returning_empty(self, monkeypatch):
+        client = _FailingIndexerClient({1})
+
+        with pytest.raises(SourceUnavailableError) as excinfo:
+            self._search(monkeypatch, client)
+
+        assert "1 of 1 indexer searches failed" in str(excinfo.value)
+        assert "did not respond within 90s" in str(excinfo.value)
+
+    def test_one_failure_does_not_sink_an_indexer_that_answered(self, monkeypatch):
+        client = _FailingIndexerClient(
+            {1},
+            {
+                2: [
+                    {
+                        "guid": "g2",
+                        "title": "Dune",
+                        "indexerId": 2,
+                        "indexer": "working",
+                        "protocol": "torrent",
+                        "size": 1048576,
+                        "seeders": 5,
+                    }
+                ]
+            },
+        )
+
+        releases = self._search(monkeypatch, client)
+
+        assert [r.indexer for r in releases] == ["working"]
+
+    def test_partial_failure_with_no_results_still_reports_the_failure(self, monkeypatch):
+        client = _FailingIndexerClient({1}, {2: []})
+
+        with pytest.raises(SourceUnavailableError) as excinfo:
+            self._search(monkeypatch, client)
+
+        assert "1 of 2 indexer searches failed" in str(excinfo.value)
+
+    def test_auto_expand_does_not_retry_on_top_of_a_failed_search(self, monkeypatch):
+        """The second search is what crashes FlareSolverr's Chrome on a small host."""
+        client = _FailingIndexerClient({1})
+
+        with pytest.raises(SourceUnavailableError):
+            self._search(monkeypatch, client, {"PROWLARR_AUTO_EXPAND": True})
+
+        assert client.calls == [(1, [7000])]
+
+    def test_auto_expand_still_retries_when_the_indexer_answered_empty(self, monkeypatch):
+        client = _FailingIndexerClient(set(), {1: []})
+
+        assert self._search(monkeypatch, client, {"PROWLARR_AUTO_EXPAND": True}) == []
+        assert client.calls == [(1, [7000]), (1, None)]
+
+
+class TestUnreachableProwlarrIsNotNoResults:
+    """Prowlarr itself being down must not read as "this book has no releases" (#1249)."""
+
+    class _UnreachableClient:
+        indexer_timeout = 90
+
+        def get_enabled_indexers_detailed(self, *, raise_on_error=False):
+            del raise_on_error
+            raise requests.exceptions.ConnectionError("connection refused")
+
+    def test_search_reports_the_connection_failure(self, monkeypatch):
+        import shelfmark.release_sources.prowlarr.source as prowlarr_source
+        from shelfmark.core.search_plan import build_release_search_plan
+
+        monkeypatch.setattr(
+            prowlarr_source.config,
+            "get",
+            lambda key, default=None: {"PROWLARR_INDEXERS": ""}.get(key, default),
+        )
+        source = ProwlarrSource()
+        monkeypatch.setattr(source, "_get_client", lambda: self._UnreachableClient())
+
+        book = BookMetadata(
+            provider="hardcover", provider_id="123", title="Dune", authors=["Frank Herbert"]
+        )
+        plan = build_release_search_plan(book, languages=["en"])
+
+        with pytest.raises(SourceUnavailableError, match="could not reach Prowlarr"):
+            source.search(book, plan)
+
+
+class TestSearchBudgetScalesWithIndexerTimeout:
+    def test_default_budget_is_unchanged(self):
+        assert _search_budget_seconds(30) == PROWLARR_SEARCH_TIMEOUT_SECONDS
+
+    def test_a_long_indexer_timeout_widens_the_budget(self):
+        assert _search_budget_seconds(120) == 240.0
+
+    def test_budget_stays_under_the_gunicorn_worker_timeout(self):
+        assert _search_budget_seconds(300) == 240.0

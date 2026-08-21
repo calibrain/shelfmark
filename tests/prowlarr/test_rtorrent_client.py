@@ -563,6 +563,36 @@ class TestRTorrentClientAudiobookLabel:
         assert "d.custom1.set=books" in args[2]
         assert "d.custom1.set=audiobooks" not in args[2]
 
+    def test_uses_audiobook_label_for_compound_content_type(self, monkeypatch):
+        """Issue #1235 — an exact "audiobook" match missed forms like "book (audiobook)"."""
+        config_values = {
+            "RTORRENT_URL": "http://localhost:8080/RPC2",
+            "RTORRENT_LABEL": "books",
+            "RTORRENT_AUDIOBOOK_LABEL": "audiobooks",
+            "RTORRENT_DOWNLOAD_DIR": "/downloads",
+        }
+        mock_rpc, mock_xmlrpc, mock_torrent_info = self._make_client(monkeypatch, config_values)
+
+        with patch.dict("sys.modules", {"xmlrpc.client": mock_xmlrpc}):
+            with patch(
+                "shelfmark.download.clients.torrent_utils.extract_torrent_info",
+                return_value=mock_torrent_info,
+            ):
+                if "shelfmark.download.clients.rtorrent" in sys.modules:
+                    del sys.modules["shelfmark.download.clients.rtorrent"]
+                from shelfmark.download.clients.rtorrent import RTorrentClient
+
+                client = RTorrentClient()
+                client.add_download(
+                    "magnet:?xt=urn:btih:abc123",
+                    "Test Audiobook",
+                    content_type="Book (Audiobook)",
+                )
+
+        args = mock_rpc.load.start.call_args[0]
+        assert "d.custom1.set=audiobooks" in args[2]
+        assert "d.custom1.set=books" not in args[2]
+
 
 class TestRTorrentClientGetStatus:
     """Tests for RTorrentClient.get_status()."""

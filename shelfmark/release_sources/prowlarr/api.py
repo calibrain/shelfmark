@@ -7,6 +7,7 @@ from typing import Any, TypedDict
 
 import requests
 
+from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.network import get_ssl_verify
@@ -18,6 +19,19 @@ logger = setup_logger(__name__)
 _HTTP_STATUS_UNAUTHORIZED = HTTPStatus.UNAUTHORIZED
 _BOOK_CATEGORY_RANGE_START = 7000
 _BOOK_CATEGORY_RANGE_END = 8000
+
+# Prowlarr's own JSON endpoints (status, indexer list) read local state and answer
+# in milliseconds, so they keep a short timeout. A Torznab search is different: it
+# is Prowlarr proxying a live request to the tracker, which for a Cloudflare-fronted
+# indexer means waiting on FlareSolverr to solve a challenge. A cold challenge
+# routinely runs past a minute, so indexer searches get their own, longer budget.
+DEFAULT_INDEXER_TIMEOUT_SECONDS = 90
+MIN_INDEXER_TIMEOUT_SECONDS = 5
+MAX_INDEXER_TIMEOUT_SECONDS = 300
+
+# Connecting to Prowlarr itself is a LAN hop; only the read is allowed to be slow.
+_CONNECT_TIMEOUT_SECONDS = 10.0
+
 _PROWLARR_CLIENT_ERRORS = (
     requests.exceptions.RequestException,
     OSError,
@@ -25,6 +39,37 @@ _PROWLARR_CLIENT_ERRORS = (
     TypeError,
     ValueError,
 )
+
+
+class ProwlarrSearchError(RuntimeError):
+    """A Torznab search could not be completed.
+
+    Deliberately distinct from an empty result list. Reporting a failed search as
+    "this indexer has nothing" is what turns a slow FlareSolverr challenge into
+    "No releases found for this book" in the UI (#1249), and it also makes the
+    auto-expand retry fire a second request on top of the one still running.
+    """
+
+
+def resolve_indexer_timeout(timeout: object = None) -> int:
+    """Resolve the per-indexer search timeout, falling back to config.
+
+    Out-of-range and unparsable values are clamped rather than rejected: this
+    feeds an HTTP timeout, and a bad setting should not take searching down.
+    """
+    if timeout is None:
+        timeout = config.get("PROWLARR_INDEXER_TIMEOUT", DEFAULT_INDEXER_TIMEOUT_SECONDS)
+
+    resolved = coerce_int_like(timeout)
+    if resolved is None:
+        logger.warning(
+            "Invalid PROWLARR_INDEXER_TIMEOUT %r - using %ss",
+            timeout,
+            DEFAULT_INDEXER_TIMEOUT_SECONDS,
+        )
+        return DEFAULT_INDEXER_TIMEOUT_SECONDS
+
+    return max(MIN_INDEXER_TIMEOUT_SECONDS, min(MAX_INDEXER_TIMEOUT_SECONDS, resolved))
 
 
 class IndexerSeedSettings(TypedDict, total=False):
@@ -77,11 +122,23 @@ def _get_field_value(fields: object, name: str) -> object | None:
 class ProwlarrClient:
     """Client for interacting with the Prowlarr API."""
 
-    def __init__(self, url: str, api_key: str, timeout: int = 30) -> None:
-        """Initialize the API client with base URL, key, and timeout."""
+    def __init__(
+        self, url: str, api_key: str, timeout: int = 30, indexer_timeout: int | None = None
+    ) -> None:
+        """Initialize the API client with base URL, key, and timeouts.
+
+        Args:
+            url: Prowlarr base URL.
+            api_key: Prowlarr API key.
+            timeout: Timeout for Prowlarr's own JSON endpoints.
+            indexer_timeout: Timeout for Torznab searches, which Prowlarr proxies
+                out to the tracker. Defaults to PROWLARR_INDEXER_TIMEOUT.
+
+        """
         self.base_url = normalize_http_url(url)
         self.api_key = api_key
         self.timeout = timeout
+        self.indexer_timeout = resolve_indexer_timeout(indexer_timeout)
         self._session = requests.Session()
         self._session.headers.update(
             {
@@ -307,6 +364,12 @@ class ProwlarrClient:
 
         This returns richer fields (e.g., author/booktitle, torznab tags like
         FreeLeech) than the JSON /api/v1/search endpoint.
+
+        Raises:
+            ProwlarrSearchError: The search could not be completed. An empty list
+                strictly means the indexer answered with no matches, never that
+                the request timed out or errored.
+
         """
         if not query:
             return []
@@ -329,7 +392,7 @@ class ProwlarrClient:
             response = self._session.get(
                 url=url,
                 params=params,
-                timeout=self.timeout,
+                timeout=(_CONNECT_TIMEOUT_SECONDS, self.indexer_timeout),
                 headers={
                     # Override the session default JSON accept header.
                     "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8"
@@ -347,9 +410,20 @@ class ProwlarrClient:
             for r in results:
                 if r.get("indexerId") is None:
                     r["indexerId"] = int(indexer_id)
-        except Exception:
+        except requests.exceptions.Timeout as e:
+            logger.warning(
+                "Prowlarr Torznab search for indexer %s timed out after %ss. An indexer "
+                "behind FlareSolverr can need far longer than that on a cold Cloudflare "
+                "challenge - raise PROWLARR_INDEXER_TIMEOUT if this keeps happening.",
+                indexer_id,
+                self.indexer_timeout,
+            )
+            msg = f"indexer {indexer_id} did not respond within {self.indexer_timeout}s"
+            raise ProwlarrSearchError(msg) from e
+        except Exception as e:
             logger.exception("Prowlarr Torznab search failed for indexer %s", indexer_id)
-            return []
+            msg = f"indexer {indexer_id} search failed: {e}"
+            raise ProwlarrSearchError(msg) from e
         else:
             return results
 

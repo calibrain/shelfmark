@@ -11,7 +11,12 @@ from urllib.parse import urlparse
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.utils import get_hardened_xmlrpc_client
+from shelfmark.core.utils import (
+    get_hardened_xmlrpc_client,
+)
+from shelfmark.core.utils import (
+    is_audiobook as check_audiobook,
+)
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
@@ -173,7 +178,8 @@ class RTorrentClient(DownloadClient):
 
             commands = []
 
-            is_audiobook = kwargs.get("content_type") == "audiobook"
+            content_type = kwargs.get("content_type")
+            is_audiobook = check_audiobook(content_type if isinstance(content_type, str) else None)
             default_label = (
                 self._audiobook_label if is_audiobook and self._audiobook_label else self._label
             )

@@ -2,6 +2,7 @@
 
 import re
 import time
+from dataclasses import dataclass
 from threading import Lock
 from typing import TYPE_CHECKING, ClassVar, NoReturn
 
@@ -30,9 +31,14 @@ from shelfmark.release_sources import (
     ReleaseProtocol,
     ReleaseSource,
     SortOption,
+    SourceUnavailableError,
     register_source,
 )
-from shelfmark.release_sources.prowlarr.api import IndexerSeedSettings, ProwlarrClient
+from shelfmark.release_sources.prowlarr.api import (
+    IndexerSeedSettings,
+    ProwlarrClient,
+    ProwlarrSearchError,
+)
 from shelfmark.release_sources.prowlarr.cache import cache_release
 from shelfmark.release_sources.prowlarr.utils import (
     build_source_id,
@@ -50,10 +56,10 @@ _PROWLARR_SOURCE_ERRORS = (AttributeError, OSError, RuntimeError, TypeError, Val
 # Prowlarr indexer priority is 1-50 and lower is preferred; unknown sorts last.
 _UNRANKED_INDEXER_RANK = 51
 
-# Errors that can surface from ProwlarrClient.get_indexer_seed_settings(). The
+# Errors that can surface from a ProwlarrClient call that talks to Prowlarr. The
 # client raises requests exceptions (subclasses of OSError via IOError lineage
 # is not guaranteed), so include RequestException explicitly.
-_PROWLARR_SEED_SETTINGS_ERRORS = (*_PROWLARR_SOURCE_ERRORS, requests.exceptions.RequestException)
+_PROWLARR_REQUEST_ERRORS = (*_PROWLARR_SOURCE_ERRORS, requests.exceptions.RequestException)
 
 
 def _raise_timeout_error(message: str) -> NoReturn:
@@ -231,6 +237,35 @@ ALL_BOOK_FORMATS = AUDIOBOOK_FORMATS + EBOOK_FORMATS
 
 # Backend safeguard: cap total Prowlarr search time per request.
 PROWLARR_SEARCH_TIMEOUT_SECONDS = 120.0
+
+# The overall budget has to leave room for at least a couple of indexers to spend
+# their full per-indexer timeout, otherwise raising PROWLARR_INDEXER_TIMEOUT for a
+# Cloudflare-fronted tracker just moves the cutoff here. Capped short of the
+# gunicorn worker timeout (300s) so the worker is never the thing that gives up.
+_MAX_SEARCH_BUDGET_SECONDS = 240.0
+
+
+def _search_budget_seconds(indexer_timeout: int) -> float:
+    """Total time one Prowlarr search may spend, scaled to the per-indexer timeout."""
+    return min(
+        _MAX_SEARCH_BUDGET_SECONDS,
+        max(PROWLARR_SEARCH_TIMEOUT_SECONDS, indexer_timeout * 2.0),
+    )
+
+
+@dataclass
+class _IndexerSearchOutcome:
+    """What one pass over the target indexers produced.
+
+    Separates "every indexer answered, none had this book" from "the indexers
+    never answered", which the caller has to tell apart before it decides to
+    auto-expand or to report the search as failed.
+    """
+
+    results: list[dict]
+    attempted: int = 0
+    failed: int = 0
+    last_error: str | None = None
 
 
 def _extract_format(title: str) -> str | None:
@@ -539,7 +574,7 @@ def _fetch_indexer_seed_settings(
     """Fetch per-indexer share limits, falling back to last-known-good on failure."""
     try:
         fetched = client.get_indexer_seed_settings(restrict_to=indexer_ids)
-    except _PROWLARR_SEED_SETTINGS_ERRORS:
+    except _PROWLARR_REQUEST_ERRORS:
         with _seed_settings_lock:
             fallback = dict(_last_known_seed_settings)
         logger.warning(
@@ -895,8 +930,16 @@ class ProwlarrSource(ReleaseSource):
 
         try:
             auto_expand_enabled = config.get("PROWLARR_AUTO_EXPAND", False)
-            deadline = time.monotonic() + PROWLARR_SEARCH_TIMEOUT_SECONDS
-            enabled_indexers = client.get_enabled_indexers_detailed()
+            search_budget = _search_budget_seconds(client.indexer_timeout)
+            deadline = time.monotonic() + search_budget
+            try:
+                enabled_indexers = client.get_enabled_indexers_detailed(raise_on_error=True)
+            except _PROWLARR_REQUEST_ERRORS as e:
+                # Prowlarr itself is unreachable. Swallowing this leaves the search
+                # with no indexers to query, which the UI renders as "No releases
+                # found for this book" - the same lie as a swallowed timeout (#1249).
+                msg = f"could not reach Prowlarr: {e}"
+                raise SourceUnavailableError(msg) from e
             indexer_priority = _build_indexer_priority(enabled_indexers)
             # Some indexers benefit from title+author queries and extra format detection.
             enriched_indexer_ids = client.get_enriched_indexer_ids(
@@ -911,18 +954,16 @@ class ProwlarrSource(ReleaseSource):
 
             def _check_timeout() -> None:
                 if time.monotonic() > deadline:
-                    _raise_timeout_error(
-                        f"Prowlarr search timed out after {int(PROWLARR_SEARCH_TIMEOUT_SECONDS)}s"
-                    )
+                    _raise_timeout_error(f"Prowlarr search timed out after {int(search_budget)}s")
 
             def search_indexers(
                 query: str, cats: list[int] | None, *, enriched_query: str | None = None
-            ) -> list[dict]:
+            ) -> _IndexerSearchOutcome:
                 """Search indexers with given categories via Torznab/Newznab."""
-                results: list[dict] = []
+                outcome = _IndexerSearchOutcome(results=[])
                 target_indexer_ids = self._get_search_indexer_ids(client, indexer_ids, cats)
                 if not target_indexer_ids:
-                    return results
+                    return outcome
 
                 for indexer_id in target_indexer_ids:
                     _check_timeout()
@@ -931,19 +972,31 @@ class ProwlarrSource(ReleaseSource):
                         if indexer_id in enriched_indexer_ids_set and enriched_query
                         else query
                     )
-                    raw = client.torznab_search(
-                        indexer_id=indexer_id,
-                        query=indexer_query,
-                        categories=cats,
-                        search_type="book",
-                    )
+                    outcome.attempted += 1
+                    try:
+                        raw = client.torznab_search(
+                            indexer_id=indexer_id,
+                            query=indexer_query,
+                            categories=cats,
+                            search_type="book",
+                        )
+                    except ProwlarrSearchError as e:
+                        # One unreachable indexer must not sink the others, but it
+                        # is not "no results" either - record it so the caller can
+                        # report a failed search instead of an empty one.
+                        outcome.failed += 1
+                        outcome.last_error = str(e)
+                        continue
                     if raw:
-                        results.extend(raw)
+                        outcome.results.extend(raw)
 
-                return results
+                return outcome
 
             seen_keys: set[tuple[int | None, str]] = set()
             all_results: list[dict] = []
+            attempted_searches = 0
+            failed_searches = 0
+            last_search_error: str | None = None
 
             for idx, variant in enumerate(variants, start=1):
                 _check_timeout()
@@ -953,29 +1006,53 @@ class ProwlarrSource(ReleaseSource):
                 if len(variants) > 1:
                     logger.debug("Prowlarr query %s/%s: '%s'", idx, len(variants), query)
 
-                raw_results = search_indexers(
+                outcome = search_indexers(
                     query=query, cats=categories, enriched_query=enriched_query
                 )
 
-                # Auto-expand: if no results with categories and auto-expand enabled, retry without
-                if not raw_results and categories and auto_expand_enabled:
+                # Auto-expand: if no results with categories and auto-expand enabled, retry without.
+                # Only when every indexer actually answered: a failed search says nothing about
+                # whether the category filter is what hid the book, and retrying it stacks a second
+                # request on an indexer that is still busy solving a Cloudflare challenge (#1249).
+                if (
+                    not outcome.results
+                    and not outcome.failed
+                    and categories
+                    and auto_expand_enabled
+                ):
                     _check_timeout()
                     logger.info(
                         "Prowlarr: no results for query '%s' with category filter, auto-expanding search",
                         query,
                     )
-                    raw_results = search_indexers(
+                    expanded = search_indexers(
                         query=query, cats=None, enriched_query=enriched_query
                     )
+                    outcome.results = expanded.results
+                    outcome.attempted += expanded.attempted
+                    outcome.failed += expanded.failed
+                    outcome.last_error = expanded.last_error or outcome.last_error
                     self.last_search_type = "expanded"
 
-                for r in raw_results:
+                attempted_searches += outcome.attempted
+                failed_searches += outcome.failed
+                last_search_error = outcome.last_error or last_search_error
+
+                for r in outcome.results:
                     key = _result_dedup_key(r)
                     if key is not None:
                         if key in seen_keys:
                             continue
                         seen_keys.add(key)
                     all_results.append(r)
+
+            if failed_searches:
+                logger.warning(
+                    "Prowlarr: %s of %s indexer searches failed (%s)",
+                    failed_searches,
+                    attempted_searches,
+                    last_search_error,
+                )
 
             if config.get("PROWLARR_COLLAPSE_DUPLICATES", True):
                 before_collapse = len(all_results)
@@ -1033,6 +1110,10 @@ class ProwlarrSource(ReleaseSource):
             else:
                 logger.debug("Prowlarr: no results found")
 
+        except SourceUnavailableError:
+            # Already carries its own message for the caller to surface; the blanket
+            # handler below would turn it back into a silent empty result.
+            raise
         except TimeoutError as e:
             logger.warning("Prowlarr search timed out: %s", e)
             raise
@@ -1040,6 +1121,15 @@ class ProwlarrSource(ReleaseSource):
             logger.exception("Prowlarr search failed")
             return []
         else:
+            # An empty list is the UI's "No releases found for this book", so it has
+            # to mean the indexers answered and had nothing. When they failed instead,
+            # say so rather than blaming the book (#1249).
+            if not results and failed_searches:
+                msg = (
+                    f"{failed_searches} of {attempted_searches} indexer searches failed "
+                    f"({last_search_error})"
+                )
+                raise SourceUnavailableError(msg)
             return results
 
     def is_available(self) -> bool:

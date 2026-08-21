@@ -95,6 +95,30 @@ volumes:
 - Aggregates releases from multiple configured sources
 - Full audiobook support
 
+### Hardcover API Key
+
+Hardcover powers metadata search in Universal mode. Create a token at
+[hardcover.app/account/api](https://hardcover.app/account/api) — current keys start with `hc_pat_`
+and are far shorter than the JWTs Hardcover issued before August 2026.
+
+Tick these seven scopes on the token screen:
+
+| Scope | Used for |
+|-------|----------|
+| `read:catalog` | Metadata search, plus book, edition, author and series lookups |
+| `read:library` | Your reading status and shelf counts |
+| `read:lists` | Your lists and the books on them |
+| `read:me:content` | Test Connection and the "Connected as" label |
+| `read:users` | Usernames shown alongside lists |
+| `write:library` | Setting a book's reading status from Shelfmark |
+| `write:lists` | Adding and removing books from lists, including auto-remove on download |
+
+The two `write:` scopes matter only if you set reading status from Shelfmark or leave
+**Auto-Remove from List on Download** enabled (it is on by default) — without them those actions
+fail silently. Everything else Hardcover offers (journal, goals, reviews, prompts, notifications,
+account) can stay unticked. The `all` scope works too, but it grants full account access including
+deletion, so prefer the list above.
+
 ### Environment Variables
 
 Environment variables work for initial setup and Docker deployments. They serve as defaults that can be overridden in the web interface.

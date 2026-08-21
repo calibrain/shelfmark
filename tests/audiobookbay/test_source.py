@@ -307,6 +307,42 @@ class TestAudiobookBaySource:
         assert results[0].title == "Test Book by Test Author"
 
     @patch("shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay")
+    def test_search_relevance_filtering_spans_typographic_punctuation(self, mock_search):
+        """Test an ASCII query still matches the typographic title ABB renders."""
+        mock_search.return_value = [
+            {
+                "title": "The Stranger’s Wife — Anna‑Lou Weatherley",
+                "link": "https://audiobookbay.lu/abss/the-strangers-wife/",
+                "format": "M4B",
+                "size": "259 MB",
+                "language": "English",
+            },
+        ]
+
+        source = AudiobookBaySource()
+        book = BookMetadata(
+            provider="test",
+            provider_id="123",
+            title="Stranger's",
+            authors=["Anna-Lou Weatherley"],
+        )
+        # Every query word carries punctuation, so the result survives only when
+        # both sides of the comparison are normalized.
+        plan = ReleaseSearchPlan(
+            languages=["en"],
+            isbn_candidates=[],
+            author="",
+            title_variants=[ReleaseSearchVariant(title="Stranger's", author="")],
+            grouped_title_variants=[],
+        )
+
+        results = source.search(book, plan, content_type="audiobook")
+
+        assert len(results) == 1
+        # The release keeps the title as ABB rendered it; only matching normalizes.
+        assert results[0].title == "The Stranger’s Wife — Anna‑Lou Weatherley"
+
+    @patch("shelfmark.release_sources.audiobookbay.source.scraper.search_audiobookbay")
     def test_search_result_mapping(self, mock_search):
         """Test conversion of scraper results to Release objects."""
         mock_search.return_value = [

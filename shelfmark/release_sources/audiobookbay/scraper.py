@@ -2,7 +2,7 @@
 
 import re
 import time
-from urllib.parse import quote
+from urllib.parse import quote, quote_plus
 
 import requests
 from bs4 import BeautifulSoup
@@ -10,6 +10,7 @@ from bs4 import BeautifulSoup
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.download import http as downloader
+from shelfmark.release_sources.audiobookbay.utils import normalize_search_punctuation
 
 logger = setup_logger(__name__)
 
@@ -98,8 +99,10 @@ def _encode_search_query(query: str, *, exact_phrase: bool) -> str:
         and not (search_query.startswith('"') and search_query.endswith('"'))
     ):
         search_query = f'"{search_query}"'
-    # Keep ABB-friendly encoding style (spaces as '+') while percent-encoding quotes.
-    return search_query.replace('"', "%22").replace(" ", "+")
+    # Keep ABB's space-as-'+' style, but percent-encode everything else: a bare
+    # '&' would otherwise start a new query parameter, '%' would open an invalid
+    # escape, and a literal '+' would arrive as a space.
+    return quote_plus(search_query)
 
 
 def _normalize_result_url(url: str, hostname: str) -> str:
@@ -153,6 +156,9 @@ def search_audiobookbay(
 
     """
     results = []
+    # ABB matches the stored, untexturized title, so a curly apostrophe reaching
+    # the search returns nothing at all rather than merely ranking worse.
+    query = normalize_search_punctuation(query)
     rate_limit_delay = _coerce_non_negative_float(config.get("ABB_RATE_LIMIT_DELAY", 1.0), 1.0)
     session = requests.Session()
 

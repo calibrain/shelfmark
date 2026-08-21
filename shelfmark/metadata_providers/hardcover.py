@@ -48,6 +48,10 @@ HARDCOVER_PAGE_SIZE = 25  # Hardcover API returns max 25 results per page
 HARDCOVER_MIN_AUTHOR_PARTS = 2
 HARDCOVER_MIN_TYPEAHEAD_QUERY_LENGTH = 2
 HARDCOVER_MAX_SERIES_OPTIONS = 7
+# Hardcover hands out short opaque tokens now ("hc_pat_...") instead of the ~500 char
+# JWTs it used to, so the length floor only applies to keys without that prefix.
+HARDCOVER_API_KEY_PREFIX = "hc_pat_"
+HARDCOVER_BEARER_PREFIX_PATTERN = re.compile(r"^bearer\s+", re.IGNORECASE)
 HARDCOVER_API_KEY_MIN_LENGTH = 100
 HARDCOVER_LIST_URL_PATTERN = re.compile(
     r"^/(?:@([\w.-]+)/)?lists?/([\w-]+)/?$",
@@ -670,7 +674,7 @@ def _normalize_series_position(value: Any) -> float | None:
 def _normalize_hardcover_api_key(value: object) -> str:
     """Normalize Hardcover API keys, stripping copied auth-header prefixes."""
     normalized_value = normalize_optional_text(value) or ""
-    return normalized_value.removeprefix("Bearer ").strip()
+    return HARDCOVER_BEARER_PREFIX_PATTERN.sub("", normalized_value.strip()).strip()
 
 
 def _normalize_search_text(value: str) -> str:
@@ -3019,12 +3023,13 @@ def _test_hardcover_connection(current_values: dict[str, Any] | None = None) -> 
         _save_connected_user(None, None)
         return {"success": False, "message": "API key is required"}
 
-    if key_len < HARDCOVER_API_KEY_MIN_LENGTH:
+    is_prefixed_key = api_key.startswith(HARDCOVER_API_KEY_PREFIX)
+    if not is_prefixed_key and key_len < HARDCOVER_API_KEY_MIN_LENGTH:
         return {
             "success": False,
             "message": (
-                f"API key seems too short ({key_len} chars). "
-                f"Expected {HARDCOVER_API_KEY_MIN_LENGTH}+ chars."
+                f"API key seems too short ({key_len} chars). Expected a key starting "
+                f"with {HARDCOVER_API_KEY_PREFIX} or {HARDCOVER_API_KEY_MIN_LENGTH}+ chars."
             ),
         }
 
@@ -3131,7 +3136,7 @@ def hardcover_settings() -> list[SettingsField]:
         PasswordField(
             key="HARDCOVER_API_KEY",
             label="API Key",
-            description="Get your API key from hardcover.app/account/api",
+            description="Get your API key from hardcover.app/account/api (starts with hc_pat_)",
             required=True,
         ),
         ActionButton(

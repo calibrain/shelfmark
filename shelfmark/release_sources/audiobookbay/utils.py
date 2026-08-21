@@ -2,6 +2,63 @@
 
 import re
 
+# WordPress texturizes punctuation on output only: a post stored as "The
+# Stranger's Wife" is rendered as "The Stranger’s Wife". ABB's search matches the
+# stored value, so a query carrying the typographic form matches nothing -- and
+# because ABB ANDs its search terms, one such term empties the entire result set.
+# Book metadata and phone keyboards both hand us the typographic forms, so map
+# them back before they reach a search or a title comparison.
+_ASCII_PUNCTUATION = str.maketrans(
+    {
+        # Single quotes
+        "‘": "'",  # left single quotation mark
+        "’": "'",  # right single quotation mark
+        "‚": "'",  # single low-9 quotation mark
+        "‛": "'",  # single high-reversed-9 quotation mark
+        "′": "'",  # prime
+        "´": "'",  # acute accent
+        "`": "'",  # grave accent
+        # Double quotes
+        "“": '"',  # left double quotation mark
+        "”": '"',  # right double quotation mark
+        "„": '"',  # double low-9 quotation mark
+        "‟": '"',  # double high-reversed-9 quotation mark
+        "″": '"',  # double prime
+        # Dashes
+        "‐": "-",  # hyphen
+        "‑": "-",  # non-breaking hyphen
+        "‒": "-",  # figure dash
+        "–": "-",  # en dash
+        "—": "-",  # em dash
+        "―": "-",  # horizontal bar
+        "−": "-",  # minus sign
+        "﹘": "-",  # small em dash
+        "﹣": "-",  # small hyphen-minus
+        "－": "-",  # fullwidth hyphen-minus
+        # Ellipsis
+        "…": "...",  # horizontal ellipsis
+    }
+)
+
+
+def normalize_search_punctuation(text: str) -> str:
+    """Replace typographic punctuation with the ASCII forms ABB stores.
+
+    Each character is mapped individually rather than collapsing runs, so an
+    ASCII "--" is left alone: only characters ABB cannot have stored are
+    rewritten.
+
+    Args:
+        text: A search query, or a scraped title being compared against one.
+
+    Returns:
+        The text with curly quotes, dashes and ellipses mapped to ASCII.
+
+    """
+    if not text:
+        return text
+    return text.translate(_ASCII_PUNCTUATION)
+
 
 def normalize_hostname(raw: str | None) -> str:
     """Normalize a user-supplied hostname for URL construction.

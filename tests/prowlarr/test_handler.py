@@ -727,6 +727,62 @@ class TestProwlarrHandlerSeedCriteria:
             assert call_kwargs["ratio_limit"] == 1.25
 
 
+class TestProwlarrHandlerContentType:
+    """Regression tests for issue #1235 — content type must reach the client."""
+
+    def test_download_passes_content_type_to_client(self):
+        """rTorrent picks its audiobook label from content_type, not category."""
+        mock_client = MagicMock()
+        mock_client.name = "rtorrent"
+        mock_client.find_existing.return_value = None
+        mock_client.add_download.return_value = "download_id"
+
+        with (
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_release",
+                return_value={
+                    "protocol": "torrent",
+                    "title": "Test Release",
+                    "magnetUrl": "magnet:?xt=urn:btih:abc123",
+                },
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.get_client",
+                return_value=mock_client,
+            ),
+            patch(
+                "shelfmark.release_sources.prowlarr.handler.remove_release",
+            ),
+            patch("shelfmark.release_sources.prowlarr.handler.config.get", return_value=True),
+            patch.object(
+                ProwlarrHandler,
+                "_poll_and_complete",
+                return_value=None,
+            ),
+        ):
+            handler = ProwlarrHandler()
+            task = DownloadTask(
+                task_id="content-type-pass-through",
+                source="prowlarr",
+                title="Test Audiobook",
+                content_type="audiobook",
+            )
+            cancel_flag = Event()
+            recorder = ProgressRecorder()
+
+            handler.download(
+                task=task,
+                cancel_flag=cancel_flag,
+                progress_callback=recorder.progress_callback,
+                status_callback=recorder.status_callback,
+            )
+
+            call_kwargs = mock_client.add_download.call_args.kwargs
+            assert call_kwargs["content_type"] == "audiobook"
+            # rTorrent gets no category, so content_type is its only audiobook signal.
+            assert call_kwargs["category"] is None
+
+
 class TestProwlarrHandlerExistingDownload:
     """Tests for handling existing downloads."""
 

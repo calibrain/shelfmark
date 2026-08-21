@@ -1223,6 +1223,7 @@ How long to cache individual book details. Default: 600 (10 minutes). Max: 60480
 | `PROWLARR_URL` | Base URL of your Prowlarr instance | string | _none_ |
 | `PROWLARR_API_KEY` | Found in Prowlarr: Settings > General > API Key | string (secret) | _none_ |
 | `PROWLARR_INDEXERS` | Select which indexers to search. 📚 = has book categories. Leave empty to search all. | string (comma-separated) | _empty list_ |
+| `PROWLARR_INDEXER_TIMEOUT` | How long to wait for a single indexer to answer a search. Indexers behind FlareSolverr can need 90 seconds or more while a cold Cloudflare challenge is solved; raise this if searches come back empty and the Prowlarr log shows the search still running. | number | `90` |
 | `PROWLARR_AUTO_EXPAND` | Automatically retry search without category filtering if no results are found | boolean | `false` |
 | `PROWLARR_COLLAPSE_DUPLICATES` | Collapse a release that several indexer entries returned down to a single row, keeping the entry with the best Prowlarr priority. Turn this off to see every entry that carried it, which is what makes results from filter-specific entries (freeleech and the like) visible. | boolean | `true` |
 | `PROWLARR_USE_SEED_PREFERENCES` | Apply per-indexer seed time and ratio preferences from Prowlarr when sending torrents to the download client | boolean | `false` |
@@ -1267,6 +1268,16 @@ Select which indexers to search. 📚 = has book categories. Leave empty to sear
 
 - **Type:** string (comma-separated)
 - **Default:** _empty list_
+
+#### `PROWLARR_INDEXER_TIMEOUT`
+
+**Indexer Search Timeout (seconds)**
+
+How long to wait for a single indexer to answer a search. Indexers behind FlareSolverr can need 90 seconds or more while a cold Cloudflare challenge is solved; raise this if searches come back empty and the Prowlarr log shows the search still running.
+
+- **Type:** number
+- **Default:** `90`
+- **Constraints:** min: 5, max: 300
 
 #### `PROWLARR_AUTO_EXPAND`
 
@@ -1977,7 +1988,7 @@ Move deletes the job from your usenet client after import; Copy keeps it in the 
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
 | `HARDCOVER_ENABLED` | Enable Hardcover as a metadata provider for book searches | boolean | `false` |
-| `HARDCOVER_API_KEY` | Get your API key from hardcover.app/account/api | string (secret) | _none_ |
+| `HARDCOVER_API_KEY` | Get your API key from hardcover.app/account/api (starts with hc_pat_) | string (secret) | _none_ |
 | `HARDCOVER_DEFAULT_SORT` | Default sort order for Hardcover search results. | string (choice) | `relevance` |
 | `HARDCOVER_EXCLUDE_COMPILATIONS` | Filter out compilations, anthologies, and omnibus editions from search results | boolean | `false` |
 | `HARDCOVER_EXCLUDE_UNRELEASED` | Filter out books with a release year in the future | boolean | `false` |
@@ -1999,7 +2010,7 @@ Enable Hardcover as a metadata provider for book searches
 
 **API Key**
 
-Get your API key from hardcover.app/account/api
+Get your API key from hardcover.app/account/api (starts with hc_pat_)
 
 - **Type:** string (secret)
 - **Default:** _none_
@@ -2304,6 +2315,7 @@ Override destination based on content type metadata.
 | `EXT_BYPASSER_URL` | URL of the external bypasser service (e.g., FlareSolverr). | string | `http://flaresolverr:8191` |
 | `EXT_BYPASSER_PATH` | API path for the external bypasser. | string | `/v1` |
 | `EXT_BYPASSER_TIMEOUT` | Timeout for external bypasser requests in milliseconds. | number | `60000` |
+| `BYPASS_BROWSER_IDLE_TIMEOUT` | How long the bypass helper process may sit unused before it is shut down. Higher keeps more searches fast, lower frees memory sooner. | number | `180` |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -2358,6 +2370,17 @@ Timeout for external bypasser requests in milliseconds.
 - **Default:** `60000`
 - **Requires restart:** Yes
 - **Constraints:** min: 10000, max: 300000
+
+#### `BYPASS_BROWSER_IDLE_TIMEOUT`
+
+**Bypasser Idle Timeout (seconds)**
+
+How long the bypass helper process may sit unused before it is shut down. Higher keeps more searches fast, lower frees memory sooner.
+
+- **Type:** number
+- **Default:** `180`
+- **Requires restart:** Yes
+- **Constraints:** min: 30, max: 3600
 
 </details>
 

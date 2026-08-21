@@ -82,6 +82,60 @@ class TorrentInfo:
         return self
 
 
+@dataclass
+class DebridMagnet:
+    """A magnet link, ready to hand to a debrid service as-is."""
+
+    magnet_url: str
+
+
+@dataclass
+class DebridTorrentFile:
+    """Raw .torrent bytes, for a debrid service's file-upload endpoint."""
+
+    torrent_data: bytes
+
+
+# A debrid service takes one or the other, never an indexer page or a proxy URL.
+type DebridUpload = DebridMagnet | DebridTorrentFile
+
+
+def resolve_debrid_upload(url: str, *, expected_hash: str | None = None) -> DebridUpload:
+    """Resolve a release download URL into a magnet link or .torrent bytes.
+
+    Prowlarr hands out a proxy URL, with no magnetUrl and no infoHash, for any
+    indexer that only publishes torrent files - 1337x among them. Posting that
+    URL to a debrid service as if it were a magnet is what produced a bare 404
+    from the service instead of a download (#1250).
+
+    The torrent file is preferred over a synthesized `urn:btih:` magnet because
+    it carries the tracker list, which is how the service finds a swarm that is
+    not already cached. Fetches are shared with the rest of the add path through
+    the torrent fetch cache, so resolving here costs at most one request.
+
+    Raises:
+        ValueError: The URL resolved to neither form, so there is nothing to send.
+
+    """
+    if url.startswith("magnet:"):
+        return DebridMagnet(magnet_url=url)
+
+    info = extract_torrent_info(url, expected_hash=expected_hash)
+
+    if info.is_magnet and info.magnet_url:
+        # The download URL redirected to, or returned, a magnet link.
+        return DebridMagnet(magnet_url=info.magnet_url)
+    if info.torrent_data:
+        return DebridTorrentFile(torrent_data=info.torrent_data)
+    if info.info_hash:
+        # No file to upload, but the hash alone still identifies the torrent.
+        return DebridMagnet(magnet_url=f"magnet:?xt=urn:btih:{info.info_hash}")
+
+    reason = info.fetch_error or "no magnet link, info hash, or torrent file was available"
+    msg = f"Could not resolve a torrent to send from {url[:120]} ({reason})"
+    raise ValueError(msg)
+
+
 def extract_torrent_info(
     url: str,
     *,

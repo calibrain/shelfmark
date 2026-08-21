@@ -26,6 +26,11 @@ from shelfmark.download.clients import (
     register_client,
 )
 from shelfmark.download.clients._coercion import config_text
+from shelfmark.download.clients.torrent_utils import (
+    DebridMagnet,
+    DebridUpload,
+    resolve_debrid_upload,
+)
 from shelfmark.download.http import download_url
 from shelfmark.download.network import get_ssl_verify
 
@@ -202,41 +207,19 @@ class AllDebridClient(DownloadClient):
         expected_hash: str | None = None,
         **kwargs: object,
     ) -> str:
-        """Upload a magnet link to AllDebrid and return the magnet ID."""
+        """Send a torrent to AllDebrid and return the magnet ID.
+
+        Accepts a magnet link, a .torrent URL, or an indexer proxy URL; anything
+        that is not already a magnet is resolved first, since an HTTP URL posted
+        as a magnet is rejected rather than downloaded (#1250).
+        """
         if not self._api_key:
             msg = "AllDebrid API key is not configured"
             raise RuntimeError(msg)
 
-        magnet_link = url
-        if not magnet_link.startswith("magnet:") and expected_hash:
-            magnet_link = f"magnet:?xt=urn:btih:{expected_hash}"
-
-        api_url = f"{_API_BASE}/magnet/upload"
         try:
-            resp = requests.post(
-                api_url,
-                headers=self._auth_headers(),
-                data={"magnets[]": magnet_link},
-                timeout=_API_TIMEOUT,
-                verify=get_ssl_verify(api_url),
-            )
-            resp.raise_for_status()
-            data = resp.json()
-            if data.get("status") != "success":
-                code = data.get("error", {}).get("code", "UNKNOWN")
-                msg = f"AllDebrid upload failed: {code}"
-                _raise_runtime_error(msg)
-
-            magnets = data.get("data", {}).get("magnets", [])
-            if not magnets:
-                msg = "No magnet returned from AllDebrid"
-                _raise_runtime_error(msg)
-
-            info = magnets[0]
-            if info.get("error"):
-                code = info["error"].get("code", "UNKNOWN")
-                msg = f"AllDebrid magnet error: {code}"
-                _raise_runtime_error(msg)
+            upload = resolve_debrid_upload(url, expected_hash=expected_hash)
+            info = self._send_torrent(upload)
 
             magnet_id = str(info.get("id", ""))
             if not magnet_id:
@@ -262,11 +245,64 @@ class AllDebridClient(DownloadClient):
             )
 
         except Exception:
-            logger.exception("Failed to upload magnet to AllDebrid")
+            logger.exception("Failed to add torrent to AllDebrid")
             raise
 
         else:
             return magnet_id
+
+    def _send_torrent(self, upload: DebridUpload) -> dict[str, Any]:
+        """Hand the torrent to AllDebrid, as a magnet or as a file upload.
+
+        Both endpoints answer with the same envelope and the same per-entry
+        error shape, differing only in which key holds the entries.
+        """
+        if isinstance(upload, DebridMagnet):
+            api_url = f"{_API_BASE}/magnet/upload"
+            entries_key = "magnets"
+            resp = requests.post(
+                api_url,
+                headers=self._auth_headers(),
+                data={"magnets[]": upload.magnet_url},
+                timeout=_API_TIMEOUT,
+                verify=get_ssl_verify(api_url),
+            )
+        else:
+            api_url = f"{_API_BASE}/magnet/upload/file"
+            entries_key = "files"
+            resp = requests.post(
+                api_url,
+                headers=self._auth_headers(),
+                files={
+                    "files[]": (
+                        "release.torrent",
+                        upload.torrent_data,
+                        "application/x-bittorrent",
+                    )
+                },
+                timeout=_API_TIMEOUT,
+                verify=get_ssl_verify(api_url),
+            )
+
+        resp.raise_for_status()
+        data = resp.json()
+        if data.get("status") != "success":
+            code = data.get("error", {}).get("code", "UNKNOWN")
+            msg = f"AllDebrid upload failed: {code}"
+            _raise_runtime_error(msg)
+
+        entries = data.get("data", {}).get(entries_key, [])
+        if not entries:
+            msg = "AllDebrid accepted the upload but returned no torrent"
+            _raise_runtime_error(msg)
+
+        info = entries[0]
+        if info.get("error"):
+            code = info["error"].get("code", "UNKNOWN")
+            msg = f"AllDebrid rejected the torrent: {code}"
+            _raise_runtime_error(msg)
+
+        return info
 
     def get_status(self, download_id: str) -> DownloadStatus:
         """Poll AllDebrid for magnet status and drive the download."""

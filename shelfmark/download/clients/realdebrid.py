@@ -24,6 +24,11 @@ from shelfmark.download.clients import (
     register_client,
 )
 from shelfmark.download.clients._coercion import config_text
+from shelfmark.download.clients.torrent_utils import (
+    DebridMagnet,
+    DebridUpload,
+    resolve_debrid_upload,
+)
 from shelfmark.download.http import download_url
 from shelfmark.download.network import get_ssl_verify
 
@@ -173,26 +178,19 @@ class RealDebridClient(DownloadClient):
         expected_hash: str | None = None,
         **kwargs: object,
     ) -> str:
-        """Upload a magnet link to Real-Debrid and select all files."""
+        """Send a torrent to Real-Debrid and select all files.
+
+        Accepts a magnet link, a .torrent URL, or an indexer proxy URL; anything
+        that is not already a magnet is resolved first, because Real-Debrid
+        answers a non-magnet body on addMagnet with a bare 404 (#1250).
+        """
         if not self._api_key:
             msg = "Real-Debrid API key is not configured"
             raise RuntimeError(msg)
 
-        magnet_link = url
-        if not magnet_link.startswith("magnet:") and expected_hash:
-            magnet_link = f"magnet:?xt=urn:btih:{expected_hash}"
-
-        add_url = f"{_API_BASE}/torrents/addMagnet"
         try:
-            resp = requests.post(
-                add_url,
-                headers=self._auth_headers(),
-                data={"magnet": magnet_link},
-                timeout=_API_TIMEOUT,
-                verify=get_ssl_verify(add_url),
-            )
-            resp.raise_for_status()
-            data = resp.json()
+            upload = resolve_debrid_upload(url, expected_hash=expected_hash)
+            data = self._send_torrent(upload)
 
             torrent_id = str(data.get("id", ""))
             if not torrent_id:
@@ -229,11 +227,40 @@ class RealDebridClient(DownloadClient):
             )
 
         except Exception:
-            logger.exception("Failed to upload magnet to Real-Debrid")
+            logger.exception("Failed to add torrent to Real-Debrid")
             raise
 
         else:
             return torrent_id
+
+    def _send_torrent(self, upload: DebridUpload) -> dict[str, Any]:
+        """Hand the torrent to Real-Debrid, as a magnet or as a file upload."""
+        if isinstance(upload, DebridMagnet):
+            add_url = f"{_API_BASE}/torrents/addMagnet"
+            resp = requests.post(
+                add_url,
+                headers=self._auth_headers(),
+                data={"magnet": upload.magnet_url},
+                timeout=_API_TIMEOUT,
+                verify=get_ssl_verify(add_url),
+            )
+        else:
+            # addTorrent is a PUT that takes the raw file as the request body,
+            # not a form field: https://api.real-debrid.com/
+            add_url = f"{_API_BASE}/torrents/addTorrent"
+            resp = requests.put(
+                add_url,
+                headers={
+                    **self._auth_headers(),
+                    "Content-Type": "application/x-bittorrent",
+                },
+                data=upload.torrent_data,
+                timeout=_API_TIMEOUT,
+                verify=get_ssl_verify(add_url),
+            )
+
+        resp.raise_for_status()
+        return resp.json()
 
     def get_status(self, download_id: str) -> DownloadStatus:
         """Poll Real-Debrid for torrent status and drive the download."""
