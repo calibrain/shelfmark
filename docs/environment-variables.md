@@ -1223,6 +1223,7 @@ How long to cache individual book details. Default: 600 (10 minutes). Max: 60480
 | `PROWLARR_URL` | Base URL of your Prowlarr instance | string | _none_ |
 | `PROWLARR_API_KEY` | Found in Prowlarr: Settings > General > API Key | string (secret) | _none_ |
 | `PROWLARR_INDEXERS` | Select which indexers to search. 📚 = has book categories. Leave empty to search all. | string (comma-separated) | _empty list_ |
+| `PROWLARR_INDEXER_TIMEOUT` | How long to wait for a single indexer to answer a search. Indexers behind FlareSolverr can need 90 seconds or more while a cold Cloudflare challenge is solved; raise this if searches come back empty and the Prowlarr log shows the search still running. | number | `90` |
 | `PROWLARR_AUTO_EXPAND` | Automatically retry search without category filtering if no results are found | boolean | `false` |
 | `PROWLARR_COLLAPSE_DUPLICATES` | Collapse a release that several indexer entries returned down to a single row, keeping the entry with the best Prowlarr priority. Turn this off to see every entry that carried it, which is what makes results from filter-specific entries (freeleech and the like) visible. | boolean | `true` |
 | `PROWLARR_USE_SEED_PREFERENCES` | Apply per-indexer seed time and ratio preferences from Prowlarr when sending torrents to the download client | boolean | `false` |
@@ -1267,6 +1268,16 @@ Select which indexers to search. 📚 = has book categories. Leave empty to sear
 
 - **Type:** string (comma-separated)
 - **Default:** _empty list_
+
+#### `PROWLARR_INDEXER_TIMEOUT`
+
+**Indexer Search Timeout (seconds)**
+
+How long to wait for a single indexer to answer a search. Indexers behind FlareSolverr can need 90 seconds or more while a cold Cloudflare challenge is solved; raise this if searches come back empty and the Prowlarr log shows the search still running.
+
+- **Type:** number
+- **Default:** `90`
+- **Constraints:** min: 5, max: 300
 
 #### `PROWLARR_AUTO_EXPAND`
 

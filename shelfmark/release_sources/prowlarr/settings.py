@@ -10,12 +10,18 @@ from shelfmark.core.settings_registry import (
     CheckboxField,
     HeadingField,
     MultiSelectField,
+    NumberField,
     PasswordField,
     SettingsField,
     TextField,
     register_settings,
 )
 from shelfmark.core.utils import normalize_http_url
+from shelfmark.release_sources.prowlarr.api import (
+    DEFAULT_INDEXER_TIMEOUT_SECONDS,
+    MAX_INDEXER_TIMEOUT_SECONDS,
+    MIN_INDEXER_TIMEOUT_SECONDS,
+)
 
 # ==================== Dynamic Options Loaders ====================
 
@@ -181,6 +187,20 @@ def prowlarr_config_settings() -> list[SettingsField]:
             description="Select which indexers to search. 📚 = has book categories. Leave empty to search all.",
             options=_get_indexer_options,
             default=[],
+            show_when={"field": "PROWLARR_ENABLED", "value": True},
+        ),
+        NumberField(
+            key="PROWLARR_INDEXER_TIMEOUT",
+            label="Indexer Search Timeout (seconds)",
+            description=(
+                "How long to wait for a single indexer to answer a search. Indexers behind "
+                "FlareSolverr can need 90 seconds or more while a cold Cloudflare challenge "
+                "is solved; raise this if searches come back empty and the Prowlarr log "
+                "shows the search still running."
+            ),
+            default=DEFAULT_INDEXER_TIMEOUT_SECONDS,
+            min_value=MIN_INDEXER_TIMEOUT_SECONDS,
+            max_value=MAX_INDEXER_TIMEOUT_SECONDS,
             show_when={"field": "PROWLARR_ENABLED", "value": True},
         ),
         CheckboxField(
