@@ -152,9 +152,14 @@ RUN mkdir -p \
 EXPOSE ${FLASK_PORT}
 
 # Add healthcheck for container status
-# Uses /api/health which doesn't require authentication
-HEALTHCHECK --interval=60s --timeout=60s --start-period=60s --retries=3 \
-    CMD curl -s http://localhost:${FLASK_PORT}/api/health > /dev/null || exit 1
+# Uses /api/health which doesn't require authentication.
+# curl needs -f so an HTTP error status fails the probe instead of passing it:
+# plain `curl -s` exits 0 on a 500, which reported a broken app as healthy.
+# timeout stays well under interval so a hung probe cannot occupy a whole cycle.
+# --start-interval matches the daemon default (5s), made explicit so startup
+# probing does not depend on that default staying put.
+HEALTHCHECK --interval=30s --timeout=10s --start-period=90s --start-interval=5s --retries=3 \
+    CMD curl -fsS http://localhost:${FLASK_PORT}/api/health > /dev/null || exit 1
 
 # Use dumb-init as the entrypoint to handle signals properly
 ENTRYPOINT ["/usr/bin/dumb-init", "--"]

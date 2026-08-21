@@ -14,6 +14,7 @@ Two approaches to preserve torrent files for seeding:
 import os
 import shutil
 import tempfile
+import zipfile
 from pathlib import Path
 from threading import Event
 from unittest.mock import MagicMock, patch
@@ -1229,6 +1230,61 @@ class TestTorrentSourceCleanupProtection:
         assert result is not None
         assert Path(result) == library / expected_name
         assert torrent_file.exists()
+
+    def test_torrent_audiobook_archive_groups_under_the_release_name(self, tmp_path):
+        """Torrent: a single archive of chapters groups under the release name.
+
+        Simulates: a torrent whose only file is "Project Hail Mary.zip" holding
+        two chapters. Extraction only runs with hardlinking off, and the archive
+        itself must stay put for seeding.
+        """
+        from shelfmark.core.models import DownloadTask, SearchMode
+        from shelfmark.download.postprocess.router import (
+            post_process_download as _post_process_download,
+        )
+
+        torrent_file = tmp_path / "downloads" / "Project Hail Mary.zip"
+        torrent_file.parent.mkdir(parents=True)
+        with zipfile.ZipFile(torrent_file, "w") as zf:
+            zf.writestr("Part 01.mp3", "audio 1")
+            zf.writestr("Part 02.mp3", "audio 2")
+
+        library = tmp_path / "library"
+        library.mkdir()
+        task = DownloadTask(
+            task_id="torrent_archive_audiobook",
+            source="prowlarr",
+            title="Project Hail Mary",
+            author="Andy Weir",
+            format="mp3",
+            content_type="audiobook",
+            search_mode=SearchMode.UNIVERSAL,
+            original_download_path=str(torrent_file),
+        )
+
+        with (
+            patch("shelfmark.core.config.config") as mock_orch,
+            patch("shelfmark.config.env.TMP_DIR", tmp_path / "staging"),
+        ):
+            mock_orch.get = self._make_config_mock(
+                str(library),
+                hardlink=False,
+                organization_mode="rename_and_group",
+            )
+            mock_orch.CUSTOM_SCRIPT = None
+            result = _post_process_download(torrent_file, task, Event(), MagicMock())
+
+        grouped_dir = library / "Project Hail Mary"
+        assert result is not None
+        assert Path(result).parent == grouped_dir
+        assert sorted(path.name for path in grouped_dir.glob("*.mp3")) == [
+            "Part 01.mp3",
+            "Part 02.mp3",
+        ]
+        assert not list(library.glob("*.mp3"))
+        # The archive stays behind for seeding, and never names the folder.
+        assert torrent_file.exists()
+        assert not (library / "Project Hail Mary.zip").exists()
 
     def test_torrent_audiobook_multifile_hardlink(self, tmp_path):
         """Torrent: Multi-file audiobook - all source files preserved for seeding.

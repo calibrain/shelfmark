@@ -704,7 +704,7 @@ Choose how downloaded audiobook files are named and organized.
 
 - **Type:** string (choice)
 - **Default:** `rename`
-- **Options:** `none` (None), `rename` (Rename Only), `organize` (Rename and Organize)
+- **Options:** `none` (None), `rename` (Rename Only), `organize` (Rename and Organize), `rename_and_group` (Rename and Group)
 
 #### `TEMPLATE_AUDIOBOOK_RENAME`
 

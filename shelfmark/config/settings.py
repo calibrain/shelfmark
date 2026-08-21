@@ -1300,7 +1300,7 @@ def download_settings() -> list[SettingsField]:
                 {
                     "value": "rename_and_group",
                     "label": "Rename and Group",
-                    "description": "Rename single-file downloads; keep multi-file downloads grouped in their source folder.",
+                    "description": "Rename single-file downloads; keep multi-file downloads grouped in their source folder. Do not use with ingest folders.",
                 },
             ],
             default="rename",

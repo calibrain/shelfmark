@@ -748,7 +748,14 @@ def test_archive_extraction_organize_multifile_assigns_part_numbers(tmp_path):
     assert files[1].name == "Archive Audio - 02.mp3"
 
 
-def test_archive_extraction_grouping_does_not_use_archive_as_folder(tmp_path):
+@pytest.mark.parametrize(
+    ("organization_mode", "grouped"),
+    [("rename_and_group", True), ("rename", False)],
+)
+def test_archive_extraction_groups_chapters_under_the_archive_stem(
+    tmp_path, organization_mode, grouped
+):
+    """An extracted multi-chapter archive groups into `Book/`, never `Book.zip/`."""
     from shelfmark.download.postprocess.router import (
         post_process_download as _post_process_download,
     )
@@ -764,7 +771,7 @@ def test_archive_extraction_grouping_does_not_use_archive_as_folder(tmp_path):
         zf.writestr("Part 2.mp3", "audio2")
 
     task = DownloadTask(
-        task_id="direct-archive-audio-grouped",
+        task_id=f"direct-archive-audio-{organization_mode}",
         source="direct_download",
         title="Archive Audio",
         author="Tester",
@@ -777,14 +784,18 @@ def test_archive_extraction_grouping_does_not_use_archive_as_folder(tmp_path):
         patch("shelfmark.core.config.config") as mock_config,
         patch("shelfmark.config.env.TMP_DIR", staging),
     ):
-        mock_config.get = _build_config(ingest, organization="rename_and_group")
+        mock_config.get = _build_config(ingest, organization=organization_mode)
         mock_config.CUSTOM_SCRIPT = None
         _sync_config(mock_config, mock_config)
 
         result = _post_process_download(archive_path, task, Event(), lambda *_args: None)
 
+    transfer_dir = ingest / "Book" if grouped else ingest
     assert result is not None
-    assert sorted(path.name for path in ingest.glob("*.mp3")) == ["Part 1.mp3", "Part 2.mp3"]
+    assert Path(result).parent == transfer_dir
+    assert sorted(path.name for path in transfer_dir.glob("*.mp3")) == ["Part 1.mp3", "Part 2.mp3"]
+    assert bool(list(ingest.glob("*.mp3"))) is not grouped
+    # The suffix is packaging, not part of the release name.
     assert not (ingest / "Book.zip").exists()
 
 
