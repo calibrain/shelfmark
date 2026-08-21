@@ -52,7 +52,7 @@ def get_file_organization(*, is_audiobook: bool) -> str:
     """Get the file organization mode for the content type."""
     key = "FILE_ORGANIZATION_AUDIOBOOK" if is_audiobook else "FILE_ORGANIZATION"
     mode = _config_text(core_config.config.get(key, "rename")).strip().lower()
-    return mode if mode in ("none", "rename", "organize") else "rename"
+    return mode if mode in ("none", "rename", "rename_and_group", "organize") else "rename"
 
 
 def get_template(*, is_audiobook: bool, organization_mode: str) -> str:

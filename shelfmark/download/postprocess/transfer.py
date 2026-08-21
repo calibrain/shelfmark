@@ -241,11 +241,11 @@ def transfer_book_files(
 
     transfer_destination = destination
     if (
-        is_torrent
-        and is_audiobook
+        is_audiobook
         and len(book_files) > 1
-        and organization_mode in {"none", "rename"}
+        and organization_mode == "rename_and_group"
         and source_root is not None
+        and run_blocking_io(source_root.is_dir)
     ):
         source_folder = sanitize_filename(source_root.name)
         if source_folder:

@@ -66,6 +66,20 @@ def test_get_file_organization_uses_current_keys(monkeypatch):
     assert policy.get_file_organization(is_audiobook=True) == "none"
 
 
+def test_get_file_organization_accepts_audiobook_grouping(monkeypatch):
+    import shelfmark.download.postprocess.policy as policy
+
+    monkeypatch.setattr(
+        policy.core_config.config,
+        "get",
+        lambda key, default=None: {
+            "FILE_ORGANIZATION_AUDIOBOOK": "rename_and_group",
+        }.get(key, default),
+    )
+
+    assert policy.get_file_organization(is_audiobook=True) == "rename_and_group"
+
+
 def test_get_file_organization_ignores_pre_release_processing_mode_keys(monkeypatch):
     import shelfmark.download.postprocess.policy as policy
 

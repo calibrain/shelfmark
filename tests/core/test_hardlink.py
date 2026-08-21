@@ -1128,12 +1128,15 @@ class TestTorrentSourceCleanupProtection:
 
     # ==================== AUDIOBOOK TESTS ====================
 
-    @pytest.mark.parametrize("organization_mode", ["rename", "none"])
+    @pytest.mark.parametrize(
+        ("organization_mode", "grouped"),
+        [("rename", False), ("rename_and_group", True)],
+    )
     @pytest.mark.parametrize("hardlink", [True, False])
-    def test_torrent_audiobook_multifile_preserves_source_folder(
-        self, tmp_path, organization_mode, hardlink
+    def test_torrent_audiobook_multifile_grouping_is_opt_in(
+        self, tmp_path, organization_mode, grouped, hardlink
     ):
-        """Non-organized multi-file audiobooks retain their torrent folder."""
+        """Multi-file audiobooks retain their torrent folder only when opted in."""
         from shelfmark.core.models import DownloadTask, SearchMode
         from shelfmark.download.postprocess.router import (
             post_process_download as _post_process_download,
@@ -1167,17 +1170,17 @@ class TestTorrentSourceCleanupProtection:
             mock_orch.CUSTOM_SCRIPT = None
             result = _post_process_download(torrent_dir, task, Event(), MagicMock())
 
-        grouped_dir = library / "Project_ Hail Mary Audiobook"
+        transfer_dir = library / "Project_ Hail Mary Audiobook" if grouped else library
         assert result is not None
-        assert Path(result).parent == grouped_dir
-        assert sorted(path.name for path in grouped_dir.glob("*.mp3")) == [
+        assert Path(result).parent == transfer_dir
+        assert sorted(path.name for path in transfer_dir.glob("*.mp3")) == [
             "Part 01.mp3",
             "Part 02.mp3",
         ]
-        assert not list(library.glob("*.mp3"))
+        assert bool(list(library.glob("*.mp3"))) is not grouped
 
         for source_file in source_files:
-            destination_file = grouped_dir / source_file.name
+            destination_file = transfer_dir / source_file.name
             assert source_file.exists()
             assert destination_file.exists()
             if hardlink:
@@ -1185,7 +1188,7 @@ class TestTorrentSourceCleanupProtection:
             else:
                 assert source_file.stat().st_ino != destination_file.stat().st_ino
 
-    @pytest.mark.parametrize("organization_mode", ["rename", "none"])
+    @pytest.mark.parametrize("organization_mode", ["rename", "none", "rename_and_group"])
     def test_torrent_audiobook_single_file_stays_in_destination_root(
         self, tmp_path, organization_mode
     ):
@@ -1220,7 +1223,7 @@ class TestTorrentSourceCleanupProtection:
 
         expected_name = (
             "Andy Weir - Project Hail Mary.mp3"
-            if organization_mode == "rename"
+            if organization_mode in {"rename", "rename_and_group"}
             else torrent_file.name
         )
         assert result is not None

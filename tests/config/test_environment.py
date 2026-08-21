@@ -385,14 +385,15 @@ class TestSettingsValidation:
         assert "Naming Template" in result["message"]
         assert "Organize" in result["message"]
 
-    def test_downloads_audiobooks_rename_template_rejects_path_separators(self):
+    @pytest.mark.parametrize("organization_mode", ["rename", "rename_and_group"])
+    def test_downloads_audiobooks_rename_template_rejects_path_separators(self, organization_mode):
         import shelfmark.config.settings  # noqa: F401
         from shelfmark.core.settings_registry import update_settings
 
         result = update_settings(
             "downloads",
             {
-                "FILE_ORGANIZATION_AUDIOBOOK": "rename",
+                "FILE_ORGANIZATION_AUDIOBOOK": organization_mode,
                 "TEMPLATE_AUDIOBOOK_RENAME": "{Author}/{Title}",
             },
         )

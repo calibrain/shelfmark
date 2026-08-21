@@ -66,6 +66,32 @@ def test_download_settings_booklore_destination_field_defaults_to_library():
     assert option_values == {"library", "bookdrop"}
 
 
+def test_download_settings_audiobook_grouping_is_opt_in():
+    from shelfmark.config.settings import download_settings
+
+    fields = download_settings()
+    organization_field = next(
+        field for field in fields if getattr(field, "key", None) == "FILE_ORGANIZATION_AUDIOBOOK"
+    )
+    rename_template = next(
+        field
+        for field in fields
+        if getattr(field, "key", None) == "template_audiobook_rename_editor"
+    )
+
+    assert organization_field.default == "rename"
+    assert [option["value"] for option in organization_field.options] == [
+        "none",
+        "rename",
+        "organize",
+        "rename_and_group",
+    ]
+    assert rename_template.show_when == {
+        "field": "FILE_ORGANIZATION_AUDIOBOOK",
+        "value": ["rename", "rename_and_group"],
+    }
+
+
 def test_download_settings_grimmory_copy_is_exposed_in_ui_metadata():
     from shelfmark.config.settings import download_settings
 
