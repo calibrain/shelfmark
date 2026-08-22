@@ -52,9 +52,9 @@ class ReleaseSearchPlan:
         return self.title_variants[0].query if self.title_variants else ""
 
 
-def _normalize_languages(languages: list[str] | None) -> list[str] | None:
+def _normalize_languages(languages: list[str] | None, user_id: int | None) -> list[str] | None:
     if not languages:
-        default = getattr(config, "BOOK_LANGUAGE", None)
+        default = config.get("BOOK_LANGUAGE", None, user_id=user_id)
         if isinstance(default, str):
             default_values: list[object] = [default]
         elif isinstance(default, Iterable) and not isinstance(default, (bytes, bytearray, dict)):
@@ -102,9 +102,15 @@ def build_release_search_plan(
     manual_query: str | None = None,
     indexers: list[str] | None = None,
     source_filters: SearchFilters | None = None,
+    user_id: int | None = None,
 ) -> ReleaseSearchPlan:
-    """Build normalized search variants shared across release sources."""
-    resolved_languages = _normalize_languages(languages)
+    """Build normalized search variants shared across release sources.
+
+    ``user_id`` picks up that user's default languages when the caller does not
+    filter explicitly, so a search started without a language filter uses the
+    reader's own default rather than the instance-wide one.
+    """
+    resolved_languages = _normalize_languages(languages, user_id)
 
     resolved_manual_query = None
     if manual_query:

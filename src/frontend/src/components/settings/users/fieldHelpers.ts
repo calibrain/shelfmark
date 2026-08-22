@@ -31,6 +31,13 @@ export const toNormalizedLowercaseTextValue = (value: unknown): string => {
   return toTrimmedTextValue(value).toLowerCase();
 };
 
+export const toStringListValue = (value: unknown): string[] => {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.map((entry) => toTrimmedTextValue(entry)).filter((entry) => entry.length > 0);
+};
+
 export const toComparableValue = (value: unknown): string => {
   if (value === null || value === undefined) {
     return '';

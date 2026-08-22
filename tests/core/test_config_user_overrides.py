@@ -143,3 +143,25 @@ def test_build_user_preferences_payload_reports_effective_sources(monkeypatch):
     fields_by_key = {field["key"]: field for field in payload["fields"]}
     assert fields_by_key["DESTINATION"]["fromEnv"] is False
     assert fields_by_key["BOOKS_OUTPUT_MODE"]["fromEnv"] is True
+
+
+def test_build_user_preferences_payload_carries_the_language_default():
+    """BOOK_LANGUAGE rides along with the other search preferences on its tab."""
+    import shelfmark.config.settings  # noqa: F401
+    from shelfmark.core.user_settings_overrides import build_user_preferences_payload
+
+    user_db = SimpleNamespace(get_user_settings=lambda user_id: {"BOOK_LANGUAGE": ["de", "en"]})
+
+    payload = build_user_preferences_payload(user_db, 7, "search_mode")
+
+    assert payload["tab"] == "search_mode"
+    assert {"SEARCH_MODE", "BOOK_LANGUAGE"}.issubset(payload["keys"])
+    assert payload["userOverrides"] == {"BOOK_LANGUAGE": ["de", "en"]}
+    assert payload["effective"]["BOOK_LANGUAGE"] == {
+        "value": ["de", "en"],
+        "source": "user_override",
+    }
+
+    fields_by_key = {field["key"]: field for field in payload["fields"]}
+    assert fields_by_key["BOOK_LANGUAGE"]["type"] == "MultiSelectField"
+    assert fields_by_key["BOOK_LANGUAGE"]["options"]

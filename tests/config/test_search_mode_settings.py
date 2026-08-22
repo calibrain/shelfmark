@@ -11,3 +11,13 @@ def test_search_mode_settings_include_release_source_links_toggle():
     assert field.label == "Show Release Source Links"
     assert field.default is True
     assert field.user_overridable is False
+
+
+def test_book_language_is_user_overridable():
+    fields = {field.key: field for field in search_mode_settings() if hasattr(field, "key")}
+
+    field = fields["BOOK_LANGUAGE"]
+
+    assert field.label == "Default Book Languages"
+    assert field.default == ["en"]
+    assert field.user_overridable is True

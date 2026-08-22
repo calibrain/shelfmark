@@ -6,7 +6,13 @@ class TestReleaseSearchPlanManualQuery:
     def test_manual_query_overrides_plan(self, monkeypatch):
         import shelfmark.core.search_plan as sp
 
-        monkeypatch.setattr(sp.config, "BOOK_LANGUAGE", ["en", "hu"], raising=False)
+        monkeypatch.setattr(
+            sp.config,
+            "get",
+            lambda key, default=None, user_id=None: (
+                ["en", "hu"] if key == "BOOK_LANGUAGE" else default
+            ),
+        )
 
         book = BookMetadata(
             provider="hardcover",

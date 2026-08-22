@@ -7,7 +7,12 @@ import type {
 } from '../../../types/settings';
 import { HeadingField, MultiSelectField, SelectField, TextField } from '../fields';
 import { FieldWrapper } from '../shared';
-import { getFieldByKey, toNormalizedLowercaseTextValue, toTextValue } from './fieldHelpers';
+import {
+  getFieldByKey,
+  toNormalizedLowercaseTextValue,
+  toStringListValue,
+  toTextValue,
+} from './fieldHelpers';
 import type { PerUserSettings } from './types';
 
 interface UserOverridesSectionProps {
@@ -175,16 +180,12 @@ export const UserOverridesSection = ({
     label: 'Email Recipient',
     description: 'Email address used for this user in Email output mode.',
   };
-  const browserDownloadGlobalValue = Array.isArray(globalValues.DOWNLOAD_TO_BROWSER_CONTENT_TYPES)
-    ? globalValues.DOWNLOAD_TO_BROWSER_CONTENT_TYPES.map((entry) => String(entry).trim()).filter(
-        (entry) => entry.length > 0,
-      )
-    : [];
-  const browserDownloadUserValue = Array.isArray(userSettings.DOWNLOAD_TO_BROWSER_CONTENT_TYPES)
-    ? userSettings.DOWNLOAD_TO_BROWSER_CONTENT_TYPES.map((entry) => entry.trim()).filter(
-        (entry) => entry.length > 0,
-      )
-    : [];
+  const browserDownloadGlobalValue = toStringListValue(
+    globalValues.DOWNLOAD_TO_BROWSER_CONTENT_TYPES,
+  );
+  const browserDownloadUserValue = toStringListValue(
+    userSettings.DOWNLOAD_TO_BROWSER_CONTENT_TYPES,
+  );
 
   const isOverridden = (key: DeliverySettingKey): boolean => {
     if (

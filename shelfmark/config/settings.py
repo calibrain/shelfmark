@@ -430,13 +430,6 @@ def general_settings() -> list[SettingsField]:
             options=_AUDIOBOOK_FORMAT_OPTIONS,
             default=[*AUDIOBOOK_FORMATS, *ARCHIVE_FORMATS],
         ),
-        MultiSelectField(
-            key="BOOK_LANGUAGE",
-            label="Default Book Languages",
-            description="Default language filter for searches.",
-            options=_LANGUAGE_OPTIONS,
-            default=["en"],
-        ),
     ]
 
 
@@ -472,6 +465,17 @@ def search_mode_settings() -> list[SettingsField]:
                 },
             ],
             default="universal",
+            user_overridable=True,
+        ),
+        MultiSelectField(
+            key="BOOK_LANGUAGE",
+            label="Default Book Languages",
+            description=(
+                "Default language filter for searches. Users can override this for their "
+                "own account."
+            ),
+            options=_LANGUAGE_OPTIONS,
+            default=["en"],
             user_overridable=True,
         ),
         SelectField(

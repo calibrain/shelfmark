@@ -93,6 +93,7 @@ def validate_user_settings(
                 continue
             if key in {
                 "SEARCH_MODE",
+                "BOOK_LANGUAGE",
                 "METADATA_PROVIDER",
                 "METADATA_PROVIDER_AUDIOBOOK",
                 "DEFAULT_RELEASE_SOURCE",

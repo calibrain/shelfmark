@@ -300,6 +300,7 @@ class ProwlarrHandler(ExternalClientHandler):
         plan = build_release_search_plan(
             book,
             indexers=[indexer] if indexer is not None else None,
+            user_id=task.user_id,
         )
 
         source = ProwlarrSource()

@@ -30,7 +30,7 @@ Requires mounting your Calibre-Web `app.db` to `/auth/app.db`.
 
 Admins can configure per-user settings by editing a user in the user management panel. Non-admin users can also edit their own settings through **My Account** (accessible from the user menu). Admins control which sections are visible in My Account via the **Visible Self-Settings Sections** option.
 
-There are three categories of per-user settings:
+There are four categories of per-user settings:
 
 ### Delivery Preferences
 
@@ -41,6 +41,15 @@ Override where a user's downloads are sent. Options depend on the global output 
 - **Audiobook destination** — A custom folder path for audiobook downloads
 - **BookLore library/path** — Per-user BookLore target (when using BookLore output mode)
 - **Email recipient** — Per-user email address (when using Email output mode)
+
+### Search Preferences
+
+Override how a user searches, on top of the global search defaults:
+
+- **Search mode** — Direct or Universal for this user
+- **Default book languages** — The languages a user's searches fall back to when they don't pick one themselves. Useful for a shared instance where readers want different languages.
+- **Metadata providers** — Book, audiobook, and combined-mode provider for this user
+- **Default release sources** — The release tab opened first for books and audiobooks
 
 ### Notifications
 

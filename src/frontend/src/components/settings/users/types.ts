@@ -10,6 +10,7 @@ export interface PerUserSettings {
   EMAIL_RECIPIENT?: string;
   DOWNLOAD_TO_BROWSER_CONTENT_TYPES?: string[];
   SEARCH_MODE?: string;
+  BOOK_LANGUAGE?: string[];
   METADATA_PROVIDER?: string;
   METADATA_PROVIDER_AUDIOBOOK?: string;
   DEFAULT_RELEASE_SOURCE?: string;

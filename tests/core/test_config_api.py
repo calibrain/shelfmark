@@ -48,6 +48,7 @@ def test_config_endpoint_uses_user_scope_and_runtime_flags(main_module, client):
             "DEFAULT_RELEASE_SOURCE": "prowlarr",
             "DEFAULT_RELEASE_SOURCE_AUDIOBOOK": "audiobookbay",
             "DOWNLOAD_TO_BROWSER_CONTENT_TYPES": ["book", "audiobook"],
+            "BOOK_LANGUAGE": ["de", "en"],
             "AUTO_OPEN_DOWNLOADS_SIDEBAR": False,
             "HARDCOVER_AUTO_REMOVE_ON_DOWNLOAD": True,
             "AA_DEFAULT_SORT": "newest",
@@ -75,12 +76,14 @@ def test_config_endpoint_uses_user_scope_and_runtime_flags(main_module, client):
     assert data["default_release_source"] == "prowlarr"
     assert data["default_release_source_audiobook"] == "audiobookbay"
     assert data["download_to_browser_content_types"] == ["book", "audiobook"]
+    assert data["default_language"] == ["de", "en"]
     assert data["settings_enabled"] is True
     assert data["metadata_default_sort"] == "relevance"
 
     assert ("SHOW_RELEASE_SOURCE_LINKS", None) in calls
     assert ("SHOW_COMBINED_SELECTOR", 42) in calls
     assert ("DOWNLOAD_TO_BROWSER_CONTENT_TYPES", 42) in calls
+    assert ("BOOK_LANGUAGE", 42) in calls
 
 
 def test_config_endpoint_falls_back_to_audiobook_metadata_provider(main_module, client):

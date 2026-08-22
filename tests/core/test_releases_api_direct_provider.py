@@ -114,6 +114,41 @@ def test_releases_accepts_direct_download_provider(main_module, client):
     assert all(call.args == ("direct_download",) for call in mock_get_source.call_args_list)
 
 
+def test_releases_falls_back_to_the_session_users_default_languages(main_module, client):
+    """A request without a language filter searches in the reader's own languages."""
+    import shelfmark.core.search_plan as search_plan
+
+    planned_languages: list[list[str] | None] = []
+
+    class _LanguageProbeSource(_FakeDirectSource):
+        def search(self, book, plan, expand_search=False, content_type="ebook"):
+            planned_languages.append(plan.languages)
+            return []
+
+    def fake_get(key, default=None, user_id=None):
+        if key == "BOOK_LANGUAGE":
+            return ["de"] if user_id == 42 else ["en"]
+        return default
+
+    with client.session_transaction() as session:
+        session["user_id"] = "reader"
+        session["db_user_id"] = 42
+
+    with patch.object(main_module, "get_auth_mode", return_value="none"):
+        with patch.object(search_plan, "config", SimpleNamespace(get=fake_get)):
+            with patch("shelfmark.release_sources.get_source", return_value=_LanguageProbeSource()):
+                resp = client.get(
+                    "/api/releases",
+                    query_string={
+                        "provider": "direct_download",
+                        "book_id": "md5-abc",
+                    },
+                )
+
+    assert resp.status_code == 200
+    assert planned_languages == [["de"]]
+
+
 def test_releases_direct_provider_returns_404_when_book_missing(main_module, client):
     class _MissingDirectSource:
         def get_record(self, record_id, *, fetch_download_count=True):
