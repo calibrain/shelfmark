@@ -327,7 +327,7 @@ def _split_mam_formats(raw_title: str) -> tuple[list[str], list[str]]:
     heuristics for other indexers).
 
     Tokens after the "/" that Shelfmark does not know as a book or audiobook format
-    (e.g. ``[ENG / MP4]``) are returned separately so the UI can warn that the release
+    (e.g. ``[ENG / AVI]``) are returned separately so the UI can warn that the release
     will download but cannot be processed, instead of showing a bare content-type icon
     that looks like an ordinary result.
     """
@@ -572,8 +572,8 @@ def _prowlarr_result_to_release(
             "info_hash": result.get("infoHash"),
             "formats": formats or None,
             "formats_display": formats_display,
-            # Format tokens the indexer declared but Shelfmark can't process (#1264-style
-            # "[ENG / MP4]"). Lets the UI warn instead of showing a bare content icon.
+            # Format tokens the indexer declared but Shelfmark can't process (e.g. a MAM
+            # "[ENG / AVI]"). Lets the UI warn instead of showing a bare content icon.
             "unrecognized_formats": unrecognized_formats or None,
             # Raw torznab attributes for rich tooltips (enriched indexers)
             "torznab_attrs": result.get("torznabAttrs"),

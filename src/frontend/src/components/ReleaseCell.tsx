@@ -425,7 +425,7 @@ export const ReleaseCell = ({
       const primaryFormat = formats?.[0] || null;
       const additionalFormats = formats?.slice(1) || [];
 
-      // The indexer named a format Shelfmark can't process (e.g. MAM "[ENG / MP4]").
+      // The indexer named a format Shelfmark can't process (e.g. MAM "[ENG / AVI]").
       // Downloading it would only fail post-processing, so warn instead of showing the
       // bare content-type icon that makes it look like any other result.
       const unrecognizedFormats = primaryFormat ? [] : getUnrecognizedReleaseFormats(release);

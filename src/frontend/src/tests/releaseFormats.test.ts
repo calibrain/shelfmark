@@ -42,16 +42,16 @@ describe('releaseFormats.getReleaseFormats', () => {
 describe('releaseFormats.getUnrecognizedReleaseFormats', () => {
   it('returns normalized, deduplicated unrecognized formats from extra', () => {
     const release = buildRelease({
-      extra: { unrecognized_formats: ['MP4', ' mp4 ', 'WEBM'] },
+      extra: { unrecognized_formats: ['AVI', ' avi ', 'WEBM'] },
     });
 
-    expect(getUnrecognizedReleaseFormats(release)).toEqual(['mp4', 'webm']);
+    expect(getUnrecognizedReleaseFormats(release)).toEqual(['avi', 'webm']);
   });
 
   it('accepts a single string value', () => {
-    const release = buildRelease({ extra: { unrecognized_formats: 'MP4' } });
+    const release = buildRelease({ extra: { unrecognized_formats: 'AVI' } });
 
-    expect(getUnrecognizedReleaseFormats(release)).toEqual(['mp4']);
+    expect(getUnrecognizedReleaseFormats(release)).toEqual(['avi']);
   });
 
   it('returns an empty list when nothing was flagged', () => {

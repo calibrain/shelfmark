@@ -36,7 +36,7 @@ export function getReleaseFormats(release: Release): string[] {
 
 /**
  * Format tokens the indexer declared but the backend could not map to a known
- * book/audiobook format (e.g. MyAnonamouse "[ENG / MP4]"). Such a release will
+ * book/audiobook format (e.g. MyAnonamouse "[ENG / AVI]"). Such a release will
  * download but fail post-processing, so the UI warns instead of showing a bare
  * content-type icon.
  */
