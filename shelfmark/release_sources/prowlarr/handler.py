@@ -297,10 +297,11 @@ class ProwlarrHandler(ExternalClientHandler):
             search_title=title,
             search_author=task.author,
         )
+        # No language default here on purpose: this re-finds one exact release by its
+        # guid, and Prowlarr does not filter on plan.languages anyway.
         plan = build_release_search_plan(
             book,
             indexers=[indexer] if indexer is not None else None,
-            user_id=task.user_id,
         )
 
         source = ProwlarrSource()

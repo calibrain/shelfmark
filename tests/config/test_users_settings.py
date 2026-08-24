@@ -90,7 +90,7 @@ def test_visible_self_settings_sections_field_defaults_and_options():
         {
             "value": "search",
             "label": "Search Preferences",
-            "description": "Show personal search mode and provider settings.",
+            "description": "Show personal search mode, language, and provider settings.",
         },
         {
             "value": "notifications",

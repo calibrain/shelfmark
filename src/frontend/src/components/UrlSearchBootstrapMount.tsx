@@ -3,6 +3,7 @@ import type { Dispatch, SetStateAction } from 'react';
 import { useMountEffect } from '@/hooks/useMountEffect';
 import type { AppConfig, AdvancedFilterState, ContentType, SearchMode, SortOption } from '@/types';
 import { buildSearchQuery } from '@/utils/buildSearchQuery';
+import { resolveDefaultLanguageCodes } from '@/utils/languageFilters';
 import { getEffectiveMetadataSort } from '@/utils/metadataSort';
 import type { ParsedUrlSearch } from '@/utils/parseUrlSearchParams';
 
@@ -73,10 +74,10 @@ export const UrlSearchBootstrapMount = ({
     }
 
     const bookLanguages = config.book_languages || [];
-    const defaultLanguageCodes =
-      config.default_language && config.default_language.length > 0
-        ? config.default_language
-        : [bookLanguages[0]?.code || 'en'];
+    const defaultLanguageCodes = resolveDefaultLanguageCodes(
+      config.default_language,
+      bookLanguages,
+    );
 
     if (parsedParams.searchInput) {
       setSearchInput(parsedParams.searchInput);

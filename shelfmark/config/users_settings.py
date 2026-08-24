@@ -62,7 +62,7 @@ _SELF_SETTINGS_SECTION_OPTIONS = [
     {
         "value": "search",
         "label": "Search Preferences",
-        "description": "Show personal search mode and provider settings.",
+        "description": "Show personal search mode, language, and provider settings.",
     },
     {
         "value": "notifications",
@@ -78,7 +78,7 @@ _SEARCH_PREFERENCE_PROVIDER_KEYS = {
     "METADATA_PROVIDER_AUDIOBOOK",
     "METADATA_PROVIDER_COMBINED",
 }
-_SEARCH_PREFERENCE_VALIDATABLE_KEYS = {
+SEARCH_PREFERENCE_VALIDATABLE_KEYS = {
     "SEARCH_MODE",
     "BOOK_LANGUAGE",
     "DEFAULT_RELEASE_SOURCE",
@@ -183,9 +183,11 @@ def _get_request_policy_rule_columns() -> list[dict[str, object]]:
 def _validate_book_languages(value: Any) -> tuple[Any, str | None]:
     """Validate a per-user default language list against the known languages.
 
-    Accepts the list the settings UI sends as well as the comma-separated string the
-    env var uses. An empty list is a deliberate override meaning "no default language
-    filter", so it is kept as-is; ``None`` clears the override further up the chain.
+    Accepts the list the settings UI sends as well as a comma-separated string, so an
+    API client can spell the value the way the env var does. Blank entries are skipped
+    rather than rejected, which makes "" and "en," mean the same as [] and ["en"]. An
+    empty result is a deliberate override meaning "no default language filter", so it
+    is kept as-is; ``None`` clears the override further up the chain.
     """
     entries = value.split(",") if isinstance(value, str) else value
     if not isinstance(entries, (list, tuple)):
@@ -193,6 +195,8 @@ def _validate_book_languages(value: Any) -> tuple[Any, str | None]:
 
     normalized: list[str] = []
     for entry in entries:
+        if entry is None or (isinstance(entry, str) and not entry.strip()):
+            continue
         code = normalize_language(entry)
         if code is None:
             return value, f"BOOK_LANGUAGE contains an unsupported language: {entry}"
@@ -204,7 +208,7 @@ def _validate_book_languages(value: Any) -> tuple[Any, str | None]:
 
 def validate_search_preference_value(key: str, value: Any) -> tuple[Any, str | None]:
     """Validate and normalize a search preference value for user overrides."""
-    if key not in _SEARCH_PREFERENCE_VALIDATABLE_KEYS:
+    if key not in SEARCH_PREFERENCE_VALIDATABLE_KEYS:
         return value, None
 
     if value is None:
@@ -325,7 +329,7 @@ def _on_save_users(values: dict[str, object]) -> dict[str, object]:
             }
         values["REQUEST_POLICY_RULES"] = normalized_rules
 
-    for key in _SEARCH_PREFERENCE_VALIDATABLE_KEYS:
+    for key in SEARCH_PREFERENCE_VALIDATABLE_KEYS:
         if key not in values:
             continue
         normalized_value, validation_error = validate_search_preference_value(key, values[key])

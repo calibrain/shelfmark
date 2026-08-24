@@ -534,6 +534,46 @@ class TestAdminUserUpdateEndpoint:
         )
         assert user_db.get_user_settings(user["id"]) == {}
 
+    def test_update_user_settings_skips_blank_book_languages(self, admin_client, user_db):
+        """A trailing comma or a blank slot means "nothing there", not an unknown language."""
+        user = user_db.create_user(username="alice")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"settings": {"BOOK_LANGUAGE": "en,"}},
+        )
+        assert resp.status_code == 200
+        assert user_db.get_user_settings(user["id"])["BOOK_LANGUAGE"] == ["en"]
+
+    def test_update_user_settings_normalizes_every_validated_search_key(
+        self, admin_client, user_db
+    ):
+        """Keys the search validator recognises keep their normalized value.
+
+        These three were validated but then stored raw, because the write-back was
+        gated on a hand-maintained subset of the validated keys. A padded provider
+        name was accepted and then persisted with its padding, so every later lookup
+        of it failed.
+        """
+        user = user_db.create_user(username="alice")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={
+                "settings": {
+                    "METADATA_PROVIDER_COMBINED": "  openlibrary  ",
+                    "SHOW_COMBINED_SELECTOR": "yes",
+                    "FORCE_COMBINED_SEARCH": "",
+                }
+            },
+        )
+        assert resp.status_code == 200
+
+        settings = user_db.get_user_settings(user["id"])
+        assert settings["METADATA_PROVIDER_COMBINED"] == "openlibrary"
+        assert settings["SHOW_COMBINED_SELECTOR"] is True
+        assert settings["FORCE_COMBINED_SEARCH"] is False
+
     def test_update_user_settings_accepts_notification_overrides(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
 

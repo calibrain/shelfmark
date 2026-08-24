@@ -27,6 +27,24 @@ export const normalizeLanguageSelection = (selected: string[]): string[] => {
   return unique.length ? unique : [LANGUAGE_OPTION_DEFAULT];
 };
 
+/**
+ * Resolve the language codes the "Default" filter option stands for.
+ *
+ * An explicitly empty list is a deliberate "no default filter" and is returned as-is;
+ * only a missing value falls back to the first supported language. Substituting a
+ * language for the empty list would make the UI filter by a language the backend
+ * does not apply.
+ */
+export const resolveDefaultLanguageCodes = (
+  configuredDefault: string[] | null | undefined,
+  supportedLanguages: Language[],
+): string[] => {
+  if (Array.isArray(configuredDefault)) {
+    return configuredDefault;
+  }
+  return [supportedLanguages[0]?.code || 'en'];
+};
+
 export const getLanguageFilterValues = (
   selection: string[],
   supportedLanguages: Language[],

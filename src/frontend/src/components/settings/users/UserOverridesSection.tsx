@@ -9,8 +9,8 @@ import { HeadingField, MultiSelectField, SelectField, TextField } from '../field
 import { FieldWrapper } from '../shared';
 import {
   getFieldByKey,
+  resolveListOverride,
   toNormalizedLowercaseTextValue,
-  toStringListValue,
   toTextValue,
 } from './fieldHelpers';
 import type { PerUserSettings } from './types';
@@ -180,12 +180,6 @@ export const UserOverridesSection = ({
     label: 'Email Recipient',
     description: 'Email address used for this user in Email output mode.',
   };
-  const browserDownloadGlobalValue = toStringListValue(
-    globalValues.DOWNLOAD_TO_BROWSER_CONTENT_TYPES,
-  );
-  const browserDownloadUserValue = toStringListValue(
-    userSettings.DOWNLOAD_TO_BROWSER_CONTENT_TYPES,
-  );
 
   const isOverridden = (key: DeliverySettingKey): boolean => {
     if (
@@ -201,10 +195,12 @@ export const UserOverridesSection = ({
     return userValue !== globalValue;
   };
 
-  const isBrowserDownloadOverridden =
-    Object.prototype.hasOwnProperty.call(userSettings, 'DOWNLOAD_TO_BROWSER_CONTENT_TYPES') &&
-    userSettings.DOWNLOAD_TO_BROWSER_CONTENT_TYPES !== null &&
-    JSON.stringify(browserDownloadUserValue) !== JSON.stringify(browserDownloadGlobalValue);
+  const { value: browserDownloadContentTypes, isOverridden: isBrowserDownloadOverridden } =
+    resolveListOverride(
+      userSettings.DOWNLOAD_TO_BROWSER_CONTENT_TYPES,
+      globalValues.DOWNLOAD_TO_BROWSER_CONTENT_TYPES,
+      Object.prototype.hasOwnProperty.call(userSettings, 'DOWNLOAD_TO_BROWSER_CONTENT_TYPES'),
+    );
 
   const resetKeys = (keys: DeliverySettingKey[]) => {
     setUserSettings((prev) => {
@@ -233,9 +229,6 @@ export const UserOverridesSection = ({
   const outputModeValue = readValue('BOOKS_OUTPUT_MODE', 'folder');
   const effectiveOutputMode = normalizeMode(outputModeValue);
 
-  const browserDownloadContentTypes = isBrowserDownloadOverridden
-    ? browserDownloadUserValue
-    : browserDownloadGlobalValue;
   const destinationValue = readValue('DESTINATION');
   const destinationAudiobookValue = readValue('DESTINATION_AUDIOBOOK');
   const libraryValue = readValue('BOOKLORE_LIBRARY_ID');

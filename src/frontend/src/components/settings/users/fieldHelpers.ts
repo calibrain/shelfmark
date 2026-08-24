@@ -31,11 +31,31 @@ export const toNormalizedLowercaseTextValue = (value: unknown): string => {
   return toTrimmedTextValue(value).toLowerCase();
 };
 
-export const toStringListValue = (value: unknown): string[] => {
+const toStringListValue = (value: unknown): string[] => {
   if (!Array.isArray(value)) {
     return [];
   }
   return value.map((entry) => toTrimmedTextValue(entry)).filter((entry) => entry.length > 0);
+};
+
+/**
+ * Resolve a list-valued per-user override against its global value.
+ *
+ * A key absent from userSettings, or set to null, is not an override. A stored list
+ * that matches the global one is treated as inherited, matching how
+ * buildUserSettingsPayload clears it on save.
+ */
+export const resolveListOverride = (
+  userValue: unknown,
+  globalValue: unknown,
+  hasUserKey: boolean,
+): { value: string[]; isOverridden: boolean } => {
+  const globalList = toStringListValue(globalValue);
+  const userList = toStringListValue(userValue);
+  const isOverridden =
+    hasUserKey && userValue !== null && JSON.stringify(userList) !== JSON.stringify(globalList);
+
+  return { value: isOverridden ? userList : globalList, isOverridden };
 };
 
 export const toComparableValue = (value: unknown): string => {

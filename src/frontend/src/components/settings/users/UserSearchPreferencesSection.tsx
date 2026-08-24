@@ -8,8 +8,8 @@ import { HeadingField, MultiSelectField, SelectField } from '../fields';
 import { FieldWrapper } from '../shared';
 import {
   getFieldByKey,
+  resolveListOverride,
   toNormalizedLowercaseTextValue,
-  toStringListValue,
   toTextValue,
 } from './fieldHelpers';
 import type { PerUserSettings } from './types';
@@ -141,15 +141,11 @@ export const UserSearchPreferencesSection = ({
   );
   const bookLanguageField = getFieldByKey(fields, 'BOOK_LANGUAGE', fallbackBookLanguageField);
 
-  const bookLanguageGlobalValue = toStringListValue(globalValues.BOOK_LANGUAGE);
-  const bookLanguageUserValue = toStringListValue(userSettings.BOOK_LANGUAGE);
-  const isBookLanguageOverridden =
-    Object.prototype.hasOwnProperty.call(userSettings, 'BOOK_LANGUAGE') &&
-    userSettings.BOOK_LANGUAGE !== null &&
-    JSON.stringify(bookLanguageUserValue) !== JSON.stringify(bookLanguageGlobalValue);
-  const bookLanguageValue = isBookLanguageOverridden
-    ? bookLanguageUserValue
-    : bookLanguageGlobalValue;
+  const { value: bookLanguageValue, isOverridden: isBookLanguageOverridden } = resolveListOverride(
+    userSettings.BOOK_LANGUAGE,
+    globalValues.BOOK_LANGUAGE,
+    Object.prototype.hasOwnProperty.call(userSettings, 'BOOK_LANGUAGE'),
+  );
 
   const isOverridden = (key: SearchSettingKey): boolean => {
     if (

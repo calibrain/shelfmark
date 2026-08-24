@@ -11,7 +11,10 @@ from shelfmark.config.notifications_settings import (
     is_valid_notification_url,
     normalize_notification_routes,
 )
-from shelfmark.config.users_settings import validate_search_preference_value
+from shelfmark.config.users_settings import (
+    SEARCH_PREFERENCE_VALIDATABLE_KEYS,
+    validate_search_preference_value,
+)
 from shelfmark.core.config import config as app_config
 from shelfmark.core.request_policy import parse_policy_mode, validate_policy_rules
 from shelfmark.core.settings_registry import load_config_file
@@ -91,14 +94,9 @@ def validate_user_settings(
             if search_validation_error:
                 errors.append(search_validation_error)
                 continue
-            if key in {
-                "SEARCH_MODE",
-                "BOOK_LANGUAGE",
-                "METADATA_PROVIDER",
-                "METADATA_PROVIDER_AUDIOBOOK",
-                "DEFAULT_RELEASE_SOURCE",
-                "DEFAULT_RELEASE_SOURCE_AUDIOBOOK",
-            }:
+            # Every key the search validator recognises keeps its normalized value;
+            # a hand-maintained subset here silently dropped normalization for the rest.
+            if key in SEARCH_PREFERENCE_VALIDATABLE_KEYS:
                 valid[key] = normalized_search_value
                 continue
 
