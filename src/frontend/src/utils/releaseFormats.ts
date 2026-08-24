@@ -1,7 +1,7 @@
-import type { Release } from '../types';
+import type { Release } from "../types";
 
 function normalizeFormatValue(value: unknown): string | null {
-  if (typeof value !== 'string') {
+  if (typeof value !== "string") {
     return null;
   }
 
@@ -30,6 +30,30 @@ export function getReleaseFormats(release: Release): string[] {
   } else {
     addFormat(extraFormats);
   }
+
+  return formats;
+}
+
+/**
+ * Format tokens the indexer declared but the backend could not map to a known
+ * book/audiobook format (e.g. MyAnonamouse "[ENG / MP4]"). Such a release will
+ * download but fail post-processing, so the UI warns instead of showing a bare
+ * content-type icon.
+ */
+export function getUnrecognizedReleaseFormats(release: Release): string[] {
+  const raw = release.extra?.unrecognized_formats;
+  const values = Array.isArray(raw) ? raw : [raw];
+  const formats: string[] = [];
+  const seen = new Set<string>();
+
+  values.forEach((value) => {
+    const normalized = normalizeFormatValue(value);
+    if (!normalized || seen.has(normalized)) {
+      return;
+    }
+    seen.add(normalized);
+    formats.push(normalized);
+  });
 
   return formats;
 }

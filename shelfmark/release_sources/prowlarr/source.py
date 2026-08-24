@@ -317,19 +317,25 @@ def _extract_mam_language(raw_title: str) -> str | None:
     return None
 
 
-def _extract_mam_formats(raw_title: str) -> list[str]:
-    """Extract a list of formats from MyAnonamouse titles.
+def _split_mam_formats(raw_title: str) -> tuple[list[str], list[str]]:
+    """Split the format tokens of a MyAnonamouse title into (recognized, unrecognized).
 
     Prowlarr's MAM parser appends a structured bracket segment like:
       [ENG / EPUB MOBI PDF]
 
     We only trust this structured segment (and do not attempt generic title
     heuristics for other indexers).
+
+    Tokens after the "/" that Shelfmark does not know as a book or audiobook format
+    (e.g. ``[ENG / MP4]``) are returned separately so the UI can warn that the release
+    will download but cannot be processed, instead of showing a bare content-type icon
+    that looks like an ordinary result.
     """
     if not raw_title:
-        return []
+        return [], []
 
     format_set = set(ALL_BOOK_FORMATS)
+    first_unrecognized: list[str] | None = None
     for bracket in re.findall(r"\[([^\]]+)\]", raw_title):
         if "/" not in bracket:
             continue
@@ -338,15 +344,26 @@ def _extract_mam_formats(raw_title: str) -> list[str]:
         tokens = re.findall(r"[A-Za-z0-9]+", after_slash)
 
         formats: list[str] = []
+        unrecognized: list[str] = []
         for token in tokens:
             fmt = token.lower()
-            if fmt in format_set and fmt not in formats:
-                formats.append(fmt)
+            if fmt in format_set:
+                if fmt not in formats:
+                    formats.append(fmt)
+            elif fmt not in unrecognized:
+                unrecognized.append(fmt)
 
         if formats:
-            return formats
+            return formats, unrecognized
+        if unrecognized and first_unrecognized is None:
+            first_unrecognized = unrecognized
 
-    return []
+    return [], first_unrecognized or []
+
+
+def _extract_mam_formats(raw_title: str) -> list[str]:
+    """Extract the recognized formats from a MyAnonamouse title (see _split_mam_formats)."""
+    return _split_mam_formats(raw_title)[0]
 
 
 def _formats_display(formats: list[str]) -> str | None:
@@ -485,6 +502,7 @@ def _prowlarr_result_to_release(
 
     format_detected: str | None = None
     formats: list[str] = []
+    unrecognized_formats: list[str] = []
     formats_display: str | None = None
     language_detected: str | None = None
     if enable_format_detection:
@@ -492,7 +510,7 @@ def _prowlarr_result_to_release(
         if book_title:
             title = book_title
 
-        formats = _extract_mam_formats(str(raw_title or ""))
+        formats, unrecognized_formats = _split_mam_formats(str(raw_title or ""))
         format_detected = formats[0] if formats else None
         formats_display = _formats_display(formats)
         language_detected = _extract_mam_language(str(raw_title or ""))
@@ -554,6 +572,9 @@ def _prowlarr_result_to_release(
             "info_hash": result.get("infoHash"),
             "formats": formats or None,
             "formats_display": formats_display,
+            # Format tokens the indexer declared but Shelfmark can't process (#1264-style
+            # "[ENG / MP4]"). Lets the UI warn instead of showing a bare content icon.
+            "unrecognized_formats": unrecognized_formats or None,
             # Raw torznab attributes for rich tooltips (enriched indexers)
             "torznab_attrs": result.get("torznabAttrs"),
         },

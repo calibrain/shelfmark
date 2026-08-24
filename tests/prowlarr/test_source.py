@@ -1398,3 +1398,80 @@ class TestSearchBudgetScalesWithIndexerTimeout:
 
     def test_budget_stays_under_the_gunicorn_worker_timeout(self):
         assert _search_budget_seconds(300) == 240.0
+
+
+class TestSplitMamFormats:
+    """MAM's structured "[LANG / FORMATS]" bracket, split into known vs unknown tokens."""
+
+    def test_recognized_only(self):
+        from shelfmark.release_sources.prowlarr.source import _split_mam_formats
+
+        assert _split_mam_formats("Title by Author [ENG / EPUB MOBI]") == (["epub", "mobi"], [])
+
+    def test_unrecognized_only_is_surfaced(self):
+        from shelfmark.release_sources.prowlarr.source import _split_mam_formats
+
+        assert _split_mam_formats("The Martian by Andy Weir [ENG / MP4]") == ([], ["mp4"])
+
+    def test_mixed_keeps_both_sides(self):
+        from shelfmark.release_sources.prowlarr.source import _split_mam_formats
+
+        assert _split_mam_formats("Title [ENG / M4B MP4]") == (["m4b"], ["mp4"])
+
+    def test_no_structured_bracket(self):
+        from shelfmark.release_sources.prowlarr.source import _split_mam_formats
+
+        assert _split_mam_formats("Title [VIP]") == ([], [])
+        assert _split_mam_formats("") == ([], [])
+
+    def test_extract_mam_formats_still_returns_recognized(self):
+        from shelfmark.release_sources.prowlarr.source import _extract_mam_formats
+
+        assert _extract_mam_formats("Title [ENG / MP3]") == ["mp3"]
+        assert _extract_mam_formats("Title [ENG / MP4]") == []
+
+
+class TestUnrecognizedFormatOnRelease:
+    def _result(self, title: str) -> dict:
+        return {
+            "title": title,
+            "guid": "https://www.myanonamouse.net/t/627978",
+            "indexer": "MyAnonamouse",
+            "indexerId": 1,
+            "protocol": "torrent",
+            "size": 320000000,
+            "seeders": 800,
+            "leechers": 0,
+            "categories": [{"id": 3030}],
+        }
+
+    def test_unrecognized_format_lands_in_extra(self):
+        from shelfmark.release_sources.prowlarr.source import _prowlarr_result_to_release
+
+        release = _prowlarr_result_to_release(
+            self._result("The Martian by Andy Weir [ENG / MP4]"),
+            "audiobook",
+            enable_format_detection=True,
+        )
+        assert release.format is None
+        assert release.extra["formats"] is None
+        assert release.extra["unrecognized_formats"] == ["mp4"]
+
+    def test_recognized_format_leaves_unrecognized_empty(self):
+        from shelfmark.release_sources.prowlarr.source import _prowlarr_result_to_release
+
+        release = _prowlarr_result_to_release(
+            self._result("The Martian by Andy Weir [ENG / M4B]"),
+            "audiobook",
+            enable_format_detection=True,
+        )
+        assert release.format == "m4b"
+        assert release.extra["unrecognized_formats"] is None
+
+    def test_not_populated_without_format_detection(self):
+        from shelfmark.release_sources.prowlarr.source import _prowlarr_result_to_release
+
+        release = _prowlarr_result_to_release(
+            self._result("The Martian by Andy Weir [ENG / MP4]"), "audiobook"
+        )
+        assert release.extra["unrecognized_formats"] is None
