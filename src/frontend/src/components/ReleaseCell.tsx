@@ -1,9 +1,5 @@
-import type { ColumnSchema, Release } from "../types";
-import {
-  getColorStyleFromHint,
-  getProtocolDotColor,
-  getFormatColor,
-} from "../utils/colorMaps";
+import type { ColumnSchema, Release } from '../types';
+import { getColorStyleFromHint, getProtocolDotColor, getFormatColor } from '../utils/colorMaps';
 import {
   getNestedValue,
   isRecord,
@@ -11,9 +7,9 @@ import {
   toNumberValue,
   toStringArray,
   toStringValue,
-} from "../utils/objectHelpers";
-import { Tooltip } from "./shared/Tooltip";
-import { getUnrecognizedReleaseFormats } from "../utils/releaseFormats";
+} from '../utils/objectHelpers';
+import { getUnrecognizedReleaseFormats } from '../utils/releaseFormats';
+import { Tooltip } from './shared/Tooltip';
 
 interface ReleaseCellProps {
   column: ColumnSchema;
@@ -27,19 +23,19 @@ const normalizeFlagLabel = (tag: string): string => {
   if (!normalized) return tag;
 
   switch (normalized) {
-    case "freeleech":
-    case "free leech":
-    case "fl":
-      return "FL";
-    case "double upload":
-    case "doubleupload":
-    case "du":
-      return "DU";
-    case "vip":
-      return "VIP";
-    case "internal":
-    case "int":
-      return "INT";
+    case 'freeleech':
+    case 'free leech':
+    case 'fl':
+      return 'FL';
+    case 'double upload':
+    case 'doubleupload':
+    case 'du':
+      return 'DU';
+    case 'vip':
+      return 'VIP';
+    case 'internal':
+    case 'int':
+      return 'INT';
     default:
       return tag;
   }
@@ -54,8 +50,8 @@ const formatRelativeTime = (dateString: string): string | null => {
     const diffMs = now.getTime() - date.getTime();
     const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
 
-    if (diffDays === 0) return "Today";
-    if (diffDays === 1) return "1 day";
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return '1 day';
 
     return `${diffDays} days`;
   } catch {
@@ -63,10 +59,7 @@ const formatRelativeTime = (dateString: string): string | null => {
   }
 };
 
-const getDuplicateAwareKey = (
-  counts: Map<string, number>,
-  keyBase: string,
-): string => {
+const getDuplicateAwareKey = (counts: Map<string, number>, keyBase: string): string => {
   const nextCount = (counts.get(keyBase) ?? 0) + 1;
   counts.set(keyBase, nextCount);
 
@@ -86,22 +79,20 @@ export const ReleaseCell = ({
 }: ReleaseCellProps) => {
   const rawValue = getNestedValue(release, column.key);
   const cellValue =
-    rawValue !== undefined && rawValue !== null
-      ? toComparableText(rawValue)
-      : column.fallback;
+    rawValue !== undefined && rawValue !== null ? toComparableText(rawValue) : column.fallback;
 
   const displayValue = column.uppercase ? cellValue.toUpperCase() : cellValue;
 
   // Alignment classes
   const alignClass = {
-    left: "text-left justify-start",
-    center: "text-center justify-center",
-    right: "text-right justify-end",
+    left: 'text-left justify-start',
+    center: 'text-center justify-center',
+    right: 'text-right justify-end',
   }[column.align];
 
   // Render based on type
   switch (column.render_type) {
-    case "badge": {
+    case 'badge': {
       // Compact mode: render as plain text (for mobile info lines)
       if (compact) {
         return <span>{displayValue}</span>;
@@ -110,7 +101,7 @@ export const ReleaseCell = ({
 
       // Build rich tooltip content for formats
       let tooltipContent: React.ReactNode = null;
-      if (column.key === "extra.formats_display") {
+      if (column.key === 'extra.formats_display') {
         const formats = release.extra?.formats;
         if (Array.isArray(formats) && formats.length > 1) {
           tooltipContent = (
@@ -158,21 +149,17 @@ export const ReleaseCell = ({
       );
     }
 
-    case "tags": {
+    case 'tags': {
       let tags: string[] = [];
       if (Array.isArray(rawValue)) {
-        tags = rawValue
-          .map((tag) => toComparableText(tag))
-          .filter((tag) => tag.trim());
+        tags = rawValue.map((tag) => toComparableText(tag)).filter((tag) => tag.trim());
       } else if (rawValue !== undefined && rawValue !== null) {
         const comparableValue = toComparableText(rawValue).trim();
         if (comparableValue) {
           tags = [comparableValue];
         }
       }
-      const isFlags =
-        column.color_hint?.type === "map" &&
-        column.color_hint.value === "flags";
+      const isFlags = column.color_hint?.type === 'map' && column.color_hint.value === 'flags';
 
       if (compact) {
         if (tags.length === 0) {
@@ -182,7 +169,7 @@ export const ReleaseCell = ({
           const normalized = isFlags ? normalizeFlagLabel(tag) : tag;
           return column.uppercase ? normalized.toUpperCase() : normalized;
         });
-        return <span>{displayTags.join(", ")}</span>;
+        return <span>{displayTags.join(', ')}</span>;
       }
 
       if (!tags.length) {
@@ -204,14 +191,9 @@ export const ReleaseCell = ({
         <div className={`flex flex-wrap items-center gap-1.5 ${alignClass}`}>
           {tags.map((tag) => {
             const normalized = isFlags ? normalizeFlagLabel(tag) : tag;
-            const displayTag = column.uppercase
-              ? normalized.toUpperCase()
-              : normalized;
+            const displayTag = column.uppercase ? normalized.toUpperCase() : normalized;
             const colorStyle = getColorStyleFromHint(tag, column.color_hint);
-            const tagKey = getDuplicateAwareKey(
-              tagKeyCounts,
-              `${column.key}|${displayTag}`,
-            );
+            const tagKey = getDuplicateAwareKey(tagKeyCounts, `${column.key}|${displayTag}`);
 
             return (
               <span
@@ -226,12 +208,10 @@ export const ReleaseCell = ({
       );
     }
 
-    case "size": {
+    case 'size': {
       // Build tooltip from extra metadata (torznab attrs, publish date, etc.)
       const extra = release.extra;
-      const torznabAttrs = isRecord(extra?.torznab_attrs)
-        ? extra.torznab_attrs
-        : undefined;
+      const torznabAttrs = isRecord(extra?.torznab_attrs) ? extra.torznab_attrs : undefined;
       const publishDate = toStringValue(extra?.publish_date);
       const postedDate = toStringValue(extra?.posted_date);
       const bitrate = toStringValue(extra?.bitrate);
@@ -242,36 +222,36 @@ export const ReleaseCell = ({
       if (publishDate) {
         const relativeTime = formatRelativeTime(publishDate);
         if (relativeTime) {
-          rows.push({ label: "Added", value: relativeTime });
+          rows.push({ label: 'Added', value: relativeTime });
         }
       }
 
       if (postedDate) {
         const postedDateValue = postedDate.trim();
         const relativeTime = formatRelativeTime(postedDateValue);
-        rows.push({ label: "Posted", value: relativeTime ?? postedDateValue });
+        rows.push({ label: 'Posted', value: relativeTime ?? postedDateValue });
       }
 
       if (bitrate) {
         const bitrateValue = bitrate.trim();
         if (bitrateValue) {
-          rows.push({ label: "Bitrate", value: bitrateValue });
+          rows.push({ label: 'Bitrate', value: bitrateValue });
         }
       }
 
       // Add torznab attributes if available (MAM, etc.)
       if (torznabAttrs && Object.keys(torznabAttrs).length > 0) {
         const displayAttrs: Array<{ key: string; label: string }> = [
-          { key: "description", label: "Description" },
-          { key: "year", label: "Year" },
-          { key: "genre", label: "Genre" },
-          { key: "narrator", label: "Narrator" },
-          { key: "bitrate", label: "Bitrate" },
-          { key: "samplerate", label: "Sample Rate" },
-          { key: "runtime", label: "Runtime" },
-          { key: "pages", label: "Pages" },
-          { key: "publisher", label: "Publisher" },
-          { key: "language", label: "Language" },
+          { key: 'description', label: 'Description' },
+          { key: 'year', label: 'Year' },
+          { key: 'genre', label: 'Genre' },
+          { key: 'narrator', label: 'Narrator' },
+          { key: 'bitrate', label: 'Bitrate' },
+          { key: 'samplerate', label: 'Sample Rate' },
+          { key: 'runtime', label: 'Runtime' },
+          { key: 'pages', label: 'Pages' },
+          { key: 'publisher', label: 'Publisher' },
+          { key: 'language', label: 'Language' },
         ];
 
         for (const attr of displayAttrs) {
@@ -286,10 +266,10 @@ export const ReleaseCell = ({
       const files = toNumberValue(extra?.files);
       const grabs = toNumberValue(extra?.grabs);
       if (files !== undefined && files !== null) {
-        rows.push({ label: "Files", value: String(files) });
+        rows.push({ label: 'Files', value: String(files) });
       }
       if (grabs !== undefined && grabs !== null) {
-        rows.push({ label: "Grabs", value: String(grabs) });
+        rows.push({ label: 'Grabs', value: String(grabs) });
       }
 
       let sizeTooltipContent: React.ReactNode = null;
@@ -298,9 +278,7 @@ export const ReleaseCell = ({
           <div className="flex max-w-xs flex-col gap-1">
             {rows.map((row) => (
               <div key={row.label} className="flex gap-2">
-                <span className="shrink-0 text-gray-400 dark:text-gray-500">
-                  {row.label}:
-                </span>
+                <span className="shrink-0 text-gray-400 dark:text-gray-500">{row.label}:</span>
                 <span className="truncate">{row.value}</span>
               </div>
             ))}
@@ -315,9 +293,7 @@ export const ReleaseCell = ({
       const sizeText = <span>{displayValue}</span>;
 
       return (
-        <div
-          className={`flex items-center ${alignClass} text-xs text-gray-600 dark:text-gray-300`}
-        >
+        <div className={`flex items-center ${alignClass} text-xs text-gray-600 dark:text-gray-300`}>
           {sizeTooltipContent ? (
             <Tooltip content={sizeTooltipContent} position="left">
               {sizeText}
@@ -329,7 +305,7 @@ export const ReleaseCell = ({
       );
     }
 
-    case "peers": {
+    case 'peers': {
       // Peers display: "S/L" string with badge colored by seeder count
       // Color logic: 0 = red, 1-10 = yellow, 10+ = blue
       const seeders = release.seeders;
@@ -353,18 +329,16 @@ export const ReleaseCell = ({
       // Determine color based on seeder count
       let badgeColors: string;
       if (seeders >= 10) {
-        badgeColors = "bg-blue-500/20 text-blue-700 dark:text-blue-300";
+        badgeColors = 'bg-blue-500/20 text-blue-700 dark:text-blue-300';
       } else if (seeders >= 1) {
-        badgeColors = "bg-yellow-500/20 text-yellow-700 dark:text-yellow-300";
+        badgeColors = 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-300';
       } else {
-        badgeColors = "bg-red-500/20 text-red-700 dark:text-red-300";
+        badgeColors = 'bg-red-500/20 text-red-700 dark:text-red-300';
       }
 
       if (compact) {
         return (
-          <span
-            className={`font-medium ${badgeColors.split(" ").slice(1).join(" ")}`}
-          >
+          <span className={`font-medium ${badgeColors.split(' ').slice(1).join(' ')}`}>
             {peersValue}
           </span>
         );
@@ -380,15 +354,15 @@ export const ReleaseCell = ({
       );
     }
 
-    case "indexer_protocol": {
+    case 'indexer_protocol': {
       // Indexer name with colored dot indicating protocol (torrent/usenet) and peers count
       const protocol = release.protocol as string | undefined;
       const dotColor = getProtocolDotColor(protocol);
-      let protocolLabel = protocol || "Unknown";
-      if (protocol === "torrent") {
-        protocolLabel = "Torrent";
-      } else if (protocol === "nzb") {
-        protocolLabel = "Usenet";
+      let protocolLabel = protocol || 'Unknown';
+      if (protocol === 'torrent') {
+        protocolLabel = 'Torrent';
+      } else if (protocol === 'nzb') {
+        protocolLabel = 'Usenet';
       }
       const peers = release.peers;
 
@@ -408,40 +382,28 @@ export const ReleaseCell = ({
         <div
           className={`flex items-center ${alignClass} gap-1.5 truncate text-xs text-gray-600 dark:text-gray-300`}
         >
-          <span
-            className={`h-2 w-2 shrink-0 rounded-full ${dotColor}`}
-            title={protocolLabel}
-          />
+          <span className={`h-2 w-2 shrink-0 rounded-full ${dotColor}`} title={protocolLabel} />
           {/* Titled because one tracker can appear as several indexer entries whose
               names share a prefix, and truncation would make the rows look identical */}
           <span className="truncate" title={displayValue}>
             {displayValue}
           </span>
-          {peers && (
-            <span className="shrink-0 text-gray-400 dark:text-gray-500">
-              {peers}
-            </span>
-          )}
+          {peers && <span className="shrink-0 text-gray-400 dark:text-gray-500">{peers}</span>}
         </div>
       );
     }
 
-    case "flag_icon": {
+    case 'flag_icon': {
       // Colored badge showing FL, VIP, or both
       if (!cellValue || cellValue === column.fallback) {
         if (compact) return null;
         return <div className={`flex items-center ${alignClass}`} />;
       }
 
-      const flagColor = getColorStyleFromHint(cellValue, {
-        type: "map",
-        value: "flags",
-      });
+      const flagColor = getColorStyleFromHint(cellValue, { type: 'map', value: 'flags' });
 
       if (compact) {
-        return (
-          <span className={`${flagColor.text} font-medium`}>{cellValue}</span>
-        );
+        return <span className={`${flagColor.text} font-medium`}>{cellValue}</span>;
       }
       return (
         <div className={`flex items-center ${alignClass}`}>
@@ -454,11 +416,11 @@ export const ReleaseCell = ({
       );
     }
 
-    case "format_content_type": {
+    case 'format_content_type': {
       // Content type icon + format badge combined
       // Shows primary format as badge with colored dots for additional formats
       const contentType = release.content_type;
-      const isAudiobook = contentType === "audiobook";
+      const isAudiobook = contentType === 'audiobook';
       const formats = toStringArray(release.extra?.formats);
       const primaryFormat = formats?.[0] || null;
       const additionalFormats = formats?.slice(1) || [];
@@ -466,13 +428,9 @@ export const ReleaseCell = ({
       // The indexer named a format Shelfmark can't process (e.g. MAM "[ENG / MP4]").
       // Downloading it would only fail post-processing, so warn instead of showing the
       // bare content-type icon that makes it look like any other result.
-      const unrecognizedFormats = primaryFormat
-        ? []
-        : getUnrecognizedReleaseFormats(release);
+      const unrecognizedFormats = primaryFormat ? [] : getUnrecognizedReleaseFormats(release);
       if (unrecognizedFormats.length > 0) {
-        const unsupportedLabel = unrecognizedFormats
-          .map((fmt) => fmt.toUpperCase())
-          .join(", ");
+        const unsupportedLabel = unrecognizedFormats.map((fmt) => fmt.toUpperCase()).join(', ');
         const unsupportedTitle = `Unsupported format (${unsupportedLabel}) - Shelfmark cannot process this release`;
         if (compact) {
           return (
@@ -481,16 +439,12 @@ export const ReleaseCell = ({
               title={unsupportedTitle}
             >
               {unrecognizedFormats[0].toUpperCase()}
-              {unrecognizedFormats.length > 1 &&
-                ` +${unrecognizedFormats.length - 1}`}
+              {unrecognizedFormats.length > 1 && ` +${unrecognizedFormats.length - 1}`}
             </span>
           );
         }
         return (
-          <div
-            className="flex items-center justify-start"
-            title={unsupportedTitle}
-          >
+          <div className="flex items-center justify-start" title={unsupportedTitle}>
             <span className="inline-flex items-center gap-1">
               <span className="w-13 rounded-lg bg-amber-500/20 py-0.5 text-center text-[10px] font-semibold tracking-wide whitespace-nowrap text-amber-700 sm:text-[11px] dark:text-amber-400">
                 {unrecognizedFormats[0].toUpperCase()}
@@ -505,14 +459,9 @@ export const ReleaseCell = ({
 
       // Use blue for book, violet for audiobook when no format specified
       const noFormatStyle = isAudiobook
-        ? {
-            bg: "bg-violet-500/20",
-            text: "text-violet-600 dark:text-violet-400",
-          }
-        : { bg: "bg-blue-500/20", text: "text-blue-600 dark:text-blue-400" };
-      const colorStyle = primaryFormat
-        ? getFormatColor(primaryFormat)
-        : noFormatStyle;
+        ? { bg: 'bg-violet-500/20', text: 'text-violet-600 dark:text-violet-400' }
+        : { bg: 'bg-blue-500/20', text: 'text-blue-600 dark:text-blue-400' };
+      const colorStyle = primaryFormat ? getFormatColor(primaryFormat) : noFormatStyle;
 
       // Build rich tooltip content for formats (if multiple)
       let tooltipContent: React.ReactNode = null;
@@ -572,7 +521,7 @@ export const ReleaseCell = ({
           return (
             <span
               className="inline-flex items-center text-gray-500"
-              title={isAudiobook ? "Audiobook" : "Book"}
+              title={isAudiobook ? 'Audiobook' : 'Book'}
             >
               {icon}
             </span>
@@ -581,13 +530,10 @@ export const ReleaseCell = ({
         // Simple text tooltip for compact mode
         const compactTooltip =
           formats && formats.length > 1
-            ? formats.map((fmt) => fmt.toUpperCase()).join(", ")
+            ? formats.map((fmt) => fmt.toUpperCase()).join(', ')
             : undefined;
         return (
-          <span
-            className={column.uppercase ? "uppercase" : ""}
-            title={compactTooltip}
-          >
+          <span className={column.uppercase ? 'uppercase' : ''} title={compactTooltip}>
             {primaryFormat.toUpperCase()}
             {additionalFormats.length > 0 && ` +${additionalFormats.length}`}
           </span>
@@ -599,7 +545,7 @@ export const ReleaseCell = ({
         return (
           <div
             className="flex items-center justify-start"
-            title={isAudiobook ? "Audiobook" : "Book"}
+            title={isAudiobook ? 'Audiobook' : 'Book'}
           >
             <span
               className={`${colorStyle.bg} ${colorStyle.text} inline-flex w-13 items-center justify-center rounded-lg py-0.5 text-[10px] font-semibold sm:text-[11px]`}
@@ -639,23 +585,20 @@ export const ReleaseCell = ({
       );
     }
 
-    case "number":
+    case 'number':
       if (compact) {
         return <span>{displayValue}</span>;
       }
       return (
-        <div
-          className={`flex items-center ${alignClass} text-xs text-gray-600 dark:text-gray-300`}
-        >
+        <div className={`flex items-center ${alignClass} text-xs text-gray-600 dark:text-gray-300`}>
           {displayValue}
         </div>
       );
 
-    case "text":
+    case 'text':
     default: {
       // Check if this is a server column with online status data
-      const isServerColumn =
-        column.key === "extra.server" && onlineServers !== undefined;
+      const isServerColumn = column.key === 'extra.server' && onlineServers !== undefined;
       const isOnline = isServerColumn && onlineServers?.includes(cellValue);
 
       if (compact) {
@@ -663,8 +606,8 @@ export const ReleaseCell = ({
           return (
             <span className="inline-flex items-center gap-1">
               <span
-                className={`h-1.5 w-1.5 shrink-0 rounded-full ${isOnline ? "bg-emerald-500" : "bg-gray-400"}`}
-                title={isOnline ? "Online" : "Offline"}
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-gray-400'}`}
+                title={isOnline ? 'Online' : 'Offline'}
               />
               {displayValue}
             </span>
@@ -679,8 +622,8 @@ export const ReleaseCell = ({
         >
           {isServerColumn && (
             <span
-              className={`mr-1.5 h-2 w-2 shrink-0 rounded-full ${isOnline ? "bg-emerald-500" : "bg-gray-400"}`}
-              title={isOnline ? "Online" : "Offline"}
+              className={`mr-1.5 h-2 w-2 shrink-0 rounded-full ${isOnline ? 'bg-emerald-500' : 'bg-gray-400'}`}
+              title={isOnline ? 'Online' : 'Offline'}
             />
           )}
           {displayValue}
