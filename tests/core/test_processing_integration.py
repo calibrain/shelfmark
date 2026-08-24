@@ -1458,3 +1458,47 @@ def test_external_directory_prefers_files_over_archives_and_keeps_source(
 
     # TMP staging should be cleaned.
     assert list(staging.iterdir()) == []
+
+
+def test_audiobook_multifile_mp4_chapters_are_book_files(tmp_path):
+    """Per-chapter .mp4 audiobooks (as MyAnonamouse ships AAC releases) must be
+    recognised as book files instead of failing with "No book files found"."""
+    from shelfmark.download.postprocess.router import (
+        post_process_download as _post_process_download,
+    )
+
+    source_dir = tmp_path / "downloads" / "Andy Weir (2020) The Martian"
+    source_dir.mkdir(parents=True)
+    for part in (1, 2):
+        (source_dir / f"{part:04d} Andy Weir (2020) The Martian.mp4").write_text(f"audio{part}")
+    (source_dir / "cover.jpg").write_text("jpg")
+
+    ingest = tmp_path / "ingest"
+    ingest.mkdir()
+    task = DownloadTask(
+        task_id="mp4-audio-grouped",
+        source="prowlarr",
+        title="The Martian",
+        author="Andy Weir",
+        format="mp4",
+        content_type="audiobook",
+        search_mode=SearchMode.UNIVERSAL,
+    )
+
+    with patch("shelfmark.core.config.config") as mock_config:
+        mock_config.get = _build_config(
+            ingest,
+            organization="rename_and_group",
+            supported_audiobook_formats=["mp4"],
+        )
+        mock_config.CUSTOM_SCRIPT = None
+
+        result = _post_process_download(source_dir, task, Event(), lambda *_args: None)
+
+    grouped_dir = ingest / "Andy Weir (2020) The Martian"
+    assert result is not None
+    assert Path(result).parent == grouped_dir
+    assert sorted(path.name for path in grouped_dir.glob("*.mp4")) == [
+        "0001 Andy Weir (2020) The Martian.mp4",
+        "0002 Andy Weir (2020) The Martian.mp4",
+    ]

@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 
 import type { Release } from '../types';
-import { getReleaseFormats } from '../utils/releaseFormats';
+import { getReleaseFormats, getUnrecognizedReleaseFormats } from '../utils/releaseFormats';
 
 function buildRelease(overrides: Partial<Release>): Release {
   return {
@@ -36,5 +36,28 @@ describe('releaseFormats.getReleaseFormats', () => {
     });
 
     expect(getReleaseFormats(release)).toEqual(['pdf']);
+  });
+});
+
+describe('releaseFormats.getUnrecognizedReleaseFormats', () => {
+  it('returns normalized, deduplicated unrecognized formats from extra', () => {
+    const release = buildRelease({
+      extra: { unrecognized_formats: ['AVI', ' avi ', 'WEBM'] },
+    });
+
+    expect(getUnrecognizedReleaseFormats(release)).toEqual(['avi', 'webm']);
+  });
+
+  it('accepts a single string value', () => {
+    const release = buildRelease({ extra: { unrecognized_formats: 'AVI' } });
+
+    expect(getUnrecognizedReleaseFormats(release)).toEqual(['avi']);
+  });
+
+  it('returns an empty list when nothing was flagged', () => {
+    expect(getUnrecognizedReleaseFormats(buildRelease({}))).toEqual([]);
+    expect(
+      getUnrecognizedReleaseFormats(buildRelease({ extra: { unrecognized_formats: null } })),
+    ).toEqual([]);
   });
 });

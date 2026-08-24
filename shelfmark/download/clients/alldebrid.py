@@ -76,6 +76,7 @@ _BOOK_EXTENSIONS = (
     ".m4b",
     ".mobi",
     ".mp3",
+    ".mp4",
     ".ogg",
     ".opus",
     ".pdf",

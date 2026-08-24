@@ -52,6 +52,7 @@ _BYPASSER_ERRORS = (
     RuntimeError,
     TypeError,
     ValueError,
+    network.RateLimitedError,
     requests.exceptions.RequestException,
 )
 
@@ -377,6 +378,17 @@ def html_get_page(
                 "not solved. Check that FlareSolverr/the CF bypasser is reachable.",
                 bypass_url,
             )
+        except network.RateLimitedError as e:
+            # Not a bypasser malfunction: the host is throttling this IP and a solve
+            # cannot help. Surface the wait as a plain failure so the search ends cleanly
+            # instead of looping another minutes-long solve against a 429.
+            logger.info("Skipping bypass (rate-limited): %s", e)
+            if status_callback:
+                try:
+                    status_callback("resolving", "Rate limited, try again shortly")
+                except _STATUS_CALLBACK_ERRORS:
+                    logger.debug("Rate-limit status callback failed", exc_info=True)
+            return _fail(str(e), bypass_url)
         except _BYPASSER_ERRORS as e:
             logger.warning("Bypasser error: %s: %s", type(e).__name__, e)
             # Surface the real reason. Without this the caller only sees an empty
@@ -698,6 +710,12 @@ def html_get_page(
                     f"Anna's Archive returned 404 Not Found for {current_url}.", current_url
                 )
 
+            # 429 = origin throttling this IP. Arm the per-host backoff so selection and
+            # the bypasser stop hammering it, then fall through to normal rotation onto a
+            # mirror that is not (yet) rate-limited.
+            if status == _HTTP_STATUS_RATE_LIMITED:
+                network.note_rate_limited(current_url)
+
             # Try mirror/DNS rotation on retryable errors. A failure that proves the
             # mirror is unusable also drops it from this process's rotation, so the
             # next search does not pay for it again.
@@ -851,6 +869,7 @@ def download_url(
             # Rate limited - skip to next source immediately
             # (waiting doesn't help with concurrent downloads hitting the same server)
             if status == _HTTP_STATUS_RATE_LIMITED:
+                network.note_rate_limited(current_url)
                 logger.info("Rate limited (429) - trying next source")
                 if status_callback:
                     status_callback("resolving", "Server busy, trying next")

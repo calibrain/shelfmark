@@ -8,6 +8,7 @@ import {
   toStringArray,
   toStringValue,
 } from '../utils/objectHelpers';
+import { getUnrecognizedReleaseFormats } from '../utils/releaseFormats';
 import { Tooltip } from './shared/Tooltip';
 
 interface ReleaseCellProps {
@@ -423,6 +424,38 @@ export const ReleaseCell = ({
       const formats = toStringArray(release.extra?.formats);
       const primaryFormat = formats?.[0] || null;
       const additionalFormats = formats?.slice(1) || [];
+
+      // The indexer named a format Shelfmark can't process (e.g. MAM "[ENG / AVI]").
+      // Downloading it would only fail post-processing, so warn instead of showing the
+      // bare content-type icon that makes it look like any other result.
+      const unrecognizedFormats = primaryFormat ? [] : getUnrecognizedReleaseFormats(release);
+      if (unrecognizedFormats.length > 0) {
+        const unsupportedLabel = unrecognizedFormats.map((fmt) => fmt.toUpperCase()).join(', ');
+        const unsupportedTitle = `Unsupported format (${unsupportedLabel}) - Shelfmark cannot process this release`;
+        if (compact) {
+          return (
+            <span
+              className="font-semibold text-amber-600 dark:text-amber-400"
+              title={unsupportedTitle}
+            >
+              {unrecognizedFormats[0].toUpperCase()}
+              {unrecognizedFormats.length > 1 && ` +${unrecognizedFormats.length - 1}`}
+            </span>
+          );
+        }
+        return (
+          <div className="flex items-center justify-start" title={unsupportedTitle}>
+            <span className="inline-flex items-center gap-1">
+              <span className="w-13 rounded-lg bg-amber-500/20 py-0.5 text-center text-[10px] font-semibold tracking-wide whitespace-nowrap text-amber-700 sm:text-[11px] dark:text-amber-400">
+                {unrecognizedFormats[0].toUpperCase()}
+              </span>
+              <span className="text-[10px] font-medium whitespace-nowrap text-amber-700 sm:text-[11px] dark:text-amber-400">
+                Unsupported
+              </span>
+            </span>
+          </div>
+        );
+      }
 
       // Use blue for book, violet for audiobook when no format specified
       const noFormatStyle = isAudiobook

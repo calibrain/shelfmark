@@ -122,7 +122,12 @@ def is_audiobook(content_type: str | None) -> bool:
 # had drifted apart: the settings UI only offered m4b/mp3/m4a, which meant a FLAC
 # audiobook could never be enabled, was silently dropped from every search result, and
 # was rejected after download as "format not supported".
-AUDIOBOOK_FORMATS = ("m4b", "mp3", "m4a", "flac", "ogg", "wma", "aac", "wav", "opus")
+#
+# "mp4" is here because some trackers (MyAnonamouse in particular) ship AAC audiobooks
+# as per-chapter .mp4 files - the same ISO-BMFF container as .m4a/.m4b, just with the
+# generic extension. Without it those releases downloaded fine and then failed
+# post-processing with "No book files found in download".
+AUDIOBOOK_FORMATS = ("m4b", "mp3", "m4a", "mp4", "flac", "ogg", "wma", "aac", "wav", "opus")
 
 # Multi-file audiobooks are almost always distributed as an archive. These are containers
 # rather than formats: they are what a *release* looks like, and the formats above are

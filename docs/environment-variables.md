@@ -247,7 +247,8 @@ Seconds since the last WireGuard handshake before the healthcheck bounces the tu
 | `CALIBRE_WEB_URL` | Adds a navigation button to your book library (Calibre-Web Automated, Grimmory, etc). | string | _none_ |
 | `AUDIOBOOK_LIBRARY_URL` | Adds a separate navigation button for your audiobook library (Audiobookshelf, Plex, etc). When both URLs are set, icons are shown instead of text. | string | _none_ |
 | `SUPPORTED_FORMATS` | Book formats to include in search results. ZIP/RAR archives are extracted automatically and book files are used if found. | string (comma-separated) | `epub,mobi,azw3,fb2,djvu,cbz,cbr` |
-| `SUPPORTED_AUDIOBOOK_FORMATS` | Audiobook formats to include in search results. ZIP/RAR archives are extracted automatically and audiobook files are used if found. | string (comma-separated) | `m4b,mp3,m4a,flac,ogg,wma,aac,wav,opus,zip,rar` |
+| `SUPPORTED_AUDIOBOOK_FORMATS` | Audiobook formats to include in search results. ZIP/RAR archives are extracted automatically and audiobook files are used if found. | string (comma-separated) | `m4b,mp3,m4a,mp4,flac,ogg,wma,aac,wav,opus,zip,rar` |
+| `BOOK_LANGUAGE` | Default language filter for searches. | string (comma-separated) | `en` |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -295,7 +296,7 @@ Book formats to include in search results. ZIP/RAR archives are extracted automa
 Audiobook formats to include in search results. ZIP/RAR archives are extracted automatically and audiobook files are used if found.
 
 - **Type:** string (comma-separated)
-- **Default:** `m4b,mp3,m4a,flac,ogg,wma,aac,wav,opus,zip,rar`
+- **Default:** `m4b,mp3,m4a,mp4,flac,ogg,wma,aac,wav,opus,zip,rar`
 
 </details>
 
@@ -749,6 +750,7 @@ Automatically open the downloads sidebar when a new download is queued.
 Automatically download completed files to your browser for the selected content types.
 
 - **Type:** string (comma-separated)
+  
 - **Default:** _empty list_
 
 #### `MAX_CONCURRENT_DOWNLOADS`

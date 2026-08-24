@@ -428,14 +428,15 @@ class IRCReleaseSource(ReleaseSource):
         "m4b": 0,
         "mp3": 1,
         "m4a": 2,
-        "flac": 3,
-        "opus": 4,
-        "ogg": 5,
-        "aac": 6,
-        "wav": 7,
-        "wma": 8,
-        "rar": 9,
-        "zip": 10,
+        "mp4": 3,
+        "flac": 4,
+        "opus": 5,
+        "ogg": 6,
+        "aac": 7,
+        "wav": 8,
+        "wma": 9,
+        "rar": 10,
+        "zip": 11,
     }
 
     def _convert_to_releases(
