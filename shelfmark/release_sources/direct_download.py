@@ -590,9 +590,13 @@ def _fetch_search_table(url: str, selector: network.AAMirrorSelector) -> tuple[s
             attempt_url, selector=selector, allow_bypasser_fallback=True
         )
         if not response:
-            # Network/mirror exhaustion path bubbles up so API can notify clients
-            msg = "Unable to reach download source. Network restricted or mirrors are blocked."
-            raise SearchUnavailableError(msg)
+            # Network/mirror exhaustion path bubbles up so API can notify clients.
+            # html_get_page records the concrete give-up reason on the selector; fall
+            # back to the generic line only if nothing was recorded.
+            detail = getattr(selector, "last_failure", None) or (
+                "Network restricted or mirrors are blocked."
+            )
+            raise SearchUnavailableError(f"Unable to reach download source. {detail}")
 
         html = _html_response_text(response)
         soup = BeautifulSoup(html, "html.parser")
@@ -747,8 +751,10 @@ def get_book_info(book_id: str, *, fetch_download_count: bool = True) -> BrowseR
     html = downloader.html_get_page(url, selector=selector, allow_bypasser_fallback=True)
 
     if not html:
-        msg = "Unable to reach download source. Network restricted or mirrors are blocked."
-        raise SearchUnavailableError(msg)
+        detail = getattr(selector, "last_failure", None) or (
+            "Network restricted or mirrors are blocked."
+        )
+        raise SearchUnavailableError(f"Unable to reach download source. {detail}")
 
     soup = BeautifulSoup(_html_response_text(html), "html.parser")
 

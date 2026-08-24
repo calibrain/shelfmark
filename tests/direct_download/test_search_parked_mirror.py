@@ -110,3 +110,22 @@ def test_unreachable_mirror_raises_search_unavailable(monkeypatch):
     except dd.SearchUnavailableError:
         return
     raise AssertionError("expected SearchUnavailableError")
+
+
+def test_recorded_failure_reason_is_surfaced_to_the_caller(monkeypatch):
+    """The concrete give-up reason html_get_page stashed replaces the generic line."""
+    import shelfmark.release_sources.direct_download as dd
+
+    reason = "Anna's Archive returned 403 (blocked) and no bypasser is enabled."
+
+    def fake_get(url, *, selector=None, **_kwargs):
+        selector.last_failure = reason
+        return ""
+
+    monkeypatch.setattr(dd.downloader, "html_get_page", fake_get)
+    monkeypatch.setattr(dd.network, "get_available_aa_urls", lambda: ["a"])
+    selector = _Selector(["https://real.test"])
+    selector.last_failure = None
+
+    with pytest.raises(dd.SearchUnavailableError, match="403 .blocked."):
+        dd._fetch_search_table("https://real.test/search?q=dune", selector)

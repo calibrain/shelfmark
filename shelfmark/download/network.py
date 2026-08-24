@@ -1486,6 +1486,11 @@ class AAMirrorSelector:
 
     def __init__(self) -> None:
         """Initialize mirror state from the current AA configuration."""
+        # Set by html_get_page at each give-up path so a caller that only sees the
+        # returned empty page can still report *why* the fetch produced nothing
+        # (403, 404, redirect loop, bypasser error, mirrors exhausted, ...) instead
+        # of a blanket "network restricted" guess. None means "no failure recorded".
+        self.last_failure: str | None = None
         self._ensure_fresh_state(reset_attempts=True)
 
     def _ensure_fresh_state(self, *, reset_attempts: bool = False) -> None:
