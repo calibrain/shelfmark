@@ -1400,6 +1400,11 @@ def _try_with_cached_cookies(url: str, hostname: str) -> str | None:
         if response.status_code == HTTPStatus.OK:
             logger.debug("Cached cookies worked, skipped Chrome bypass")
             return response.text
+        if response.status_code == HTTPStatus.TOO_MANY_REQUESTS:
+            # Throttled, not challenged: arm the per-host backoff so the caller stops
+            # rotating into this host and re-solving. get_bypassed_page checks it before
+            # the next Chrome solve.
+            network.note_rate_limited(url)
         logger.debug(
             "Cached cookies rejected (%s) for %s; discarding them",
             response.status_code,
@@ -1437,6 +1442,18 @@ def get_bypassed_page(
     sel = selector or network.AAMirrorSelector()
     attempt_url = sel.rewrite(url)
     hostname = urlparse(attempt_url).hostname or ""
+
+    # A 429 means the origin is throttling this IP; the challenge still renders, so a
+    # solve "succeeds" but the cleared request is rejected again and the throttle is only
+    # renewed. Never spend a minutes-long Chrome solve on a cooling-down host - fail fast
+    # so the caller waits the backoff out instead of looping the solve.
+    remaining = network.host_cooldown_remaining(attempt_url)
+    if remaining > 0:
+        msg = (
+            f"{hostname} is rate-limited (429); skipping bypass for ~{remaining:.0f}s "
+            "until the cooldown clears."
+        )
+        raise network.RateLimitedError(msg)
 
     cached_result = _try_with_cached_cookies(attempt_url, hostname)
     if cached_result:

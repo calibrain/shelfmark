@@ -3,12 +3,13 @@
 import fnmatch
 import ipaddress
 import socket
+import time
 import urllib.parse
 import urllib.request
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from socket import AddressFamily, SocketKind
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 import dns.resolver
 import httpx
@@ -285,6 +286,108 @@ _aa_base_url: str = ""  # Current active AA URL
 # hold for it. Deliberately in-memory only, so a restart re-probes everything.
 _dead_aa_urls: set[str] = set()
 _dead_aa_urls_lock = _RLock()
+
+
+# Per-host rate-limit backoff. A 429 is the origin throttling *this IP*, not a challenge:
+# a DDoS-Guard/Cloudflare solve still renders, so the bypass "succeeds" yet the cleared
+# request is rejected again and the throttle is only renewed. The single answer is to
+# wait, so a 429 sidelines the host for a growing window - mirror selection and the
+# bypasser both skip a cooling-down host until its deadline passes. The wait escalates
+# 2 -> 5 -> 10 -> 15 -> 30 minutes each time the host throttles us again *after* we
+# already waited a full window out; a host left clear for longer than the top step
+# starts the ladder over. Keyed by host so every mirror and source shares one view;
+# in-memory only, so a restart starts clean.
+_RATE_LIMIT_COOLDOWN_LADDER_SECONDS: tuple[float, ...] = (120.0, 300.0, 600.0, 900.0, 1800.0)
+# A host that has been clear this long is treated as a fresh episode: the next 429
+# restarts the ladder at 2 minutes rather than resuming the escalation.
+_RATE_LIMIT_RESET_AFTER_SECONDS = 1800.0
+
+
+class _Cooldown(NamedTuple):
+    """One host's active rate-limit window and how far up the ladder it has climbed."""
+
+    deadline: float  # time.monotonic() value at which the wait expires
+    level: int  # index into _RATE_LIMIT_COOLDOWN_LADDER_SECONDS
+
+
+_host_cooldowns: dict[str, _Cooldown] = {}
+_host_cooldowns_lock = _RLock()
+
+
+class RateLimitedError(Exception):
+    """Raised to abandon a request whose host is in a 429 cooldown.
+
+    Not a transport failure - nothing is wrong with the network, the origin is
+    throttling this IP and only time clears it. Callers surface it as a plain failure
+    rather than retrying or handing the URL to the bypasser.
+    """
+
+
+def _cooldown_key(url: str) -> str:
+    """Host a cooldown is keyed by; '' when the URL carries none."""
+    return (urllib.parse.urlparse(url).hostname or "").lower()
+
+
+def note_rate_limited(url: str) -> float:
+    """Escalate a host's 429 backoff and (re)arm its cooldown; return the wait applied.
+
+    The step advances only when a fresh 429 arrives *after* the previous window already
+    elapsed - i.e. we waited it out and the host throttled us again. A 429 that lands
+    while the host is still cooling is the same episode: it neither escalates the level
+    nor shortens the wait. See the ladder note above.
+    """
+    host = _cooldown_key(url)
+    if not host:
+        return 0.0
+    now = time.monotonic()
+    ladder = _RATE_LIMIT_COOLDOWN_LADDER_SECONDS
+    with _host_cooldowns_lock:
+        prev = _host_cooldowns.get(host)
+        if prev is not None and now < prev.deadline:
+            # Still inside the current window - same throttling episode, leave it be.
+            return prev.deadline - now
+        if prev is None or now - prev.deadline > _RATE_LIMIT_RESET_AFTER_SECONDS:
+            level = 0
+        else:
+            level = min(prev.level + 1, len(ladder) - 1)
+        wait = ladder[level]
+        _host_cooldowns[host] = _Cooldown(deadline=now + wait, level=level)
+    logger.info(
+        "Rate limited (429): backing off %s for %.0fs (step %d/%d)",
+        host,
+        wait,
+        level + 1,
+        len(ladder),
+    )
+    return wait
+
+
+def host_cooldown_remaining(url: str) -> float:
+    """Seconds left on a host's 429 cooldown; 0.0 when clear or expired.
+
+    Leaves an expired record in place: the ladder level it carries is what a later 429
+    escalates from (or resets, once the clear gap is long enough).
+    """
+    host = _cooldown_key(url)
+    if not host:
+        return 0.0
+    now = time.monotonic()
+    with _host_cooldowns_lock:
+        rec = _host_cooldowns.get(host)
+        if rec is None or rec.deadline <= now:
+            return 0.0
+        return rec.deadline - now
+
+
+def is_host_cooling_down(url: str) -> bool:
+    """True while ``url``'s host is inside its 429 cooldown window."""
+    return host_cooldown_remaining(url) > 0.0
+
+
+def clear_host_cooldowns() -> None:
+    """Forget all rate-limit cooldowns (manual reset / tests)."""
+    with _host_cooldowns_lock:
+        _host_cooldowns.clear()
 
 
 def _ensure_initialized() -> None:
@@ -1418,8 +1521,13 @@ def get_available_aa_urls() -> list[str]:
         if not alive and _aa_urls:
             logger.warning("All AA mirrors quarantined; retrying the full list")
             _dead_aa_urls.clear()
-            return _aa_urls.copy()
-    return alive
+            alive = _aa_urls.copy()
+    # Prefer mirrors that are not serving a 429 cooldown so rotation stops hammering a
+    # throttled host. When every live mirror is cooling, keep the full live list rather
+    # than returning nothing: selection must never be left with nowhere to point, and
+    # the bypasser's fail-fast reports the "all rate-limited" case with a clear error.
+    breathing = [url for url in alive if not is_host_cooling_down(url)]
+    return breathing or alive
 
 
 def _aa_base_for_url(url: str) -> str:
