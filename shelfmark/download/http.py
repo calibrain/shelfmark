@@ -333,6 +333,10 @@ def html_get_page(
 
     """
 
+    # Normalise before the closures below capture it: they touch selector.last_failure,
+    # so it must be a concrete selector, not the Optional parameter.
+    selector = selector or network.AAMirrorSelector()
+
     def _result(html: str, response_url: str) -> str | tuple[str, str]:
         if include_response_url:
             return html, response_url
@@ -427,7 +431,6 @@ def html_get_page(
     retry_limit = (
         retry if retry is not None else (configured_retry if configured_retry is not None else 1)
     )
-    selector = selector or network.AAMirrorSelector()
     original_url = url
     current_url = selector.rewrite(original_url)
     use_bypasser_now = use_bypasser
@@ -646,8 +649,7 @@ def html_get_page(
                         continue
                     logger.warning("403 error, mirrors exhausted: %s", current_url)
                     return _fail(
-                        "Anna's Archive returned 403 (blocked) and all mirrors are "
-                        "exhausted.",
+                        "Anna's Archive returned 403 (blocked) and all mirrors are exhausted.",
                         current_url,
                     )
 
@@ -692,7 +694,9 @@ def html_get_page(
             # 404 = Not found
             if status == _HTTP_STATUS_NOT_FOUND:
                 logger.warning("404 error: %s", current_url)
-                return _fail(f"Anna's Archive returned 404 Not Found for {current_url}.", current_url)
+                return _fail(
+                    f"Anna's Archive returned 404 Not Found for {current_url}.", current_url
+                )
 
             # Try mirror/DNS rotation on retryable errors. A failure that proves the
             # mirror is unusable also drops it from this process's rotation, so the
@@ -728,8 +732,7 @@ def html_get_page(
             current_url,
         )
     return _fail(
-        "Could not reach Anna's Archive — all mirrors were exhausted without a usable "
-        "response.",
+        "Could not reach Anna's Archive — all mirrors were exhausted without a usable response.",
         current_url,
     )
 
