@@ -223,6 +223,14 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
     );
     const showActiveTargetLabel = queryTargets.length > 0 && activeTarget.source !== 'general';
 
+    // Manual search browses release sources directly, one media type at a time — the
+    // combined ("both") flow doesn't apply. Present a plain, switchable Books/Audiobooks
+    // choice for it, even when combined search is forced on for metadata targets.
+    const isManualTarget = activeTarget?.source === 'manual';
+    const combinedSelectionActive = combinedMode && !isManualTarget;
+    const combinedSelectorLocked = combinedModeLocked && !isManualTarget;
+    const combinedToggleAvailable = !!onCombinedModeChange && !isManualTarget;
+
     useDismiss(isSelectorOpen, [selectorRef], () => setIsSelectorOpen(false));
     useDismiss(isSelectOpen, [selectPanelRef, selectTriggerRef], () => setIsSelectOpen(false));
     useDismiss(isAutocompleteOpen, [autocompletePanelRef, inputRef], () =>
@@ -356,7 +364,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       contentType,
       activeTarget,
       placeholder,
-      combinedMode,
+      combinedSelectionActive,
     );
     const effectiveInputAriaLabel = activeTarget
       ? `${inputAriaLabel}: ${activeTarget.label}`
@@ -537,7 +545,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
 
     let selectorContentTypeLabel = 'audiobooks';
     let selectorIcon = <AudiobookIcon />;
-    if (combinedMode) {
+    if (combinedSelectionActive) {
       selectorContentTypeLabel = 'books and audiobooks';
       selectorIcon = <BothIcon />;
     } else if (contentType === 'ebook') {
@@ -665,7 +673,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                   <div className="max-h-[min(24rem,calc(100vh-8rem))] overflow-y-auto p-3">
                     {showContentTypeSelector && (
                       <div
-                        className={`border-b ${onCombinedModeChange ? 'pb-0' : 'pb-3'}`}
+                        className={`border-b ${combinedToggleAvailable ? 'pb-0' : 'pb-3'}`}
                         style={{ borderColor: 'var(--border-muted)' }}
                       >
                         <div className="flex items-center justify-between px-1 pb-2">
@@ -712,34 +720,38 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                             type="button"
                             onClick={() => handleContentTypeSelect('ebook')}
                             className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                              contentType === 'ebook' || combinedMode
+                              contentType === 'ebook' || combinedSelectionActive
                                 ? 'bg-emerald-600 text-white'
                                 : 'hover-surface'
                             }`}
                             style={
-                              contentType === 'ebook' || combinedMode
+                              contentType === 'ebook' || combinedSelectionActive
                                 ? { borderColor: 'rgb(16 185 129 / 0.7)' }
                                 : { color: 'var(--text)', borderColor: 'var(--border-muted)' }
                             }
                           >
-                            {contentType === 'ebook' || combinedMode ? <CheckIcon /> : <BookIcon />}
+                            {contentType === 'ebook' || combinedSelectionActive ? (
+                              <CheckIcon />
+                            ) : (
+                              <BookIcon />
+                            )}
                             <span>Books</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => handleContentTypeSelect('audiobook')}
                             className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                              contentType === 'audiobook' || combinedMode
+                              contentType === 'audiobook' || combinedSelectionActive
                                 ? 'bg-emerald-600 text-white'
                                 : 'hover-surface'
                             }`}
                             style={
-                              contentType === 'audiobook' || combinedMode
+                              contentType === 'audiobook' || combinedSelectionActive
                                 ? { borderColor: 'rgb(16 185 129 / 0.7)' }
                                 : { color: 'var(--text)', borderColor: 'var(--border-muted)' }
                             }
                           >
-                            {contentType === 'audiobook' || combinedMode ? (
+                            {contentType === 'audiobook' || combinedSelectionActive ? (
                               <CheckIcon />
                             ) : (
                               <AudiobookIcon />
@@ -747,9 +759,9 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                             <span>Audiobooks</span>
                           </button>
                         </div>
-                        {onCombinedModeChange &&
+                        {combinedToggleAvailable &&
                           (() => {
-                            const lineColor = combinedMode
+                            const lineColor = combinedSelectionActive
                               ? 'bg-emerald-500'
                               : 'bg-(--border-muted) group-hover:bg-zinc-400 dark:group-hover:bg-zinc-500';
                             return (
@@ -787,7 +799,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                                     {/* Chain icon centered at bottom */}
                                     <div
                                       className={`relative z-10 mx-auto rounded-full p-1 transition-colors ${
-                                        combinedMode
+                                        combinedSelectionActive
                                           ? 'bg-emerald-600 text-white'
                                           : 'bg-(--bg) text-zinc-400 group-hover:bg-zinc-200 group-hover:text-zinc-600 dark:text-zinc-500 dark:group-hover:bg-zinc-700 dark:group-hover:text-zinc-300'
                                       }`}
@@ -800,7 +812,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                                         stroke="currentColor"
                                         aria-hidden="true"
                                       >
-                                        {combinedModeLocked ? (
+                                        {combinedSelectorLocked ? (
                                           <path
                                             strokeLinecap="round"
                                             strokeLinejoin="round"
