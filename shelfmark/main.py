@@ -62,6 +62,7 @@ from shelfmark.core.notifications import (
     notify_user,
 )
 from shelfmark.core.prefix_middleware import PrefixMiddleware
+from shelfmark.core.release_inspect_routes import register_release_inspect_routes
 from shelfmark.core.request_helpers import (
     coerce_bool,
     emit_ws_event,
@@ -1022,6 +1023,9 @@ def _serialize_release(release: Release) -> dict:
             result["extra"] = extra
 
     return result
+
+
+register_release_inspect_routes(app, login_required)
 
 
 @app.route("/api/releases/download", methods=["POST"])

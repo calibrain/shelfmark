@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import os
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -26,6 +27,7 @@ from shelfmark.download.fs import (
 )
 from shelfmark.download.postprocess.policy import get_file_organization, get_template
 
+from .packs import BookGroup, PackBook, group_files_into_books, match_plan_to_files
 from .scan import collect_directory_files, scan_directory_tree
 from .types import TransferPlan
 from .workspace import safe_cleanup_path
@@ -196,6 +198,19 @@ def transfer_book_files(
 
     is_audiobook = check_audiobook(task.content_type)
     organization_mode = organization_mode or get_file_organization(is_audiobook=is_audiobook)
+
+    groups = resolve_book_groups(task, book_files, organization_mode=organization_mode)
+    if groups is not None:
+        return _transfer_book_groups(
+            groups,
+            destination,
+            task,
+            use_hardlink=use_hardlink,
+            is_torrent=is_torrent,
+            preserve_source=preserve_source,
+            organization_mode=organization_mode,
+        )
+
     max_attempts = _max_attempts_for_batch(len(book_files))
 
     final_paths: list[Path] = []
@@ -297,6 +312,97 @@ def transfer_book_files(
         logger.debug("%s to destination: %s", op.capitalize(), final_path.name)
 
     return final_paths, None, op_counts
+
+
+def resolve_book_groups(
+    task: DownloadTask,
+    book_files: list[Path],
+    *,
+    organization_mode: str,
+) -> list[BookGroup] | None:
+    """Split a multi-book pack into per-book groups, or None to file as one book.
+
+    An approved `book_plan` wins; a bare `multi_book` flag falls back to heuristic
+    grouping. Organization `none` keeps files as-is, and a split that yields a single
+    group is not a pack at all.
+    """
+    if organization_mode == "none" or not (task.book_plan or task.multi_book):
+        return None
+    if task.book_plan:
+        plan = [
+            PackBook(
+                title=str(entry.get("title") or ""),
+                series_position=entry.get("series_position"),
+                year=entry.get("year"),
+                files=list(entry.get("files") or []),
+            )
+            for entry in task.book_plan
+            if isinstance(entry, dict)
+        ]
+        groups = match_plan_to_files(plan, book_files, series_name=task.series_name)
+    else:
+        groups = group_files_into_books(book_files, series_name=task.series_name)
+    return groups if len(groups) > 1 else None
+
+
+def _transfer_book_groups(
+    groups: list[BookGroup],
+    destination: Path,
+    task: DownloadTask,
+    *,
+    use_hardlink: bool,
+    is_torrent: bool,
+    preserve_source: bool,
+    organization_mode: str,
+) -> tuple[list[Path], str | None, dict[str, int]]:
+    """Transfer each book of a pack through the normal single-book path.
+
+    Each book gets an isolated task copy (the single-file path mutates `task.format`)
+    carrying its own title, position and year; the searched book's position must not
+    leak onto its siblings, while author and series name apply to all of them.
+    """
+    all_paths: list[Path] = []
+    totals: dict[str, int] = {"hardlink": 0, "copy": 0, "move": 0}
+    errors: list[str] = []
+
+    for group in groups:
+        book_task = dataclasses.replace(
+            task,
+            title=group.title or task.title,
+            year=str(group.year) if group.year is not None else None,
+            subtitle=None,
+            series_position=group.series_position,
+            multi_book=False,
+            book_plan=None,
+        )
+        paths, error, op_counts = transfer_book_files(
+            group.files,
+            destination,
+            book_task,
+            use_hardlink=use_hardlink,
+            is_torrent=is_torrent,
+            preserve_source=preserve_source,
+            organization_mode=organization_mode,
+            source_root=group.files[0].parent,
+        )
+        for op, count in op_counts.items():
+            totals[op] = totals.get(op, 0) + count
+        if error:
+            errors.append(f"{group.title}: {error}")
+            logger.warning("Task %s: pack book %r failed: %s", task.task_id, group.title, error)
+            continue
+        all_paths.extend(paths)
+
+    if not all_paths:
+        return [], "; ".join(errors) or "No book files found", totals
+    if errors:
+        logger.warning(
+            "Task %s: pack filed with %d failed book(s): %s",
+            task.task_id,
+            len(errors),
+            "; ".join(errors),
+        )
+    return all_paths, None, totals
 
 
 def process_directory(

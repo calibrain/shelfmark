@@ -2,6 +2,7 @@
 
 import re
 import time
+from threading import Lock
 from urllib.parse import quote, quote_plus
 
 import requests
@@ -10,6 +11,7 @@ from bs4 import BeautifulSoup
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.download import http as downloader
+from shelfmark.download.postprocess.packs import PackFile
 from shelfmark.release_sources.audiobookbay.utils import normalize_search_punctuation
 
 logger = setup_logger(__name__)
@@ -32,6 +34,13 @@ FIRST_PAGE_SESSION_REFRESH_ATTEMPTS = 2
 # Legacy search parameter used by older ABB flows
 LEGACY_CATEGORY_QUERY = "undefined%2Cundefined"
 
+# Detail pages are fetched once and shared by inspection (file list) and download
+# (magnet link) so a "review then download" round trip costs ABB a single request.
+DETAIL_PAGE_CACHE_TTL_SECONDS = 120.0
+DETAIL_PAGE_CACHE_MAX_ENTRIES = 8
+_detail_page_cache: dict[str, tuple[float, str]] = {}
+_detail_page_cache_lock = Lock()
+
 # Precompiled patterns used while parsing result cards
 LANGUAGE_PATTERN = re.compile(r"Language:\s*([A-Za-z]+)")
 POSTED_PATTERN = re.compile(r"Posted:\s*(\d+\s+[A-Za-z]+\s+\d{4})")
@@ -39,6 +48,11 @@ FORMAT_PATTERN = re.compile(r"Format:\s*([A-Za-z0-9]+)")
 BITRATE_PATTERN = re.compile(r"Bitrate:\s*([\d]+\s*[A-Za-z/]+)")
 SIZE_PATTERN = re.compile(r"File Size:\s*([\d.]+)\s*([A-Za-z]+)")
 INFO_HASH_LABEL_PATTERN = re.compile(r"Info Hash", re.IGNORECASE)
+FILE_ROW_SIZE_PATTERN = re.compile(
+    r"^(?P<name>.+?)\s+(?P<size>\d+(?:\.\d+)?)\s*(?P<unit>Bytes?|KBs?|MBs?|GBs?|TBs?)$",
+    re.IGNORECASE,
+)
+_FILE_SIZE_MULTIPLIERS = {"b": 1, "k": 1024, "m": 1024**2, "g": 1024**3, "t": 1024**4}
 
 
 def _coerce_non_negative_float(value: object, default: float) -> float:
@@ -348,6 +362,98 @@ def search_audiobookbay(
     return results
 
 
+def _get_cached_detail_page(details_url: str) -> str | None:
+    with _detail_page_cache_lock:
+        entry = _detail_page_cache.get(details_url)
+        if entry is None:
+            return None
+        fetched_at, html = entry
+        if time.monotonic() - fetched_at > DETAIL_PAGE_CACHE_TTL_SECONDS:
+            del _detail_page_cache[details_url]
+            return None
+    return html
+
+
+def _store_cached_detail_page(details_url: str, html: str) -> None:
+    with _detail_page_cache_lock:
+        _detail_page_cache[details_url] = (time.monotonic(), html)
+        while len(_detail_page_cache) > DETAIL_PAGE_CACHE_MAX_ENTRIES:
+            oldest = min(_detail_page_cache, key=lambda key: _detail_page_cache[key][0])
+            del _detail_page_cache[oldest]
+
+
+def clear_detail_page_cache() -> None:
+    """Drop cached detail pages (used by tests)."""
+    with _detail_page_cache_lock:
+        _detail_page_cache.clear()
+
+
+def _fetch_detail_page_once(details_url: str, hostname: str) -> str:
+    session = requests.Session()
+    _bootstrap_abb_session(hostname, session, DETAIL_PAGE_RETRY_ATTEMPTS)
+    return _coerce_markup_to_html(
+        downloader.html_get_page(
+            details_url,
+            retry=DETAIL_PAGE_RETRY_ATTEMPTS,
+            use_bypasser=False,
+            allow_bypasser_fallback=False,
+            success_delay=0,
+            session=session,
+        )
+    )
+
+
+def fetch_detail_html(details_url: str, hostname: str = "audiobookbay.lu") -> str:
+    """Fetch a detail page (one retry with a fresh session), cached briefly per URL."""
+    cached = _get_cached_detail_page(details_url)
+    if cached is not None:
+        logger.debug("Reusing recently fetched detail page: %s", details_url)
+        return cached
+    detail_html = _fetch_detail_page_once(details_url, hostname)
+    if not detail_html:
+        detail_html = _fetch_detail_page_once(details_url, hostname)
+    if detail_html:
+        _store_cached_detail_page(details_url, detail_html)
+    return detail_html
+
+
+def _parse_file_row(text: str) -> PackFile | None:
+    match = FILE_ROW_SIZE_PATTERN.match(text.strip())
+    if not match:
+        return None
+    multiplier = _FILE_SIZE_MULTIPLIERS[match.group("unit")[0].lower()]
+    return PackFile(match.group("name"), int(float(match.group("size")) * multiplier))
+
+
+def extract_file_list(detail_html: str) -> list[PackFile] | None:
+    """Read the torrent file rows off a detail page.
+
+    ABB renders the torrent's file table as single-cell rows between the
+    "This is a Multifile Torrent" marker (absent for single-file torrents) and the
+    "Combined File Size" row. Returns None when the page has no such table.
+    """
+    soup = BeautifulSoup(detail_html, "html.parser")
+    rows: list[PackFile] = []
+    for row in soup.find_all("tr"):
+        cells = row.find_all("td")
+        if not cells:
+            continue
+        label = cells[0].get_text(" ", strip=True)
+        if label.lower().startswith("combined file size"):
+            return rows or None
+        if len(cells) != 1:
+            rows = []  # a two-column metadata row means we're not in the file table yet
+            continue
+        text = cells[0].get_text(" ", strip=True)
+        if "multifile torrent" in text.lower():
+            rows = []
+            continue
+        parsed = _parse_file_row(text)
+        if parsed is not None:
+            rows.append(parsed)
+    return None
+
+
 def extract_magnet_link(details_url: str, hostname: str = "audiobookbay.lu") -> str | None:
     """Extract info hash and trackers from book detail page, then construct magnet link.
 
@@ -360,35 +466,7 @@ def extract_magnet_link(details_url: str, hostname: str = "audiobookbay.lu") -> 
 
     """
     try:
-        session = requests.Session()
-        _bootstrap_abb_session(hostname, session, DETAIL_PAGE_RETRY_ATTEMPTS)
-
-        # Fetch detail page
-        detail_html = _coerce_markup_to_html(
-            downloader.html_get_page(
-                details_url,
-                retry=DETAIL_PAGE_RETRY_ATTEMPTS,
-                use_bypasser=False,
-                allow_bypasser_fallback=False,
-                success_delay=0,
-                session=session,
-            )
-        )
-
-        if not detail_html:
-            session = requests.Session()
-            _bootstrap_abb_session(hostname, session, DETAIL_PAGE_RETRY_ATTEMPTS)
-            detail_html = _coerce_markup_to_html(
-                downloader.html_get_page(
-                    details_url,
-                    retry=DETAIL_PAGE_RETRY_ATTEMPTS,
-                    use_bypasser=False,
-                    allow_bypasser_fallback=False,
-                    success_delay=0,
-                    session=session,
-                )
-            )
-
+        detail_html = fetch_detail_html(details_url, hostname)
         if not detail_html:
             logger.warning("Failed to fetch details page")
             return None

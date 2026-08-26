@@ -460,6 +460,27 @@ export interface SourceSearchInfo {
 }
 
 // Response from /api/releases endpoint
+/** One book split out of a multi-book pack release, files as release-relative paths. */
+export interface PackBook {
+  title: string;
+  series_position: number | null;
+  year: number | null;
+  files: string[];
+}
+
+export interface PackPlan {
+  is_pack: boolean;
+  books: PackBook[];
+  ignored: string[];
+}
+
+export interface InspectReleaseResponse {
+  inspected: boolean;
+  reason: string | null;
+  files: { path: string; size: number | null }[];
+  plan: PackPlan | null;
+}
+
 export interface ReleasesResponse {
   releases: Release[];
   book: {

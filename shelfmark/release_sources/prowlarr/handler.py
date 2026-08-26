@@ -28,6 +28,10 @@ from shelfmark.download.clients.base_handler import (
     DownloadRequest,
     ExternalClientHandler,
 )
+from shelfmark.download.clients.torrent_utils import (
+    extract_file_list_from_torrent,
+    extract_torrent_info,
+)
 from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources import register_handler
 from shelfmark.release_sources.prowlarr.api import IndexerSeedSettings, ProwlarrClient
@@ -38,12 +42,14 @@ from shelfmark.release_sources.prowlarr.utils import (
     coerce_int_like,
     get_preferred_download_url,
     get_protocol,
+    sanitize_download_url,
 )
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from shelfmark.core.models import DownloadTask
+    from shelfmark.download.postprocess.packs import PackFile
 
 logger = setup_logger(__name__)
 
@@ -126,6 +132,24 @@ class ProwlarrHandler(ExternalClientHandler):
             return None
 
         return settings.get(indexer_id)
+
+    def list_files(self, release_data: dict[str, Any]) -> list[PackFile] | None:
+        """List a cached torrent release's files from its .torrent, without downloading.
+
+        Magnet-only and usenet releases cannot be listed ahead of time.
+        """
+        source_id = str(release_data.get("source_id") or "")
+        prowlarr_result = get_release(source_id) if source_id else None
+        if not prowlarr_result or get_protocol(prowlarr_result) != "torrent":
+            return None
+        download_url = sanitize_download_url(str(prowlarr_result.get("downloadUrl") or "").strip())
+        if not download_url or download_url.startswith("magnet:"):
+            return None
+        expected_hash = str(prowlarr_result.get("infoHash") or "").strip() or None
+        info = extract_torrent_info(download_url, expected_hash=expected_hash)
+        if not info.torrent_data:
+            return None
+        return extract_file_list_from_torrent(info.torrent_data)
 
     def _get_client(self, protocol: str) -> DownloadClient | None:
         """Compatibility shim so module-level patching still works in tests."""

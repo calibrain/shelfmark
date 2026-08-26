@@ -276,6 +276,27 @@ class DownloadHandler(ABC):
         pass
 ```
 
+### Optional: Listing Files Before Download
+
+Some releases bundle several books (a whole-series torrent). Shelfmark inspects a
+release before queueing it so the user can review how it will be split into books.
+Override `list_files` when your source can enumerate a release's files without
+downloading it; the default returns `None`, which the UI reports as "can't inspect":
+
+```python
+from shelfmark.download.postprocess.packs import PackFile
+
+def list_files(self, release_data: dict[str, Any]) -> list[PackFile] | None:
+    """Return the release's files (release-relative paths + sizes), or None."""
+    torrent_bytes = ...  # e.g. fetch the .torrent, or scrape the indexer's detail page
+    return extract_file_list_from_torrent(torrent_bytes)  # from download.clients.torrent_utils
+```
+
+`release_data` is the same payload the frontend sends to `/api/releases/download`
+(`source_id`, `download_url`, `content_type`, `series_name`, ...). Built-in examples:
+Prowlarr parses the `.torrent` it already fetches (magnet-only releases return
+`None`), and AudiobookBay reads the file table off its detail page.
+
 ### Download Method Parameters
 
 | Parameter | Type | Description |

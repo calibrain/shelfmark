@@ -58,7 +58,6 @@ import {
   isApiResponseError,
   updateSelfUser,
   setBookTargetState,
-  type DownloadReleasePayload,
 } from './services/api';
 import type {
   Book,
@@ -93,6 +92,7 @@ import { getEffectiveMetadataSort } from './utils/metadataSort';
 import { isRecord } from './utils/objectHelpers';
 import { policyTrace } from './utils/policyTrace';
 import { buildQueryTargets, getDefaultQueryTargetKey } from './utils/queryTargets';
+import { buildReleaseDownloadPayload, type ReleaseDownloadOptions } from './utils/releasePayload';
 import { applyRequestNoteToPayload } from './utils/requestConfirmation';
 import { bookFromRequestData } from './utils/requestFulfil';
 import {
@@ -219,6 +219,7 @@ type PendingOnBehalfDownload =
       release: Release;
       releaseContentType: ContentType;
       actingAsUser: ActingAsUserSelection;
+      options?: ReleaseDownloadOptions;
     }
   | {
       type: 'combined';
@@ -1072,41 +1073,6 @@ function App() {
     [],
   );
 
-  const buildReleaseDownloadPayload = useCallback(
-    (book: Book, release: Release, releaseContentType: ContentType): DownloadReleasePayload => {
-      const isManual = book.provider === 'manual';
-      const releasePreview =
-        typeof release.extra?.preview === 'string' ? release.extra.preview : undefined;
-      const releaseAuthor =
-        typeof release.extra?.author === 'string' ? release.extra.author : undefined;
-
-      return {
-        source: release.source,
-        source_id: release.source_id,
-        title: isManual ? release.title : book.title,
-        author: isManual ? releaseAuthor || '' : book.author,
-        year: book.year,
-        format: release.format,
-        size: release.size,
-        size_bytes: release.size_bytes,
-        download_url: release.download_url,
-        protocol: release.protocol,
-        indexer: release.indexer,
-        seeders: release.seeders,
-        extra: release.extra,
-        preview: isManual ? releasePreview || undefined : book.preview,
-        content_type: releaseContentType,
-        series_name: book.series_name,
-        series_position: book.series_position,
-        subtitle: book.subtitle,
-        // From the release, never the book: book.language is the provider's
-        // canonical edition, which would mislabel a translated release.
-        language: release.language ?? undefined,
-      };
-    },
-    [],
-  );
-
   // When downloading a book while browsing a Hardcover list the user owns,
   // automatically remove it from that list (fire-and-forget).
   const searchFieldLabelsRef = useRef(searchFieldLabels);
@@ -1214,12 +1180,13 @@ function App() {
       release: Release,
       releaseContentType: ContentType,
       onBehalfOfUserId?: number,
+      options?: ReleaseDownloadOptions,
     ): Promise<void> => {
       const requestStartedAtSeconds = Date.now() / 1000;
       try {
         trackRelease(book.id, release.source_id);
         await downloadRelease(
-          buildReleaseDownloadPayload(book, release, releaseContentType),
+          buildReleaseDownloadPayload(book, release, releaseContentType, options),
           onBehalfOfUserId,
         );
         await fetchStatus();
@@ -1301,7 +1268,6 @@ function App() {
       }
     },
     [
-      buildReleaseDownloadPayload,
       fetchStatus,
       openRequestConfirmation,
       refreshRequestPolicy,
@@ -1416,6 +1382,7 @@ function App() {
           effectivePendingOnBehalfDownload.release,
           effectivePendingOnBehalfDownload.releaseContentType,
           onBehalfOfUserId,
+          effectivePendingOnBehalfDownload.options,
         );
       }
       setPendingOnBehalfDownload(null);
@@ -1640,6 +1607,7 @@ function App() {
     book: Book,
     release: Release,
     releaseContentType: ContentType,
+    options?: ReleaseDownloadOptions,
   ) => {
     policyTrace('release.action:start', {
       bookId: book.id,
@@ -1655,11 +1623,12 @@ function App() {
         release,
         releaseContentType,
         actingAsUser: effectiveActingAsUser,
+        options,
       });
       return;
     }
 
-    await executeReleaseDownload(book, release, releaseContentType);
+    await executeReleaseDownload(book, release, releaseContentType, undefined, options);
   };
 
   const handleReleaseRequest = useCallback(

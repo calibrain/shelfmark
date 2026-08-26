@@ -12,6 +12,8 @@ import type {
   RequestSubmissionResult,
   MetadataProvidersResponse,
   MetadataSearchConfig,
+  PackBook,
+  InspectReleaseResponse,
 } from '../types';
 import type {
   ActionResult,
@@ -510,6 +512,18 @@ export type DownloadReleasePayload = {
   language?: string; // Release language code, for the {Language} naming variable
   search_author?: string;
   search_mode?: 'direct' | 'universal';
+  multi_book?: boolean; // Split a multi-book pack into one book per subfolder/file
+  book_plan?: PackBook[]; // The split the user approved before download
+};
+
+/** Inspect a release's file list before download (same body as downloadRelease). */
+export const inspectRelease = async (
+  release: DownloadReleasePayload,
+): Promise<InspectReleaseResponse> => {
+  return fetchJSON<InspectReleaseResponse>(`${API_BASE}/releases/inspect`, {
+    method: 'POST',
+    body: JSON.stringify(release),
+  });
 };
 
 export const downloadRelease = async (

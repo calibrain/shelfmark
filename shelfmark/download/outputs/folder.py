@@ -105,6 +105,7 @@ def process_folder_output(
         maybe_run_custom_script,
         prepare_output_files,
         record_step,
+        resolve_book_groups,
         transfer_book_files,
     )
 
@@ -260,7 +261,15 @@ def process_folder_output(
         prepared.cleanup_paths,
     )
 
-    message = "Complete" if len(final_paths) == 1 else f"Complete ({len(final_paths)} files)"
+    pack_groups = resolve_book_groups(
+        task, prepared.files, organization_mode=plan.organization_mode
+    )
+    if pack_groups is not None:
+        message = f"Complete ({len(pack_groups)} books, {len(final_paths)} files)"
+    elif len(final_paths) == 1:
+        message = "Complete"
+    else:
+        message = f"Complete ({len(final_paths)} files)"
     status_callback("complete", message)
 
     return str(final_paths[0])

@@ -1,6 +1,6 @@
 """AudiobookBay download handler - resolves magnet links and uses shared client lifecycle."""
 
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from urllib.parse import urlparse
 
 from shelfmark.core.config import config
@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from shelfmark.core.models import DownloadTask
+    from shelfmark.download.postprocess.packs import PackFile
 
 logger = setup_logger(__name__)
 DEFAULT_ABB_HOSTNAME = "audiobookbay.lu"
@@ -67,6 +68,19 @@ class AudiobookBayHandler(ExternalClientHandler):
         if task_id.startswith(("http://", "https://")):
             return task_id
         return None
+
+    def list_files(self, release_data: dict[str, Any]) -> list[PackFile] | None:
+        """Read the torrent's file list off the detail page, without downloading."""
+        raw_url = release_data.get("download_url") or release_data.get("source_url")
+        detail_url = raw_url.strip() if isinstance(raw_url, str) else ""
+        hostname = _resolve_allowed_detail_hostname()
+        if not detail_url or not _detail_url_matches_host(detail_url, hostname):
+            logger.debug("Cannot list files for AudiobookBay release without a valid detail URL")
+            return None
+        detail_html = scraper.fetch_detail_html(detail_url, hostname)
+        if not detail_html:
+            return None
+        return scraper.extract_file_list(detail_html)
 
     def _get_client(self, protocol: str) -> DownloadClient | None:
         """Compatibility shim so module-level patching still works in tests."""

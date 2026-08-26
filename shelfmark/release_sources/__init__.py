@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
     from shelfmark.core.models import DownloadTask
     from shelfmark.core.search_plan import ReleaseSearchPlan
+    from shelfmark.download.postprocess.packs import PackFile
 
 from shelfmark.metadata_providers import BookMetadata
 
@@ -399,6 +400,14 @@ class DownloadHandler(ABC):
     def build_retry_resolution_fields(self, release_data: dict[str, Any]) -> dict[str, Any]:
         """Return private queue-time fields needed for restart-safe retry."""
         return {}
+
+    def list_files(self, release_data: dict[str, Any]) -> list[PackFile] | None:
+        """Return the release's file list without downloading it.
+
+        Lets the UI review a multi-book pack before queueing. Return None when the
+        source cannot know the files ahead of time (magnet links, usenet, ...).
+        """
+        return None
 
     @abstractmethod
     def cancel(self, task_id: str) -> bool:

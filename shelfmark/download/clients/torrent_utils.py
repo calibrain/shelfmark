@@ -17,6 +17,7 @@ from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
 from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.postprocess.packs import PackFile
 
 logger = setup_logger(__name__)
 
@@ -431,6 +432,56 @@ def extract_info_hash_from_torrent(torrent_data: bytes) -> str | None:
     except _TORRENT_PARSE_ERRORS as e:
         logger.debug("Failed to parse torrent file: %s", e)
         return None
+
+
+def _decode_torrent_text(value: object) -> str | None:
+    if isinstance(value, bytes):
+        return value.decode("utf-8", errors="replace")
+    if isinstance(value, str):
+        return value
+    return None
+
+
+def extract_file_list_from_torrent(torrent_data: bytes) -> list[PackFile] | None:
+    """List the files a .torrent describes, release-relative, without downloading it.
+
+    Multi-file torrents nest every path under the torrent name (which becomes the
+    client's save folder); single-file torrents are just the named file.
+    """
+    try:
+        decoded, _ = bencode_decode(torrent_data)
+    except _TORRENT_PARSE_ERRORS as e:
+        logger.debug("Failed to parse torrent file list: %s", e)
+        return None
+    if not isinstance(decoded, dict):
+        return None
+    info = decoded.get(b"info")
+    if not isinstance(info, dict):
+        return None
+
+    name = _decode_torrent_text(info.get(b"name")) or ""
+    raw_files = info.get(b"files")
+    if not isinstance(raw_files, list):
+        length = info.get(b"length")
+        if not name:
+            return None
+        return [PackFile(name, length if isinstance(length, int) else None)]
+
+    files: list[PackFile] = []
+    for entry in raw_files:
+        if not isinstance(entry, dict):
+            continue
+        raw_path = entry.get(b"path")
+        if not isinstance(raw_path, list):
+            continue
+        segments = [seg for seg in (_decode_torrent_text(part) for part in raw_path) if seg]
+        if not segments:
+            continue
+        if name:
+            segments.insert(0, name)
+        length = entry.get(b"length")
+        files.append(PackFile("/".join(segments), length if isinstance(length, int) else None))
+    return files
 
 
 def extract_hash_from_magnet(magnet_url: str) -> str | None:
