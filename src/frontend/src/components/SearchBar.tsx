@@ -3,7 +3,6 @@ import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'reac
 
 import { useSearchMode } from '../contexts/SearchModeContext';
 import { useSearchBarAutocomplete } from '../hooks/searchBar/useSearchBarAutocomplete';
-import { useSearchBarHoverTimeout } from '../hooks/searchBar/useSearchBarHoverTimeout';
 import { useDismiss } from '../hooks/useDismiss';
 import type { DynamicFieldOption } from '../services/api';
 import type { ContentType, MetadataSearchField, QueryTargetOption, SortOption } from '../types';
@@ -199,19 +198,16 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
     onSubmitRef.current = onSubmit;
     const selectorRef = useRef<HTMLDivElement>(null);
     const hasSearchQuery = hasActiveValue(value);
-    const [isSelectorOpen, setIsSelectorOpen] = useState(false);
     const [isSelectOpen, setIsSelectOpen] = useState(false);
     const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
     const selectTriggerRef = useRef<HTMLButtonElement>(null);
     const selectPanelRef = useRef<HTMLDivElement>(null);
     const autocompletePanelRef = useRef<HTMLDivElement>(null);
-    const { hoverTimeoutRef: selectorHoverTimeout, clearHoverTimeout } = useSearchBarHoverTimeout();
 
     const hasMultipleContentTypes = !allowedContentTypes || allowedContentTypes.length !== 1;
     const showContentTypeSelector =
       searchMode !== 'direct' && !!onContentTypeChange && hasMultipleContentTypes;
-    const showQueryTargetSelector = showContentTypeSelector || queryTargets.length > 1;
-    const inputPaddingClass = showQueryTargetSelector ? 'pl-3 rounded-r-full' : 'pl-4 rounded-full';
+    const inputPaddingClass = showContentTypeSelector ? 'pl-3 rounded-r-full' : 'pl-4 rounded-full';
     const searchInputClass = [
       'w-full min-w-0 py-3 border-0 outline-hidden search-input bg-transparent',
       inputPaddingClass,
@@ -221,7 +217,6 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       () => queryTargets.find((target) => target.key === activeQueryTarget) ?? queryTargets[0],
       [queryTargets, activeQueryTarget],
     );
-    const showActiveTargetLabel = queryTargets.length > 0 && activeTarget.source !== 'general';
 
     // Manual search browses release sources directly, one media type at a time — the
     // combined ("both") flow doesn't apply. Present a plain, switchable Books/Audiobooks
@@ -230,8 +225,10 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
     const combinedSelectionActive = combinedMode && !isManualTarget;
     const combinedSelectorLocked = combinedModeLocked && !isManualTarget;
     const combinedToggleAvailable = !!onCombinedModeChange && !isManualTarget;
+    const combinedLineColor = combinedSelectionActive
+      ? 'bg-emerald-500'
+      : 'bg-(--border-muted) group-hover:bg-zinc-400 dark:group-hover:bg-zinc-500';
 
-    useDismiss(isSelectorOpen, [selectorRef], () => setIsSelectorOpen(false));
     useDismiss(isSelectOpen, [selectPanelRef, selectTriggerRef], () => setIsSelectOpen(false));
     useDismiss(isAutocompleteOpen, [autocompletePanelRef, inputRef], () =>
       setIsAutocompleteOpen(false),
@@ -333,18 +330,15 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
     const handleContentTypeSelect = (type: ContentType) => {
       onContentTypeChange?.(type);
       onCombinedModeChange?.(false);
-      setIsSelectorOpen(false);
     };
 
     const handleCombinedModeSelect = () => {
       if (combinedMode) {
-        // Toggle off — revert to ebook-only
         onCombinedModeChange?.(false);
       } else {
         onContentTypeChange?.('ebook');
         onCombinedModeChange?.(true);
       }
-      setIsSelectorOpen(false);
     };
 
     const handleQueryTargetSelect = (targetKey: string) => {
@@ -357,7 +351,6 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       setIsSelectOpen(shouldOpenSelect);
       setIsAutocompleteOpen(false);
       resetAutocomplete();
-      setIsSelectorOpen(false);
     };
 
     const effectivePlaceholder = getDefaultPlaceholder(
@@ -412,7 +405,6 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                 setAutocompleteDraftValue(nextValue);
                 setIsAutocompleteOpen(nextValue.trim().length >= autocompleteMinQueryLength);
                 setIsSelectOpen(false);
-                setIsSelectorOpen(false);
                 onChange(nextValue);
                 return;
               }
@@ -424,7 +416,6 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                 textInputValue.trim().length >= autocompleteMinQueryLength
               ) {
                 setIsAutocompleteOpen(true);
-                setIsSelectorOpen(false);
               }
             }}
             onKeyDown={handleKeyDown}
@@ -490,14 +481,13 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
               onClick={() => {
                 if (!disabled && !isDynamicLoading) {
                   setIsSelectOpen((prev) => !prev);
-                  setIsSelectorOpen(false);
                   setIsAutocompleteOpen(false);
                 }
               }}
               disabled={disabled}
               className={[
                 'w-full text-left py-3 flex items-center gap-2',
-                showQueryTargetSelector ? 'pl-3' : 'pl-4',
+                showContentTypeSelector ? 'pl-3' : 'pl-4',
                 'pr-2',
                 disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
               ]
@@ -600,324 +590,19 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
             borderColor: 'var(--border-muted)',
           }}
         >
-          {showQueryTargetSelector && (
-            <div
-              className="relative flex shrink-0 self-stretch"
-              ref={selectorRef}
-              onPointerEnter={(e) => {
-                if (e.pointerType !== 'mouse') return;
-                clearHoverTimeout();
-                setIsSelectorOpen(true);
-                setIsSelectOpen(false);
-                setIsAutocompleteOpen(false);
-              }}
-              onPointerLeave={(e) => {
-                if (e.pointerType !== 'mouse') return;
-                clearHoverTimeout();
-                selectorHoverTimeout.current = setTimeout(() => {
-                  setIsSelectorOpen(false);
-                  selectorHoverTimeout.current = null;
-                }, 150);
-              }}
-            >
-              <button
-                type="button"
-                onClick={() => {
-                  setIsSelectorOpen((prev) => !prev);
-                  setIsSelectOpen(false);
-                  setIsAutocompleteOpen(false);
-                }}
-                className="hover-action flex items-center gap-1.5 rounded-l-full pr-2 pl-5 transition-colors"
+          {showContentTypeSelector && (
+            <div className="flex shrink-0 self-stretch items-center" ref={selectorRef}>
+              <div
+                className="flex items-center pl-5 pr-2"
+                aria-label={`Searching ${selectorContentTypeLabel}`}
                 style={{ color: 'var(--text)' }}
-                aria-label={`Searching ${selectorContentTypeLabel} by ${activeTarget?.label ?? 'general'}. Click to change.`}
-                aria-expanded={isSelectorOpen}
-                aria-haspopup="dialog"
               >
                 {selectorIcon}
-                {showActiveTargetLabel && (
-                  <span className="hidden max-w-24 truncate text-sm font-medium sm:inline">
-                    {activeTarget?.label}
-                  </span>
-                )}
-                <svg
-                  className={`h-3 w-3 opacity-50 transition-transform duration-200 ${isSelectorOpen ? 'rotate-180' : ''}`}
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                  strokeWidth="2.5"
-                  aria-hidden="true"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="m19.5 8.25-7.5 7.5-7.5-7.5"
-                  />
-                </svg>
-              </button>
-
+              </div>
               <div
                 className="absolute top-1/2 right-0 h-6 w-px -translate-y-1/2"
                 style={{ background: 'var(--border-muted)' }}
               />
-
-              {isSelectorOpen && (
-                <div
-                  className="animate-fade-in-down absolute top-full left-0 z-50 mt-2 w-[min(20rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border shadow-2xl"
-                  style={{
-                    background: 'var(--bg)',
-                    borderColor: 'var(--border-muted)',
-                  }}
-                  role="dialog"
-                  aria-label="Search context"
-                >
-                  <div className="max-h-[min(24rem,calc(100vh-8rem))] overflow-y-auto p-3">
-                    {showContentTypeSelector && (
-                      <div
-                        className={`border-b ${combinedToggleAvailable ? 'pb-0' : 'pb-3'}`}
-                        style={{ borderColor: 'var(--border-muted)' }}
-                      >
-                        <div className="flex items-center justify-between px-1 pb-2">
-                          <span className="text-xs font-medium tracking-wide uppercase opacity-60">
-                            Content
-                          </span>
-                          {onAdvancedToggle && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setIsSelectorOpen(false);
-                                onAdvancedToggle();
-                              }}
-                              className={`-mt-1.5 -mr-1 -mb-0.5 flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-medium transition-colors ${
-                                isAdvancedActive ? 'bg-emerald-600 text-white' : 'hover-surface'
-                              }`}
-                              style={
-                                isAdvancedActive
-                                  ? { borderColor: 'rgb(16 185 129 / 0.7)' }
-                                  : { color: 'var(--text-muted)' }
-                              }
-                            >
-                              <svg
-                                className="h-3.5 w-3.5"
-                                xmlns="http://www.w3.org/2000/svg"
-                                fill="none"
-                                viewBox="0 0 24 24"
-                                strokeWidth="1.5"
-                                stroke="currentColor"
-                                aria-hidden="true"
-                              >
-                                <path
-                                  strokeLinecap="round"
-                                  strokeLinejoin="round"
-                                  d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"
-                                />
-                              </svg>
-                              Options
-                            </button>
-                          )}
-                        </div>
-                        <div className="grid grid-cols-2 gap-2">
-                          <button
-                            type="button"
-                            onClick={() => handleContentTypeSelect('ebook')}
-                            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                              contentType === 'ebook' || combinedSelectionActive
-                                ? 'bg-emerald-600 text-white'
-                                : 'hover-surface'
-                            }`}
-                            style={
-                              contentType === 'ebook' || combinedSelectionActive
-                                ? { borderColor: 'rgb(16 185 129 / 0.7)' }
-                                : { color: 'var(--text)', borderColor: 'var(--border-muted)' }
-                            }
-                          >
-                            {contentType === 'ebook' || combinedSelectionActive ? (
-                              <CheckIcon />
-                            ) : (
-                              <BookIcon />
-                            )}
-                            <span>Books</span>
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleContentTypeSelect('audiobook')}
-                            className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                              contentType === 'audiobook' || combinedSelectionActive
-                                ? 'bg-emerald-600 text-white'
-                                : 'hover-surface'
-                            }`}
-                            style={
-                              contentType === 'audiobook' || combinedSelectionActive
-                                ? { borderColor: 'rgb(16 185 129 / 0.7)' }
-                                : { color: 'var(--text)', borderColor: 'var(--border-muted)' }
-                            }
-                          >
-                            {contentType === 'audiobook' || combinedSelectionActive ? (
-                              <CheckIcon />
-                            ) : (
-                              <AudiobookIcon />
-                            )}
-                            <span>Audiobooks</span>
-                          </button>
-                        </div>
-                        {combinedToggleAvailable &&
-                          (() => {
-                            const lineColor = combinedSelectionActive
-                              ? 'bg-emerald-500'
-                              : 'bg-(--border-muted) group-hover:bg-zinc-400 dark:group-hover:bg-zinc-500';
-                            return (
-                              <Tooltip
-                                content="Combined search"
-                                position="bottom"
-                                triggerClassName="w-full"
-                              >
-                                <button
-                                  type="button"
-                                  onClick={handleCombinedModeSelect}
-                                  className="group w-full"
-                                  aria-label="Combined search"
-                                >
-                                  {/* Bracket connector: vertical drops + horizontal bar with icon */}
-                                  <div className="relative flex h-7 items-end">
-                                    {/* Left vertical */}
-                                    <div
-                                      className={`absolute top-1.5 bottom-[11px] left-[25%] w-px transition-colors ${lineColor}`}
-                                    />
-                                    {/* Right vertical */}
-                                    <div
-                                      className={`absolute top-1.5 right-[25%] bottom-[11px] w-px transition-colors ${lineColor}`}
-                                    />
-                                    {/* Horizontal bar – left segment */}
-                                    <div
-                                      className={`absolute bottom-[11px] left-[25%] h-px transition-colors ${lineColor}`}
-                                      style={{ width: 'calc(25% - 16px)' }}
-                                    />
-                                    {/* Horizontal bar – right segment */}
-                                    <div
-                                      className={`absolute right-[25%] bottom-[11px] h-px transition-colors ${lineColor}`}
-                                      style={{ width: 'calc(25% - 16px)' }}
-                                    />
-                                    {/* Chain icon centered at bottom */}
-                                    <div
-                                      className={`relative z-10 mx-auto rounded-full p-1 transition-colors ${
-                                        combinedSelectionActive
-                                          ? 'bg-emerald-600 text-white'
-                                          : 'bg-(--bg) text-zinc-400 group-hover:bg-zinc-200 group-hover:text-zinc-600 dark:text-zinc-500 dark:group-hover:bg-zinc-700 dark:group-hover:text-zinc-300'
-                                      }`}
-                                    >
-                                      <svg
-                                        className="h-3.5 w-3.5"
-                                        fill="none"
-                                        viewBox="0 0 24 24"
-                                        strokeWidth="2"
-                                        stroke="currentColor"
-                                        aria-hidden="true"
-                                      >
-                                        {combinedSelectorLocked ? (
-                                          <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"
-                                          />
-                                        ) : (
-                                          <path
-                                            strokeLinecap="round"
-                                            strokeLinejoin="round"
-                                            d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"
-                                          />
-                                        )}
-                                      </svg>
-                                    </div>
-                                  </div>
-                                </button>
-                              </Tooltip>
-                            );
-                          })()}
-                      </div>
-                    )}
-
-                    <div className={showContentTypeSelector ? 'pt-2' : ''}>
-                      <div className="flex items-center justify-between px-1 pb-1.5">
-                        <span className="text-xs font-medium tracking-wide uppercase opacity-60">
-                          Search By
-                        </span>
-                        {!showContentTypeSelector && onAdvancedToggle && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setIsSelectorOpen(false);
-                              onAdvancedToggle();
-                            }}
-                            className={`-mt-1.5 -mr-1 -mb-0.5 flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-medium transition-colors ${
-                              isAdvancedActive
-                                ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white`
-                                : 'hover-surface'
-                            }`}
-                            style={
-                              isAdvancedActive
-                                ? {
-                                    borderColor:
-                                      searchMode === 'direct'
-                                        ? 'rgb(3 105 161 / 0.7)'
-                                        : 'rgb(16 185 129 / 0.7)',
-                                  }
-                                : { color: 'var(--text-muted)' }
-                            }
-                          >
-                            <svg
-                              className="h-3.5 w-3.5"
-                              xmlns="http://www.w3.org/2000/svg"
-                              fill="none"
-                              viewBox="0 0 24 24"
-                              strokeWidth="1.5"
-                              stroke="currentColor"
-                              aria-hidden="true"
-                            >
-                              <path
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
-                                d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"
-                              />
-                            </svg>
-                            Options
-                          </button>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-2 gap-2">
-                        {queryTargets.map((target) => {
-                          const isActive = target.key === activeTarget?.key;
-                          return (
-                            <button
-                              type="button"
-                              key={target.key}
-                              onClick={() => handleQueryTargetSelect(target.key)}
-                              title={target.description || target.label}
-                              aria-label={target.label}
-                              className={`flex min-w-0 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
-                                isActive
-                                  ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white`
-                                  : 'hover-surface'
-                              }`}
-                              style={
-                                isActive
-                                  ? {
-                                      borderColor:
-                                        searchMode === 'direct'
-                                          ? 'rgb(3 105 161 / 0.7)'
-                                          : 'rgb(16 185 129 / 0.7)',
-                                    }
-                                  : { color: 'var(--text)', borderColor: 'var(--border-muted)' }
-                              }
-                            >
-                              {isActive && <CheckIcon />}
-                              <span className="block truncate">{target.label}</span>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
@@ -1099,6 +784,242 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
             </div>
           )}
         </div>
+
+        {(showContentTypeSelector || queryTargets.length > 1) && (
+          <div className="flex flex-wrap items-start gap-x-8 gap-y-2 px-1 pt-2">
+            {showContentTypeSelector && (
+              <div className="shrink-0">
+                <div className="flex items-center justify-between pb-1.5">
+                  <span className="text-xs font-medium tracking-wide uppercase opacity-60">
+                    Content
+                  </span>
+                  {onAdvancedToggle && (
+                    <button
+                      type="button"
+                      onClick={onAdvancedToggle}
+                      className={`-mt-1.5 -mr-1 -mb-0.5 flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-medium transition-colors ${
+                        isAdvancedActive ? 'bg-emerald-600 text-white' : 'hover-surface'
+                      }`}
+                      style={
+                        isAdvancedActive
+                          ? { borderColor: 'rgb(16 185 129 / 0.7)' }
+                          : { color: 'var(--text-muted)' }
+                      }
+                    >
+                      <svg
+                        className="h-3.5 w-3.5"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth="1.5"
+                        stroke="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"
+                        />
+                      </svg>
+                      Options
+                    </button>
+                  )}
+                </div>
+                <div className="grid w-fit grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleContentTypeSelect('ebook')}
+                    className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                      contentType === 'ebook' || combinedSelectionActive
+                        ? 'bg-emerald-600 text-white'
+                        : 'hover-surface'
+                    }`}
+                    style={
+                      contentType === 'ebook' || combinedSelectionActive
+                        ? { borderColor: 'rgb(16 185 129 / 0.7)' }
+                        : { color: 'var(--text)', borderColor: 'var(--border-muted)' }
+                    }
+                  >
+                    <span className="flex w-4 justify-center">
+                      {contentType === 'ebook' || combinedSelectionActive ? (
+                        <CheckIcon />
+                      ) : (
+                        <BookIcon />
+                      )}
+                    </span>
+                    <span>Books</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleContentTypeSelect('audiobook')}
+                    className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                      contentType === 'audiobook' || combinedSelectionActive
+                        ? 'bg-emerald-600 text-white'
+                        : 'hover-surface'
+                    }`}
+                    style={
+                      contentType === 'audiobook' || combinedSelectionActive
+                        ? { borderColor: 'rgb(16 185 129 / 0.7)' }
+                        : { color: 'var(--text)', borderColor: 'var(--border-muted)' }
+                    }
+                  >
+                    <span className="flex w-4 justify-center">
+                      {contentType === 'audiobook' || combinedSelectionActive ? (
+                        <CheckIcon />
+                      ) : (
+                        <AudiobookIcon />
+                      )}
+                    </span>
+                    <span>Audiobooks</span>
+                  </button>
+                  {combinedToggleAvailable && (
+                    <div className="col-span-2">
+                      <Tooltip
+                        content="Combined search"
+                        position="bottom"
+                        triggerClassName="w-full"
+                      >
+                        <button
+                          type="button"
+                          onClick={handleCombinedModeSelect}
+                          className="group w-full"
+                          aria-label="Combined search"
+                        >
+                          <div className="relative flex h-7 items-end">
+                            <div
+                              className={`absolute top-1.5 bottom-[11px] left-[25%] w-px transition-colors ${combinedLineColor}`}
+                            />
+                            <div
+                              className={`absolute top-1.5 right-[25%] bottom-[11px] w-px transition-colors ${combinedLineColor}`}
+                            />
+                            <div
+                              className={`absolute bottom-[11px] left-[25%] h-px transition-colors ${combinedLineColor}`}
+                              style={{ width: 'calc(25% - 16px)' }}
+                            />
+                            <div
+                              className={`absolute right-[25%] bottom-[11px] h-px transition-colors ${combinedLineColor}`}
+                              style={{ width: 'calc(25% - 16px)' }}
+                            />
+                            <div
+                              className={`relative z-10 mx-auto rounded-full p-1 transition-colors ${
+                                combinedSelectionActive
+                                  ? 'bg-emerald-600 text-white'
+                                  : 'bg-(--bg) text-zinc-400 group-hover:bg-zinc-200 group-hover:text-zinc-600 dark:text-zinc-500 dark:group-hover:bg-zinc-700 dark:group-hover:text-zinc-300'
+                              }`}
+                            >
+                              <svg
+                                className="h-3.5 w-3.5"
+                                fill="none"
+                                viewBox="0 0 24 24"
+                                strokeWidth="2"
+                                stroke="currentColor"
+                                aria-hidden="true"
+                              >
+                                {combinedSelectorLocked ? (
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M16.5 10.5V6.75a4.5 4.5 0 1 0-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 0 0 2.25-2.25v-6.75a2.25 2.25 0 0 0-2.25-2.25H6.75a2.25 2.25 0 0 0-2.25 2.25v6.75a2.25 2.25 0 0 0 2.25 2.25Z"
+                                  />
+                                ) : (
+                                  <path
+                                    strokeLinecap="round"
+                                    strokeLinejoin="round"
+                                    d="M13.19 8.688a4.5 4.5 0 0 1 1.242 7.244l-4.5 4.5a4.5 4.5 0 0 1-6.364-6.364l1.757-1.757m13.35-.622 1.757-1.757a4.5 4.5 0 0 0-6.364-6.364l-4.5 4.5a4.5 4.5 0 0 0 1.242 7.244"
+                                  />
+                                )}
+                              </svg>
+                            </div>
+                          </div>
+                        </button>
+                      </Tooltip>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {queryTargets.length > 1 && (
+              <div className="shrink-0">
+                <div className="flex items-center justify-between pb-1.5">
+                  <span className="text-xs font-medium tracking-wide uppercase opacity-60">
+                    Search By
+                  </span>
+                  {!showContentTypeSelector && onAdvancedToggle && (
+                    <button
+                      type="button"
+                      onClick={onAdvancedToggle}
+                      className={`-mt-1.5 -mr-1 -mb-0.5 flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-medium transition-colors ${
+                        isAdvancedActive
+                          ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white`
+                          : 'hover-surface'
+                      }`}
+                      style={
+                        isAdvancedActive
+                          ? {
+                              borderColor:
+                                searchMode === 'direct'
+                                  ? 'rgb(3 105 161 / 0.7)'
+                                  : 'rgb(16 185 129 / 0.7)',
+                            }
+                          : { color: 'var(--text-muted)' }
+                      }
+                    >
+                      <svg
+                        className="h-3.5 w-3.5"
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth="1.5"
+                        stroke="currentColor"
+                        aria-hidden="true"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M10.5 6h9.75M10.5 6a1.5 1.5 0 1 1-3 0m3 0a1.5 1.5 0 1 0-3 0M3.75 6H7.5m3 12h9.75m-9.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-3.75 0H7.5m9-6h3.75m-3.75 0a1.5 1.5 0 0 1-3 0m3 0a1.5 1.5 0 0 0-3 0m-9.75 0h9.75"
+                        />
+                      </svg>
+                      Options
+                    </button>
+                  )}
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {queryTargets.map((target) => {
+                    const isActive = target.key === activeTarget?.key;
+                    return (
+                      <button
+                        type="button"
+                        key={target.key}
+                        onClick={() => handleQueryTargetSelect(target.key)}
+                        title={target.description || target.label}
+                        aria-label={target.label}
+                        className={`flex min-w-0 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                          isActive
+                            ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white`
+                            : 'hover-surface'
+                        }`}
+                        style={
+                          isActive
+                            ? {
+                                borderColor:
+                                  searchMode === 'direct'
+                                    ? 'rgb(3 105 161 / 0.7)'
+                                    : 'rgb(16 185 129 / 0.7)',
+                              }
+                            : { color: 'var(--text)', borderColor: 'var(--border-muted)' }
+                        }
+                      >
+                        {isActive && <CheckIcon />}
+                        <span className="block truncate">{target.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
       </>
     );
   },
