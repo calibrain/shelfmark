@@ -4,7 +4,10 @@ from __future__ import annotations
 
 import re
 import time
+from dataclasses import dataclass
+from hashlib import sha256
 from typing import TYPE_CHECKING, ClassVar
+from urllib.parse import urlparse
 
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
@@ -46,6 +49,50 @@ _DEFAULT_BOOK_CATS = [7000]
 
 # Reuse the same timeout constant as Prowlarr.
 NEWZNAB_SEARCH_TIMEOUT_SECONDS = _SEARCH_TIMEOUT
+
+
+@dataclass(frozen=True)
+class _NamedClient:
+    """A configured Newznab connection and its stable cache namespace."""
+
+    name: str
+    connection_id: str
+    client: NewznabClient
+
+
+def _parse_indexer_rows(raw: object) -> list[tuple[str, str, str]]:
+    """Normalize structured Newznab indexer settings.
+
+    Invalid/incomplete rows are ignored so one partially edited row cannot disable
+    the other configured indexers.
+    """
+    if not isinstance(raw, list):
+        return []
+
+    indexers: list[tuple[str, str, str]] = []
+    seen_connections: set[tuple[str, str]] = set()
+    for row in raw:
+        if not isinstance(row, dict):
+            continue
+        raw_url = str(row.get("url") or "").strip()
+        url = normalize_http_url(raw_url)
+        if not url:
+            if raw_url:
+                logger.warning("Newznab: ignoring indexer row with invalid URL '%s'", raw_url)
+            continue
+
+        api_key = str(row.get("api_key") or "").strip()
+        connection_key = (url, api_key)
+        if connection_key in seen_connections:
+            continue
+        seen_connections.add(connection_key)
+
+        configured_name = str(row.get("name") or "").strip()
+        hostname = urlparse(url).hostname or ""
+        name = configured_name or hostname or "Newznab"
+        indexers.append((name, url, api_key))
+
+    return indexers
 
 
 def _parse_category_ids(raw: object) -> list[int]:
@@ -146,8 +193,11 @@ def _newznab_result_to_release(
         else None
     )
 
-    # Build source_id from GUID
-    source_id = result.get("guid") or f"newznab:{hash(raw_title)}"
+    # Namespace IDs from named connections so identical GUIDs returned by two
+    # indexers cannot overwrite one another in the private release cache.
+    raw_source_id = result.get("guid") or f"newznab:{hash(raw_title)}"
+    connection_id = str(result.get("_newznab_connection_id") or "").strip()
+    source_id = f"newznab:{connection_id}:{raw_source_id}" if connection_id else raw_source_id
 
     # Cache the raw result for the handler
     cache_release(source_id, result)
@@ -272,6 +322,7 @@ class NewznabSource(ReleaseSource):
         )
 
     def _get_client(self) -> NewznabClient | None:
+        """Build the legacy single-indexer client."""
         raw_url = str(config.get("NEWZNAB_URL", "") or "")
         api_key = str(config.get("NEWZNAB_API_KEY", "") or "")
 
@@ -284,6 +335,28 @@ class NewznabSource(ReleaseSource):
 
         return NewznabClient(url, api_key or "")
 
+    def _get_clients(self) -> list[_NamedClient]:
+        """Build named clients, falling back to the legacy single connection."""
+        configured = _parse_indexer_rows(config.get("NEWZNAB_INDEXERS", []))
+        if configured:
+            clients: list[_NamedClient] = []
+            for name, url, api_key in configured:
+                digest = sha256(f"{name}\0{url}\0{api_key}".encode()).hexdigest()[:16]
+                clients.append(
+                    _NamedClient(
+                        name=name,
+                        connection_id=digest,
+                        client=NewznabClient(url, api_key),
+                    )
+                )
+            return clients
+
+        legacy_client = self._get_client()
+        if legacy_client is None:
+            return []
+        legacy_name = str(config.get("NEWZNAB_NAME", "") or "").strip() or "Newznab"
+        return [_NamedClient(name=legacy_name, connection_id="legacy", client=legacy_client)]
+
     def search(
         self,
         book: BookMetadata,
@@ -293,8 +366,8 @@ class NewznabSource(ReleaseSource):
         content_type: str = "ebook",
     ) -> list[Release]:
         """Search the Newznab indexer for releases matching the book."""
-        client = self._get_client()
-        if not client:
+        clients = self._get_clients()
+        if not clients:
             logger.warning("Newznab not configured - skipping search")
             return []
 
@@ -324,40 +397,60 @@ class NewznabSource(ReleaseSource):
         all_results: list[dict] = []
 
         try:
-            for idx, query in enumerate(queries, start=1):
-                _check_timeout()
-                if len(queries) > 1:
-                    logger.debug("Newznab query %d/%d: '%s'", idx, len(queries), query)
+            for connection in clients:
+                try:
+                    for idx, query in enumerate(queries, start=1):
+                        _check_timeout()
+                        if len(queries) > 1:
+                            logger.debug(
+                                "Newznab [%s] query %d/%d: '%s'",
+                                connection.name,
+                                idx,
+                                len(queries),
+                                query,
+                            )
 
-                raw = client.search(query=query, categories=categories)
+                        raw = connection.client.search(query=query, categories=categories)
 
-                # Auto-expand: retry without category filter if no results
-                if not raw and categories and auto_expand:
-                    _check_timeout()
-                    logger.info(
-                        "Newznab: no results for '%s' with category filter, auto-expanding",
-                        query,
-                    )
-                    raw = client.search(query=query, categories=None)
+                        # Auto-expand: retry without category filter if no results
+                        if not raw and categories and auto_expand:
+                            _check_timeout()
+                            logger.info(
+                                "Newznab [%s]: no results for '%s' with category filter, "
+                                "auto-expanding",
+                                connection.name,
+                                query,
+                            )
+                            raw = connection.client.search(query=query, categories=None)
 
-                for r in raw:
-                    key = (
-                        r.get("guid")
-                        or r.get("downloadUrl")
-                        or f"{r.get('indexer')}:{r.get('title')}"
-                    )
-                    if key in seen_keys:
-                        continue
-                    seen_keys.add(key)
-                    all_results.append(r)
+                        for raw_result in raw:
+                            r = dict(raw_result)
+                            # Aggregators can identify the underlying indexer. Plain feeds
+                            # generally cannot, so use the user-configured connection name.
+                            r["indexer"] = r.get("indexer") or connection.name
+                            r["_newznab_connection_id"] = connection.connection_id
+                            key = (
+                                connection.connection_id,
+                                r.get("guid")
+                                or r.get("downloadUrl")
+                                or f"{r.get('indexer')}:{r.get('title')}",
+                            )
+                            if key in seen_keys:
+                                continue
+                            seen_keys.add(key)
+                            all_results.append(r)
+                except TimeoutError:
+                    raise
+                except Exception:
+                    logger.exception("Newznab search failed for %s", connection.name)
 
         except TimeoutError as e:
             logger.warning("Newznab search timed out: %s", e)
-        except Exception:
-            logger.exception("Newznab search failed")
-            return []
 
         results = [_newznab_result_to_release(r, content_type, categories) for r in all_results]
+        if plan.indexers:
+            selected_indexers = set(plan.indexers)
+            results = [r for r in results if r.indexer in selected_indexers]
 
         if results:
             nzb_count = sum(1 for r in results if r.protocol == ReleaseProtocol.NZB)
@@ -379,5 +472,7 @@ class NewznabSource(ReleaseSource):
     def is_available(self) -> bool:
         if not config.get("NEWZNAB_ENABLED", False):
             return False
+        if _parse_indexer_rows(config.get("NEWZNAB_INDEXERS", [])):
+            return True
         url = normalize_http_url(str(config.get("NEWZNAB_URL", "") or ""))
         return bool(url)

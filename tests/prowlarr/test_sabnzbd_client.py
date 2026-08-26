@@ -654,6 +654,40 @@ class TestSABnzbdClientAddDownload:
         assert "https://attacker.example/download.nzb" not in called_urls
         assert called_urls == ["http://localhost:8080/api"]
 
+    def test_add_download_prefetches_named_newznab_indexer_url(self, monkeypatch):
+        """Named Newznab origins should receive the same backend prefetch as legacy URLs."""
+        config_values = {
+            "SABNZBD_URL": "http://localhost:8080",
+            "SABNZBD_API_KEY": "abc123",
+            "SABNZBD_CATEGORY": "books",
+            "NEWZNAB_INDEXERS": [
+                {"name": "NZBGeek", "url": "https://geek.example", "api_key": "secret"}
+            ],
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.sabnzbd.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        from shelfmark.download.clients.sabnzbd import SABnzbdClient
+
+        with (
+            patch.object(SABnzbdClient, "_fetch_nzb_content", return_value=b"nzbdata") as fetch,
+            patch.object(
+                SABnzbdClient,
+                "_api_post_file",
+                return_value={"status": True, "nzo_ids": ["SABnzbd_nzo_named"]},
+            ),
+        ):
+            client = SABnzbdClient()
+            result = client.add_download(
+                "https://geek.example/download.nzb?apikey=secret",
+                "Test Book",
+            )
+
+        assert result == "SABnzbd_nzo_named"
+        fetch.assert_called_once_with("https://geek.example/download.nzb?apikey=secret")
+
 
 class TestSABnzbdClientRemove:
     """Tests for SABnzbdClient.remove()."""

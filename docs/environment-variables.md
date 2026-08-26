@@ -1315,8 +1315,9 @@ Apply per-indexer seed time and ratio preferences from Prowlarr when sending tor
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
 | `NEWZNAB_ENABLED` | Enable searching for books via a Newznab-compatible indexer | boolean | `false` |
-| `NEWZNAB_URL` | Base URL of your Newznab indexer or aggregator | string | _none_ |
-| `NEWZNAB_API_KEY` | Your Newznab API key (leave blank if not required) | string (secret) | _none_ |
+| `NEWZNAB_INDEXERS` | Named Newznab connections. Each row accepts `name`, `url`, and `api_key`. | JSON array | `[]` |
+| `NEWZNAB_URL` | Legacy single-indexer URL, used when `NEWZNAB_INDEXERS` is empty | string | _none_ |
+| `NEWZNAB_API_KEY` | Legacy single-indexer API key | string (secret) | _none_ |
 | `NEWZNAB_EBOOK_CATEGORIES` | Newznab category IDs searched for ebooks. Most indexers use the standard 7000, but some use custom IDs. Leave empty to use 7000. | string (comma-separated) | `7000` |
 | `NEWZNAB_AUDIOBOOK_CATEGORIES` | Newznab category IDs searched for audiobooks. Most indexers use the standard 3030, but some use custom IDs. Leave empty to use 3030. | string (comma-separated) | `3030` |
 | `NEWZNAB_AUTO_EXPAND` | Automatically retry search without category filtering if no results are found | boolean | `false` |
@@ -1333,21 +1334,36 @@ Enable searching for books via a Newznab-compatible indexer
 - **Type:** boolean
 - **Default:** `false`
 
+#### `NEWZNAB_INDEXERS`
+
+**Named Indexers**
+
+Configure multiple named Newznab-compatible indexers. The name is shown beside each search result. For environment-based configuration, provide a JSON array:
+
+```json
+[
+  {"name":"NZBGeek","url":"https://api.nzbgeek.info","api_key":"..."},
+  {"name":"DrunkenSlug","url":"https://drunkenslug.com","api_key":"..."}
+]
+```
+
+- **Type:** JSON array
+- **Default:** `[]`
+
 #### `NEWZNAB_URL`
 
-**Newznab URL**
+**Legacy Newznab URL**
 
-Base URL of your Newznab indexer or aggregator
+Single-indexer fallback used only when `NEWZNAB_INDEXERS` is empty.
 
 - **Type:** string
 - **Default:** _none_
-- **Required:** Yes
 
 #### `NEWZNAB_API_KEY`
 
-**API Key**
+**Legacy API Key**
 
-Your Newznab API key (leave blank if not required)
+API key for the legacy Newznab URL.
 
 - **Type:** string (secret)
 - **Default:** _none_

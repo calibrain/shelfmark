@@ -353,12 +353,12 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
                 );
               }
 
-              // text/path
+              // text/password/path
               return (
                 <div key={col.key} className="flex min-w-0 flex-col gap-1">
                   {mobileLabel}
                   <input
-                    type="text"
+                    type={col.type === 'password' ? 'password' : 'text'}
                     value={toPrimitiveString(cellValue)}
                     onChange={(e) => updateCell(rowIndex, col.key, e.target.value)}
                     placeholder={col.placeholder}

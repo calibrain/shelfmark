@@ -248,6 +248,15 @@ class SABnzbdClient(DownloadClient):
             if trusted_url and _url_origin(trusted_url) == target_origin:
                 return True
 
+        named_indexers = config.get("NEWZNAB_INDEXERS", [])
+        if isinstance(named_indexers, list):
+            for row in named_indexers:
+                if not isinstance(row, dict):
+                    continue
+                trusted_url = normalize_http_config_url(row.get("url"))
+                if trusted_url and _url_origin(trusted_url) == target_origin:
+                    return True
+
         return False
 
     def _get_prowlarr_headers(self, url: str) -> dict:

@@ -1,5 +1,6 @@
 """Unit tests for the Newznab release source."""
 
+from dataclasses import replace
 from unittest.mock import MagicMock
 
 import pytest
@@ -11,6 +12,7 @@ from shelfmark.release_sources.newznab.source import (
     NewznabSource,
     _newznab_result_to_release,
     _parse_category_ids,
+    _parse_indexer_rows,
 )
 
 # ── fixtures / helpers ─────────────────────────────────────────────────────────
@@ -221,6 +223,19 @@ class TestIsAvailable:
         monkeypatch.setattr(mod.config, "get", self._config(NEWZNAB_URL=""))
         assert NewznabSource().is_available() is False
 
+    def test_available_with_named_indexer_and_no_legacy_url(self, monkeypatch):
+        import shelfmark.release_sources.newznab.source as mod
+
+        monkeypatch.setattr(
+            mod.config,
+            "get",
+            self._config(
+                NEWZNAB_URL="",
+                NEWZNAB_INDEXERS=[{"name": "NZBGeek", "url": "https://geek.example"}],
+            ),
+        )
+        assert NewznabSource().is_available() is True
+
 
 # ── category parsing ───────────────────────────────────────────────────────────
 
@@ -245,6 +260,42 @@ class TestParseCategoryIds:
         assert _parse_category_ids(None) == []
         assert _parse_category_ids([]) == []
         assert _parse_category_ids("   ") == []
+
+
+class TestParseIndexerRows:
+    def test_parses_named_connections(self):
+        assert _parse_indexer_rows(
+            [
+                {
+                    "name": "NZBGeek",
+                    "url": "https://api.nzbgeek.info/",
+                    "api_key": "geek-key",
+                },
+                {
+                    "name": "DrunkenSlug",
+                    "url": "drunkenslug.com",
+                    "api_key": "slug-key",
+                },
+            ]
+        ) == [
+            ("NZBGeek", "https://api.nzbgeek.info", "geek-key"),
+            ("DrunkenSlug", "http://drunkenslug.com", "slug-key"),
+        ]
+
+    def test_uses_hostname_when_name_is_blank(self):
+        assert _parse_indexer_rows([{"url": "https://indexer.example.com"}]) == [
+            ("indexer.example.com", "https://indexer.example.com", "")
+        ]
+
+    def test_ignores_invalid_and_duplicate_connections(self):
+        assert _parse_indexer_rows(
+            [
+                None,
+                {"name": "Incomplete", "url": ""},
+                {"name": "First", "url": "https://indexer.example.com", "api_key": "key"},
+                {"name": "Duplicate", "url": "https://indexer.example.com", "api_key": "key"},
+            ]
+        ) == [("First", "https://indexer.example.com", "key")]
 
 
 # ── NewznabSource.search ───────────────────────────────────────────────────────
@@ -448,6 +499,89 @@ class TestSearch:
         src.search(book, isbn_plan)
         call_kwargs = client.search.call_args
         assert call_kwargs[1]["query"] == "9780441013593"
+
+    def test_searches_all_named_indexers_and_labels_plain_feed_results(self, monkeypatch):
+        import shelfmark.release_sources.newznab.source as mod
+
+        rows = [
+            {"name": "NZBGeek", "url": "https://geek.example", "api_key": "one"},
+            {"name": "DrunkenSlug", "url": "https://slug.example", "api_key": "two"},
+        ]
+        monkeypatch.setattr(
+            mod.config,
+            "get",
+            self._fake_config(NEWZNAB_INDEXERS=rows),
+        )
+
+        clients = {}
+
+        def client_factory(url, api_key):
+            client = MagicMock()
+            client.search.return_value = [
+                _make_result(
+                    guid="shared-guid",
+                    downloadUrl=f"{url}/download?apikey={api_key}",
+                    indexer=None,
+                )
+            ]
+            clients[url] = client
+            return client
+
+        monkeypatch.setattr(mod, "NewznabClient", client_factory)
+
+        results = NewznabSource().search(_make_book(), _make_plan(_make_book()))
+
+        assert {release.indexer for release in results} == {"NZBGeek", "DrunkenSlug"}
+        assert len({release.source_id for release in results}) == 2
+        assert all(release.source_id.startswith("newznab:") for release in results)
+        assert set(clients) == {"https://geek.example", "https://slug.example"}
+
+    def test_indexer_filter_is_applied_to_named_results(self, monkeypatch):
+        import shelfmark.release_sources.newznab.source as mod
+
+        rows = [
+            {"name": "NZBGeek", "url": "https://geek.example"},
+            {"name": "DrunkenSlug", "url": "https://slug.example"},
+        ]
+        monkeypatch.setattr(mod.config, "get", self._fake_config(NEWZNAB_INDEXERS=rows))
+
+        def client_factory(url, _api_key):
+            client = MagicMock()
+            client.search.return_value = [
+                _make_result(guid=f"{url}/guid", indexer=None)
+            ]
+            return client
+
+        monkeypatch.setattr(mod, "NewznabClient", client_factory)
+        book = _make_book()
+        plan = replace(_make_plan(book), indexers=["DrunkenSlug"])
+
+        results = NewznabSource().search(book, plan)
+
+        assert [release.indexer for release in results] == ["DrunkenSlug"]
+
+    def test_one_named_indexer_failure_does_not_hide_other_results(self, monkeypatch):
+        import shelfmark.release_sources.newznab.source as mod
+
+        rows = [
+            {"name": "Unavailable", "url": "https://down.example"},
+            {"name": "Working", "url": "https://working.example"},
+        ]
+        monkeypatch.setattr(mod.config, "get", self._fake_config(NEWZNAB_INDEXERS=rows))
+
+        def client_factory(url, _api_key):
+            client = MagicMock()
+            if "down" in url:
+                client.search.side_effect = RuntimeError("offline")
+            else:
+                client.search.return_value = [_make_result(indexer=None)]
+            return client
+
+        monkeypatch.setattr(mod, "NewznabClient", client_factory)
+
+        results = NewznabSource().search(_make_book(), _make_plan(_make_book()))
+
+        assert [release.indexer for release in results] == ["Working"]
 
     def test_exception_in_client_returns_empty(self, monkeypatch):
         client = MagicMock()

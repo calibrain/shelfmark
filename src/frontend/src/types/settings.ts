@@ -146,7 +146,13 @@ export interface TableFieldColumnOption {
   childOf?: string;
 }
 
-export type TableFieldColumnType = 'text' | 'select' | 'multiselect' | 'checkbox' | 'path';
+export type TableFieldColumnType =
+  | 'text'
+  | 'password'
+  | 'select'
+  | 'multiselect'
+  | 'checkbox'
+  | 'path';
 
 export interface TableFieldColumn {
   key: string;
