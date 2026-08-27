@@ -1220,12 +1220,14 @@ const ReleaseModalSession = ({
         // reviewed and filed as separate books instead of one mangled item.
         let inspected = false;
         let plan: PackPlan | null = null;
+        let reason: string | null = null;
         try {
           const inspection = await inspectRelease(
             buildReleaseDownloadPayload(book, release, contentType),
           );
           inspected = inspection.inspected;
           plan = inspection.plan;
+          reason = inspection.reason;
         } catch (error) {
           console.error('Release inspection failed:', error);
         }
@@ -1233,10 +1235,14 @@ const ReleaseModalSession = ({
           setPackReview({ release, plan, books: plan.books });
           return;
         }
+        // Not a pack (or couldn't be inspected): queue exactly as before. A release we
+        // couldn't inspect might still be an unnoticed pack, so leave a console breadcrumb
+        // rather than interrupting the user; the multi-book toggle forces the split.
         if (!inspected && !multiBook) {
-          onShowToast?.(
-            "Couldn't check this release's files before download. If it contains several books, turn on the multi-book pack toggle first.",
-            'info',
+          console.warn(
+            `Could not inspect release "${release.title}" before download${
+              reason ? `: ${reason}` : ''
+            }. If it contains several books, enable the multi-book pack toggle.`,
           );
         }
         await onDownload(book, release, contentType, multiBook ? { multiBook: true } : {});
@@ -1259,7 +1265,6 @@ const ReleaseModalSession = ({
       contentType,
       handleClose,
       multiBook,
-      onShowToast,
     ],
   );
 

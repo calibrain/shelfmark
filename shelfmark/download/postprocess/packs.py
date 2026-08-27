@@ -14,6 +14,16 @@ import re
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from shelfmark.core.utils import AUDIOBOOK_FORMATS
+
+# m4b/m4a hold a whole audiobook in one file; every other audio format (mp3, flac, ...) is
+# chaptered - many files make up one book. Ebook formats are always one file per book, so
+# only chaptered *audio* matters here. A flat folder is split one-book-per-file only when
+# none of its files are chaptered audio: a bare list of `01 - Chapter.mp3` tracks is a
+# single chaptered audiobook, not a pack of books.
+_SINGLE_FILE_AUDIO_CONTAINERS = frozenset({"m4b", "m4a"})
+_CHAPTERED_AUDIO_EXTENSIONS = frozenset(AUDIOBOOK_FORMATS) - _SINGLE_FILE_AUDIO_CONTAINERS
+
 _YEAR_SUFFIX_RE = re.compile(r"\s*\(\s*(?P<year>\d{4})\s*\)\s*$")
 _SERIES_MARKER_RE = re.compile(
     r"""
@@ -276,7 +286,14 @@ def plan_pack(
             for f in root_files
         ]
         positions = {p[1] for p in parsed if p[1] is not None}
-        if len(positions) >= 2:
+        titles = {p[0].strip().lower() for p in parsed if p[0]}
+        one_book_per_file = all(
+            rel.suffix.lower().lstrip(".") not in _CHAPTERED_AUDIO_EXTENSIONS for rel in root_files
+        )
+        # Split a flat folder into a book per file only with real evidence of distinct
+        # books: two or more series positions, more than one title, and no chaptered audio
+        # (a bare list of `01 - Chapter.mp3` tracks is one book, not a pack).
+        if len(positions) >= 2 and len(titles) >= 2 and one_book_per_file:
             books.extend(
                 PackBook(title=title, series_position=position, year=year, files=[str(f)])
                 for f, (title, position, year) in zip(root_files, parsed, strict=True)

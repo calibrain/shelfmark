@@ -150,6 +150,33 @@ class TestPlanPack:
         ]
         assert plan.ignored == ["The Expanse 1.0 - Leviathan Wakes (2011).txt"]
 
+    def test_flat_chaptered_mp3_tracks_are_one_book_not_a_pack(self):
+        # A single audiobook whose chapters are named "01 - <chapter>.mp3" must not be
+        # split into one "book" per track just because each name carries a number.
+        files = [
+            PackFile("The Hobbit/01 - An Unexpected Party.mp3", 10),
+            PackFile("The Hobbit/02 - Roast Mutton.mp3", 10),
+            PackFile("The Hobbit/03 - A Short Rest.mp3", 10),
+        ]
+        plan = plan_pack(files, supported_extensions=AUDIO, series_name=None)
+        assert not plan.is_pack
+        assert len(plan.books) == 1
+        assert plan.books[0].files == [
+            "The Hobbit/01 - An Unexpected Party.mp3",
+            "The Hobbit/02 - Roast Mutton.mp3",
+            "The Hobbit/03 - A Short Rest.mp3",
+        ]
+
+    def test_flat_repeated_title_mp3_tracks_are_one_book(self):
+        # Same title on every track ("01 - The Hobbit.mp3") is a chaptered book too.
+        files = [
+            PackFile("01 - The Hobbit.mp3", 10),
+            PackFile("02 - The Hobbit.mp3", 10),
+        ]
+        plan = plan_pack(files, supported_extensions=AUDIO, series_name=None)
+        assert not plan.is_pack
+        assert len(plan.books) == 1
+
     def test_audiobookbay_flat_list_with_trailing_markers_is_a_pack(self):
         # ABB's file table has no folder separators: "<folder> <file> <size>".
         files = [
