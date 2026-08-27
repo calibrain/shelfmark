@@ -64,10 +64,12 @@ def inspect_release(data: dict[str, Any]) -> dict[str, Any]:
         else get_supported_formats()
     )
     series_name = data.get("series_name")
+    author_name = data.get("author")
     plan = plan_pack(
         files,
         supported_extensions=set(supported),
         series_name=series_name if isinstance(series_name, str) else None,
+        author_name=author_name if isinstance(author_name, str) else None,
     )
     return {
         "inspected": True,

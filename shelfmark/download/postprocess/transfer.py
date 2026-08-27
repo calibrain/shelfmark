@@ -339,9 +339,13 @@ def resolve_book_groups(
             for entry in task.book_plan
             if isinstance(entry, dict)
         ]
-        groups = match_plan_to_files(plan, book_files, series_name=task.series_name)
+        groups = match_plan_to_files(
+            plan, book_files, series_name=task.series_name, author_name=task.author
+        )
     else:
-        groups = group_files_into_books(book_files, series_name=task.series_name)
+        groups = group_files_into_books(
+            book_files, series_name=task.series_name, author_name=task.author
+        )
     return groups if len(groups) > 1 else None
 
 

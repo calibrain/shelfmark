@@ -62,6 +62,49 @@ class TestParsePackBookName:
     @pytest.mark.parametrize(
         ("name", "expected"),
         [
+            ("Uncrowned Cradle, Book 7", ("Uncrowned", 7.0, None)),
+            ("Reaper Cradle, Volume 10", ("Reaper", 10.0, None)),
+            ("Soulsmith  Cradle, Book 2", ("Soulsmith", 2.0, None)),
+            ("Wintersteel - Cradle Book 8", ("Wintersteel", 8.0, None)),
+            ("Wintersteel (Cradle, Book 8)", ("Wintersteel", 8.0, None)),
+            # A trailing bare number is a chapter/part, never a series position.
+            ("Unsouled - 02", ("Unsouled - 02", None, None)),
+        ],
+    )
+    def test_trailing_series_marker(self, name, expected):
+        assert parse_pack_book_name(name, series_name="Cradle") == expected
+
+    def test_trailing_series_name_only_stripped_with_a_marker(self):
+        # "Stories from Cradle" is the title; nothing marks a position, so keep it.
+        assert parse_pack_book_name("Threshold: Stories from Cradle", series_name="Cradle") == (
+            "Threshold: Stories from Cradle",
+            None,
+            None,
+        )
+
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
+            # AudiobookBay renders "<folder> <file>" as one flat string.
+            (
+                "Will Wight - Unsouled Cradle, Book 1 Will Wight - Unsouled Cradle, Book 1",
+                ("Unsouled", 1.0, None),
+            ),
+            (
+                "Will Wight - Skysworn Cradle, Book 4 Skysworn Cradle, Book 4",
+                ("Skysworn", 4.0, None),
+            ),
+            ("Will Wight - Bloodline Cradle, Book 9", ("Bloodline", 9.0, None)),
+        ],
+    )
+    def test_strips_author_prefix_and_glued_folder_name(self, name, expected):
+        assert (
+            parse_pack_book_name(name, series_name="Cradle", author_name="Will Wight") == expected
+        )
+
+    @pytest.mark.parametrize(
+        ("name", "expected"),
+        [
             ("Gods of Risk 2.5 - Gods of Risk", ("Gods of Risk", 2.5, None)),
             ("Cibola Burn 4 - Cibola Burn (2014)", ("Cibola Burn", 4.0, 2014)),
             ("cibola burn 4 - Cibola Burn", ("Cibola Burn", 4.0, None)),
@@ -106,6 +149,35 @@ class TestPlanPack:
             ("Caliban's War", 2.0, 2012),
         ]
         assert plan.ignored == ["The Expanse 1.0 - Leviathan Wakes (2011).txt"]
+
+    def test_audiobookbay_flat_list_with_trailing_markers_is_a_pack(self):
+        # ABB's file table has no folder separators: "<folder> <file> <size>".
+        files = [
+            PackFile(
+                "Will Wight - Unsouled Cradle, Book 1 Will Wight - Unsouled Cradle, Book 1.sfv", 1
+            ),
+            PackFile(
+                "Will Wight - Unsouled Cradle, Book 1 Will Wight - Unsouled Cradle, Book 1.m4a", 9
+            ),
+            PackFile("Will Wight - Skysworn Cradle, Book 4 Skysworn Cradle, Book 4.m4b", 9),
+            PackFile("Uncrowned Cradle, Book 7.m4b", 9),
+            PackFile(
+                "Will Wight - Reaper Cradle, Volume 10 Will Wight - Reaper Cradle, Volume 10.m4b", 9
+            ),
+        ]
+        plan = plan_pack(
+            files,
+            supported_extensions={"m4a", "m4b"},
+            series_name="Cradle",
+            author_name="Will Wight",
+        )
+        assert plan.is_pack
+        assert [(b.title, b.series_position) for b in plan.books] == [
+            ("Unsouled", 1.0),
+            ("Skysworn", 4.0),
+            ("Uncrowned", 7.0),
+            ("Reaper", 10.0),
+        ]
 
     def test_deeper_nesting_collapses_onto_book_folder(self):
         files = [
@@ -173,6 +245,31 @@ class TestMatchPlanToFiles:
             ("Alpha", 1.0, 2001, [a]),
             ("Beta", 2.0, None, [b]),
         ]
+
+    def test_matches_glued_plan_path_by_basename_suffix(self, tmp_path: Path):
+        # The plan came from ABB's "<folder> <file>" strings; on disk the file sits in a folder.
+        root = tmp_path / "Cradle - Will Wight Books 1-10"
+        a = root / "Will Wight - Skysworn Cradle, Book 4" / "Skysworn Cradle, Book 4.m4b"
+        b = root / "Uncrowned Cradle, Book 7.m4b"
+        for f in (a, b):
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_bytes(b"x")
+        plan = [
+            PackBook(
+                title="Skysworn",
+                series_position=4.0,
+                year=None,
+                files=["Will Wight - Skysworn Cradle, Book 4 Skysworn Cradle, Book 4.m4b"],
+            ),
+            PackBook(
+                title="Uncrowned",
+                series_position=7.0,
+                year=None,
+                files=["Uncrowned Cradle, Book 7.m4b"],
+            ),
+        ]
+        groups = match_plan_to_files(plan, [a, b])
+        assert [(g.title, g.files) for g in groups] == [("Skysworn", [a]), ("Uncrowned", [b])]
 
     def test_unmatched_files_fall_back_to_heuristic_groups(self, tmp_path: Path):
         a = tmp_path / "Book 1 - A" / "a.m4b"

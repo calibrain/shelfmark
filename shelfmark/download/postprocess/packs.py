@@ -34,6 +34,22 @@ _REPEATED_TITLE_RE = re.compile(
     r"^(?P<left>.+?)\s+(?P<position>\d+(?:\.\d+)?)\s*[-:\u2013]\s*(?P<right>.+)$"
 )
 _SERIES_LABEL_WORDS = r"(?:novella|novellas|short\s+story|short|story|novel)"
+# "Uncrowned Cradle, Book 7" / "Reaper Cradle, Volume 10" / "Wintersteel (Cradle, Book 8)":
+# an explicit word marks the position at the END of the name. A bare trailing number
+# is deliberately not matched — "Title - 02" is a chapter, not a series position.
+_TRAILING_MARKER_RE = re.compile(
+    r"""
+    [\s,\-:\u2013(]*
+    (?:book|volume|vol\.?)\s*\#?(?P<position>\d+(?:\.\d+)?)
+    \s*\)?\s*$
+    """,
+    re.IGNORECASE | re.VERBOSE,
+)
+# AudiobookBay renders a file inside a folder as "<folder> <file>" with no separator,
+# so a pack row reads "Author - Title Series, Book 1 Title Series, Book 1".
+_GLUED_FOLDER_RE = re.compile(
+    r"^(?P<prefix>.+?\s[-\u2013]\s)?(?P<core>.+?)\s+(?P=core)$", re.IGNORECASE
+)
 
 
 @dataclass(frozen=True)
@@ -101,16 +117,58 @@ def _strip_series_label(work: str, series_name: str | None) -> str:
     return pattern.sub("", work, count=1)
 
 
+def _collapse_glued_folder(name: str) -> str:
+    match = _GLUED_FOLDER_RE.match(name)
+    if not match:
+        return name
+    prefix = match.group("prefix") or ""
+    core = match.group("core")
+    # "Author - X X" → "Author - X" (the folder carried the author, the file did not).
+    return (prefix + core).strip()
+
+
+def _strip_author_name(name: str, author_name: str | None) -> str:
+    """Drop a leading "Author - " (packs are often filed as `Author - Title`)."""
+    if not author_name:
+        return name
+    prefix = author_name.strip()
+    if not prefix or not name.lower().startswith(prefix.lower()):
+        return name
+    remainder = name[len(prefix) :]
+    stripped = remainder.lstrip(_SEPARATOR_CHARS + "\u2013")
+    if stripped == remainder:  # no separator after the author: part of the title
+        return name
+    return stripped
+
+
+def _strip_trailing_series_name(work: str, series_name: str | None) -> str:
+    """Drop a trailing series name left behind by a trailing position marker."""
+    if not series_name:
+        return work
+    suffix = series_name.strip()
+    if not suffix or not work.lower().endswith(suffix.lower()):
+        return work
+    remainder = work[: -len(suffix)]
+    stripped = remainder.rstrip(_SEPARATOR_CHARS + ",(\u2013")
+    if not stripped or stripped == remainder:
+        return work
+    return stripped
+
+
 def parse_pack_book_name(
-    name: str, *, series_name: str | None
+    name: str, *, series_name: str | None, author_name: str | None = None
 ) -> tuple[str, float | None, int | None]:
     """Split a book folder/file-stem name into (title, series position, year).
 
     Strips a leading series name, a leading position marker (`Book 3 - `, `03 - `,
-    `1.0 - `, `3. `, `[03] `, `#3 `) and a trailing `(YYYY)`. Returns the name
+    `1.0 - `, `3. `, `[03] `, `#3 `) and a trailing `(YYYY)`. Also understands a
+    trailing marker (`Title Series, Book 3`, `Title (Series, Volume 3)`), a leading
+    `Author - `, and AudiobookBay's glued `<folder> <file>` names. Returns the name
     unchanged with no position/year when nothing would be left of the title.
     """
-    work = _strip_series_name(name.strip(), series_name)
+    work = _collapse_glued_folder(name.strip())
+    work = _strip_author_name(work, author_name)
+    work = _strip_series_name(work, series_name)
 
     year: int | None = None
     year_match = _YEAR_SUFFIX_RE.search(work)
@@ -136,6 +194,11 @@ def parse_pack_book_name(
         )
         position = float(raw)
         work = work[marker.end() :]
+    else:
+        trailing = _TRAILING_MARKER_RE.search(work)
+        if trailing and trailing.start() > 0:
+            position = float(trailing.group("position"))
+            work = _strip_trailing_series_name(work[: trailing.start()], series_name)
 
     work = _strip_series_label(work, series_name)
     title = work.strip().strip(_SEPARATOR_CHARS).strip()
@@ -144,8 +207,12 @@ def parse_pack_book_name(
     return title, position, year
 
 
-def _book_from_name(name: str, files: list[str], series_name: str | None) -> PackBook:
-    title, position, year = parse_pack_book_name(name, series_name=series_name)
+def _book_from_name(
+    name: str, files: list[str], series_name: str | None, author_name: str | None = None
+) -> PackBook:
+    title, position, year = parse_pack_book_name(
+        name, series_name=series_name, author_name=author_name
+    )
     return PackBook(title=title, series_position=position, year=year, files=files)
 
 
@@ -164,6 +231,7 @@ def plan_pack(
     *,
     supported_extensions: set[str],
     series_name: str | None,
+    author_name: str | None = None,
     root_depth: int | None = None,
 ) -> PackPlan:
     """Group a release's file list into books.
@@ -203,7 +271,10 @@ def plan_pack(
 
     books: list[PackBook] = []
     if root_files:
-        parsed = [parse_pack_book_name(f.stem, series_name=series_name) for f in root_files]
+        parsed = [
+            parse_pack_book_name(f.stem, series_name=series_name, author_name=author_name)
+            for f in root_files
+        ]
         positions = {p[1] for p in parsed if p[1] is not None}
         if len(positions) >= 2:
             books.extend(
@@ -211,12 +282,19 @@ def plan_pack(
                 for f, (title, position, year) in zip(root_files, parsed, strict=True)
             )
         elif len(root_files) == 1:
-            books.append(_book_from_name(root_files[0].stem, [str(root_files[0])], series_name))
+            books.append(
+                _book_from_name(root_files[0].stem, [str(root_files[0])], series_name, author_name)
+            )
         else:
             group_name = root_parts[-1] if root_parts else ""
-            books.append(_book_from_name(group_name, [str(f) for f in root_files], series_name))
+            books.append(
+                _book_from_name(group_name, [str(f) for f in root_files], series_name, author_name)
+            )
 
-    books.extend(_book_from_name(folder, paths, series_name) for folder, paths in folders.items())
+    books.extend(
+        _book_from_name(folder, paths, series_name, author_name)
+        for folder, paths in folders.items()
+    )
     return PackPlan(books=books, ignored=ignored)
 
 
@@ -232,6 +310,7 @@ def group_files_into_books(
     book_files: list[Path],
     *,
     series_name: str | None,
+    author_name: str | None = None,
     root: Path | None = None,
 ) -> list[BookGroup]:
     """Heuristically split on-disk files into books (see `plan_pack`).
@@ -247,6 +326,7 @@ def group_files_into_books(
         [PackFile(rel) for rel in rel_by_path.values()],
         supported_extensions=extensions,
         series_name=series_name,
+        author_name=author_name,
         root_depth=None if root is None else 0,
     )
     return [
@@ -265,12 +345,15 @@ def match_plan_to_files(
     book_files: list[Path],
     *,
     series_name: str | None = None,
+    author_name: str | None = None,
 ) -> list[BookGroup]:
     """Apply an approved plan to on-disk files.
 
     Files match by release-relative path first, then by basename (archive extraction
-    and client save paths can shift the root). Book files the plan does not mention
-    fall back to heuristic grouping so nothing is silently dropped.
+    and client save paths can shift the root), then by the on-disk basename being a
+    suffix of the planned name (sources that glue folder and file names together).
+    Book files the plan does not mention fall back to heuristic grouping so nothing
+    is silently dropped.
     """
     if not book_files:
         return []
@@ -292,6 +375,14 @@ def match_plan_to_files(
                     p for p in by_name.get(PurePosixPath(wanted_rel).name, []) if p not in claimed
                 ]
                 candidate = candidates[0] if candidates else None
+            if candidate is None:
+                wanted_name = PurePosixPath(wanted_rel).name.lower()
+                candidates = [
+                    p
+                    for p in book_files
+                    if p not in claimed and wanted_name.endswith(p.name.lower())
+                ]
+                candidate = candidates[0] if len(candidates) == 1 else None
             if candidate is not None and candidate not in claimed:
                 claimed.add(candidate)
                 matched.append(candidate)
@@ -307,5 +398,9 @@ def match_plan_to_files(
 
     unmatched = [p for p in book_files if p not in claimed]
     if unmatched:
-        groups.extend(group_files_into_books(unmatched, series_name=series_name, root=root))
+        groups.extend(
+            group_files_into_books(
+                unmatched, series_name=series_name, author_name=author_name, root=root
+            )
+        )
     return groups
