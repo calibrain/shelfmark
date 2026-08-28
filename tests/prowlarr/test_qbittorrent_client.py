@@ -919,8 +919,8 @@ class TestQBittorrentClientAddDownload:
                 {"category": "audiobooks"},
             ]
 
-    def test_add_fails_when_metadata_never_resolves(self, monkeypatch):
-        """Fail rather than return a transitional hash after the metadata timeout."""
+    def test_add_keeps_torrent_when_metadata_never_resolves(self, monkeypatch):
+        """Return the info hash rather than abandon a magnet whose metadata is slow."""
         config_values = {
             "QBITTORRENT_URL": "http://localhost:8080",
             "QBITTORRENT_USERNAME": "admin",
@@ -957,8 +957,49 @@ class TestQBittorrentClientAddDownload:
 
             client = qb_module.QBittorrentClient()
             magnet = f"magnet:?xt=urn:btih:{v1_hash}&dn=test"
-            with pytest.raises(RuntimeError, match="metadata resolution was not confirmed"):
-                client.add_download(magnet, "Test Download")
+
+            assert client.add_download(magnet, "Test Download") == v1_hash
+
+    def test_get_status_resolves_hash_after_metadata_switch(self, monkeypatch):
+        """Track a torrent by its v1 hash after qBittorrent re-keys it to v2."""
+        config_values = {
+            "QBITTORRENT_URL": "http://localhost:8080",
+            "QBITTORRENT_USERNAME": "admin",
+            "QBITTORRENT_PASSWORD": "password",
+            "QBITTORRENT_CATEGORY": "books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.qbittorrent.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        v1_hash = "edf46c7f938a3c678081734d7bff8b9c652ba5e5"
+        v2_hash = "0bed5f40753b342cb143e83c2b21924cc8474731"
+        full_v2_hash = "0bed5f40753b342cb143e83c2b21924cc847473134e44d1bd300bdc58c13010f"
+        resolved_torrent = MockTorrent(
+            hash_val=v2_hash,
+            state="downloading",
+            infohash_v1=v1_hash,
+            infohash_v2=full_v2_hash,
+        )
+        mock_client_instance = MagicMock()
+        mock_client_instance._session.get.side_effect = [
+            create_mock_session_response([]),
+            create_mock_session_response([resolved_torrent]),
+        ]
+        mock_client_class = MagicMock(return_value=mock_client_instance)
+
+        with patch.dict("sys.modules", {"qbittorrentapi": MagicMock(Client=mock_client_class)}):
+            import importlib
+
+            import shelfmark.download.clients.qbittorrent as qb_module
+
+            importlib.reload(qb_module)
+
+            client = qb_module.QBittorrentClient()
+            status = client.get_status(v1_hash)
+
+            assert status.state.value == "downloading"
 
     def test_add_download_uses_expected_hash_without_fetch(self, monkeypatch):
         """Skip proxy fetch when expected hash is provided for URL torrents."""

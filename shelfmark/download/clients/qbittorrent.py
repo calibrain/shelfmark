@@ -45,6 +45,10 @@ _HASH_LENGTH_ED2K = 32
 _HTTP_STATUS_FORBIDDEN = HTTPStatus.FORBIDDEN
 _HTTP_STATUS_NOT_FOUND = HTTPStatus.NOT_FOUND
 _METADATA_DOWNLOAD_STATES = {"forcedMetaDL", "metaDL"}
+# How long add_download waits for magnet metadata before falling back to the info
+# hash it already knows, rather than holding the download queue on a thin swarm.
+_METADATA_WAIT_POLLS = 20
+_METADATA_WAIT_INTERVAL_SECONDS = 0.5
 _ONE_WEEK_IN_SECONDS = 604800
 
 
@@ -338,6 +342,24 @@ class QBittorrentClient(DownloadClient):
             None,
         )
 
+    def _current_hash(self, download_id: str) -> str:
+        """qBittorrent's current primary hash for any identity we know the torrent by.
+
+        Falls back to the given ID when the torrent cannot be found, so callers
+        still address the hash they were handed and surface the client's error.
+        """
+        try:
+            torrent, error = self._resolve_torrent(download_id)
+        except _QBITTORRENT_CLIENT_ERRORS as e:
+            logger.debug("Could not resolve current hash for %s: %s", download_id, e)
+            return download_id
+        if error or not torrent:
+            return download_id
+        torrent_hash = getattr(torrent, "hash", None)
+        if isinstance(torrent_hash, str) and torrent_hash:
+            return torrent_hash
+        return download_id
+
     def _list_category_hashes(self, category: str | None) -> set[str] | None:
         """Snapshot the hashes qBittorrent currently reports for a category."""
         torrents, error = self._list_torrents_by_category(category)
@@ -495,9 +517,13 @@ class QBittorrentClient(DownloadClient):
                     message = f"{message} (torrent file fetch failed: {torrent_info.fetch_error})"
                 _raise_runtime_error(message)
 
-            # Wait until qBittorrent has resolved magnet metadata so the returned
-            # hash is its stable primary torrent ID, which may differ from the v1 hash.
-            for _ in range(20):
+            # Prefer qBittorrent's primary torrent ID, which for hybrid torrents
+            # switches from the v1 hash to the truncated v2 hash once metadata
+            # resolves. A magnet with few peers can take minutes to fetch metadata,
+            # and the torrent is worth keeping in the meantime: every lookup goes
+            # through `_resolve_torrent`, which still matches the v1 hash against
+            # `infohash_v1` after the primary ID has changed.
+            for _ in range(_METADATA_WAIT_POLLS):
                 torrent, error = self._resolve_torrent(expected_hash, category)
                 if error:
                     logger.debug("qBittorrent add_download: %s", error)
@@ -506,12 +532,14 @@ class QBittorrentClient(DownloadClient):
                     if isinstance(torrent_hash, str) and torrent_hash:
                         logger.info("Added torrent: %s", torrent_hash)
                         return torrent_hash.lower()
-                time.sleep(0.5)
+                time.sleep(_METADATA_WAIT_INTERVAL_SECONDS)
 
-            _raise_runtime_error(
-                "Torrent metadata resolution was not confirmed within the visibility grace period "
-                f"(response={result_text})"
+            logger.info(
+                "Added torrent %s; metadata still pending after %.0fs, tracking it by info hash",
+                expected_hash,
+                _METADATA_WAIT_POLLS * _METADATA_WAIT_INTERVAL_SECONDS,
             )
+            return expected_hash.lower()
         except _QBITTORRENT_CLIENT_ERRORS:
             logger.exception("qBittorrent add failed")
             raise
@@ -529,7 +557,7 @@ class QBittorrentClient(DownloadClient):
 
         """
         try:
-            torrent, error = self._get_torrent_info(download_id)
+            torrent, error = self._resolve_torrent(download_id)
             if error:
                 return DownloadStatus.error(error)
             if not torrent:
@@ -613,7 +641,8 @@ class QBittorrentClient(DownloadClient):
 
         """
         try:
-            self._client.torrents_delete(torrent_hashes=download_id, delete_files=delete_files)
+            torrent_hash = self._current_hash(download_id)
+            self._client.torrents_delete(torrent_hashes=torrent_hash, delete_files=delete_files)
             logger.info(
                 "Removed torrent from qBittorrent: %s%s",
                 download_id,
@@ -635,7 +664,7 @@ class QBittorrentClient(DownloadClient):
                     logger.debug("Could not create category '%s': %s", category, e)
 
             self._client.torrents_set_category(
-                torrent_hashes=download_id,
+                torrent_hashes=self._current_hash(download_id),
                 category=category,
             )
             logger.info("Set qBittorrent category for %s to '%s'", download_id, category)
@@ -657,7 +686,7 @@ class QBittorrentClient(DownloadClient):
         - join `save_path` with the torrent's top-level directory
         """
         try:
-            torrent, error = self._get_torrent_info(download_id)
+            torrent, error = self._resolve_torrent(download_id)
             if error:
                 logger.debug("qBittorrent get_download_path: %s", error)
                 return None
