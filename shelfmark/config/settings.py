@@ -1684,6 +1684,18 @@ def cloudflare_bypass_settings() -> list[SettingsField]:
             show_when={"field": "USING_EXTERNAL_BYPASSER", "value": True},
         ),
         NumberField(
+            key="BYPASS_PAGE_SOURCE_TIMEOUT",
+            label="Page Read Timeout (seconds)",
+            description=(
+                "How long to wait for a solved page to produce its content before the "
+                "bypass is retried. Raise it if solves succeed but searches still fail."
+            ),
+            default=20,
+            min_value=1,
+            max_value=120,
+            show_when={"field": "USING_EXTERNAL_BYPASSER", "value": False},
+        ),
+        NumberField(
             key="BYPASS_BROWSER_IDLE_TIMEOUT",
             label="Bypasser Idle Timeout (seconds)",
             description=(

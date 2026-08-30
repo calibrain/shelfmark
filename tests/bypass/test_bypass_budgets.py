@@ -266,3 +266,50 @@ def test_page_load_loop_still_makes_one_attempt_on_a_spent_budget(monkeypatch, b
 
     assert bypass._run_bypass_in_current_process("https://example.com", 10) == "<html>solved</html>"
     assert attempts["n"] == 1
+
+
+class _FakeElement:
+    async def get_html_async(self) -> str:
+        return "<html>solved</html>"
+
+
+class _FakePage:
+    """A page that only produces its document after `ready_after` seconds of waiting."""
+
+    def __init__(self, ready_after: float = 0.0) -> None:
+        self.ready_after = ready_after
+        self.waited_with: list[float] = []
+
+    async def find(self, selector: str, timeout: float = 1):
+        self.waited_with.append(timeout)
+        if timeout < self.ready_after:
+            msg = f"Time ran out while waiting for: {{{selector}}}"
+            raise TimeoutError(msg)
+        return _FakeElement()
+
+
+def test_page_source_waits_longer_than_seleniumbases_one_second(bypass):
+    """A page still navigating after a solve must not lose the solve.
+
+    SeleniumBase's get_page_source() allows one second for the document. Anna's Archive
+    hands back a redirect to the real content instead, so the read raised TimeoutError
+    while the challenge had in fact been cleared.
+    """
+    page = _FakePage(ready_after=5.0)
+
+    assert asyncio.run(bypass._read_page_source(page)) == "<html>solved</html>"
+    assert page.waited_with == [bypass._PAGE_SOURCE_TIMEOUT_DEFAULT]
+
+
+def test_page_source_timeout_is_configurable(bypass, monkeypatch):
+    """BYPASS_PAGE_SOURCE_TIMEOUT overrides the default for slow or fast setups."""
+    monkeypatch.setattr(
+        bypass.app_config,
+        "get",
+        lambda key, default=None: 45 if key == "BYPASS_PAGE_SOURCE_TIMEOUT" else default,
+    )
+    page = _FakePage()
+
+    asyncio.run(bypass._read_page_source(page))
+
+    assert page.waited_with == [45.0]
