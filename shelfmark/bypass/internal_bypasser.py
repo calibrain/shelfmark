@@ -82,6 +82,9 @@ _HELPER_RESULT_POLL_SECONDS = 0.05
 # what it is doing and exit before its session is killed instead.
 _HELPER_SHUTDOWN_GRACE_SECONDS = 15.0
 _HELPER_IDLE_TIMEOUT_DEFAULT = 180.0
+# How long to wait for a solved page to produce its document before the attempt is
+# abandoned. SeleniumBase's own get_page_source() allows one second; see _read_page_source.
+_PAGE_SOURCE_TIMEOUT_DEFAULT = 20.0
 _PARENT_WATCHDOG_INTERVAL_SECONDS = 5.0
 # How much of ffmpeg's stderr to quote when reporting that it died.
 _FFMPEG_ERROR_TAIL_CHARS = 500
@@ -819,6 +822,22 @@ def _build_host_resolver_rules() -> list[str]:
 DRIVER_RESET_ERRORS = {"ProtocolException", "RuntimeError", "TimeoutError"}
 
 
+async def _read_page_source(page: Any) -> str:
+    """Read a solved page's HTML, waiting for the document to arrive.
+
+    `get_page_source()` waits one second for the `html` element. A page released from a
+    challenge is often still navigating to the real content, so the read times out even
+    though the solve succeeded: the whole attempt is retried, and the repeated requests
+    are what earn a 429 from a host that was about to serve us.
+    """
+    timeout = _coerce_non_negative_float(
+        app_config.get("BYPASS_PAGE_SOURCE_TIMEOUT", _PAGE_SOURCE_TIMEOUT_DEFAULT),
+        _PAGE_SOURCE_TIMEOUT_DEFAULT,
+    )
+    element = await page.find("html", timeout=timeout)
+    return await element.get_html_async()
+
+
 async def _get(url: str, driver: Any, cancel_flag: Event | None = None) -> str:
     """Fetch URL with Cloudflare bypass using a CDP browser."""
     _check_cancellation(cancel_flag, "Bypass cancelled before starting")
@@ -842,7 +861,7 @@ async def _get(url: str, driver: Any, cancel_flag: Event | None = None) -> str:
     logger.debug("Starting bypass process...")
     if await _bypass(page, cancel_flag=cancel_flag):
         await _extract_cookies_from_cdp(driver, page, url)
-        return await page.get_page_source()
+        return await _read_page_source(page)
 
     logger.warning("Bypass completed but page still shows protection")
     try:
