@@ -145,6 +145,36 @@ def _build_indexer_priority(indexers: list[dict]) -> dict[int, int]:
     return priority
 
 
+def _drop_unknown_indexer_ids(
+    selected_ids: list[int] | None, indexers: list[dict]
+) -> list[int] | None:
+    """Keep only selected indexer ids Prowlarr still serves.
+
+    An indexer removed or disabled in Prowlarr stays in the saved selection,
+    where settings can no longer show it - so it cannot be unselected, and every
+    search keeps querying an indexer that is gone (#1283). Dropping it here
+    keeps the saved selection intact for an indexer that comes back.
+    """
+    if selected_ids is None:
+        return None
+
+    live_ids = {
+        indexer_id
+        for indexer in indexers
+        if (indexer_id := _coerce_indexer_id(indexer.get("id"))) is not None
+    }
+    kept = [indexer_id for indexer_id in selected_ids if indexer_id in live_ids]
+
+    stale = [indexer_id for indexer_id in selected_ids if indexer_id not in live_ids]
+    if stale:
+        logger.warning(
+            "Skipping selected Prowlarr indexers that are no longer enabled in Prowlarr: %s",
+            stale,
+        )
+
+    return kept
+
+
 def _rank_for_indexer_id(indexer_id: object, priority: dict[int, int]) -> int:
     """Preference rank for an indexer id. Lower wins, unknown ranks last."""
     coerced = _coerce_indexer_id(indexer_id)
@@ -961,6 +991,7 @@ class ProwlarrSource(ReleaseSource):
                 # found for this book" - the same lie as a swallowed timeout (#1249).
                 msg = f"could not reach Prowlarr: {e}"
                 raise SourceUnavailableError(msg) from e
+            indexer_ids = _drop_unknown_indexer_ids(indexer_ids, enabled_indexers)
             indexer_priority = _build_indexer_priority(enabled_indexers)
             # Some indexers benefit from title+author queries and extra format detection.
             enriched_indexer_ids = client.get_enriched_indexer_ids(

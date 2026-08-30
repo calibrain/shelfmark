@@ -203,6 +203,21 @@ ONBOARDING = string_to_bool(os.getenv("ONBOARDING", "true"))
 _DEBUG_SKIP_SOURCES_RAW = os.getenv("DEBUG_SKIP_SOURCES", "").strip().lower()
 DEBUG_SKIP_SOURCES = {s.strip() for s in _DEBUG_SKIP_SOURCES_RAW.split(",") if s.strip()}
 
+# Debug: keep DDoS-Guard's __ddg8_/__ddg9_/__ddg10_ in the clearance store instead of
+# dropping them after a solve.
+#
+# Which of DDoS-Guard's cookies actually *are* clearance is not settled. The store treats
+# the trio as describing one check (client IP, timestamp, token) and drops them, on the
+# reasoning that replaying a stale IP/timestamp is what re-arms the ?check=1 loop - see
+# shelfmark.bypass.cookie_store. Field reports on issue #1276 point the other way: every
+# request after a successful solve was challenged again, which is only consistent with
+# what the store keeps not being sufficient clearance on its own.
+#
+# Deliberately env-only and off by default: this is a knob for reproducing the question
+# against a live host, not a setting to offer users. Set it to true, solve once, and watch
+# whether the next search still logs "Redirect loop detected".
+DDG_REPLAY_PER_CHECK_COOKIES = string_to_bool(os.getenv("DDG_REPLAY_PER_CHECK_COOKIES", "false"))
+
 
 # =============================================================================
 # Legacy migration support - will be removed in future version

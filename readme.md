@@ -147,6 +147,7 @@ See the full [Environment Variables Reference](docs/environment-variables.md) fo
 Some of the additional options available in Settings:
 - **Prowlarr** - Configure indexers and download clients to download books and audiobooks
 - **Additional audiobook sources** - Configure additional sources for audiobook discovery
+- **Direct Download mirrors** - Supply your own Anna's Archive mirror URLs; Auto mode tries them in the order listed. The `annas-archive.is` domain does not currently work as a source — use `annas-archive.gl` instead (checked August 2026; mirror availability changes)
 - **IRC** - Add details for IRC book sources and download directly from the UI. Most networks serve audiobooks from the same channel as ebooks (on `irc.irchighway.net` that's `#ebooks`, while `#bookz` is effectively inactive), so leave the separate audiobook channel blank unless your network actually indexes one. IRC audiobooks usually arrive as ZIP/RAR archives — keep those enabled under Supported Audiobook Formats or the releases are filtered out of results
 - **Library Link** - Add a link to your Calibre-Web or Grimmory instance in the UI header
 - **File processing** - Customiseable download paths, file renaming and directory creation with template-based renaming

@@ -547,9 +547,7 @@ class TestSearch:
 
         def client_factory(url, _api_key):
             client = MagicMock()
-            client.search.return_value = [
-                _make_result(guid=f"{url}/guid", indexer=None)
-            ]
+            client.search.return_value = [_make_result(guid=f"{url}/guid", indexer=None)]
             return client
 
         monkeypatch.setattr(mod, "NewznabClient", client_factory)

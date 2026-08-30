@@ -2179,6 +2179,7 @@ Enable Moly.hu as a metadata provider for book searches
 | `SOURCE_PRIORITY` | Fallback sources, may have waiting. Requires bypasser. Drag to reorder. | JSON array | _see UI for defaults_ |
 | `MAX_RETRY` | Maximum retry attempts for failed downloads. | number | `10` |
 | `DEFAULT_SLEEP` | Wait time between download retry attempts. | number | `5` |
+| `RELEASE_SEARCH_TIMEOUT` | How long one release search may run before it gives up and reports why. A first search on a cold start pays for a browser solve, so leave room for one. If you use a reverse proxy, its read timeout should be at least this high or it will cut the search off with a 504 first. | number | `300` |
 | `AA_CONTENT_TYPE_ROUTING` | Override destination based on content type metadata. | boolean | `false` |
 | `AA_CONTENT_TYPE_DIR_FICTION` | Fiction Books | string | _none_ |
 | `AA_CONTENT_TYPE_DIR_NON_FICTION` | Non-Fiction Books | string | _none_ |
@@ -2256,6 +2257,16 @@ Wait time between download retry attempts.
 - **Type:** number
 - **Default:** `5`
 - **Constraints:** min: 1, max: 60
+
+#### `RELEASE_SEARCH_TIMEOUT`
+
+**Release Search Timeout (seconds)**
+
+How long one release search may run before it gives up and reports why. A first search on a cold start pays for a browser solve, so leave room for one. If you use a reverse proxy, its read timeout should be at least this high or it will cut the search off with a 504 first.
+
+- **Type:** number
+- **Default:** `300`
+- **Constraints:** min: 30, max: 1800
 
 #### `AA_CONTENT_TYPE_ROUTING`
 

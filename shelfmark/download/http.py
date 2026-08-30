@@ -12,6 +12,7 @@ from tqdm import tqdm
 
 from shelfmark.bypass import BypassCancelledError, cookie_store
 from shelfmark.bypass.challenge import challenge_marker
+from shelfmark.core import search_deadline
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import coerce_bool, normalize_positive_int
@@ -338,6 +339,14 @@ def html_get_page(
     # so it must be a concrete selector, not the Optional parameter.
     selector = selector or network.AAMirrorSelector()
 
+    # A release search runs under a wall-clock budget (see shelfmark.core.search_deadline).
+    # Adopting it as the cancel flag is what makes the budget bite on a solve already in
+    # flight: the bypassers and the helper subprocess poll this flag but know nothing about
+    # deadlines. Only when the caller has no flag of its own - a queued download brings one
+    # and must keep it, and runs outside any search context anyway.
+    if cancel_flag is None:
+        cancel_flag = search_deadline.cancel_event()
+
     def _result(html: str, response_url: str) -> str | tuple[str, str]:
         if include_response_url:
             return html, response_url
@@ -362,6 +371,13 @@ def html_get_page(
         retry-loop branch above with `continue`, and with MAX_RETRY=1 there is no
         later attempt for that branch to run on either.
         """
+        # Never start a minutes-long browser solve on a budget that has already run out:
+        # nothing downstream would get to report the real reason before the caller's
+        # deadline (or its reverse proxy) cut the request off.
+        if search_deadline.expired():
+            logger.info("Release search budget spent; not starting a bypass for %s", bypass_url)
+            return _fail(search_deadline.deadline_message(), bypass_url)
+
         if status_callback:
             status_callback("resolving", "Bypassing protection...")
         try:
@@ -400,6 +416,10 @@ def html_get_page(
                 except _STATUS_CALLBACK_ERRORS:
                     logger.debug("Bypass error status callback failed", exc_info=True)
             if isinstance(e, BypassCancelledError):
+                # The budget trips the same cancel flag a user's cancel does, so tell them
+                # apart here - "cancelled" is a confusing thing to read when nobody did.
+                if search_deadline.expired():
+                    return _fail(search_deadline.deadline_message(), bypass_url)
                 return _fail("The protection bypass was cancelled.", bypass_url)
             return _fail(f"The protection bypasser failed: {type(e).__name__}: {e}", bypass_url)
         finally:
@@ -456,6 +476,9 @@ def html_get_page(
     for attempt in range(1, retry_limit + 1):
         # Check for cancellation before each attempt
         if cancel_flag and cancel_flag.is_set():
+            if search_deadline.expired():
+                logger.info("Release search budget spent before attempt %s", attempt)
+                return _fail(search_deadline.deadline_message(), current_url)
             logger.info("html_get_page cancelled before attempt %s", attempt)
             return _fail("The request was cancelled.", current_url)
 
@@ -484,8 +507,15 @@ def html_get_page(
                     current_url,
                     proxies=get_proxies(current_url),
                     timeout=REQUEST_TIMEOUT,
-                    # Bypasser-derived cookies win: they came from a real solved challenge.
-                    cookies={**handshake_cookies, **cookies},
+                    # Handshake cookies win. They were issued by *this* exchange, so by
+                    # definition they are fresher than anything the store holds, and the
+                    # server is waiting to see them echoed back on the very next hop.
+                    # Letting the store overwrite them meant a stored cookie of the same
+                    # name (DDoS-Guard reuses __ddg1_/__ddg2_ for both) was replayed on
+                    # every hop and the freshly issued value never left this process - the
+                    # ?check=1 probe could then never terminate, so every request ended in
+                    # the redirect-loop handoff and paid for a full browser solve.
+                    cookies={**cookies, **handshake_cookies},
                     headers=headers,
                     allow_redirects=allow_redirects,
                     verify=get_ssl_verify(current_url),

@@ -17,6 +17,7 @@ from bs4 import BeautifulSoup, Tag
 from bs4.element import NavigableString
 
 from shelfmark.config.env import DEBUG_SKIP_SOURCES, TMP_DIR
+from shelfmark.core import search_deadline
 from shelfmark.core.config import config
 from shelfmark.core.languages import language_alias_map
 from shelfmark.core.logger import setup_logger
@@ -586,6 +587,11 @@ def _fetch_search_table(url: str, selector: network.AAMirrorSelector) -> tuple[s
     """
     attempt_url = url
     for _ in range(len(network.get_available_aa_urls()) or 1):
+        # Every mirror shares the protection, so once the search budget is gone another
+        # mirror is another full solve nobody is still waiting for.
+        if search_deadline.expired():
+            raise SearchUnavailableError(search_deadline.deadline_message())
+
         response = downloader.html_get_page(
             attempt_url, selector=selector, allow_bypasser_fallback=True
         )
@@ -1973,6 +1979,12 @@ class DirectDownloadSource(ReleaseSource):
             query = f"{title} {author}".strip()
             if not query:
                 continue
+            # `except Exception` below keeps this loop going past a failed variant, which
+            # is right for a parse error and wrong for a spent budget: without this the
+            # variants queue up behind each other and the request outlives the caller.
+            if search_deadline.expired():
+                logger.info("Release search budget spent; skipping remaining title variants")
+                break
 
             logger.debug("Searching direct_download: title_author='%s', langs=%s", query, langs)
             filters = SearchFilters(lang=langs if langs is not None else [])
@@ -1986,7 +1998,11 @@ class DirectDownloadSource(ReleaseSource):
             except Exception:
                 logger.exception("Search error")
 
-        if not all_results and any(langs for _, langs in searches):
+        if (
+            not all_results
+            and any(langs for _, langs in searches)
+            and not search_deadline.expired()
+        ):
             logger.debug(
                 "No title+author results with language filter, retrying without language filter"
             )
@@ -1994,6 +2010,9 @@ class DirectDownloadSource(ReleaseSource):
                 query = f"{title} {author}".strip()
                 if not query:
                     continue
+                if search_deadline.expired():
+                    logger.info("Release search budget spent; skipping remaining retries")
+                    break
 
                 logger.debug("Searching direct_download: title_author='%s', langs=[]", query)
                 try:

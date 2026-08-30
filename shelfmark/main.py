@@ -42,6 +42,7 @@ from shelfmark.config.settings import (
     _SUPPORTED_BOOK_LANGUAGE,
     migrate_audiobook_format_settings,
 )
+from shelfmark.core import search_deadline
 from shelfmark.core.activity_view_state_service import ActivityViewStateService
 from shelfmark.core.auth_modes import (
     get_auth_check_admin_status,
@@ -2987,18 +2988,36 @@ def api_releases() -> Response | tuple[Response, int]:
             # Search only enabled sources
             sources_to_search = [src["name"] for src in list_available_sources() if src["enabled"]]
 
-        # Search each source for releases
+        # Search each source for releases.
+        #
+        # Under a wall-clock budget: this endpoint is synchronous, and the bypass path it
+        # can reach used to be allowed minutes per URL with nothing bounding the request
+        # as a whole. A search that ran into an unsolvable protection challenge therefore
+        # outlived every reverse proxy in front of it and surfaced to the user as
+        # "Server unavailable (504)" - a gateway timeout that blames their proxy for a
+        # challenge failure. The budget is shared across sources, so a stuck first source
+        # cannot spend the whole request on its own. See issue #1276.
         all_releases = []
         errors = []
         source_instances = {}  # Keep source instances for column config
 
-        for source_name in sources_to_search:
-            source, releases, error = _search_source_releases(source_name, book)
-            if source is not None:
-                source_instances[source_name] = source
-                all_releases.extend(releases)
-            if error is not None:
-                errors.append(error)
+        # A real search is under way, so a warm-up still sitting on its start-up delay
+        # should stand down rather than queue its throwaway solve in front of this one.
+        warmup.note_user_search()
+
+        with search_deadline.search_deadline():
+            for source_name in sources_to_search:
+                if search_deadline.expired():
+                    logger.warning("Release search budget spent; %s not searched", source_name)
+                    errors.append(f"{source_name}: {search_deadline.deadline_message()}")
+                    continue
+
+                source, releases, error = _search_source_releases(source_name, book)
+                if source is not None:
+                    source_instances[source_name] = source
+                    all_releases.extend(releases)
+                if error is not None:
+                    errors.append(error)
 
         # Convert Release objects to dicts
         releases_data = [_serialize_release(release) for release in all_releases]

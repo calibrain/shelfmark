@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from shelfmark.core.config import config
+from shelfmark.core.logger import setup_logger
 from shelfmark.metadata_providers import (
     BookMetadata,
     build_localized_search_titles,
@@ -15,6 +16,8 @@ from shelfmark.metadata_providers import (
 
 if TYPE_CHECKING:
     from shelfmark.core.models import SearchFilters
+
+logger = setup_logger(__name__)
 
 MANUAL_QUERY_MAX_LEN = 256
 
@@ -52,6 +55,49 @@ class ReleaseSearchPlan:
         return self.title_variants[0].query if self.title_variants else ""
 
 
+def _to_language_codes(values: Iterable[object], *, source: str) -> list[str] | None:
+    """Resolve any spelling of a language to the ISO code the sources expect.
+
+    Anna's Archive matches `lang=` against ISO codes: `lang=english` is not a loose
+    spelling of `lang=en`, it is a facet value AA does not have, and it filters every
+    search down to nothing. Only the *per-user* override was normalised
+    (config.users_settings.validate), so a global BOOK_LANGUAGE=english - the spelling
+    the old docs used - reached the query verbatim and silently emptied every search
+    with no error anywhere. See issue #1276.
+
+    An entry that resolves to nothing is dropped with a warning rather than passed
+    through: searching unfiltered and saying so beats reporting "no results" for a book
+    the source is full of.
+    """
+    from shelfmark.core.languages import normalize_language
+
+    codes: list[str] = []
+    unresolved: list[str] = []
+    for value in values:
+        text = str(value).strip() if value is not None else ""
+        if not text:
+            continue
+        if text.lower() == "all":
+            # An explicit "search every language", not a language.
+            return None
+        code = normalize_language(text)
+        if code is None:
+            unresolved.append(text)
+            continue
+        if code not in codes:
+            codes.append(code)
+
+    if unresolved:
+        logger.warning(
+            "Ignoring unrecognised language(s) in %s: %s. Use an ISO code such as 'en', "
+            "a three-letter code, or an English name like 'English'.",
+            source,
+            ", ".join(unresolved),
+        )
+
+    return codes or None
+
+
 def _normalize_languages(languages: list[str] | None, user_id: int | None) -> list[str] | None:
     if not languages:
         default = config.get("BOOK_LANGUAGE", None, user_id=user_id)
@@ -61,21 +107,9 @@ def _normalize_languages(languages: list[str] | None, user_id: int | None) -> li
             default_values = list(default)
         else:
             return None
-        return [str(lang).strip() for lang in default_values if str(lang).strip()]
+        return _to_language_codes(default_values, source="BOOK_LANGUAGE")
 
-    normalized: list[str] = []
-    for lang in languages:
-        if not lang:
-            continue
-        s = str(lang).strip()
-        if not s:
-            continue
-        normalized.append(s)
-
-    if any(lang.lower() == "all" for lang in normalized):
-        return None
-
-    return normalized or None
+    return _to_language_codes(languages, source="the search request")
 
 
 def _pick_search_author(book: BookMetadata) -> str:

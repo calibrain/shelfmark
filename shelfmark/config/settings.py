@@ -1560,6 +1560,19 @@ def download_source_settings() -> list[SettingsField]:
             min_value=1,
             max_value=60,
         ),
+        NumberField(
+            key="RELEASE_SEARCH_TIMEOUT",
+            label="Release Search Timeout (seconds)",
+            description=(
+                "How long one release search may run before it gives up and reports why. "
+                "A first search on a cold start pays for a browser solve, so leave room "
+                "for one. If you use a reverse proxy, its read timeout should be at least "
+                "this high or it will cut the search off with a 504 first."
+            ),
+            default=300,
+            min_value=30,
+            max_value=1800,
+        ),
         HeadingField(
             key="content_type_routing_heading",
             title="Content-Type Routing",
