@@ -10,13 +10,12 @@ pre-solve.
 
 import shelfmark.download.warmup as warmup
 
-
-def _reset():
-    warmup._user_search_seen.clear()
+# The flag is cleared around every test by an autouse fixture in conftest.py - it is
+# process-global, and /api/releases sets it, so tests that read it cannot rely on
+# whatever else shared their xdist worker.
 
 
 def test_warmup_runs_when_nobody_has_searched(monkeypatch):
-    _reset()
     monkeypatch.setattr(
         "shelfmark.core.mirrors.has_aa_mirror_configuration", lambda: True, raising=False
     )
@@ -31,7 +30,6 @@ def test_warmup_runs_when_nobody_has_searched(monkeypatch):
 
 
 def test_warmup_stands_down_once_a_real_search_has_started(monkeypatch):
-    _reset()
     searched: list[str] = []
     monkeypatch.setattr(
         "shelfmark.release_sources.direct_download.search_books",
@@ -42,13 +40,11 @@ def test_warmup_stands_down_once_a_real_search_has_started(monkeypatch):
 
     assert warmup.run_warmup() is False
     assert searched == [], "the warm-up must not compete for the bypasser"
-    _reset()
 
 
 def test_the_check_happens_at_fire_time_not_schedule_time(monkeypatch):
     """The start-up delay is exactly what this races with, so a search that lands during
     the wait has to count - checking only in start() would miss every real case."""
-    _reset()
     monkeypatch.setattr(
         "shelfmark.core.mirrors.has_aa_mirror_configuration", lambda: True, raising=False
     )
@@ -67,4 +63,3 @@ def test_the_check_happens_at_fire_time_not_schedule_time(monkeypatch):
 
     assert warmup.run_warmup() is False
     assert searched == []
-    _reset()
