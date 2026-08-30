@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useEffectEvent } from 'react';
 
 import { getSettings, updateSettings, executeSettingsAction } from '../services/api';
 import type {
@@ -137,13 +137,7 @@ export function useSettings(): UseSettingsReturn {
     () => initialState?.originalValues ?? {},
   );
   const [isSaving, setIsSaving] = useState(false);
-  const valuesRef = useRef<SettingsValues>({});
-  const originalValuesRef = useRef<SettingsValues>({});
-
-  valuesRef.current = values;
-  originalValuesRef.current = originalValues;
-
-  const applySettingsResponse = useCallback(
+  const applySettingsResponse = useEffectEvent(
     (response: SettingsResponse, options: { preserveDirtyValues?: boolean } = {}) => {
       const { preserveDirtyValues = false } = options;
       cachedSettingsResponse = response;
@@ -156,11 +150,7 @@ export function useSettings(): UseSettingsReturn {
       setError(null);
 
       const nextValues = preserveDirtyValues
-        ? mergeFetchedSettingsWithDirtyValues(
-            hydratedState.values,
-            valuesRef.current,
-            originalValuesRef.current,
-          )
+        ? mergeFetchedSettingsWithDirtyValues(hydratedState.values, values, originalValues)
         : hydratedState.values;
 
       setValues(nextValues);
@@ -170,34 +160,30 @@ export function useSettings(): UseSettingsReturn {
         setSelectedTab((current) => current ?? hydratedState.selectedTab);
       }
     },
-    [],
   );
 
-  const fetchSettings = useCallback(
-    async (options: FetchSettingsOptions = {}) => {
-      const { silent = false, preserveDirtyValues = false, force = false } = options;
+  const fetchSettings = useCallback(async (options: FetchSettingsOptions = {}) => {
+    const { silent = false, preserveDirtyValues = false, force = false } = options;
+    if (!silent) {
+      setIsLoading(true);
+      setError(null);
+    }
+    try {
+      const response = await loadSettingsIntoCache({ force });
+      applySettingsResponse(response, { preserveDirtyValues });
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Failed to load settings';
+      console.error('Failed to fetch settings:', err);
+      cachedSettingsLoadError = cachedSettingsResponse === null ? message : null;
       if (!silent) {
-        setIsLoading(true);
-        setError(null);
+        setError(message);
       }
-      try {
-        const response = await loadSettingsIntoCache({ force });
-        applySettingsResponse(response, { preserveDirtyValues });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'Failed to load settings';
-        console.error('Failed to fetch settings:', err);
-        cachedSettingsLoadError = cachedSettingsResponse === null ? message : null;
-        if (!silent) {
-          setError(message);
-        }
-      } finally {
-        if (!silent) {
-          setIsLoading(false);
-        }
+    } finally {
+      if (!silent) {
+        setIsLoading(false);
       }
-    },
-    [applySettingsResponse],
-  );
+    }
+  }, []);
 
   useMountEffect(() => {
     void fetchSettings({
@@ -336,7 +322,7 @@ export function useSettings(): UseSettingsReturn {
         setIsSaving(false);
       }
     },
-    [applySettingsResponse, fetchSettings, originalValues, tabs, values],
+    [fetchSettings, originalValues, tabs, values],
   );
 
   const executeAction = useCallback(

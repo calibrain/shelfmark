@@ -34,6 +34,7 @@ import {
 import { getNestedValue, toComparableText, toStringValue } from '../utils/objectHelpers';
 import { toBookPlanPayload } from '../utils/packReview';
 import { getReleaseFormats } from '../utils/releaseFormats';
+import { INITIAL_ENTER_ANIMATION, nextEnterAnimation } from '../utils/releaseModalEnterAnimation';
 import { buildReleaseDownloadPayload, type ReleaseDownloadOptions } from '../utils/releasePayload';
 import {
   getBookTitleCandidates,
@@ -2450,7 +2451,7 @@ const ReleaseModalSession = ({
 
 export const ReleaseModal = ({ book, onClose, ...rest }: ReleaseModalProps) => {
   const [isClosing, setIsClosing] = useState(false);
-  const previousSessionKeyRef = useRef<string | null>(null);
+  const [enterAnimation, setEnterAnimation] = useState(INITIAL_ENTER_ANIMATION);
 
   const handleClose = useCallback(() => {
     setIsClosing(true);
@@ -2474,12 +2475,13 @@ export const ReleaseModal = ({ book, onClose, ...rest }: ReleaseModalProps) => {
       ].join('|')
     : null;
 
-  const animateEnter =
-    !rest.combinedMode ||
-    previousSessionKeyRef.current === null ||
-    previousSessionKeyRef.current === sessionKey;
-
-  previousSessionKeyRef.current = sessionKey;
+  // Decided once per session key and held for that session's lifetime, so a
+  // re-render mid-session cannot restart the enter animation.
+  const nextAnimation = nextEnterAnimation(enterAnimation, sessionKey, rest.combinedMode != null);
+  if (nextAnimation !== enterAnimation) {
+    setEnterAnimation(nextAnimation);
+  }
+  const animateEnter = nextAnimation.animate;
 
   if (!book && !isClosing) return null;
   if (!book || !sessionKey) return null;

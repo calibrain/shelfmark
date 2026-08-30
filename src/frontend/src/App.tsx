@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { useState, useCallback, useRef, useMemo } from 'react';
+import { useState, useCallback, useEffectEvent, useRef, useMemo } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { ActivitySidebar } from './components/activity';
@@ -492,8 +492,6 @@ function App() {
   });
 
   // When a book is removed from the Hardcover list currently being browsed, remove it from results
-  const searchFieldValuesRef = useRef(searchFieldValues);
-  searchFieldValuesRef.current = searchFieldValues;
   useBookTargetDeselectSync({
     activeListValue: searchFieldValues.hardcover_list,
     setBooks,
@@ -605,24 +603,6 @@ function App() {
     };
   }, [effectiveActingAsUser, pendingOnBehalfDownload]);
 
-  // Wire up logout callback to clear search state
-  const handleLogoutWithCleanup = useCallback(async () => {
-    await handleLogout();
-    resetSearchResultsState();
-    setActiveQueryTarget('general');
-    setPendingRequestPayload(null);
-    setPendingRequestExtraPayloads([]);
-    setActingAsUser(null);
-    setAdminUsers([]);
-    setAdminUsersError(null);
-    setHasLoadedAdminUsers(false);
-    setPendingOnBehalfDownload(null);
-    setFulfillingRequest(null);
-    resetActivity();
-    setSettingsOpen(false);
-    setSelfSettingsOpen(false);
-  }, [handleLogout, resetActivity, resetSearchResultsState]);
-
   // Combined mode state (ebook + audiobook in one transaction)
   const [combinedState, setCombinedState] = useState<CombinedSelectionState | null>(null);
 
@@ -655,20 +635,6 @@ function App() {
     setDownloadsSidebarOpen(true);
     prefetchActivityHistory();
   }, [downloadsSidebarOpen, prefetchActivityHistory]);
-  const handleSettingsClick = useCallback(() => {
-    if (config?.settings_enabled) {
-      if (authIsAdmin) {
-        void primeUsersCache();
-        void primeSettingsCache();
-        setSettingsOpen(true);
-      } else {
-        setSelfSettingsOpen(true);
-      }
-      return;
-    }
-    setConfigBannerOpen(true);
-  }, [authIsAdmin, config?.settings_enabled]);
-
   const headerRef = useCallback((el: HTMLDivElement | null) => {
     if (headerObserverRef.current) {
       headerObserverRef.current.disconnect();
@@ -685,6 +651,39 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selfSettingsOpen, setSelfSettingsOpen] = useState(false);
   const [configBannerOpen, setConfigBannerOpen] = useState(false);
+
+  // Wire up logout callback to clear search state
+  const handleLogoutWithCleanup = useCallback(async () => {
+    await handleLogout();
+    resetSearchResultsState();
+    setActiveQueryTarget('general');
+    setPendingRequestPayload(null);
+    setPendingRequestExtraPayloads([]);
+    setActingAsUser(null);
+    setAdminUsers([]);
+    setAdminUsersError(null);
+    setHasLoadedAdminUsers(false);
+    setPendingOnBehalfDownload(null);
+    setFulfillingRequest(null);
+    resetActivity();
+    setSettingsOpen(false);
+    setSelfSettingsOpen(false);
+  }, [handleLogout, resetActivity, resetSearchResultsState]);
+
+  const handleSettingsClick = useCallback(() => {
+    if (config?.settings_enabled) {
+      if (authIsAdmin) {
+        void primeUsersCache();
+        void primeSettingsCache();
+        setSettingsOpen(true);
+      } else {
+        setSelfSettingsOpen(true);
+      }
+      return;
+    }
+    setConfigBannerOpen(true);
+  }, [authIsAdmin, config?.settings_enabled]);
+
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   useShowOnboardingDebug({
     setOnboardingOpen,
@@ -1075,48 +1074,42 @@ function App() {
 
   // When downloading a book while browsing a Hardcover list the user owns,
   // automatically remove it from that list (fire-and-forget).
-  const searchFieldLabelsRef = useRef(searchFieldLabels);
-  searchFieldLabelsRef.current = searchFieldLabels;
-  const metadataConfigRef = useRef(activeMetadataConfig);
-  metadataConfigRef.current = activeMetadataConfig;
+  // An effect event: stable identity for the download handlers below, while still
+  // reading the current search field values, labels and metadata config.
+  const removeBookFromActiveList = useEffectEvent((book: Book) => {
+    if (config?.hardcover_auto_remove_on_download === false) return;
+    if (!bookSupportsTargets(book)) return;
+    const activeList = searchFieldValues.hardcover_list;
+    if (!activeList) return;
+    const target = String(activeList);
+    const provider = book.provider;
+    const bookId = book.provider_id;
+    if (!provider || !bookId) return;
 
-  const removeBookFromActiveList = useCallback(
-    (book: Book) => {
-      if (config?.hardcover_auto_remove_on_download === false) return;
-      if (!bookSupportsTargets(book)) return;
-      const activeList = searchFieldValuesRef.current.hardcover_list;
-      if (!activeList) return;
-      const target = String(activeList);
-      const provider = book.provider;
-      const bookId = book.provider_id;
-      if (!provider || !bookId) return;
+    // Only auto-remove from lists the user owns (Reading Status / My Lists)
+    const listField = activeMetadataConfig?.search_fields.find(
+      (f) => f.key === 'hardcover_list' && f.type === 'DynamicSelectSearchField',
+    );
+    if (listField && listField.type === 'DynamicSelectSearchField') {
+      const group = getDynamicOptionGroup(listField.options_endpoint, target);
+      if (group && group !== 'Reading Status' && group !== 'My Lists') return;
+    }
 
-      // Only auto-remove from lists the user owns (Reading Status / My Lists)
-      const listField = metadataConfigRef.current?.search_fields.find(
-        (f) => f.key === 'hardcover_list' && f.type === 'DynamicSelectSearchField',
-      );
-      if (listField && listField.type === 'DynamicSelectSearchField') {
-        const group = getDynamicOptionGroup(listField.options_endpoint, target);
-        if (group && group !== 'Reading Status' && group !== 'My Lists') return;
-      }
-
-      void setBookTargetState(provider, bookId, target, false)
-        .then((result) => {
-          if (result.changed) {
-            emitBookTargetChange({
-              provider,
-              bookId,
-              target,
-              selected: false,
-            });
-            const listName = searchFieldLabelsRef.current['hardcover_list'];
-            showToast(`Removed from ${listName || 'list'}`, 'info');
-          }
-        })
-        .catch(() => undefined);
-    },
-    [config?.hardcover_auto_remove_on_download, showToast],
-  );
+    void setBookTargetState(provider, bookId, target, false)
+      .then((result) => {
+        if (result.changed) {
+          emitBookTargetChange({
+            provider,
+            bookId,
+            target,
+            selected: false,
+          });
+          const listName = searchFieldLabels['hardcover_list'];
+          showToast(`Removed from ${listName || 'list'}`, 'info');
+        }
+      })
+      .catch(() => undefined);
+  });
 
   const executeBookDownload = useCallback(
     async (book: Book, onBehalfOfUserId?: number): Promise<void> => {
@@ -1165,13 +1158,7 @@ function App() {
         throw error;
       }
     },
-    [
-      fetchStatus,
-      openRequestConfirmation,
-      refreshRequestPolicy,
-      removeBookFromActiveList,
-      showToast,
-    ],
+    [fetchStatus, openRequestConfirmation, refreshRequestPolicy, showToast],
   );
 
   const executeReleaseDownload = useCallback(
@@ -1267,14 +1254,7 @@ function App() {
         throw error;
       }
     },
-    [
-      fetchStatus,
-      openRequestConfirmation,
-      refreshRequestPolicy,
-      removeBookFromActiveList,
-      showToast,
-      trackRelease,
-    ],
+    [fetchStatus, openRequestConfirmation, refreshRequestPolicy, showToast, trackRelease],
   );
 
   const executeCombinedAction = useCallback(

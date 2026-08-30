@@ -12,6 +12,15 @@ export const useSearchBarHoverTimeout = () => {
     }
   }, []);
 
+  // Scheduling stays inside the hook that owns the ref, so callers never mutate
+  // a value handed back to them.
+  const scheduleHoverTimeout = useCallback((callback: () => void, delay: number) => {
+    hoverTimeoutRef.current = setTimeout(() => {
+      hoverTimeoutRef.current = null;
+      callback();
+    }, delay);
+  }, []);
+
   useMountEffect(() => {
     return () => {
       clearHoverTimeout();
@@ -19,7 +28,7 @@ export const useSearchBarHoverTimeout = () => {
   });
 
   return {
-    hoverTimeoutRef,
     clearHoverTimeout,
+    scheduleHoverTimeout,
   };
 };

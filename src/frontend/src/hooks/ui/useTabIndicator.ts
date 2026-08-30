@@ -16,13 +16,15 @@ export function useTabIndicator(
   });
 
   useLayoutEffect(() => {
-    const activeButton = tabRefs.current[activeTab];
-    if (!activeButton) {
-      setTabIndicatorStyle({ left: 0, width: 0 });
-      return undefined;
-    }
-
+    // Single measurement path, so a resize that removes the active tab also
+    // resets the indicator instead of leaving it stranded.
     const updateIndicator = () => {
+      const activeButton = tabRefs.current[activeTab];
+      if (!activeButton) {
+        setTabIndicatorStyle({ left: 0, width: 0 });
+        return;
+      }
+
       const containerRect = activeButton.parentElement?.getBoundingClientRect();
       const buttonRect = activeButton.getBoundingClientRect();
       if (!containerRect) {

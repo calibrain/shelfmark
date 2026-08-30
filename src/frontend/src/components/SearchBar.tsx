@@ -1,5 +1,5 @@
 import type { InputHTMLAttributes } from 'react';
-import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'react';
+import { forwardRef, useEffectEvent, useImperativeHandle, useMemo, useRef, useState } from 'react';
 
 import { useSearchMode } from '../contexts/SearchModeContext';
 import { useSearchBarAutocomplete } from '../hooks/searchBar/useSearchBarAutocomplete';
@@ -195,8 +195,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
     const { searchMode } = useSearchMode();
     const inputRef = useRef<HTMLInputElement>(null);
     const buttonRef = useRef<HTMLButtonElement>(null);
-    const onSubmitRef = useRef(onSubmit);
-    onSubmitRef.current = onSubmit;
+    const submitLatest = useEffectEvent(() => onSubmit());
     const selectorRef = useRef<HTMLDivElement>(null);
     const hasSearchQuery = hasActiveValue(value);
     const [isSelectorOpen, setIsSelectorOpen] = useState(false);
@@ -205,7 +204,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
     const selectTriggerRef = useRef<HTMLButtonElement>(null);
     const selectPanelRef = useRef<HTMLDivElement>(null);
     const autocompletePanelRef = useRef<HTMLDivElement>(null);
-    const { hoverTimeoutRef: selectorHoverTimeout, clearHoverTimeout } = useSearchBarHoverTimeout();
+    const { scheduleHoverTimeout, clearHoverTimeout } = useSearchBarHoverTimeout();
 
     const hasMultipleContentTypes = !allowedContentTypes || allowedContentTypes.length !== 1;
     const showContentTypeSelector =
@@ -614,9 +613,8 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
               onPointerLeave={(e) => {
                 if (e.pointerType !== 'mouse') return;
                 clearHoverTimeout();
-                selectorHoverTimeout.current = setTimeout(() => {
+                scheduleHoverTimeout(() => {
                   setIsSelectorOpen(false);
-                  selectorHoverTimeout.current = null;
                 }, 150);
               }}
             >
@@ -1011,7 +1009,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                         onClick={() => {
                           onChange(option.value, option.label);
                           setIsSelectOpen(false);
-                          setTimeout(() => onSubmitRef.current(), 0);
+                          setTimeout(() => submitLatest(), 0);
                         }}
                         className={`flex w-full items-center gap-3 px-5 py-2.5 text-left text-sm transition-colors ${
                           isSelected ? '' : 'hover-surface'
@@ -1081,7 +1079,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                           setAutocompleteSelection(option.value, option.label);
                           onChange(option.value, option.label);
                           setIsAutocompleteOpen(false);
-                          setTimeout(() => onSubmitRef.current(), 0);
+                          setTimeout(() => submitLatest(), 0);
                         }}
                         className="hover-surface w-full px-5 py-3 text-left text-sm transition-colors"
                         style={{ color: 'var(--text)' }}

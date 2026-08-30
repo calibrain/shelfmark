@@ -139,6 +139,10 @@ export function Tooltip({
     }
 
     if (deltaX !== 0 || deltaY !== 0) {
+      // Genuine measure-and-adjust: the tooltip must be laid out before we know
+      // whether it overflows the viewport. The loop converges in one pass because
+      // the corrected position yields deltaX/deltaY of 0 on the next run.
+      // oxlint-disable-next-line react/set-state-in-effect
       setCoords((current) => {
         if (!current) {
           return current;
