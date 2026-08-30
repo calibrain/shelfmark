@@ -112,18 +112,31 @@ def _normalize_languages(languages: list[str] | None, user_id: int | None) -> li
     return _to_language_codes(languages, source="the search request")
 
 
+def first_author(value: str) -> str:
+    """The first name in a possibly comma-joined author string.
+
+    Both ends of the app hand us every contributor in one string. The frontend joins
+    `authors` with ", " for display (`bookTransformers.ts`) and that display string comes
+    straight back as the `author` request parameter, while several providers set
+    `search_author` from the same joined text. Searching a release source for
+    "Blindness Jose Saramago, Giovanni Pontiero, ..." - the author plus two translators -
+    matches nothing, and the user is told the book has no releases at all.
+
+    A "Last, First" author collapses to the surname, which is still a usable search term
+    and is what the authors[] fallback has always done with the same input. See #1252.
+    """
+    first, _, _ = value.partition(",")
+    return first.strip()
+
+
 def _pick_search_author(book: BookMetadata) -> str:
     if book.search_author:
-        return book.search_author
+        return first_author(book.search_author)
 
     if not book.authors:
         return ""
 
-    first = book.authors[0]
-    if "," in first:
-        first = first.split(",")[0].strip()
-
-    return first
+    return first_author(book.authors[0])
 
 
 def _pick_search_title(book: BookMetadata) -> str:

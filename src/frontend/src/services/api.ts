@@ -84,6 +84,9 @@ type ApiResponseErrorShape = Error & {
   code?: string;
   requiredMode?: string;
   payload?: Record<string, unknown>;
+  // Set only when the server explained itself, so callers can tell a real explanation
+  // apart from the `503 SERVICE UNAVAILABLE` placeholder built from the status line.
+  serverMessage?: string;
 };
 
 class ApiResponseError extends Error {
@@ -91,6 +94,7 @@ class ApiResponseError extends Error {
   code?: string;
   requiredMode?: string;
   payload?: Record<string, unknown>;
+  serverMessage?: string;
 
   constructor(
     message: string,
@@ -99,6 +103,7 @@ class ApiResponseError extends Error {
       code?: string;
       requiredMode?: string;
       payload?: Record<string, unknown>;
+      serverMessage?: string;
     },
   ) {
     super(message);
@@ -107,6 +112,7 @@ class ApiResponseError extends Error {
     this.code = params.code;
     this.requiredMode = params.requiredMode;
     this.payload = params.payload;
+    this.serverMessage = params.serverMessage;
   }
 }
 
@@ -149,7 +155,24 @@ const DEFAULT_TIMEOUT_MS = 30000;
 // Release searches can be long-running: a source behind Cloudflare/DDoS-Guard has
 // to spin up the bypasser and solve the challenge before any results come back,
 // which routinely takes well over the default timeout.
-const SEARCH_TIMEOUT_MS = 180000;
+//
+// The server bounds them itself (RELEASE_SEARCH_TIMEOUT, reported by /api/config) and
+// answers a spent budget with a message naming the real cause. This client abort is only
+// the backstop for a server that never answers at all, so it has to fire *after* the
+// server's own deadline - a fixed 180s here beat the 300s default, so the accurate
+// message was never reachable and raising the setting did nothing. See issue #1285.
+const SEARCH_TIMEOUT_MARGIN_MS = 15000;
+const FALLBACK_SEARCH_TIMEOUT_MS = 300000; // search_deadline.DEFAULT_SEARCH_BUDGET_SECONDS
+let searchTimeoutMs = FALLBACK_SEARCH_TIMEOUT_MS + SEARCH_TIMEOUT_MARGIN_MS;
+
+// Exported for tests; callers get this applied automatically via getConfig().
+export const setSearchTimeoutFromConfig = (budgetSeconds: unknown): void => {
+  if (typeof budgetSeconds === 'number' && Number.isFinite(budgetSeconds) && budgetSeconds > 0) {
+    searchTimeoutMs = budgetSeconds * 1000 + SEARCH_TIMEOUT_MARGIN_MS;
+  }
+};
+
+export const getSearchTimeoutMs = (): number => searchTimeoutMs;
 
 // Utility function for JSON fetch with credentials and timeout
 async function fetchJSON<T>(
@@ -213,6 +236,7 @@ async function fetchJSON<T>(
 
       throw new ApiResponseError(errorMessage, {
         status: res.status,
+        serverMessage: hasServerMessage ? errorMessage : undefined,
         code: typeof errorData?.code === 'string' ? errorData.code : undefined,
         requiredMode:
           typeof errorData?.required_mode === 'string' ? errorData.required_mode : undefined,
@@ -243,7 +267,7 @@ export const searchBooks = async (query: string): Promise<Book[]> => {
   const response = await fetchJSON<ReleasesResponse>(
     `${API_BASE}/releases?source=direct_download&${query}`,
     {},
-    SEARCH_TIMEOUT_MS,
+    searchTimeoutMs,
   );
   return response.releases.map(transformReleaseToDirectBook);
 };
@@ -586,7 +610,9 @@ export const retryDownload = async (id: string): Promise<void> => {
 };
 
 export const getConfig = async (): Promise<AppConfig> => {
-  return fetchJSON<AppConfig>(API.config);
+  const config = await fetchJSON<AppConfig>(API.config);
+  setSearchTimeoutFromConfig(config.release_search_timeout);
+  return config;
 };
 
 interface ActivityDismissedItem {

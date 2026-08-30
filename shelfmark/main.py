@@ -1180,6 +1180,12 @@ def api_config() -> Response | tuple[Response, int]:
                 [],
                 user_id=db_user_id,
             ),
+            # The client must not give up before this budget does. `/api/releases`
+            # answers a spent budget with a message naming the real cause (a protection
+            # challenge nobody could solve); a browser that aborted first replaces it
+            # with a generic network/proxy error and RELEASE_SEARCH_TIMEOUT becomes a
+            # setting the user can raise with no visible effect. See issue #1285.
+            "release_search_timeout": search_deadline.budget_seconds(),
             "settings_enabled": _is_config_dir_writable(),
             "onboarding_complete": _get_onboarding_complete(),
             # Default sort orders

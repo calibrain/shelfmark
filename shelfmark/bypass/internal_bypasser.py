@@ -522,18 +522,6 @@ async def _bypass_method_humanlike(page: Any) -> bool:
         return False
 
 
-async def _bypass_method_cdp_solve(page: Any) -> bool:
-    """CDP Mode with solve_captcha() - auto-detects challenge type."""
-    try:
-        logger.debug("Attempting bypass: CDP solve_captcha")
-        await page.solve_captcha()
-        await asyncio.sleep(_RNG.uniform(3, 5))
-        return await _is_bypassed(page)
-    except _CDP_OPERATION_ERRORS as e:
-        logger.debug("CDP solve_captcha failed: %s", e)
-        return False
-
-
 CDP_CLICK_SELECTORS = [
     "#turnstile-widget div",  # Cloudflare Turnstile
     "#cf-turnstile div",  # Alternative CF Turnstile
@@ -613,8 +601,13 @@ async def _bypass_method_cdp_gui_click(page: Any) -> bool:
         return False
 
 
+# Ordered cheapest-first, and deliberately without a bare `solve_captcha()` entry:
+# _bypass_method_cdp_gui_click opens by doing exactly that and returns the moment it
+# works, so a separate method ahead of it could only ever repeat the half that had
+# already failed - one wasted round trip plus the backoff before the next attempt, on
+# every solve that gets this far. Measured at ~5.5s of the ~26s each solve cost, and
+# 0/19 successes for the standalone method against DDoS-Guard. See issue #1285.
 BYPASS_METHODS = [
-    _bypass_method_cdp_solve,
     _bypass_method_cdp_gui_click,
     _bypass_method_cdp_click,
     _bypass_method_humanlike,
