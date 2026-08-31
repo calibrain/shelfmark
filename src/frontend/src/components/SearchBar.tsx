@@ -50,6 +50,8 @@ const EMPTY_SORT_OPTIONS: SortOption[] = [];
 const EMPTY_AUTOCOMPLETE_OPTIONS: DynamicFieldOption[] = [];
 const EMPTY_QUERY_TARGETS: QueryTargetOption[] = [];
 
+const SEARCH_CONTROLS_PANEL_ID = 'search-bar-controls-panel';
+
 const BookIcon = () => (
   <svg
     className="h-5 w-5 shrink-0"
@@ -198,16 +200,19 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
     onSubmitRef.current = onSubmit;
     const selectorRef = useRef<HTMLDivElement>(null);
     const hasSearchQuery = hasActiveValue(value);
+    const [isSelectorOpen, setIsSelectorOpen] = useState(false);
     const [isSelectOpen, setIsSelectOpen] = useState(false);
     const [isAutocompleteOpen, setIsAutocompleteOpen] = useState(false);
     const selectTriggerRef = useRef<HTMLButtonElement>(null);
     const selectPanelRef = useRef<HTMLDivElement>(null);
     const autocompletePanelRef = useRef<HTMLDivElement>(null);
+    const controlsPanelRef = useRef<HTMLDivElement>(null);
 
     const hasMultipleContentTypes = !allowedContentTypes || allowedContentTypes.length !== 1;
     const showContentTypeSelector =
       searchMode !== 'direct' && !!onContentTypeChange && hasMultipleContentTypes;
-    const inputPaddingClass = showContentTypeSelector ? 'pl-3 rounded-r-full' : 'pl-4 rounded-full';
+    const showQueryTargetSelector = showContentTypeSelector || queryTargets.length > 1;
+    const inputPaddingClass = showQueryTargetSelector ? 'pl-3 rounded-r-full' : 'pl-4 rounded-full';
     const searchInputClass = [
       'w-full min-w-0 py-3 border-0 outline-hidden search-input bg-transparent',
       inputPaddingClass,
@@ -217,6 +222,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       () => queryTargets.find((target) => target.key === activeQueryTarget) ?? queryTargets[0],
       [queryTargets, activeQueryTarget],
     );
+    const showActiveTargetLabel = queryTargets.length > 0 && activeTarget?.source !== 'general';
 
     // Manual search browses release sources directly, one media type at a time — the
     // combined ("both") flow doesn't apply. Present a plain, switchable Books/Audiobooks
@@ -229,6 +235,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
       ? 'bg-emerald-500'
       : 'bg-(--border-muted) group-hover:bg-zinc-400 dark:group-hover:bg-zinc-500';
 
+    useDismiss(isSelectorOpen, [selectorRef, controlsPanelRef], () => setIsSelectorOpen(false));
     useDismiss(isSelectOpen, [selectPanelRef, selectTriggerRef], () => setIsSelectOpen(false));
     useDismiss(isAutocompleteOpen, [autocompletePanelRef, inputRef], () =>
       setIsAutocompleteOpen(false),
@@ -487,7 +494,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
               disabled={disabled}
               className={[
                 'w-full text-left py-3 flex items-center gap-2',
-                showContentTypeSelector ? 'pl-3' : 'pl-4',
+                showQueryTargetSelector ? 'pl-3' : 'pl-4',
                 'pr-2',
                 disabled ? 'opacity-60 cursor-not-allowed' : 'cursor-pointer',
               ]
@@ -590,15 +597,42 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
             borderColor: 'var(--border-muted)',
           }}
         >
-          {showContentTypeSelector && (
-            <div className="flex shrink-0 self-stretch items-center" ref={selectorRef}>
-              <div
-                className="flex items-center pl-5 pr-2"
-                aria-label={`Searching ${selectorContentTypeLabel}`}
+          {showQueryTargetSelector && (
+            <div className="relative flex shrink-0 self-stretch" ref={selectorRef}>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSelectorOpen((prev) => !prev);
+                  setIsSelectOpen(false);
+                  setIsAutocompleteOpen(false);
+                }}
+                className="hover-action flex cursor-pointer items-center gap-1.5 rounded-l-full pr-2 pl-5 transition-colors"
                 style={{ color: 'var(--text)' }}
+                aria-label={`Searching ${selectorContentTypeLabel} by ${activeTarget?.label ?? 'general'}. Click to change.`}
+                aria-expanded={isSelectorOpen}
+                aria-controls={SEARCH_CONTROLS_PANEL_ID}
               >
                 {selectorIcon}
-              </div>
+                {showActiveTargetLabel && (
+                  <span className="hidden max-w-24 truncate text-sm font-medium sm:inline">
+                    {activeTarget?.label}
+                  </span>
+                )}
+                <svg
+                  className={`h-3 w-3 opacity-50 transition-transform duration-200 ${isSelectorOpen ? 'rotate-180' : ''}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  strokeWidth="2.5"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="m19.5 8.25-7.5 7.5-7.5-7.5"
+                  />
+                </svg>
+              </button>
               <div
                 className="absolute top-1/2 right-0 h-6 w-px -translate-y-1/2"
                 style={{ background: 'var(--border-muted)' }}
@@ -785,8 +819,12 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
           )}
         </div>
 
-        {(showContentTypeSelector || queryTargets.length > 1) && (
-          <div className="flex flex-wrap items-start gap-x-8 gap-y-2 px-1 pt-2">
+        {showQueryTargetSelector && isSelectorOpen && (
+          <div
+            id={SEARCH_CONTROLS_PANEL_ID}
+            className="animate-fade-in-down flex flex-wrap items-start gap-x-8 gap-y-2 px-1 pt-2"
+            ref={controlsPanelRef}
+          >
             {showContentTypeSelector && (
               <div className="shrink-0">
                 <div className="flex items-center justify-between pb-1.5">
@@ -797,7 +835,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                     <button
                       type="button"
                       onClick={onAdvancedToggle}
-                      className={`-mt-1.5 -mr-1 -mb-0.5 flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-medium transition-colors ${
+                      className={`-mt-1.5 -mr-1 -mb-0.5 flex cursor-pointer items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-medium transition-colors ${
                         isAdvancedActive ? 'bg-emerald-600 text-white' : 'hover-surface'
                       }`}
                       style={
@@ -829,7 +867,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                   <button
                     type="button"
                     onClick={() => handleContentTypeSelect('ebook')}
-                    className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                    className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
                       contentType === 'ebook' || combinedSelectionActive
                         ? 'bg-emerald-600 text-white'
                         : 'hover-surface'
@@ -852,7 +890,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                   <button
                     type="button"
                     onClick={() => handleContentTypeSelect('audiobook')}
-                    className={`flex items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                    className={`flex cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
                       contentType === 'audiobook' || combinedSelectionActive
                         ? 'bg-emerald-600 text-white'
                         : 'hover-surface'
@@ -882,7 +920,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                         <button
                           type="button"
                           onClick={handleCombinedModeSelect}
-                          className="group w-full"
+                          className="group w-full cursor-pointer"
                           aria-label="Combined search"
                         >
                           <div className="relative flex h-7 items-end">
@@ -949,7 +987,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                     <button
                       type="button"
                       onClick={onAdvancedToggle}
-                      className={`-mt-1.5 -mr-1 -mb-0.5 flex items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-medium transition-colors ${
+                      className={`-mt-1.5 -mr-1 -mb-0.5 flex cursor-pointer items-center gap-1.5 rounded-xl px-4 py-2.5 text-xs font-medium transition-colors ${
                         isAdvancedActive
                           ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white`
                           : 'hover-surface'
@@ -994,7 +1032,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                         onClick={() => handleQueryTargetSelect(target.key)}
                         title={target.description || target.label}
                         aria-label={target.label}
-                        className={`flex min-w-0 items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
+                        className={`flex min-w-0 cursor-pointer items-center gap-2 rounded-xl border px-3 py-2 text-sm font-medium transition-colors ${
                           isActive
                             ? `${searchMode === 'direct' ? 'bg-sky-700' : 'bg-emerald-600'} text-white`
                             : 'hover-surface'
