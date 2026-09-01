@@ -122,3 +122,54 @@ class TestReleaseSearchPlan:
         plan = build_release_search_plan(book, languages=["fr"], user_id=7)
 
         assert plan.languages == ["fr"]
+
+
+class TestSearchAuthorNormalization:
+    """A credit list must not reach the query, whichever field carries it.
+
+    Anna's Archive answers "Blindness Jose Saramago, Giovanni Pontiero, ..." with
+    nothing, so a book whose author string lists translators alongside the author
+    finds no releases at all.
+    """
+
+    MULTI = "Jose Saramago, Giovanni Pontiero, Zohreh Eftekhari"
+
+    def test_search_author_is_trimmed_to_the_first_name(self):
+        book = BookMetadata(
+            provider="manual",
+            provider_id="1",
+            title="Blindness",
+            authors=[self.MULTI],
+            search_author=self.MULTI,
+        )
+
+        assert build_release_search_plan(book).primary_query == "Blindness Jose Saramago"
+
+    def test_search_author_matches_the_authors_list(self):
+        """Same credit list, two fields, one query."""
+        via_authors = BookMetadata(
+            provider="manual", provider_id="1", title="Blindness", authors=[self.MULTI]
+        )
+        via_search_author = BookMetadata(
+            provider="manual",
+            provider_id="1",
+            title="Blindness",
+            authors=[self.MULTI],
+            search_author=self.MULTI,
+        )
+
+        assert (
+            build_release_search_plan(via_search_author).primary_query
+            == build_release_search_plan(via_authors).primary_query
+        )
+
+    def test_single_author_is_untouched(self):
+        book = BookMetadata(
+            provider="manual",
+            provider_id="1",
+            title="Elantris",
+            authors=["Brandon Sanderson"],
+            search_author="Brandon Sanderson",
+        )
+
+        assert build_release_search_plan(book).primary_query == "Elantris Brandon Sanderson"

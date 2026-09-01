@@ -113,17 +113,17 @@ def _normalize_languages(languages: list[str] | None, user_id: int | None) -> li
 
 
 def _pick_search_author(book: BookMetadata) -> str:
-    if book.search_author:
-        return book.search_author
-
-    if not book.authors:
+    author = book.search_author or (book.authors[0] if book.authors else "")
+    if not author:
         return ""
 
-    first = book.authors[0]
-    if "," in first:
-        first = first.split(",")[0].strip()
+    # `search_author` can arrive as the display string for the whole credit list
+    # ("Author, Translator, Narrator"), which Anna's Archive answers with nothing at
+    # all. Trim it to the first name, which is what the authors list already gets.
+    if "," in author:
+        author = author.split(",")[0].strip()
 
-    return first
+    return author
 
 
 def _pick_search_title(book: BookMetadata) -> str:
