@@ -35,6 +35,15 @@
     "typescript/no-misused-promises": "error",
     "typescript/no-non-null-assertion": "error",
     "typescript/only-throw-error": "error",
+    // React Compiler advisories, enforced everywhere with no per-file exemptions.
+    // The violations inherited from the oxlint 1.70 -> 1.80 bump are all resolved:
+    // three by widening a dependency to the object the compiler infers, and seven
+    // by an `oxlint-disable-next-line` that says, at the callsite, why the flagged
+    // dependency is load-bearing - five are re-run triggers that are never read,
+    // and two are values the callback genuinely uses.
+    "react/preserve-manual-memoization": "error",
+    "react/exhaustive-effect-dependencies": "error",
+    "react/memo-dependencies": "error",
     "react/no-danger": "error",
     "react/no-clone-element": "error",
     "react/no-react-children": "error",

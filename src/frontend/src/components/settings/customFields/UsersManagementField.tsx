@@ -1,5 +1,6 @@
 import { useCallback, useLayoutEffect, useRef } from 'react';
 
+import { useLatestCallback } from '../../../hooks/useLatestCallback';
 import { useMountEffect } from '../../../hooks/useMountEffect';
 import type { AdminUser } from '../../../services/api';
 import { testAdminUserNotificationPreferences } from '../../../services/api';
@@ -169,12 +170,12 @@ export const UsersManagementField = ({
     }
   }, [backToList, onRefreshOverrideSummary, onSettingsSaved, onUiStateChange, saveEditedUser]);
 
-  const handleSaveUserOverridesRef = useRef(handleSaveUserOverrides);
-  handleSaveUserOverridesRef.current = handleSaveUserOverrides;
-
-  const triggerSaveUserOverrides = useCallback(async () => {
-    await handleSaveUserOverridesRef.current();
-  }, []);
+  // Stored in parent UI state, so it must keep a stable identity while still invoking the
+  // latest handler. Not an Effect Event: those must not be handed to another component.
+  // See useLatestCallback.
+  const triggerSaveUserOverrides = useLatestCallback(async () => {
+    await handleSaveUserOverrides();
+  });
 
   const handleOpenOverrides = () => {
     if (editingUser) {

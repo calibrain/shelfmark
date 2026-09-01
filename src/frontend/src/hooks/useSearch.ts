@@ -5,6 +5,7 @@ import { DEFAULT_SUPPORTED_FORMATS } from '../data/languages';
 import { searchBooks, searchMetadata, AuthenticationError } from '../services/api';
 import type { Book, AppConfig, AdvancedFilterState, ContentType, SearchMode } from '../types';
 import { LANGUAGE_OPTION_DEFAULT } from '../utils/languageFilters';
+import { describeSearchFailure } from '../utils/searchFailureMessage';
 
 const DEFAULT_FORMAT_SELECTION = DEFAULT_SUPPORTED_FORMATS;
 
@@ -263,12 +264,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
           handleSearchError(error, 'Search failed');
         } else {
           console.error('Search failed:', error);
-          const message = error instanceof Error ? error.message : 'Search failed';
-          const friendly =
-            message.includes('Network restricted') || message.includes('Unable to reach')
-              ? message
-              : 'Unable to reach download source. Network may be restricted or mirrors blocked.';
-          showToast(friendly, 'error');
+          showToast(describeSearchFailure(error), 'error');
         }
       } finally {
         setIsSearching(false);

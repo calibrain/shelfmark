@@ -137,3 +137,44 @@ def test_no_budget_leaks_out_of_the_request(client, main_module):
     _request(client, main_module, [{"name": "direct_download", "enabled": True}], lambda *_: [])
 
     assert search_deadline.current() is None
+
+
+def test_the_client_is_told_what_the_budget_is(client, main_module):
+    """The browser has to outlast the server, or the message above never arrives.
+
+    The frontend puts its own AbortController on the direct_download search. That abort
+    was a fixed 180s while this budget defaults to 300s, so the client always gave up
+    first and replaced the sentence tested above with a generic network/proxy error -
+    and raising RELEASE_SEARCH_TIMEOUT changed nothing a user could see, because the
+    hard-coded 180s was in the hashed bundle inside the image. Reporting the budget lets
+    the client set its backstop behind it. See issue #1285.
+    """
+    _authenticate(client)
+
+    with patch.object(main_module, "get_auth_mode", return_value="none"):
+        resp = client.get("/api/config")
+
+    assert resp.status_code == 200
+    reported = resp.get_json()["release_search_timeout"]
+    assert reported == search_deadline.budget_seconds()
+    assert reported > 0
+
+
+def test_the_reported_budget_is_the_one_actually_enforced(client, main_module):
+    """An out-of-range setting is clamped, so the raw config value would mislead."""
+    _authenticate(client)
+
+    with (
+        patch.object(main_module, "get_auth_mode", return_value="none"),
+        patch.object(
+            main_module.app_config,
+            "get",
+            side_effect=lambda key, default=None, **_kw: (
+                99999 if key == "RELEASE_SEARCH_TIMEOUT" else default
+            ),
+        ),
+    ):
+        resp = client.get("/api/config")
+        reported = resp.get_json()["release_search_timeout"]
+
+    assert reported == search_deadline._MAX_SEARCH_BUDGET_SECONDS

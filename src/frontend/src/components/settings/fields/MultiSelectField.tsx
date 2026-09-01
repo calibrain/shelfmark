@@ -44,162 +44,172 @@ const getOptionsIdentity = (options: MultiSelectFieldConfig['options']): string 
 const getSelectionIdentity = (values: string[]): string =>
   values.toSorted((left, right) => left.localeCompare(right)).join('\u0001');
 
-export const MultiSelectField = ({
+interface MultiSelectVariantProps {
+  field: MultiSelectFieldConfig;
+  selected: string[];
+  onChange: (value: string[]) => void;
+  isDisabled: boolean;
+}
+
+// Dropdown variant - use DropdownList with checkboxes
+const MultiSelectDropdownField = ({
   field,
-  value: fieldValue,
+  selected,
   onChange,
-  disabled,
-}: MultiSelectFieldProps) => {
-  const selected = fieldValue ?? EMPTY_SELECTION;
-  // disabled prop is already computed by SettingsContent.getDisabledState()
-  const isDisabled = disabled ?? false;
+  isDisabled,
+}: MultiSelectVariantProps) => {
+  const optionValues = field.options.map((opt) => opt.value);
+  const optionSet = new Set(optionValues);
+  const hasAllOption = optionSet.has(ALL_OPTION_VALUE);
+  const orderedOptions = hasAllOption
+    ? [
+        ...field.options.filter((opt) => opt.value === ALL_OPTION_VALUE),
+        ...field.options.filter((opt) => opt.value !== ALL_OPTION_VALUE),
+      ]
+    : field.options;
+  const nonAllValues = orderedOptions
+    .map((opt) => opt.value)
+    .filter((optValue) => optValue !== ALL_OPTION_VALUE);
 
-  // Dropdown variant - use DropdownList with checkboxes
-  if (field.variant === 'dropdown') {
-    const optionValues = field.options.map((opt) => opt.value);
-    const optionSet = new Set(optionValues);
-    const hasAllOption = optionSet.has(ALL_OPTION_VALUE);
-    const orderedOptions = hasAllOption
-      ? [
-          ...field.options.filter((opt) => opt.value === ALL_OPTION_VALUE),
-          ...field.options.filter((opt) => opt.value !== ALL_OPTION_VALUE),
-        ]
-      : field.options;
-    const nonAllValues = orderedOptions
-      .map((opt) => opt.value)
-      .filter((optValue) => optValue !== ALL_OPTION_VALUE);
+  const normalizeValues = (values: string[]): string[] => {
+    const deduped = new Set(
+      values
+        .map((entry) => entry.trim())
+        .filter((entry) => entry.length > 0 && optionSet.has(entry)),
+    );
+    return orderedOptions.map((opt) => opt.value).filter((optValue) => deduped.has(optValue));
+  };
 
-    const normalizeValues = (values: string[]): string[] => {
-      const deduped = new Set(
-        values
-          .map((entry) => entry.trim())
-          .filter((entry) => entry.length > 0 && optionSet.has(entry)),
-      );
-      return orderedOptions.map((opt) => opt.value).filter((optValue) => deduped.has(optValue));
-    };
+  const selectedExplicit = normalizeValues(selected);
+  const allSelected =
+    hasAllOption &&
+    (selectedExplicit.includes(ALL_OPTION_VALUE) ||
+      (nonAllValues.length > 0 &&
+        nonAllValues.every((optValue) => selectedExplicit.includes(optValue))));
 
-    const selectedExplicit = normalizeValues(selected);
-    const allSelected =
-      hasAllOption &&
-      (selectedExplicit.includes(ALL_OPTION_VALUE) ||
-        (nonAllValues.length > 0 &&
-          nonAllValues.every((optValue) => selectedExplicit.includes(optValue))));
+  // Build parent -> children map for cascading selection
+  const parentChildMap = new Map<string, string[]>();
+  orderedOptions.forEach((opt) => {
+    if (opt.childOf) {
+      const children = parentChildMap.get(opt.childOf) || [];
+      children.push(opt.value);
+      parentChildMap.set(opt.childOf, children);
+    }
+  });
 
-    // Build parent -> children map for cascading selection
-    const parentChildMap = new Map<string, string[]>();
-    orderedOptions.forEach((opt) => {
-      if (opt.childOf) {
-        const children = parentChildMap.get(opt.childOf) || [];
-        children.push(opt.value);
-        parentChildMap.set(opt.childOf, children);
+  // Check which children are implicitly selected via parent
+  const selectedForCascade = allSelected
+    ? selectedExplicit.filter((optValue) => optValue !== ALL_OPTION_VALUE)
+    : selectedExplicit;
+  const implicitlySelected = new Set<string>();
+  selectedForCascade.forEach((val) => {
+    const children = parentChildMap.get(val);
+    if (children) {
+      children.forEach((child) => implicitlySelected.add(child));
+    }
+  });
+
+  // Build options with disabled state for implicitly selected children
+  const dropdownOptions = orderedOptions.map((opt) => ({
+    value: opt.value,
+    label: opt.label,
+    disabled: !allSelected && implicitlySelected.has(opt.value),
+  }));
+
+  // For display purposes:
+  // - if "all" is active, check every option
+  // - otherwise show explicit + implicit parent/child selections
+  const displayValue = allSelected
+    ? [ALL_OPTION_VALUE, ...nonAllValues]
+    : normalizeValues([...selectedExplicit, ...Array.from(implicitlySelected)]);
+
+  const handleDropdownChange = (newValue: string | string[]) => {
+    const nextValues = normalizeValues(Array.isArray(newValue) ? newValue : [newValue]);
+
+    if (hasAllOption) {
+      const includesAll = nextValues.includes(ALL_OPTION_VALUE);
+
+      // When currently "all" is active:
+      // - unticking "all" clears everything
+      // - unticking a specific option converts to explicit subset
+      if (allSelected && !includesAll && nextValues.length === nonAllValues.length) {
+        onChange([]);
+        return;
       }
-    });
-
-    // Check which children are implicitly selected via parent
-    const selectedForCascade = allSelected
-      ? selectedExplicit.filter((optValue) => optValue !== ALL_OPTION_VALUE)
-      : selectedExplicit;
-    const implicitlySelected = new Set<string>();
-    selectedForCascade.forEach((val) => {
-      const children = parentChildMap.get(val);
-      if (children) {
-        children.forEach((child) => implicitlySelected.add(child));
-      }
-    });
-
-    // Build options with disabled state for implicitly selected children
-    const dropdownOptions = orderedOptions.map((opt) => ({
-      value: opt.value,
-      label: opt.label,
-      disabled: !allSelected && implicitlySelected.has(opt.value),
-    }));
-
-    // For display purposes:
-    // - if "all" is active, check every option
-    // - otherwise show explicit + implicit parent/child selections
-    const displayValue = allSelected
-      ? [ALL_OPTION_VALUE, ...nonAllValues]
-      : normalizeValues([...selectedExplicit, ...Array.from(implicitlySelected)]);
-
-    const handleDropdownChange = (newValue: string | string[]) => {
-      const nextValues = normalizeValues(Array.isArray(newValue) ? newValue : [newValue]);
-
-      if (hasAllOption) {
-        const includesAll = nextValues.includes(ALL_OPTION_VALUE);
-
-        // When currently "all" is active:
-        // - unticking "all" clears everything
-        // - unticking a specific option converts to explicit subset
-        if (allSelected && !includesAll && nextValues.length === nonAllValues.length) {
-          onChange([]);
-          return;
-        }
-        if (allSelected && includesAll && nextValues.length < optionValues.length) {
-          onChange(nextValues.filter((entry) => entry !== ALL_OPTION_VALUE));
-          return;
-        }
-
-        if (includesAll) {
-          onChange([ALL_OPTION_VALUE]);
-          return;
-        }
-
-        // If user selects every specific option individually, collapse to "all".
-        if (
-          nonAllValues.length > 0 &&
-          nonAllValues.every((optValue) => nextValues.includes(optValue))
-        ) {
-          onChange([ALL_OPTION_VALUE]);
-          return;
-        }
+      if (allSelected && includesAll && nextValues.length < optionValues.length) {
+        onChange(nextValues.filter((entry) => entry !== ALL_OPTION_VALUE));
+        return;
       }
 
-      // Filter out implicitly selected values - only store explicit selections.
-      const explicitOnly = nextValues.filter((entry) => !implicitlySelected.has(entry));
-      onChange(explicitOnly);
-    };
+      if (includesAll) {
+        onChange([ALL_OPTION_VALUE]);
+        return;
+      }
 
-    // Custom summary formatter - only count explicit selections
-    const summaryFormatter = () => {
-      if (allSelected) {
-        return orderedOptions.find((opt) => opt.value === ALL_OPTION_VALUE)?.label || 'All';
+      // If user selects every specific option individually, collapse to "all".
+      if (
+        nonAllValues.length > 0 &&
+        nonAllValues.every((optValue) => nextValues.includes(optValue))
+      ) {
+        onChange([ALL_OPTION_VALUE]);
+        return;
       }
-      if (selectedExplicit.length === 0) {
-        return <span className="opacity-60">{field.placeholder || 'Select categories...'}</span>;
-      }
-      const selectedLabels = selectedExplicit
-        .map((v) => orderedOptions.find((o) => o.value === v)?.label)
-        .filter(Boolean);
-      if (selectedLabels.length === 1) {
-        return selectedLabels[0];
-      }
-      const [first, second, ...rest] = selectedLabels;
-      const suffix = rest.length > 0 ? ` +${rest.length}` : '';
-      return `${first}, ${second ?? ''}${suffix}`.trim();
-    };
-
-    if (isDisabled) {
-      return (
-        <div className="w-full cursor-not-allowed rounded-lg border border-(--border-muted) bg-(--bg-soft) px-3 py-2 text-sm opacity-60">
-          {summaryFormatter()}
-        </div>
-      );
     }
 
+    // Filter out implicitly selected values - only store explicit selections.
+    const explicitOnly = nextValues.filter((entry) => !implicitlySelected.has(entry));
+    onChange(explicitOnly);
+  };
+
+  // Custom summary formatter - only count explicit selections
+  const summaryFormatter = () => {
+    if (allSelected) {
+      return orderedOptions.find((opt) => opt.value === ALL_OPTION_VALUE)?.label || 'All';
+    }
+    if (selectedExplicit.length === 0) {
+      return <span className="opacity-60">{field.placeholder || 'Select categories...'}</span>;
+    }
+    const selectedLabels = selectedExplicit
+      .map((v) => orderedOptions.find((o) => o.value === v)?.label)
+      .filter(Boolean);
+    if (selectedLabels.length === 1) {
+      return selectedLabels[0];
+    }
+    const [first, second, ...rest] = selectedLabels;
+    const suffix = rest.length > 0 ? ` +${rest.length}` : '';
+    return `${first}, ${second ?? ''}${suffix}`.trim();
+  };
+
+  if (isDisabled) {
     return (
-      <DropdownList
-        options={dropdownOptions}
-        value={displayValue}
-        onChange={handleDropdownChange}
-        multiple
-        showCheckboxes
-        keepOpenOnSelect
-        placeholder={field.placeholder || 'Select categories...'}
-        widthClassName="w-full"
-        summaryFormatter={summaryFormatter}
-      />
+      <div className="w-full cursor-not-allowed rounded-lg border border-(--border-muted) bg-(--bg-soft) px-3 py-2 text-sm opacity-60">
+        {summaryFormatter()}
+      </div>
     );
   }
+
+  return (
+    <DropdownList
+      options={dropdownOptions}
+      value={displayValue}
+      onChange={handleDropdownChange}
+      multiple
+      showCheckboxes
+      keepOpenOnSelect
+      placeholder={field.placeholder || 'Select categories...'}
+      widthClassName="w-full"
+      summaryFormatter={summaryFormatter}
+    />
+  );
+};
+
+// Pill variant - inline toggle buttons that collapse past a threshold
+const MultiSelectPillsField = ({
+  field,
+  selected,
+  onChange,
+  isDisabled,
+}: MultiSelectVariantProps) => {
   const [isExpanded, setIsExpanded] = useState(false);
   // Initialize based on option count to avoid flash of expanded content
   const [needsCollapse, setNeedsCollapse] = useState(
@@ -351,5 +361,37 @@ export const MultiSelectField = ({
         </button>
       )}
     </div>
+  );
+};
+
+export const MultiSelectField = ({
+  field,
+  value: fieldValue,
+  onChange,
+  disabled,
+}: MultiSelectFieldProps) => {
+  const selected = fieldValue ?? EMPTY_SELECTION;
+  // disabled prop is already computed by SettingsContent.getDisabledState()
+  const isDisabled = disabled ?? false;
+
+  // Each variant is its own component so neither calls hooks conditionally.
+  if (field.variant === 'dropdown') {
+    return (
+      <MultiSelectDropdownField
+        field={field}
+        selected={selected}
+        onChange={onChange}
+        isDisabled={isDisabled}
+      />
+    );
+  }
+
+  return (
+    <MultiSelectPillsField
+      field={field}
+      selected={selected}
+      onChange={onChange}
+      isDisabled={isDisabled}
+    />
   );
 };

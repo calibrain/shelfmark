@@ -1,4 +1,4 @@
-type BookTargetChangeEvent = {
+export type BookTargetChangeEvent = {
   provider: string;
   bookId: string;
   target: string;

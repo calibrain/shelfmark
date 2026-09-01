@@ -6,6 +6,8 @@ import re
 import threading
 import time
 import unicodedata
+from contextlib import contextmanager
+from contextvars import ContextVar
 from dataclasses import replace
 from http import HTTPStatus
 from pathlib import Path
@@ -44,7 +46,7 @@ from shelfmark.release_sources import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Iterable
+    from collections.abc import Callable, Iterable, Iterator
     from pathlib import Path
     from threading import Event
 
@@ -579,6 +581,46 @@ def _looks_like_challenge_page(html: str) -> bool:
     return challenge_marker(html) is not None
 
 
+# Pages already fetched during the search in flight, keyed by URL. Scoped to one
+# DirectDownload.search() so nothing is carried between requests.
+_search_page_cache: ContextVar[dict[str, tuple[str, Tag | None]] | None] = ContextVar(
+    "aa_search_page_cache", default=None
+)
+
+
+@contextmanager
+def _search_page_reuse() -> Iterator[None]:
+    """Fetch each distinct AA search URL at most once per search.
+
+    One search asks AA for the same URL more than once. The language-filter retry in
+    `search()` re-runs every title variant, and when DIRECT_DOWNLOAD_LANGUAGE_FROM_PATH
+    is on the requested language is applied locally instead of as `&lang=`, so both
+    passes build a byte-identical URL - the retry differs only in the filtering it does
+    to the response it already had. A repeat is not a cheap round trip either: AA is
+    behind DDoS-Guard, so each one is a fresh browser solve, tens of seconds that buy
+    nothing. See issue #1285.
+    """
+    token = _search_page_cache.set({})
+    try:
+        yield
+    finally:
+        _search_page_cache.reset(token)
+
+
+def _is_reusable_answer(result: tuple[str, Tag | None]) -> bool:
+    """Whether a fetched page is an answer, rather than a giving-up worth retrying.
+
+    `_fetch_search_table_uncached` exists to rotate past mirrors that are not actually AA,
+    and when it runs out of them it *returns* instead of raising: a page with no results
+    table and no marker. Storing that would hand the language-filter retry - the pass this
+    cache exists for - a mirror set that may have recovered in between (DNS rotation, a
+    mirror coming back), turning a transient outage into "this book has no releases". A
+    real "No files found." is an answer and is worth keeping.
+    """
+    html, tbody = result
+    return tbody is not None or "No files found." in html or _looks_like_aa_page(html)
+
+
 # How much of an unreadable search page to quote in the debug log. Enough to carry the
 # <head> - title, injected challenge scripts - without pasting a 180 KB page into a log
 # file that ships inside the debug bundle.
@@ -624,6 +666,22 @@ def _log_untabled_search_page(url: str, html: str) -> None:
 
 
 def _fetch_search_table(url: str, selector: network.AAMirrorSelector) -> tuple[str, Tag | None]:
+    """Fetch the AA search page, reusing one already fetched during this search."""
+    cache = _search_page_cache.get()
+    if cache is not None and url in cache:
+        logger.debug("Reusing search page already fetched for this search: %s", url)
+        return cache[url]
+
+    result = _fetch_search_table_uncached(url, selector)
+
+    if cache is not None and _is_reusable_answer(result):
+        cache[url] = result
+    return result
+
+
+def _fetch_search_table_uncached(
+    url: str, selector: network.AAMirrorSelector
+) -> tuple[str, Tag | None]:
     """Fetch the AA search page, retrying past mirrors that are not actually AA.
 
     A parked or seized domain answers 200 with a page that has no results table and no
@@ -1961,6 +2019,22 @@ class DirectDownloadSource(ReleaseSource):
         return search_books(query, replace(filters, lang=None))
 
     def search(
+        self,
+        book: BookMetadata,
+        plan: ReleaseSearchPlan,
+        *,
+        expand_search: bool = False,
+        content_type: str = "ebook",
+    ) -> list[Release]:
+        """Search for releases using the book's metadata.
+
+        The whole fan-out runs under one page cache, so a URL built twice by different
+        passes is fetched once. See `_search_page_reuse`.
+        """
+        with _search_page_reuse():
+            return self._search(book, plan, expand_search=expand_search, content_type=content_type)
+
+    def _search(
         self,
         book: BookMetadata,
         plan: ReleaseSearchPlan,

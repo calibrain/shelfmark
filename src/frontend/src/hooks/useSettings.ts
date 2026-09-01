@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback } from 'react';
 
 import { getSettings, updateSettings, executeSettingsAction } from '../services/api';
 import type {
@@ -23,6 +23,7 @@ import {
   setThemePreference,
   THEME_FIELD,
 } from '../utils/themePreference';
+import { useLatestCallback } from './useLatestCallback';
 import { useMountEffect } from './useMountEffect';
 
 interface FetchSettingsOptions {
@@ -137,13 +138,9 @@ export function useSettings(): UseSettingsReturn {
     () => initialState?.originalValues ?? {},
   );
   const [isSaving, setIsSaving] = useState(false);
-  const valuesRef = useRef<SettingsValues>({});
-  const originalValuesRef = useRef<SettingsValues>({});
-
-  valuesRef.current = values;
-  originalValuesRef.current = originalValues;
-
-  const applySettingsResponse = useCallback(
+  // Stable identity, latest `values`/`originalValues`. Not an Effect Event: it is called
+  // from async fetch and save continuations, not from an Effect. See useLatestCallback.
+  const applySettingsResponse = useLatestCallback(
     (response: SettingsResponse, options: { preserveDirtyValues?: boolean } = {}) => {
       const { preserveDirtyValues = false } = options;
       cachedSettingsResponse = response;
@@ -156,11 +153,7 @@ export function useSettings(): UseSettingsReturn {
       setError(null);
 
       const nextValues = preserveDirtyValues
-        ? mergeFetchedSettingsWithDirtyValues(
-            hydratedState.values,
-            valuesRef.current,
-            originalValuesRef.current,
-          )
+        ? mergeFetchedSettingsWithDirtyValues(hydratedState.values, values, originalValues)
         : hydratedState.values;
 
       setValues(nextValues);
@@ -170,7 +163,6 @@ export function useSettings(): UseSettingsReturn {
         setSelectedTab((current) => current ?? hydratedState.selectedTab);
       }
     },
-    [],
   );
 
   const fetchSettings = useCallback(

@@ -1,8 +1,8 @@
-import { useRef } from 'react';
+import { useEffectEvent } from 'react';
 import type { Dispatch, SetStateAction } from 'react';
 
 import type { Book } from '../../types';
-import { onBookTargetChange } from '../../utils/bookTargetEvents';
+import { onBookTargetChange, type BookTargetChangeEvent } from '../../utils/bookTargetEvents';
 import { useMountEffect } from '../useMountEffect';
 
 interface UseBookTargetDeselectSyncOptions {
@@ -14,15 +14,14 @@ export const useBookTargetDeselectSync = ({
   activeListValue,
   setBooks,
 }: UseBookTargetDeselectSyncOptions): void => {
-  const activeListValueRef = useRef(activeListValue);
-  activeListValueRef.current = activeListValue;
-
-  useMountEffect(() => {
-    return onBookTargetChange((event) => {
-      if (event.selected) return;
-      const currentValue = activeListValueRef.current;
-      if (!currentValue || String(currentValue) !== event.target) return;
-      setBooks((prev) => prev.filter((book) => book.provider_id !== event.bookId));
-    });
+  const handleTargetChange = useEffectEvent((event: BookTargetChangeEvent) => {
+    if (event.selected) return;
+    if (!activeListValue || String(activeListValue) !== event.target) return;
+    setBooks((prev) => prev.filter((book) => book.provider_id !== event.bookId));
   });
+
+  // Wrapped rather than handed over directly: an Effect Event must not be given to
+  // something that stores it, and `onBookTargetChange` puts its argument in a
+  // module-level listener set. Same shape as useDismiss.
+  useMountEffect(() => onBookTargetChange((event) => handleTargetChange(event)));
 };

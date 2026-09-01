@@ -1,16 +1,14 @@
-import { useEffect, useRef, type DependencyList, type EffectCallback } from 'react';
+import { useEffect, useEffectEvent, type DependencyList, type EffectCallback } from 'react';
 
 export function useMountEffect(effect: EffectCallback): void {
-  const effectRef = useRef(effect);
-  effectRef.current = effect;
+  const runEffect = useEffectEvent(effect);
 
-  useEffect(() => effectRef.current(), []);
+  useEffect(() => runEffect(), []);
 }
 
 export function useDependencyEffect(effect: EffectCallback, deps: DependencyList): void {
-  const effectRef = useRef(effect);
-  effectRef.current = effect;
+  const runEffect = useEffectEvent(effect);
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => effectRef.current(), deps);
+  useEffect(() => runEffect(), deps);
 }

@@ -4,6 +4,7 @@ import { forwardRef, useImperativeHandle, useMemo, useRef, useState } from 'reac
 import { useSearchMode } from '../contexts/SearchModeContext';
 import { useSearchBarAutocomplete } from '../hooks/searchBar/useSearchBarAutocomplete';
 import { useDismiss } from '../hooks/useDismiss';
+import { useLatestCallback } from '../hooks/useLatestCallback';
 import type { DynamicFieldOption } from '../services/api';
 import type { ContentType, MetadataSearchField, QueryTargetOption, SortOption } from '../types';
 import { SearchBarAutocompleteSession } from './SearchBarAutocompleteSession';
@@ -196,8 +197,9 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
     const { searchMode } = useSearchMode();
     const inputRef = useRef<HTMLInputElement>(null);
     const buttonRef = useRef<HTMLButtonElement>(null);
-    const onSubmitRef = useRef(onSubmit);
-    onSubmitRef.current = onSubmit;
+    // Deferred submits below run from a timeout, not an Effect, so this is a latest-value
+    // callback rather than an Effect Event. See useLatestCallback.
+    const submitLatest = useLatestCallback(() => onSubmit());
     const selectorRef = useRef<HTMLDivElement>(null);
     const hasSearchQuery = hasActiveValue(value);
     const [isSelectorOpen, setIsSelectorOpen] = useState(false);
@@ -730,7 +732,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                         onClick={() => {
                           onChange(option.value, option.label);
                           setIsSelectOpen(false);
-                          setTimeout(() => onSubmitRef.current(), 0);
+                          setTimeout(() => submitLatest(), 0);
                         }}
                         className={`flex w-full items-center gap-3 px-5 py-2.5 text-left text-sm transition-colors ${
                           isSelected ? '' : 'hover-surface'
@@ -800,7 +802,7 @@ export const SearchBar = forwardRef<SearchBarHandle, SearchBarProps>(
                           setAutocompleteSelection(option.value, option.label);
                           onChange(option.value, option.label);
                           setIsAutocompleteOpen(false);
-                          setTimeout(() => onSubmitRef.current(), 0);
+                          setTimeout(() => submitLatest(), 0);
                         }}
                         className="hover-surface w-full px-5 py-3 text-left text-sm transition-colors"
                         style={{ color: 'var(--text)' }}

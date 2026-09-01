@@ -44,6 +44,10 @@ export function useDescriptionOverflow({
     return () => {
       observer.disconnect();
     };
+    // `descriptionKey` is never read here - it is the trigger. When the modal swaps to a
+    // different release the text changes under the same element, and the overflow has to
+    // be measured again; drop it and the clamp keeps the previous release's answer.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [descriptionExpanded, descriptionKey, descriptionRef]);
 
   return descriptionOverflows;

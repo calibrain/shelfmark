@@ -97,7 +97,7 @@ end-to-end (`docker compose up` + suite + teardown) and passes.
 > **`full` profile exercises the real end-to-end
 > CF solve**: AA search/detail are reachable, but the AA slow-download link points
 > at the gate, so downloading Moby-Dick forces the in-image headless Chromium to
-> detect the challenge, solve it (`_bypass_method_cdp_solve`), and fetch the file —
+> detect the challenge, solve it (`_bypass_method_cdp_gui_click`), and fetch the file —
 > verified live (`Challenge detected: cloudflare` → `Bypass successful` → Moby-Dick
 > in `/books`).
 >
@@ -151,7 +151,7 @@ demand (excluded from the PR matrix). It spins up, with **no** mock bypasser, an
   gate (`mock-cf`), whose challenge page runs JS that issues `cf_clearance` and
   reloads. Downloading Moby-Dick forces the in-image headless Chromium (seleniumbase
   CDP, in the `shelfmark` image via `xvfb`+`chromium`) to load the gate, detect the
-  challenge (`Challenge detected: cloudflare`), solve it (`_bypass_method_cdp_solve`),
+  challenge (`Challenge detected: cloudflare`), solve it (`_bypass_method_cdp_gui_click`),
   and fetch the cleared "Download now" page → the file lands in `/books`. That
   outcome is *only* reachable if Chrome solved the gate — the literal "spin a Chrome
   browser" path and the strongest guard for the #1 cluster. Two subtleties this

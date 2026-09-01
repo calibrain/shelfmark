@@ -112,18 +112,53 @@ def _normalize_languages(languages: list[str] | None, user_id: int | None) -> li
     return _to_language_codes(languages, source="the search request")
 
 
-def _pick_search_author(book: BookMetadata) -> str:
-    author = book.search_author or (book.authors[0] if book.authors else "")
-    if not author:
-        return ""
+def first_author(value: str) -> str:
+    """The first name in a possibly comma-joined author string.
 
-    # `search_author` can arrive as the display string for the whole credit list
-    # ("Author, Translator, Narrator"), which Anna's Archive answers with nothing at
-    # all. Trim it to the first name, which is what the authors list already gets.
-    if "," in author:
-        author = author.split(",")[0].strip()
+    Both ends of the app hand us every contributor in one string. The frontend joins
+    `authors` with ", " for display (`bookTransformers.ts`) and that display string comes
+    straight back as the `author` request parameter, while several providers set
+    `search_author` from the same joined text. Searching a release source for
+    "Blindness Jose Saramago, Giovanni Pontiero, ..." - the author plus two translators -
+    matches nothing, and the user is told the book has no releases at all.
 
-    return author
+    A "Last, First" author collapses to the surname, which is still a usable search term
+    and is what the authors[] fallback has always done with the same input. See #1252.
+    """
+    first, _, _ = value.partition(",")
+    return first.strip()
+
+
+def pick_search_author(book: BookMetadata) -> str:
+    """The one author a release query should carry, from whichever field holds one.
+
+    Every release source that builds its own query wants exactly this, so it lives here
+    rather than being re-derived per source - the two branches below drifted apart once
+    already (#1252) and the IRC source carried a third copy of the same preference.
+
+    #1290 fixed the same report by merging the two branches and trimming whichever one
+    won; this keeps that outcome ("Blindness Jose Saramago" from either field, measured
+    there at 0 releases before and 49 after) and adds the empty-narrowing fallback, so a
+    credit list that merely starts with a blank entry does not fall out to title-only.
+    """
+    # Narrowing can come back empty - the joined string starts with a comma because the
+    # first contributor was blank, and `authors.join(', ')` does not drop the empty entry.
+    # Falling through to authors[] then still finds a usable name; returning "" would
+    # search by title alone and lose the author we were holding all along.
+    if book.search_author:
+        narrowed = first_author(book.search_author)
+        if narrowed:
+            return narrowed
+
+    # A bare string here would otherwise be iterated one character at a time; the IRC
+    # source guarded against exactly that before it shared this helper.
+    authors = book.authors if isinstance(book.authors, list) else [book.authors or ""]
+    for author in authors:
+        narrowed = first_author(author or "")
+        if narrowed:
+            return narrowed
+
+    return ""
 
 
 def _pick_search_title(book: BookMetadata) -> str:
@@ -150,7 +185,7 @@ def build_release_search_plan(
     if manual_query:
         resolved_manual_query = manual_query.strip()[:MANUAL_QUERY_MAX_LEN] or None
 
-    author = _pick_search_author(book)
+    author = pick_search_author(book)
     base_title = _pick_search_title(book)
 
     if resolved_manual_query:

@@ -34,6 +34,7 @@ import {
 import { getNestedValue, toComparableText, toStringValue } from '../utils/objectHelpers';
 import { toBookPlanPayload } from '../utils/packReview';
 import { getReleaseFormats } from '../utils/releaseFormats';
+import { INITIAL_ENTER_ANIMATION, nextEnterAnimation } from '../utils/releaseModalEnterAnimation';
 import { buildReleaseDownloadPayload, type ReleaseDownloadOptions } from '../utils/releasePayload';
 import {
   getBookTitleCandidates,
@@ -889,6 +890,11 @@ const ReleaseModalSession = ({
     } finally {
       setIsRequestingBook(false);
     }
+    // Kept against the advisory: the body really does read both. `handleClose` is aliased
+    // from the `onClose` prop, which is why the compiler names the source instead, and
+    // dropping `contentType` would let this close over a stale one and request the wrong
+    // format. Correctness first; the cost is an extra callback identity.
+    // oxlint-disable-next-line react/memo-dependencies
   }, [book, onRequestBook, isRequestingBook, contentType, handleClose]);
 
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -1135,7 +1141,9 @@ const ReleaseModalSession = ({
     const narratorField = book.display_fields.find((f) => f.icon === 'microphone');
 
     return { starField, ratingsField, usersField, pagesField, lengthField, narratorField };
-  }, [book?.display_fields]);
+    // `book`, not `book?.display_fields`: the body reads `book.display_fields`
+    // unguarded after the early return, which is the dependency the compiler infers.
+  }, [book]);
 
   const getReleaseActionMode = useCallback(
     (release: Release): RequestPolicyMode => {
@@ -1286,6 +1294,9 @@ const ReleaseModalSession = ({
         setPackSubmitting(false);
       }
     },
+    // Same as handleRequestBook above: the body reads `onDownload`, `contentType` and
+    // `handleClose`, so they stay in the list whatever the advisory infers.
+    // oxlint-disable-next-line react/memo-dependencies
     [book, packReview, onDownload, contentType, handleClose],
   );
 
@@ -2450,7 +2461,7 @@ const ReleaseModalSession = ({
 
 export const ReleaseModal = ({ book, onClose, ...rest }: ReleaseModalProps) => {
   const [isClosing, setIsClosing] = useState(false);
-  const previousSessionKeyRef = useRef<string | null>(null);
+  const [enterAnimation, setEnterAnimation] = useState(INITIAL_ENTER_ANIMATION);
 
   const handleClose = useCallback(() => {
     setIsClosing(true);
@@ -2474,12 +2485,13 @@ export const ReleaseModal = ({ book, onClose, ...rest }: ReleaseModalProps) => {
       ].join('|')
     : null;
 
-  const animateEnter =
-    !rest.combinedMode ||
-    previousSessionKeyRef.current === null ||
-    previousSessionKeyRef.current === sessionKey;
-
-  previousSessionKeyRef.current = sessionKey;
+  // Decided once per session key and held for that session's lifetime, so a
+  // re-render mid-session cannot restart the enter animation.
+  const nextAnimation = nextEnterAnimation(enterAnimation, sessionKey, rest.combinedMode != null);
+  if (nextAnimation !== enterAnimation) {
+    setEnterAnimation(nextAnimation);
+  }
+  const animateEnter = nextAnimation.animate;
 
   if (!book && !isClosing) return null;
   if (!book || !sessionKey) return null;

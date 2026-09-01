@@ -347,6 +347,10 @@ function SettingsContentPanel({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = 0;
     }
+    // `tab.name` is never read here - it is the trigger, and the whole point: the scroll
+    // position resets *because* the tab changed. Removing it strands the new tab at the
+    // previous one's offset.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [embedded, tab.name]);
 
   const updateCustomFieldUiState = useCallback((fieldKey: string, key: string, value: unknown) => {
@@ -407,6 +411,9 @@ function SettingsContentPanel({
     if (scrollRef.current) {
       scrollRef.current.scrollTop = 0;
     }
+    // `activeTakeOverFieldKey` is never read here - it is the trigger. Entering or leaving
+    // a subpage takeover is exactly when the scroll must reset.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [embedded, activeTakeOverFieldKey]);
 
   const visibleFields = useMemo(() => {

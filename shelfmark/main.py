@@ -1180,6 +1180,12 @@ def api_config() -> Response | tuple[Response, int]:
                 [],
                 user_id=db_user_id,
             ),
+            # The client must not give up before this budget does. `/api/releases`
+            # answers a spent budget with a message naming the real cause (a protection
+            # challenge nobody could solve); a browser that aborted first replaces it
+            # with a generic network/proxy error and RELEASE_SEARCH_TIMEOUT becomes a
+            # setting the user can raise with no visible effect. See issue #1285.
+            "release_search_timeout": search_deadline.budget_seconds(),
             "settings_enabled": _is_config_dir_writable(),
             "onboarding_complete": _get_onboarding_complete(),
             # Default sort orders
@@ -2947,6 +2953,10 @@ def api_releases() -> Response | tuple[Response, int]:
         elif provider == "manual":
             resolved_title = title_param or manual_query or "Manual Search"
             resolved_author = author_param or ""
+            # The release modal sends `authors.join(', ')` as `author`, so the commas here
+            # are joins between contributors, not part of one name. This split is the only
+            # place that knows that, so `search_author` comes from it rather than from the
+            # joined text - see issue #1252.
             authors = [a.strip() for a in resolved_author.split(",") if a.strip()]
 
             book = BookMetadata(
@@ -2955,7 +2965,7 @@ def api_releases() -> Response | tuple[Response, int]:
                 provider_display_name="Manual Search",
                 title=resolved_title,
                 search_title=resolved_title,
-                search_author=resolved_author or None,
+                search_author=authors[0] if authors else None,
                 authors=authors,
             )
         else:

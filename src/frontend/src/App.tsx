@@ -32,6 +32,7 @@ import {
 import { useActivity } from './hooks/useActivity';
 import { useAuth } from './hooks/useAuth';
 import { useDownloadTracking } from './hooks/useDownloadTracking';
+import { useLatestCallback } from './hooks/useLatestCallback';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { useMountEffect } from './hooks/useMountEffect';
 import { useRealtimeStatus } from './hooks/useRealtimeStatus';
@@ -73,6 +74,7 @@ import type {
   ActingAsUserSelection,
   MetadataProviderSummary,
   MetadataSearchConfig,
+  MetadataSearchField,
   QueuedDownloadResult,
   QueryTargetOption,
   SearchMode,
@@ -492,8 +494,6 @@ function App() {
   });
 
   // When a book is removed from the Hardcover list currently being browsed, remove it from results
-  const searchFieldValuesRef = useRef(searchFieldValues);
-  searchFieldValuesRef.current = searchFieldValues;
   useBookTargetDeselectSync({
     activeListValue: searchFieldValues.hardcover_list,
     setBooks,
@@ -605,24 +605,6 @@ function App() {
     };
   }, [effectiveActingAsUser, pendingOnBehalfDownload]);
 
-  // Wire up logout callback to clear search state
-  const handleLogoutWithCleanup = useCallback(async () => {
-    await handleLogout();
-    resetSearchResultsState();
-    setActiveQueryTarget('general');
-    setPendingRequestPayload(null);
-    setPendingRequestExtraPayloads([]);
-    setActingAsUser(null);
-    setAdminUsers([]);
-    setAdminUsersError(null);
-    setHasLoadedAdminUsers(false);
-    setPendingOnBehalfDownload(null);
-    setFulfillingRequest(null);
-    resetActivity();
-    setSettingsOpen(false);
-    setSelfSettingsOpen(false);
-  }, [handleLogout, resetActivity, resetSearchResultsState]);
-
   // Combined mode state (ebook + audiobook in one transaction)
   const [combinedState, setCombinedState] = useState<CombinedSelectionState | null>(null);
 
@@ -655,20 +637,6 @@ function App() {
     setDownloadsSidebarOpen(true);
     prefetchActivityHistory();
   }, [downloadsSidebarOpen, prefetchActivityHistory]);
-  const handleSettingsClick = useCallback(() => {
-    if (config?.settings_enabled) {
-      if (authIsAdmin) {
-        void primeUsersCache();
-        void primeSettingsCache();
-        setSettingsOpen(true);
-      } else {
-        setSelfSettingsOpen(true);
-      }
-      return;
-    }
-    setConfigBannerOpen(true);
-  }, [authIsAdmin, config?.settings_enabled]);
-
   const headerRef = useCallback((el: HTMLDivElement | null) => {
     if (headerObserverRef.current) {
       headerObserverRef.current.disconnect();
@@ -685,6 +653,39 @@ function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selfSettingsOpen, setSelfSettingsOpen] = useState(false);
   const [configBannerOpen, setConfigBannerOpen] = useState(false);
+
+  // Wire up logout callback to clear search state
+  const handleLogoutWithCleanup = useCallback(async () => {
+    await handleLogout();
+    resetSearchResultsState();
+    setActiveQueryTarget('general');
+    setPendingRequestPayload(null);
+    setPendingRequestExtraPayloads([]);
+    setActingAsUser(null);
+    setAdminUsers([]);
+    setAdminUsersError(null);
+    setHasLoadedAdminUsers(false);
+    setPendingOnBehalfDownload(null);
+    setFulfillingRequest(null);
+    resetActivity();
+    setSettingsOpen(false);
+    setSelfSettingsOpen(false);
+  }, [handleLogout, resetActivity, resetSearchResultsState]);
+
+  const handleSettingsClick = useCallback(() => {
+    if (config?.settings_enabled) {
+      if (authIsAdmin) {
+        void primeUsersCache();
+        void primeSettingsCache();
+        setSettingsOpen(true);
+      } else {
+        setSelfSettingsOpen(true);
+      }
+      return;
+    }
+    setConfigBannerOpen(true);
+  }, [authIsAdmin, config?.settings_enabled]);
+
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   useShowOnboardingDebug({
     setOnboardingOpen,
@@ -1075,48 +1076,43 @@ function App() {
 
   // When downloading a book while browsing a Hardcover list the user owns,
   // automatically remove it from that list (fire-and-forget).
-  const searchFieldLabelsRef = useRef(searchFieldLabels);
-  searchFieldLabelsRef.current = searchFieldLabels;
-  const metadataConfigRef = useRef(activeMetadataConfig);
-  metadataConfigRef.current = activeMetadataConfig;
+  // Stable identity for the download handlers below, while still reading the current
+  // search field values, labels and metadata config. Not an Effect Event: the callers
+  // are download handlers, not Effects. See useLatestCallback.
+  const removeBookFromActiveList = useLatestCallback((book: Book) => {
+    if (config?.hardcover_auto_remove_on_download === false) return;
+    if (!bookSupportsTargets(book)) return;
+    const activeList = searchFieldValues.hardcover_list;
+    if (!activeList) return;
+    const target = String(activeList);
+    const provider = book.provider;
+    const bookId = book.provider_id;
+    if (!provider || !bookId) return;
 
-  const removeBookFromActiveList = useCallback(
-    (book: Book) => {
-      if (config?.hardcover_auto_remove_on_download === false) return;
-      if (!bookSupportsTargets(book)) return;
-      const activeList = searchFieldValuesRef.current.hardcover_list;
-      if (!activeList) return;
-      const target = String(activeList);
-      const provider = book.provider;
-      const bookId = book.provider_id;
-      if (!provider || !bookId) return;
+    // Only auto-remove from lists the user owns (Reading Status / My Lists)
+    const listField = activeMetadataConfig?.search_fields.find(
+      (f) => f.key === 'hardcover_list' && f.type === 'DynamicSelectSearchField',
+    );
+    if (listField && listField.type === 'DynamicSelectSearchField') {
+      const group = getDynamicOptionGroup(listField.options_endpoint, target);
+      if (group && group !== 'Reading Status' && group !== 'My Lists') return;
+    }
 
-      // Only auto-remove from lists the user owns (Reading Status / My Lists)
-      const listField = metadataConfigRef.current?.search_fields.find(
-        (f) => f.key === 'hardcover_list' && f.type === 'DynamicSelectSearchField',
-      );
-      if (listField && listField.type === 'DynamicSelectSearchField') {
-        const group = getDynamicOptionGroup(listField.options_endpoint, target);
-        if (group && group !== 'Reading Status' && group !== 'My Lists') return;
-      }
-
-      void setBookTargetState(provider, bookId, target, false)
-        .then((result) => {
-          if (result.changed) {
-            emitBookTargetChange({
-              provider,
-              bookId,
-              target,
-              selected: false,
-            });
-            const listName = searchFieldLabelsRef.current['hardcover_list'];
-            showToast(`Removed from ${listName || 'list'}`, 'info');
-          }
-        })
-        .catch(() => undefined);
-    },
-    [config?.hardcover_auto_remove_on_download, showToast],
-  );
+    void setBookTargetState(provider, bookId, target, false)
+      .then((result) => {
+        if (result.changed) {
+          emitBookTargetChange({
+            provider,
+            bookId,
+            target,
+            selected: false,
+          });
+          const listName = searchFieldLabels['hardcover_list'];
+          showToast(`Removed from ${listName || 'list'}`, 'info');
+        }
+      })
+      .catch(() => undefined);
+  });
 
   const executeBookDownload = useCallback(
     async (book: Book, onBehalfOfUserId?: number): Promise<void> => {
@@ -1911,11 +1907,16 @@ function App() {
 
   // Keep the last known search fields so queryTargets doesn't collapse to
   // [general] while the metadata config briefly reloads on content type switch.
-  const lastKnownSearchFields = useRef(activeMetadataConfig?.search_fields ?? []);
-  if (activeMetadataConfig?.search_fields) {
-    lastKnownSearchFields.current = activeMetadataConfig.search_fields;
+  // Held in state rather than a ref written during render: a ref read back in the same
+  // pass is what `react/refs` forbids, and this is the adjust-state-during-render shape
+  // React documents for exactly this - carry the previous value until a new one arrives.
+  const [stableSearchFields, setStableSearchFields] = useState<MetadataSearchField[]>(
+    () => activeMetadataConfig?.search_fields ?? [],
+  );
+  const incomingSearchFields = activeMetadataConfig?.search_fields;
+  if (incomingSearchFields && incomingSearchFields !== stableSearchFields) {
+    setStableSearchFields(incomingSearchFields);
   }
-  const stableSearchFields = lastKnownSearchFields.current;
 
   const queryTargets = useMemo<QueryTargetOption[]>(
     () =>
@@ -1953,7 +1954,9 @@ function App() {
         ? (queryTargets.find((target) => target.field?.key === seriesBrowseCapability.field_key) ??
           null)
         : null,
-    [queryTargets, seriesBrowseCapability?.field_key],
+    // `seriesBrowseCapability` whole: the body reads `.field_key` off it unguarded
+    // inside the ternary, so that object is the dependency the compiler infers.
+    [queryTargets, seriesBrowseCapability],
   );
 
   const activeQueryValue = useMemo(() => {
@@ -2245,7 +2248,9 @@ function App() {
 
       return book.provider === activeMetadataConfig.provider;
     },
-    [activeMetadataConfig?.provider, seriesBrowseCapability?.sort, seriesBrowseTarget?.field],
+    // `activeMetadataConfig` whole: the body reads `.provider` off it unguarded on
+    // the last line, so that object is the dependency the compiler infers.
+    [activeMetadataConfig, seriesBrowseCapability?.sort, seriesBrowseTarget?.field],
   );
 
   const handleManualSearch = useCallback(() => {
