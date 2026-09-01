@@ -1907,7 +1907,6 @@ function App() {
 
   // Keep the last known search fields so queryTargets doesn't collapse to
   // [general] while the metadata config briefly reloads on content type switch.
-<<<<<<< HEAD
   // Held in state rather than a ref written during render: a ref read back in the same
   // pass is what `react/refs` forbids, and this is the adjust-state-during-render shape
   // React documents for exactly this - carry the previous value until a new one arrives.
@@ -1918,13 +1917,6 @@ function App() {
   if (incomingSearchFields && incomingSearchFields !== stableSearchFields) {
     setStableSearchFields(incomingSearchFields);
   }
-=======
-  const lastKnownSearchFields = useRef(activeMetadataConfig?.search_fields ?? []);
-  if (activeMetadataConfig?.search_fields) {
-    lastKnownSearchFields.current = activeMetadataConfig.search_fields;
-  }
-  const stableSearchFields = lastKnownSearchFields.current;
->>>>>>> main
 
   const queryTargets = useMemo<QueryTargetOption[]>(
     () =>
