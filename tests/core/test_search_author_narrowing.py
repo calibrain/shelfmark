@@ -2,7 +2,7 @@
 
 `bookTransformers.ts` joins a book's authors with ", " for display, and the release modal
 sends that display string back as the `author` request parameter; several providers set
-`search_author` from equally joined text. `_pick_search_author` returned it verbatim while
+`search_author` from equally joined text. `pick_search_author` returned it verbatim while
 the authors[] fallback beside it deliberately narrowed to the first name, so a book with
 translators was searched for as
 
@@ -12,7 +12,7 @@ which matches nothing on Anna's Archive. The bypass succeeds, the search returns
 and the user is told the book has no releases. Reported on issue #1252.
 """
 
-from shelfmark.core.search_plan import build_release_search_plan, first_author
+from shelfmark.core.search_plan import build_release_search_plan, first_author, pick_search_author
 from shelfmark.metadata_providers import BookMetadata
 
 # The exact string from the report, as the frontend would join it.
@@ -87,3 +87,54 @@ def test_irc_query_uses_one_author_too():
     book = _book(search_author=JOINED, authors=[a.strip() for a in JOINED.split(",")])
 
     assert IRCReleaseSource()._build_query(book) == "Blindness José Saramago"
+
+
+def test_a_blank_leading_contributor_falls_back_instead_of_dropping_the_author():
+    """`authors.join(', ')` does not drop an empty entry, so the join can start with ",".
+
+    Narrowing that to "" and stopping would search by title alone - losing an author the
+    book was holding all along, in authors[], one line below.
+    """
+    book = _book(search_author=", Giovanni Pontiero", authors=["", "Giovanni Pontiero"])
+
+    assert _queries(book) == ["Blindness Giovanni Pontiero"]
+
+
+def test_a_blank_leading_contributor_does_not_strand_the_irc_query_either():
+    from shelfmark.release_sources.irc.source import IRCReleaseSource
+
+    book = _book(search_author=", Giovanni Pontiero", authors=["", "Giovanni Pontiero"])
+
+    assert IRCReleaseSource()._build_query(book) == "Blindness Giovanni Pontiero"
+
+
+def test_an_all_blank_author_leaves_a_clean_title_only_query():
+    """No trailing space, no empty part: the query is just the title."""
+    from shelfmark.release_sources.irc.source import IRCReleaseSource
+
+    book = _book(search_author=", ,", authors=["", " "])
+
+    assert _queries(book) == ["Blindness"]
+    assert IRCReleaseSource()._build_query(book) == "Blindness"
+
+
+def test_a_bare_string_in_authors_is_not_iterated_character_by_character():
+    """The IRC source guarded against this before it shared `pick_search_author`."""
+    book = _book(authors="José Saramago")
+
+    assert pick_search_author(book) == "José Saramago"
+
+
+def test_the_producers_narrow_before_the_field_is_ever_set():
+    """The two places that join also hold the split, so they set search_author from it.
+
+    Narrowing downstream cannot tell a comma that joins contributors from one inside a
+    single name; here the information is still present. See the same-named finding.
+    """
+    from shelfmark.release_sources import BrowseRecord, browse_record_to_book_metadata
+
+    record = BrowseRecord(id="abc", title="Blindness", source="direct_download")
+    book = browse_record_to_book_metadata(record, author_override=JOINED)
+
+    assert book.search_author == "José Saramago"
+    assert book.authors == [a.strip() for a in JOINED.split(",")]

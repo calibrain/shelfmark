@@ -129,14 +129,36 @@ def first_author(value: str) -> str:
     return first.strip()
 
 
-def _pick_search_author(book: BookMetadata) -> str:
+def pick_search_author(book: BookMetadata) -> str:
+    """The one author a release query should carry, from whichever field holds one.
+
+    Every release source that builds its own query wants exactly this, so it lives here
+    rather than being re-derived per source - the two branches below drifted apart once
+    already (#1252) and the IRC source carried a third copy of the same preference.
+
+    #1290 fixed the same report by merging the two branches and trimming whichever one
+    won; this keeps that outcome ("Blindness Jose Saramago" from either field, measured
+    there at 0 releases before and 49 after) and adds the empty-narrowing fallback, so a
+    credit list that merely starts with a blank entry does not fall out to title-only.
+    """
+    # Narrowing can come back empty - the joined string starts with a comma because the
+    # first contributor was blank, and `authors.join(', ')` does not drop the empty entry.
+    # Falling through to authors[] then still finds a usable name; returning "" would
+    # search by title alone and lose the author we were holding all along.
     if book.search_author:
-        return first_author(book.search_author)
+        narrowed = first_author(book.search_author)
+        if narrowed:
+            return narrowed
 
-    if not book.authors:
-        return ""
+    # A bare string here would otherwise be iterated one character at a time; the IRC
+    # source guarded against exactly that before it shared this helper.
+    authors = book.authors if isinstance(book.authors, list) else [book.authors or ""]
+    for author in authors:
+        narrowed = first_author(author or "")
+        if narrowed:
+            return narrowed
 
-    return first_author(book.authors[0])
+    return ""
 
 
 def _pick_search_title(book: BookMetadata) -> str:
@@ -163,7 +185,7 @@ def build_release_search_plan(
     if manual_query:
         resolved_manual_query = manual_query.strip()[:MANUAL_QUERY_MAX_LEN] or None
 
-    author = _pick_search_author(book)
+    author = pick_search_author(book)
     base_title = _pick_search_title(book)
 
     if resolved_manual_query:

@@ -362,7 +362,6 @@ export function useReleaseSearchSession(
     indexerFilterInitializedRef.current = new Set<string>();
     const nextInitialActiveTab = preferredDefaultReleaseSource || '';
     initialActiveTabRef.current = nextInitialActiveTab;
-    activeTabRef.current = nextInitialActiveTab;
     pendingStatusRef.current = null;
     lastStatusTimeRef.current = 0;
     if (statusTimeoutRef.current) {

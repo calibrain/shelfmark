@@ -2,14 +2,10 @@ import { useState, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { DEFAULT_SUPPORTED_FORMATS } from '../data/languages';
-import {
-  searchBooks,
-  searchMetadata,
-  AuthenticationError,
-  isApiResponseError,
-} from '../services/api';
+import { searchBooks, searchMetadata, AuthenticationError } from '../services/api';
 import type { Book, AppConfig, AdvancedFilterState, ContentType, SearchMode } from '../types';
 import { LANGUAGE_OPTION_DEFAULT } from '../utils/languageFilters';
+import { describeSearchFailure } from '../utils/searchFailureMessage';
 
 const DEFAULT_FORMAT_SELECTION = DEFAULT_SUPPORTED_FORMATS;
 
@@ -268,18 +264,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
           handleSearchError(error, 'Search failed');
         } else {
           console.error('Search failed:', error);
-          const message = error instanceof Error ? error.message : 'Search failed';
-          // Prefer whatever the server said. It knows why the search failed - a spent
-          // search budget, an unsolved protection challenge - and blanket-replacing that
-          // with the mirrors line below told users their network was broken when it was
-          // not. Only fall back when nothing came back from the server. See issue #1285.
-          const serverMessage = isApiResponseError(error) ? error.serverMessage : undefined;
-          const friendly =
-            serverMessage ??
-            (message.includes('Network restricted') || message.includes('Unable to reach')
-              ? message
-              : 'Unable to reach download source. Network may be restricted or mirrors blocked.');
-          showToast(friendly, 'error');
+          showToast(describeSearchFailure(error), 'error');
         }
       } finally {
         setIsSearching(false);

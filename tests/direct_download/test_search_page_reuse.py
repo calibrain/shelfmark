@@ -107,6 +107,47 @@ def test_a_failure_is_not_cached(monkeypatch):
     assert fetched == [url], "the successful retry should be the only fetch"
 
 
+def test_a_give_up_page_is_not_cached(monkeypatch):
+    """Exhausting the mirrors is not an answer, and the retry must get a fresh attempt.
+
+    `_fetch_search_table_uncached` exists to rotate past domains that are not AA, and when
+    it runs out it *returns* rather than raising: a page with no results table and no
+    marker. Storing that would hand the language-filter retry - the pass this cache exists
+    for - a mirror set that may have recovered since, turning a transient outage into
+    "this book has no releases".
+    """
+    parked = "<html><body>This domain is for sale.</body></html>"
+    fetched: list[str] = []
+    monkeypatch.setattr(
+        dd.downloader, "html_get_page", lambda url, **_k: fetched.append(url) or parked
+    )
+    monkeypatch.setattr(dd.network, "get_available_aa_urls", lambda: ["https://annas-archive.gl"])
+    url = "https://annas-archive.gl/search?q=dune"
+
+    with dd._search_page_reuse():
+        assert dd._fetch_search_table(url, _Selector()) == (parked, None)
+        assert dd._fetch_search_table(url, _Selector()) == (parked, None)
+
+    assert fetched == [url, url], "the second pass must not inherit the first's give-up"
+
+
+def test_a_genuinely_empty_result_is_still_cached(monkeypatch):
+    """"No files found." is a real answer from a healthy mirror - worth reusing."""
+    empty = "<html><body><main>No files found. <a href='/md5/x'>x</a></main></body></html>"
+    fetched: list[str] = []
+    monkeypatch.setattr(
+        dd.downloader, "html_get_page", lambda url, **_k: fetched.append(url) or empty
+    )
+    monkeypatch.setattr(dd.network, "get_available_aa_urls", lambda: ["https://annas-archive.gl"])
+    url = "https://annas-archive.gl/search?q=nothing"
+
+    with dd._search_page_reuse():
+        assert dd._fetch_search_table(url, _Selector()) == (empty, None)
+        assert dd._fetch_search_table(url, _Selector()) == (empty, None)
+
+    assert fetched == [url], "an empty answer is an answer; re-solving for it buys nothing"
+
+
 def test_language_retry_reuses_the_page_it_already_fetched(monkeypatch):
     """The end-to-end shape: language-from-path makes both passes build the same URL."""
     fetched = _count_fetches(monkeypatch)

@@ -20,5 +20,8 @@ export const useBookTargetDeselectSync = ({
     setBooks((prev) => prev.filter((book) => book.provider_id !== event.bookId));
   });
 
-  useMountEffect(() => onBookTargetChange(handleTargetChange));
+  // Wrapped rather than handed over directly: an Effect Event must not be given to
+  // something that stores it, and `onBookTargetChange` puts its argument in a
+  // module-level listener set. Same shape as useDismiss.
+  useMountEffect(() => onBookTargetChange((event) => handleTargetChange(event)));
 };

@@ -2953,6 +2953,10 @@ def api_releases() -> Response | tuple[Response, int]:
         elif provider == "manual":
             resolved_title = title_param or manual_query or "Manual Search"
             resolved_author = author_param or ""
+            # The release modal sends `authors.join(', ')` as `author`, so the commas here
+            # are joins between contributors, not part of one name. This split is the only
+            # place that knows that, so `search_author` comes from it rather than from the
+            # joined text - see issue #1252.
             authors = [a.strip() for a in resolved_author.split(",") if a.strip()]
 
             book = BookMetadata(
@@ -2961,7 +2965,7 @@ def api_releases() -> Response | tuple[Response, int]:
                 provider_display_name="Manual Search",
                 title=resolved_title,
                 search_title=resolved_title,
-                search_author=resolved_author or None,
+                search_author=authors[0] if authors else None,
                 authors=authors,
             )
         else:

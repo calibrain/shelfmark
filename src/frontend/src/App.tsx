@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { useState, useCallback, useEffectEvent, useRef, useMemo } from 'react';
+import { useState, useCallback, useRef, useMemo } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
 import { ActivitySidebar } from './components/activity';
@@ -32,6 +32,7 @@ import {
 import { useActivity } from './hooks/useActivity';
 import { useAuth } from './hooks/useAuth';
 import { useDownloadTracking } from './hooks/useDownloadTracking';
+import { useLatestCallback } from './hooks/useLatestCallback';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { useMountEffect } from './hooks/useMountEffect';
 import { useRealtimeStatus } from './hooks/useRealtimeStatus';
@@ -73,6 +74,7 @@ import type {
   ActingAsUserSelection,
   MetadataProviderSummary,
   MetadataSearchConfig,
+  MetadataSearchField,
   QueuedDownloadResult,
   QueryTargetOption,
   SearchMode,
@@ -1074,9 +1076,10 @@ function App() {
 
   // When downloading a book while browsing a Hardcover list the user owns,
   // automatically remove it from that list (fire-and-forget).
-  // An effect event: stable identity for the download handlers below, while still
-  // reading the current search field values, labels and metadata config.
-  const removeBookFromActiveList = useEffectEvent((book: Book) => {
+  // Stable identity for the download handlers below, while still reading the current
+  // search field values, labels and metadata config. Not an Effect Event: the callers
+  // are download handlers, not Effects. See useLatestCallback.
+  const removeBookFromActiveList = useLatestCallback((book: Book) => {
     if (config?.hardcover_auto_remove_on_download === false) return;
     if (!bookSupportsTargets(book)) return;
     const activeList = searchFieldValues.hardcover_list;
@@ -1158,7 +1161,13 @@ function App() {
         throw error;
       }
     },
-    [fetchStatus, openRequestConfirmation, refreshRequestPolicy, showToast],
+    [
+      fetchStatus,
+      openRequestConfirmation,
+      refreshRequestPolicy,
+      removeBookFromActiveList,
+      showToast,
+    ],
   );
 
   const executeReleaseDownload = useCallback(
@@ -1254,7 +1263,14 @@ function App() {
         throw error;
       }
     },
-    [fetchStatus, openRequestConfirmation, refreshRequestPolicy, showToast, trackRelease],
+    [
+      fetchStatus,
+      openRequestConfirmation,
+      refreshRequestPolicy,
+      removeBookFromActiveList,
+      showToast,
+      trackRelease,
+    ],
   );
 
   const executeCombinedAction = useCallback(
@@ -1889,14 +1905,27 @@ function App() {
     effectiveSearchMode === 'universal' &&
     (universalDefaultMode === 'download' || universalDefaultMode === 'request_release');
 
+  // Keep the last known search fields so queryTargets doesn't collapse to
+  // [general] while the metadata config briefly reloads on content type switch.
+  // Held in state rather than a ref written during render: a ref read back in the same
+  // pass is what `react/refs` forbids, and this is the adjust-state-during-render shape
+  // React documents for exactly this - carry the previous value until a new one arrives.
+  const [stableSearchFields, setStableSearchFields] = useState<MetadataSearchField[]>(
+    () => activeMetadataConfig?.search_fields ?? [],
+  );
+  const incomingSearchFields = activeMetadataConfig?.search_fields;
+  if (incomingSearchFields && incomingSearchFields !== stableSearchFields) {
+    setStableSearchFields(incomingSearchFields);
+  }
+
   const queryTargets = useMemo<QueryTargetOption[]>(
     () =>
       buildQueryTargets({
         searchMode: effectiveSearchMode,
-        metadataSearchFields: activeMetadataConfig?.search_fields ?? [],
+        metadataSearchFields: stableSearchFields,
         manualSearchAllowed,
       }),
-    [effectiveSearchMode, activeMetadataConfig?.search_fields, manualSearchAllowed],
+    [effectiveSearchMode, stableSearchFields, manualSearchAllowed],
   );
   const effectiveActiveQueryTarget = useMemo(() => {
     if (queryTargets.some((target) => target.key === activeQueryTarget)) {
@@ -1932,20 +1961,18 @@ function App() {
     if (
       !activeQueryOption ||
       activeQueryOption.source === 'general' ||
-      activeQueryOption.source === 'manual'
+      activeQueryOption.source === 'manual' ||
+      activeQueryOption.source === 'direct-field'
     ) {
       return searchInput;
     }
 
-    if (activeQueryOption.source === 'direct-field') {
-      if (activeQueryOption.key === 'isbn') return advancedFilters.isbn;
-      if (activeQueryOption.key === 'author') return advancedFilters.author;
-      if (activeQueryOption.key === 'title') return advancedFilters.title;
+    if (!activeQueryOption.field) {
       return '';
     }
 
-    if (!activeQueryOption.field) {
-      return '';
+    if (activeQueryOption.field.type === 'TextSearchField') {
+      return searchInput;
     }
 
     if (activeQueryOption.field.type === 'CheckboxSearchField') {
@@ -1955,7 +1982,7 @@ function App() {
     }
 
     return searchFieldValues[activeQueryOption.field.key] ?? '';
-  }, [activeQueryOption, searchInput, advancedFilters, searchFieldValues]);
+  }, [activeQueryOption, searchInput, searchFieldValues]);
 
   const activeQueryValueLabel = useMemo(() => {
     if (!activeQueryOption?.field) {
@@ -2003,29 +2030,25 @@ function App() {
       if (
         !activeQueryOption ||
         activeQueryOption.source === 'general' ||
-        activeQueryOption.source === 'manual'
+        activeQueryOption.source === 'manual' ||
+        activeQueryOption.source === 'direct-field'
       ) {
         setSearchInput(typeof value === 'string' ? value : String(value ?? ''));
         return;
       }
 
-      if (activeQueryOption.source === 'direct-field') {
-        const nextValue = typeof value === 'string' ? value : String(value ?? '');
-        if (activeQueryOption.key === 'isbn') {
-          updateAdvancedFilters({ isbn: nextValue });
-        } else if (activeQueryOption.key === 'author') {
-          updateAdvancedFilters({ author: nextValue });
-        } else if (activeQueryOption.key === 'title') {
-          updateAdvancedFilters({ title: nextValue });
-        }
-        return;
-      }
-
       if (activeQueryOption.field) {
+        if (activeQueryOption.field.type === 'TextSearchField') {
+          setSearchInput(typeof value === 'string' ? value : String(value ?? ''));
+          if (label !== undefined) {
+            updateSearchFieldValue(activeQueryOption.field.key, value, label);
+          }
+          return;
+        }
         updateSearchFieldValue(activeQueryOption.field.key, value, label);
       }
     },
-    [activeQueryOption, setSearchInput, updateAdvancedFilters, updateSearchFieldValue],
+    [activeQueryOption, setSearchInput, updateSearchFieldValue],
   );
 
   const handleSearchModeChange = useCallback(

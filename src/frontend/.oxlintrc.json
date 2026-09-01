@@ -35,13 +35,12 @@
     "typescript/no-misused-promises": "error",
     "typescript/no-non-null-assertion": "error",
     "typescript/only-throw-error": "error",
-    // TODO: React Compiler advisories surfaced by the oxlint 1.70 -> 1.80 bump.
-    // Downgraded to warnings so they are visible without blocking CI; they need
-    // per-callsite memoization judgement in App.tsx / ReleaseModal.tsx rather than
-    // a mechanical fix. Restore to "error" once those are worked through.
-    "react/preserve-manual-memoization": "warn",
-    "react/exhaustive-effect-dependencies": "warn",
-    "react/memo-dependencies": "warn",
+    // React Compiler advisories. Enforced everywhere; the handful of files that
+    // inherited violations from the oxlint 1.70 -> 1.80 bump are downgraded to
+    // warnings one by one in "overrides" below, so new code cannot join them.
+    "react/preserve-manual-memoization": "error",
+    "react/exhaustive-effect-dependencies": "error",
+    "react/memo-dependencies": "error",
     "react/no-danger": "error",
     "react/no-clone-element": "error",
     "react/no-react-children": "error",
@@ -98,6 +97,25 @@
       "files": ["src/tests/**"],
       "rules": {
         "typescript/no-explicit-any": "off"
+      }
+    },
+    {
+      // TODO: React Compiler advisories inherited from the oxlint 1.70 -> 1.80 bump.
+      // Listed per file so they stay visible without blocking CI, and so the rules keep
+      // biting everywhere else - they need per-callsite memoization judgement, not a
+      // mechanical fix. Delete each entry as its file is worked through.
+      "files": [
+        "src/App.tsx",
+        "src/components/ReleaseModal.tsx",
+        "src/components/activity/ActivityCard.tsx",
+        "src/components/settings/SettingsContent.tsx",
+        "src/hooks/releaseModal/useDescriptionOverflow.ts",
+        "src/hooks/ui/useTabIndicator.ts"
+      ],
+      "rules": {
+        "react/preserve-manual-memoization": "warn",
+        "react/exhaustive-effect-dependencies": "warn",
+        "react/memo-dependencies": "warn"
       }
     }
   ],

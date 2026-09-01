@@ -120,6 +120,13 @@ export const isApiResponseError = (error: unknown): error is ApiResponseErrorSha
   return error instanceof ApiResponseError;
 };
 
+// The client gave up before the server answered. Distinguishable so callers can report
+// the wait rather than guessing at a cause: a search that hits this has told us nothing
+// about the network or the mirrors, and saying it did is what issue #1285 was about.
+export const isTimeoutError = (error: unknown): error is Error => {
+  return error instanceof TimeoutError;
+};
+
 const mapApiErrorToActionResult = (error: unknown): ActionResult | null => {
   if (!isApiResponseError(error) || !error.payload) {
     return null;
@@ -161,7 +168,14 @@ const DEFAULT_TIMEOUT_MS = 30000;
 // the backstop for a server that never answers at all, so it has to fire *after* the
 // server's own deadline - a fixed 180s here beat the 300s default, so the accurate
 // message was never reachable and raising the setting did nothing. See issue #1285.
-const SEARCH_TIMEOUT_MARGIN_MS = 15000;
+//
+// The margin has to cover what the server still has to do *after* its budget trips, not
+// just the budget itself. The deadline is cooperative: it is handed to the bypasser as a
+// cancel flag, and internal_bypasser._CDP_UNWIND_GRACE_SECONDS allows 15s on its own for a
+// cancelled solve to close its browser - before the handler has serialized releases, built
+// the column config and put bytes on the wire. A 15s margin is entirely spent by that
+// unwind, so give it room for the unwind plus the response.
+const SEARCH_TIMEOUT_MARGIN_MS = 45000;
 const FALLBACK_SEARCH_TIMEOUT_MS = 300000; // search_deadline.DEFAULT_SEARCH_BUDGET_SECONDS
 let searchTimeoutMs = FALLBACK_SEARCH_TIMEOUT_MS + SEARCH_TIMEOUT_MARGIN_MS;
 
@@ -206,12 +220,15 @@ async function fetchJSON<T>(
         if (isRecord(parsed) && !Array.isArray(parsed)) {
           errorData = parsed;
         }
-        // Prefer user-friendly 'message' field, fall back to 'error'
-        if (typeof errorData?.message === 'string') {
-          errorMessage = errorData.message;
-          hasServerMessage = true;
-        } else if (typeof errorData?.error === 'string') {
-          errorMessage = errorData.error;
+        // Prefer user-friendly 'message' field, fall back to 'error'. Both must carry
+        // actual text: an empty string is not the server explaining itself, and treating
+        // it as one suppresses the placeholder below and shows the user a blank toast.
+        const explanation = [errorData?.message, errorData?.error].find(
+          (candidate): candidate is string =>
+            typeof candidate === 'string' && candidate.trim() !== '',
+        );
+        if (explanation !== undefined) {
+          errorMessage = explanation;
           hasServerMessage = true;
         }
       } catch (e) {

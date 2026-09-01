@@ -18,6 +18,12 @@ import {
  * visible effect either, the 180s being baked into the hashed bundle. See issue #1285.
  */
 
+// Must stay ahead of what the server still has to do after its budget trips: the deadline
+// is cooperative, and internal_bypasser._CDP_UNWIND_GRACE_SECONDS alone allows 15s for a
+// cancelled solve to close its browser before the response is even built.
+const MARGIN_MS = 45_000;
+const SERVER_UNWIND_GRACE_MS = 15_000;
+
 const jsonResponse = (body: unknown, status = 200): Response =>
   new Response(JSON.stringify(body), {
     status,
@@ -40,7 +46,7 @@ describe('release search timeout', () => {
   });
 
   it('defaults behind the server default rather than ahead of it', () => {
-    expect(getSearchTimeoutMs()).toBeGreaterThan(300 * 1000);
+    expect(getSearchTimeoutMs()).toBe(300 * 1000 + MARGIN_MS);
   });
 
   it('follows the budget the server reports', async () => {
@@ -51,7 +57,7 @@ describe('release search timeout', () => {
 
     await getConfig();
 
-    expect(getSearchTimeoutMs()).toBeGreaterThan(900 * 1000);
+    expect(getSearchTimeoutMs()).toBe(900 * 1000 + MARGIN_MS);
   });
 
   it('still outlasts the server when the budget is lowered', async () => {
@@ -62,7 +68,24 @@ describe('release search timeout', () => {
 
     await getConfig();
 
-    expect(getSearchTimeoutMs()).toBeGreaterThan(30 * 1000);
+    // Exact, not a lower bound: `> 30_000` is also satisfied by the 345_000 left over
+    // from the previous budget, so a setter that silently stopped applying the config
+    // would pass it.
+    expect(getSearchTimeoutMs()).toBe(30 * 1000 + MARGIN_MS);
+  });
+
+  it('leaves the server room to unwind a cancelled solve and answer', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse(configBody(300)))),
+    );
+
+    await getConfig();
+
+    // The failure this exists for is a budget spent mid-solve. The server then has to
+    // close a browser before it can serialize anything, so a margin merely equal to that
+    // unwind is entirely spent by it and the client aborts first all over again.
+    expect(getSearchTimeoutMs() - 300 * 1000).toBeGreaterThan(SERVER_UNWIND_GRACE_MS);
   });
 
   it('ignores a missing or nonsensical budget instead of disabling the backstop', () => {
@@ -99,7 +122,7 @@ describe('release search timeout', () => {
     // the clock it runs on is the server's, not a constant.
     expect(seen).toHaveLength(1);
     expect(seen[0]?.aborted).toBe(false);
-    expect(getSearchTimeoutMs()).toBeGreaterThan(600 * 1000);
+    expect(getSearchTimeoutMs()).toBe(600 * 1000 + MARGIN_MS);
   });
 });
 
@@ -138,6 +161,37 @@ describe('server-provided failure messages', () => {
       expect(error.serverMessage).toBeUndefined();
       // Without this the UI would show a bare "503 SERVICE UNAVAILABLE".
       expect(error.message).toContain('Server unavailable');
+    }
+  });
+
+  it('treats a blank message as no explanation at all', async () => {
+    // An empty string is not the server explaining itself. Taking it as one suppresses
+    // the placeholder below *and* survives a `??` fallback, leaving an empty toast.
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse({ message: '   ' }, 503))),
+    );
+
+    const error = await searchBooks('q=dune').catch((e: unknown) => e);
+
+    expect(isApiResponseError(error)).toBe(true);
+    if (isApiResponseError(error)) {
+      expect(error.serverMessage).toBeUndefined();
+      expect(error.message).toContain('Server unavailable');
+    }
+  });
+
+  it('falls back to `error` when `message` is blank', async () => {
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(() => Promise.resolve(jsonResponse({ message: '', error: 'the real reason' }, 503))),
+    );
+
+    const error = await searchBooks('q=dune').catch((e: unknown) => e);
+
+    expect(isApiResponseError(error)).toBe(true);
+    if (isApiResponseError(error)) {
+      expect(error.serverMessage).toBe('the real reason');
     }
   });
 });

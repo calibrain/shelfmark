@@ -15,7 +15,7 @@ if TYPE_CHECKING:
 from shelfmark.api.websocket import ws_manager
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.search_plan import first_author
+from shelfmark.core.search_plan import pick_search_author
 from shelfmark.core.utils import is_audiobook
 from shelfmark.release_sources import (
     ColumnColorHint,
@@ -395,14 +395,14 @@ class IRCReleaseSource(ReleaseSource):
         if book.search_title or book.title:
             parts.append(book.search_title or book.title)
 
-        # Only ever the first author: both fields can arrive holding every contributor
-        # joined with ", ", and an IRC query carrying an author plus two translators
-        # matches nothing. See shelfmark.core.search_plan.first_author and issue #1252.
-        if book.search_author:
-            parts.append(first_author(book.search_author))
-        elif book.authors:
-            author = book.authors[0] if isinstance(book.authors, list) else book.authors
-            parts.append(first_author(author))
+        # Only ever the first author: both metadata fields can arrive holding every
+        # contributor joined with ", ", and an IRC query carrying an author plus two
+        # translators matches nothing. The choice between them - and the narrowing - is
+        # `pick_search_author`, shared with the search plan so this cannot drift from it
+        # again. See issue #1252.
+        author = pick_search_author(book)
+        if author:
+            parts.append(author)
 
         return " ".join(parts)
 
