@@ -132,7 +132,7 @@ def test_a_give_up_page_is_not_cached(monkeypatch):
 
 
 def test_a_genuinely_empty_result_is_still_cached(monkeypatch):
-    """"No files found." is a real answer from a healthy mirror - worth reusing."""
+    """A page saying "No files found." is a real answer from a healthy mirror."""
     empty = "<html><body><main>No files found. <a href='/md5/x'>x</a></main></body></html>"
     fetched: list[str] = []
     monkeypatch.setattr(

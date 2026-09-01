@@ -35,9 +35,12 @@
     "typescript/no-misused-promises": "error",
     "typescript/no-non-null-assertion": "error",
     "typescript/only-throw-error": "error",
-    // React Compiler advisories. Enforced everywhere; the handful of files that
-    // inherited violations from the oxlint 1.70 -> 1.80 bump are downgraded to
-    // warnings one by one in "overrides" below, so new code cannot join them.
+    // React Compiler advisories, enforced everywhere with no per-file exemptions.
+    // The violations inherited from the oxlint 1.70 -> 1.80 bump are all resolved:
+    // three by widening a dependency to the object the compiler infers, and seven
+    // by an `oxlint-disable-next-line` that says, at the callsite, why the flagged
+    // dependency is load-bearing - five are re-run triggers that are never read,
+    // and two are values the callback genuinely uses.
     "react/preserve-manual-memoization": "error",
     "react/exhaustive-effect-dependencies": "error",
     "react/memo-dependencies": "error",
@@ -97,25 +100,6 @@
       "files": ["src/tests/**"],
       "rules": {
         "typescript/no-explicit-any": "off"
-      }
-    },
-    {
-      // TODO: React Compiler advisories inherited from the oxlint 1.70 -> 1.80 bump.
-      // Listed per file so they stay visible without blocking CI, and so the rules keep
-      // biting everywhere else - they need per-callsite memoization judgement, not a
-      // mechanical fix. Delete each entry as its file is worked through.
-      "files": [
-        "src/App.tsx",
-        "src/components/ReleaseModal.tsx",
-        "src/components/activity/ActivityCard.tsx",
-        "src/components/settings/SettingsContent.tsx",
-        "src/hooks/releaseModal/useDescriptionOverflow.ts",
-        "src/hooks/ui/useTabIndicator.ts"
-      ],
-      "rules": {
-        "react/preserve-manual-memoization": "warn",
-        "react/exhaustive-effect-dependencies": "warn",
-        "react/memo-dependencies": "warn"
       }
     }
   ],

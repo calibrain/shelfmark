@@ -1954,7 +1954,9 @@ function App() {
         ? (queryTargets.find((target) => target.field?.key === seriesBrowseCapability.field_key) ??
           null)
         : null,
-    [queryTargets, seriesBrowseCapability?.field_key],
+    // `seriesBrowseCapability` whole: the body reads `.field_key` off it unguarded
+    // inside the ternary, so that object is the dependency the compiler infers.
+    [queryTargets, seriesBrowseCapability],
   );
 
   const activeQueryValue = useMemo(() => {
@@ -2246,7 +2248,9 @@ function App() {
 
       return book.provider === activeMetadataConfig.provider;
     },
-    [activeMetadataConfig?.provider, seriesBrowseCapability?.sort, seriesBrowseTarget?.field],
+    // `activeMetadataConfig` whole: the body reads `.provider` off it unguarded on
+    // the last line, so that object is the dependency the compiler infers.
+    [activeMetadataConfig, seriesBrowseCapability?.sort, seriesBrowseTarget?.field],
   );
 
   const handleManualSearch = useCallback(() => {

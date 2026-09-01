@@ -562,6 +562,10 @@ export const ActivityCard = ({
     }
 
     return () => observer.disconnect();
+    // None of these are read here - they are all re-measure triggers. The title's overflow
+    // depends on its text and on the width it is laid out in, and opening either panel
+    // reflows the card. Drop them and the tooltip-on-truncation goes stale.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [item.title, item.author, isRequestDetailsOpen, isRequestRejectOpen]);
 
   const reviewRecord = item.requestRecord;

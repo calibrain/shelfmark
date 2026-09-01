@@ -47,6 +47,10 @@ export function useTabIndicator(
     return () => {
       window.removeEventListener('resize', updateIndicator);
     };
+    // `tabsDependency` is never read here - it exists only to re-run the measurement when
+    // the tab set changes (callers pass `allTabs` / `showRequestsTab`). The buttons move
+    // when tabs are added or removed, so without it the indicator sits under the old one.
+    // oxlint-disable-next-line react/exhaustive-effect-dependencies
   }, [activeTab, tabRefs, tabsDependency]);
 
   return tabIndicatorStyle;

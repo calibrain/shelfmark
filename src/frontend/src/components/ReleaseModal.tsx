@@ -890,6 +890,11 @@ const ReleaseModalSession = ({
     } finally {
       setIsRequestingBook(false);
     }
+    // Kept against the advisory: the body really does read both. `handleClose` is aliased
+    // from the `onClose` prop, which is why the compiler names the source instead, and
+    // dropping `contentType` would let this close over a stale one and request the wrong
+    // format. Correctness first; the cost is an extra callback identity.
+    // oxlint-disable-next-line react/memo-dependencies
   }, [book, onRequestBook, isRequestingBook, contentType, handleClose]);
 
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
@@ -1136,7 +1141,9 @@ const ReleaseModalSession = ({
     const narratorField = book.display_fields.find((f) => f.icon === 'microphone');
 
     return { starField, ratingsField, usersField, pagesField, lengthField, narratorField };
-  }, [book?.display_fields]);
+    // `book`, not `book?.display_fields`: the body reads `book.display_fields`
+    // unguarded after the early return, which is the dependency the compiler infers.
+  }, [book]);
 
   const getReleaseActionMode = useCallback(
     (release: Release): RequestPolicyMode => {
@@ -1287,6 +1294,9 @@ const ReleaseModalSession = ({
         setPackSubmitting(false);
       }
     },
+    // Same as handleRequestBook above: the body reads `onDownload`, `contentType` and
+    // `handleClose`, so they stay in the list whatever the advisory infers.
+    // oxlint-disable-next-line react/memo-dependencies
     [book, packReview, onDownload, contentType, handleClose],
   );
 
