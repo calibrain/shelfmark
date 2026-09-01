@@ -41,6 +41,8 @@ from shelfmark.release_sources.prowlarr.api import (
 )
 from shelfmark.release_sources.prowlarr.cache import cache_release
 from shelfmark.release_sources.prowlarr.utils import (
+    AUTHOR_UNKNOWN,
+    author_affinity,
     build_source_id,
     coerce_float_like,
     coerce_int_like,
@@ -1008,10 +1010,17 @@ class ProwlarrSource(ReleaseSource):
                 if time.monotonic() > deadline:
                     _raise_timeout_error(f"Prowlarr search timed out after {int(search_budget)}s")
 
-            def search_indexers(
-                query: str, cats: list[int] | None, *, enriched_query: str | None = None
-            ) -> _IndexerSearchOutcome:
-                """Search indexers with given categories via Torznab/Newznab."""
+            def search_indexers(query: str, cats: list[int] | None) -> _IndexerSearchOutcome:
+                """Search indexers with given categories via Torznab/Newznab.
+
+                Every indexer gets the same title-only query. Enriched indexers used
+                to be sent "{title} {author}", but an indexer that ANDs its search
+                terms (MyAnonamouse) returns nothing whenever the metadata provider
+                spells the author differently to the tracker - "Timothy Ferriss" vs
+                "Tim Ferriss" - and the UI reports the book as missing (#1293). The
+                author still decides ordering below, where a spelling difference
+                costs a release its position rather than its existence.
+                """
                 outcome = _IndexerSearchOutcome(results=[])
                 target_indexer_ids = self._get_search_indexer_ids(client, indexer_ids, cats)
                 if not target_indexer_ids:
@@ -1019,16 +1028,11 @@ class ProwlarrSource(ReleaseSource):
 
                 for indexer_id in target_indexer_ids:
                     _check_timeout()
-                    indexer_query = (
-                        enriched_query
-                        if indexer_id in enriched_indexer_ids_set and enriched_query
-                        else query
-                    )
                     outcome.attempted += 1
                     try:
                         raw = client.torznab_search(
                             indexer_id=indexer_id,
-                            query=indexer_query,
+                            query=query,
                             categories=cats,
                             search_type="book",
                         )
@@ -1053,14 +1057,11 @@ class ProwlarrSource(ReleaseSource):
             for idx, variant in enumerate(variants, start=1):
                 _check_timeout()
                 query = variant.title
-                enriched_query = variant.query  # title + author
 
                 if len(variants) > 1:
                     logger.debug("Prowlarr query %s/%s: '%s'", idx, len(variants), query)
 
-                outcome = search_indexers(
-                    query=query, cats=categories, enriched_query=enriched_query
-                )
+                outcome = search_indexers(query=query, cats=categories)
 
                 # Auto-expand: if no results with categories and auto-expand enabled, retry without.
                 # Only when every indexer actually answered: a failed search says nothing about
@@ -1077,9 +1078,7 @@ class ProwlarrSource(ReleaseSource):
                         "Prowlarr: no results for query '%s' with category filter, auto-expanding search",
                         query,
                     )
-                    expanded = search_indexers(
-                        query=query, cats=None, enriched_query=enriched_query
-                    )
+                    expanded = search_indexers(query=query, cats=None)
                     outcome.results = expanded.results
                     outcome.attempted += expanded.attempted
                     outcome.failed += expanded.failed
@@ -1117,6 +1116,10 @@ class ProwlarrSource(ReleaseSource):
 
             results: list[Release] = []
             enriched_source_ids: set[str] = set()
+            affinity_by_source_id: dict[str, int] = {}
+            # A manual query is the user's own words; ranking it against the
+            # metadata author would second-guess what they typed.
+            wanted_author = "" if plan.manual_query else plan.author
 
             for raw_result in all_results:
                 result_with_seed_settings = _apply_indexer_seed_settings(
@@ -1136,13 +1139,20 @@ class ProwlarrSource(ReleaseSource):
                 if idx_id_int is not None and idx_id_int in indexer_priority:
                     release.extra["indexer_priority"] = indexer_priority[idx_id_int]
                 results.append(release)
+                affinity_by_source_id[release.source_id] = author_affinity(
+                    wanted_author, release.extra.get("author")
+                )
 
                 if is_enriched:
                     enriched_source_ids.add(release.source_id)
 
+            # Indexer priority first: it is an explicit user preference. Author
+            # agreement then orders what one indexer returned, so the editions that
+            # match the requested author lead and the rest stay reachable below.
             results.sort(
                 key=lambda r: (
                     _release_indexer_rank(r, indexer_priority),
+                    affinity_by_source_id.get(r.source_id, AUTHOR_UNKNOWN),
                     0 if r.source_id in enriched_source_ids else 1,
                 )
             )
