@@ -16,6 +16,7 @@ import requests
 from bs4 import BeautifulSoup, Tag
 from bs4.element import NavigableString
 
+from shelfmark.bypass.challenge import MAX_CHALLENGE_HTML_CHARS, challenge_marker
 from shelfmark.config.env import DEBUG_SKIP_SOURCES, TMP_DIR
 from shelfmark.core import search_deadline
 from shelfmark.core.config import config
@@ -556,13 +557,6 @@ _AA_PAGE_MARKERS = (
     "/fast_download",
     "/slow_download",
 )
-_CHALLENGE_MARKERS = (
-    "ddos-guard",
-    "just a moment",
-    "cloudflare",
-    "checking your browser",
-    "cf-browser-verification",
-)
 
 
 def _looks_like_aa_page(html: str) -> bool:
@@ -572,9 +566,61 @@ def _looks_like_aa_page(html: str) -> bool:
 
 
 def _looks_like_challenge_page(html: str) -> bool:
-    """Whether ``html`` is a protection interstitial rather than the site behind it."""
-    lowered = html.lower()
-    return any(marker in lowered for marker in _CHALLENGE_MARKERS)
+    """Whether ``html`` is a protection interstitial rather than the site behind it.
+
+    Delegates to the shared detector rather than substring-matching here. A bare
+    "ddos-guard"/"cloudflare" scan flags the protected site's *own* pages: DDoS-Guard
+    links its endpoints on everything it fronts, and AA ships a `DDOS-GUARD` comment in
+    the inline JS on every page it serves. That misread every real AA response that was
+    not a results table as an unsolved challenge, and sent users off to fix a bypasser
+    that had just succeeded - see #1289/#1292. `challenge_marker` caps its scan at
+    64 KB, which is what separates a few-KB interstitial from the page behind it.
+    """
+    return challenge_marker(html) is not None
+
+
+# How much of an unreadable search page to quote in the debug log. Enough to carry the
+# <head> - title, injected challenge scripts - without pasting a 180 KB page into a log
+# file that ships inside the debug bundle.
+_PAGE_FINGERPRINT_CHARS = 700
+_TITLE_RE = re.compile(r"<title[^>]*>(.*?)</title>", re.IGNORECASE | re.DOTALL)
+
+
+def _log_untabled_search_page(url: str, html: str) -> None:
+    """Record why a search page with no results table is about to be classified.
+
+    #1289 cost a full investigation because the log said only "unsolved protection
+    challenge" while FlareSolverr said "Challenge solved!", and the debug bundle carries
+    no response bodies - there was no way to tell a real AA page from an interstitial
+    after the fact. These are the facts that would have settled it in one line: the size
+    (the 64 KB cap is what separates the two), which markers matched, and the head of
+    the document.
+
+    Diagnostics must never be the reason a search fails, so this swallows its own errors.
+    """
+    try:
+        title_match = _TITLE_RE.search(html[: _PAGE_FINGERPRINT_CHARS * 4])
+        title = " ".join(title_match.group(1).split())[:120] if title_match else "<none>"
+        lowered = html.lower()
+        aa_markers = [marker for marker in _AA_PAGE_MARKERS if marker in lowered]
+        logger.info(
+            "Search page has no results table: %s (bytes=%d, title=%r, aa_markers=%s, "
+            "challenge_marker=%r, over_challenge_size_cap=%s)",
+            url,
+            len(html),
+            title,
+            aa_markers or "none",
+            challenge_marker(html),
+            len(html) > MAX_CHALLENGE_HTML_CHARS,
+        )
+        logger.debug(
+            "Untabled search page head (%d of %d bytes): %s",
+            min(len(html), _PAGE_FINGERPRINT_CHARS),
+            len(html),
+            html[:_PAGE_FINGERPRINT_CHARS],
+        )
+    except Exception:
+        logger.debug("Could not fingerprint the untabled search page", exc_info=True)
 
 
 def _fetch_search_table(url: str, selector: network.AAMirrorSelector) -> tuple[str, Tag | None]:
@@ -615,6 +661,19 @@ def _fetch_search_table(url: str, selector: network.AAMirrorSelector) -> tuple[s
         if "No files found." in html:
             # A real, genuinely empty answer from a healthy mirror.
             return html, None
+
+        # A search page with no table is the one shape we cannot read off the response
+        # alone, and the response body is not in the debug bundle. Fingerprint it here
+        # so the next report says which branch fired and why, rather than costing
+        # another round of guesswork - see #1289.
+        _log_untabled_search_page(attempt_url, html)
+
+        if _looks_like_aa_page(html):
+            # A real AA response in a shape the caller should report as drift. Checked
+            # ahead of the challenge branch: AA's own pages carry the protection's
+            # markers, so an interstitial is only the better explanation once the page
+            # has nothing of AA's about it. A genuine interstitial has no AA markers.
+            return html, None
         if _looks_like_challenge_page(html):
             # The bypass did not actually clear the protection - the interstitial is
             # what came back. Rotating is pointless (every mirror shares the same
@@ -625,10 +684,6 @@ def _fetch_search_table(url: str, selector: network.AAMirrorSelector) -> tuple[s
                 "Check that the bypasser is reachable and working."
             )
             raise SearchUnavailableError(msg)
-        if _looks_like_aa_page(html):
-            # A real AA response in a shape the caller should report as drift.
-            # Not the mirror's fault.
-            return html, None
 
         new_base, action = selector.next_mirror_or_rotate_dns(
             fatal=True, reason="responded without an Anna's Archive page"

@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 import requests
 
 from shelfmark.bypass import BypassCancelledError
+from shelfmark.bypass.challenge import challenge_marker
 from shelfmark.bypass.cookie_store import store_extracted_cookies
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -142,6 +143,25 @@ def _fetch_via_bypasser(target_url: str) -> str | None:
         if not html:
             logger.warning("External bypasser returned empty response for '%s'", target_url)
             return None
+
+        # "Challenge solved!" is the solver's verdict on its own work, and #1289 showed
+        # it can be reported alongside a page the caller then rejects. Say what actually
+        # came back, so a later report does not have to infer it from downstream errors.
+        marker = challenge_marker(html)
+        logger.debug(
+            "External bypasser page for '%s': %d bytes, challenge_marker=%r",
+            target_url,
+            len(html),
+            marker,
+        )
+        if marker:
+            logger.warning(
+                "External bypasser reported success but returned a challenge page for "
+                "'%s' (%d bytes, marker=%r) - the solve did not clear the protection",
+                target_url,
+                len(html),
+                marker,
+            )
 
         try:
             _store_solution_clearance(target_url, solution)
