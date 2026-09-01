@@ -581,6 +581,7 @@ def _looks_like_challenge_page(html: str) -> bool:
     return challenge_marker(html) is not None
 
 
+<<<<<<< HEAD
 # Pages already fetched during the search in flight, keyed by URL. Scoped to one
 # DirectDownload.search() so nothing is carried between requests.
 _search_page_cache: ContextVar[dict[str, tuple[str, Tag | None]] | None] = ContextVar(
@@ -621,6 +622,8 @@ def _is_reusable_answer(result: tuple[str, Tag | None]) -> bool:
     return tbody is not None or "No files found." in html or _looks_like_aa_page(html)
 
 
+=======
+>>>>>>> main
 # How much of an unreadable search page to quote in the debug log. Enough to carry the
 # <head> - title, injected challenge scripts - without pasting a 180 KB page into a log
 # file that ships inside the debug bundle.

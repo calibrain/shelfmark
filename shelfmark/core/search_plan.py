@@ -112,6 +112,7 @@ def _normalize_languages(languages: list[str] | None, user_id: int | None) -> li
     return _to_language_codes(languages, source="the search request")
 
 
+<<<<<<< HEAD
 def first_author(value: str) -> str:
     """The first name in a possibly comma-joined author string.
 
@@ -159,6 +160,20 @@ def pick_search_author(book: BookMetadata) -> str:
             return narrowed
 
     return ""
+=======
+def _pick_search_author(book: BookMetadata) -> str:
+    author = book.search_author or (book.authors[0] if book.authors else "")
+    if not author:
+        return ""
+
+    # `search_author` can arrive as the display string for the whole credit list
+    # ("Author, Translator, Narrator"), which Anna's Archive answers with nothing at
+    # all. Trim it to the first name, which is what the authors list already gets.
+    if "," in author:
+        author = author.split(",")[0].strip()
+
+    return author
+>>>>>>> main
 
 
 def _pick_search_title(book: BookMetadata) -> str:
