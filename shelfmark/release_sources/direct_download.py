@@ -115,6 +115,16 @@ def _html_response_text(response: str | tuple[str, str]) -> str:
     return response
 
 
+def _html_response_url(response: str | tuple[str, str]) -> str | None:
+    """The URL that actually answered, when the downloader was asked to report it.
+
+    None for the plain-string shape, so a caller can fall back to what it requested.
+    """
+    if isinstance(response, tuple):
+        return response[1] or None
+    return None
+
+
 def _attr_to_str(value: object) -> str | None:
     """Convert a BeautifulSoup attribute value to a plain string."""
     if isinstance(value, str):
@@ -696,10 +706,21 @@ def _fetch_search_table_uncached(
         if search_deadline.expired():
             raise SearchUnavailableError(search_deadline.deadline_message())
 
+        # include_response_url is what makes the diagnostics below name the mirror that
+        # actually answered. html_get_page rotates mirrors and follows redirects on its
+        # own, so `attempt_url` is only where this iteration started: #1298's bundle
+        # reported the untabled page against annas-archive.gl when the body had come
+        # from .pk, which is precisely the triage cost #1289 added the line to remove.
         response = downloader.html_get_page(
-            attempt_url, selector=selector, allow_bypasser_fallback=True
+            attempt_url,
+            selector=selector,
+            allow_bypasser_fallback=True,
+            include_response_url=True,
         )
-        if not response:
+        html = _html_response_text(response)
+        # Checked on the body, not on `response`: with include_response_url the give-up
+        # shape is the tuple ("", url), and a tuple is truthy.
+        if not html:
             # Network/mirror exhaustion path bubbles up so API can notify clients.
             # html_get_page records the concrete give-up reason on the selector; fall
             # back to the generic line only if nothing was recorded.
@@ -708,7 +729,7 @@ def _fetch_search_table_uncached(
             )
             raise SearchUnavailableError(f"Unable to reach download source. {detail}")
 
-        html = _html_response_text(response)
+        answered_url = _html_response_url(response) or attempt_url
         soup = BeautifulSoup(html, "html.parser")
         table = soup.find("table")
         if isinstance(table, Tag):
@@ -724,7 +745,7 @@ def _fetch_search_table_uncached(
         # alone, and the response body is not in the debug bundle. Fingerprint it here
         # so the next report says which branch fired and why, rather than costing
         # another round of guesswork - see #1289.
-        _log_untabled_search_page(attempt_url, html)
+        _log_untabled_search_page(answered_url, html)
 
         if _looks_like_aa_page(html):
             # A real AA response in a shape the caller should report as drift. Checked
@@ -737,9 +758,18 @@ def _fetch_search_table_uncached(
             # what came back. Rotating is pointless (every mirror shares the same
             # protection) and reporting it as an empty result is worse: the user is
             # told their query found nothing when the search never ran.
+            #
+            # The wording no longer blames the bypasser outright. In #1292 it was
+            # reachable and working, and the page it was handed was DDoS-Guard's manual
+            # CAPTCHA - so "check that the bypasser is working" was the one piece of
+            # advice guaranteed to waste the reporter's time. Name the marker instead
+            # and let the two causes be told apart.
             msg = (
-                "Anna's Archive answered with an unsolved protection challenge. "
-                "Check that the bypasser is reachable and working."
+                "Anna's Archive answered with a protection challenge that was not "
+                f"cleared (marker={challenge_marker(html)!r}). If the bypasser reports "
+                "solving it, the host is serving a manual CAPTCHA that no bypasser can "
+                "answer - try again shortly. Otherwise check that the bypasser is "
+                "reachable and working."
             )
             raise SearchUnavailableError(msg)
 
