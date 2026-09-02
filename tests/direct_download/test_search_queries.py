@@ -306,8 +306,8 @@ def test_search_books_filters_locally_when_path_language_enabled(monkeypatch):
 
     captured_url: dict[str, str] = {}
 
-    def _fake_html_get_page(url: str, selector, allow_bypasser_fallback=False):
-        del selector, allow_bypasser_fallback
+    def _fake_html_get_page(url: str, selector, **_kwargs):
+        del selector
         captured_url["url"] = url
         return r"""
         <table>

@@ -5,12 +5,12 @@ import time
 from http import HTTPStatus
 from io import BytesIO
 from typing import TYPE_CHECKING, NoReturn
-from urllib.parse import urljoin, urlparse
+from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import requests
 from tqdm import tqdm
 
-from shelfmark.bypass import BypassCancelledError, cookie_store
+from shelfmark.bypass import BypassCancelledError, ChallengeNotSolvedError, cookie_store
 from shelfmark.bypass.challenge import challenge_marker
 from shelfmark.core import search_deadline
 from shelfmark.core.config import config as app_config
@@ -29,6 +29,10 @@ logger = setup_logger(__name__)
 _RNG = random.SystemRandom()
 
 _MAX_REDIRECTS = 5
+# DDoS-Guard's re-check probe. Its 302 to `?check=1` is one hop of a handshake rather
+# than a page: the parameter asserts the caller already holds the cookies that hop
+# issued.
+_DDG_CHECK_PARAM = "check"
 # Z-Library answers the first hit with a 503 whose only real payload is a Set-Cookie; echoing
 # that cookie back returns the 302 to the real page. Two attempts cover the handshake without
 # letting a server that keeps re-issuing cookies hold us in the loop.
@@ -48,6 +52,7 @@ _BYPASS_GRACE_SLACK_SECONDS = 30.0
 _BYPASSER_ERRORS = (
     AttributeError,
     BypassCancelledError,
+    ChallengeNotSolvedError,
     KeyError,
     OSError,
     RuntimeError,
@@ -252,6 +257,33 @@ def _response_challenge_marker(response: requests.Response) -> str | None:
         return None
 
 
+def _solvable_url(url: str) -> str:
+    """The URL a solver should open, given one we may be mid-handshake on.
+
+    The manual AA redirect follower in `html_get_page` walks DDoS-Guard's handshake by
+    reassigning `current_url`, so by the time a 403, a 503 challenge or a redirect loop
+    hands that URL to a bypasser it is often the `?check=1` probe rather than the page
+    we actually wanted. A solver opens it in a fresh browser holding none of the cookies
+    the probe exists to collect, so DDoS-Guard cannot verify it automatically and answers
+    with the manual CAPTCHA page that nothing can solve - the failure in #1292, where
+    FlareSolverr reported "Challenge solved!" over a 4.7 KB DDOS-GUARD interstitial.
+
+    Handing over the pre-probe URL instead lets the solver's browser run the whole
+    handshake itself, which is what a real browser does and what the solver is for.
+
+    Scoped to the hosts whose redirects we follow manually: everywhere else `check` is
+    an ordinary query parameter and none of our business.
+    """
+    if not network.should_rotate_dns_for_url(url):
+        return url
+    parsed = urlparse(url)
+    params = parse_qsl(parsed.query, keep_blank_values=True)
+    kept = [(key, value) for key, value in params if key != _DDG_CHECK_PARAM]
+    if len(kept) == len(params):
+        return url
+    return urlunparse(parsed._replace(query=urlencode(kept)))
+
+
 def _fatal_mirror_reason(e: Exception) -> str | None:
     """Return why ``e`` proves the mirror is unusable, or None if it may recover.
 
@@ -371,6 +403,9 @@ def html_get_page(
         retry-loop branch above with `continue`, and with MAX_RETRY=1 there is no
         later attempt for that branch to run on either.
         """
+        # Every handoff reaches the solver through here, so this is the one place the
+        # mid-handshake `?check=1` URL has to be unwound. See _solvable_url.
+        bypass_url = _solvable_url(bypass_url)
         # Never start a minutes-long browser solve on a budget that has already run out:
         # nothing downstream would get to report the real reason before the caller's
         # deadline (or its reverse proxy) cut the request off.
@@ -404,6 +439,18 @@ def html_get_page(
                     status_callback("resolving", "Rate limited, try again shortly")
                 except _STATUS_CALLBACK_ERRORS:
                     logger.debug("Rate-limit status callback failed", exc_info=True)
+            return _fail(str(e), bypass_url)
+        except ChallengeNotSolvedError as e:
+            # Not a bypasser malfunction: it ran, and the host answered with something it
+            # cannot clear - DDoS-Guard's manual CAPTCHA, typically. Must precede the
+            # generic handler below, whose "the protection bypasser failed" is what sent
+            # #1292 off to fix a FlareSolverr that was working perfectly.
+            logger.info("Bypass ran but did not clear the protection: %s", e)
+            if status_callback:
+                try:
+                    status_callback("error", str(e))
+                except _STATUS_CALLBACK_ERRORS:
+                    logger.debug("Unsolved-challenge status callback failed", exc_info=True)
             return _fail(str(e), bypass_url)
         except _BYPASSER_ERRORS as e:
             logger.warning("Bypasser error: %s: %s", type(e).__name__, e)
