@@ -10,8 +10,9 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from shelfmark.download.clients import DownloadState
 from shelfmark.download.clients.alldebrid import AllDebridClient
-from shelfmark.download.clients.realdebrid import RealDebridClient
+from shelfmark.download.clients.realdebrid import RealDebridClient, _DownloadState
 from shelfmark.download.clients.torrent_utils import (
     DebridMagnet,
     DebridTorrentFile,
@@ -147,6 +148,54 @@ class TestRealDebridAdd:
 
         post.assert_not_called()
         put.assert_not_called()
+
+
+class TestRealDebridStatus:
+    @staticmethod
+    def _client():
+        return RealDebridClient.__new__(RealDebridClient)
+
+    @staticmethod
+    def _state(tmp_path):
+        return _DownloadState(
+            torrent_id="RD1",
+            name="Dune",
+            target_dir=tmp_path,
+            phase="waiting_rd",
+        )
+
+    def test_queued_remains_downloading_and_allows_later_status(self, tmp_path):
+        client = self._client()
+        state = self._state(tmp_path)
+
+        queued = client._handle_torrent_info(
+            {"status": "queued", "progress": 0, "filename": "Dune.epub"},
+            state,
+        )
+
+        assert queued.state == DownloadState.DOWNLOADING
+        assert queued.progress == 0
+        assert queued.complete is False
+        assert state.phase == "waiting_rd"
+        assert state.error_message is None
+
+        downloading = client._handle_torrent_info(
+            {"status": "downloading", "progress": 10, "filename": "Dune.epub"},
+            state,
+        )
+
+        assert downloading.state == DownloadState.DOWNLOADING
+        assert state.phase == "waiting_rd"
+
+    def test_dead_is_terminal_and_caches_error(self, tmp_path):
+        client = self._client()
+        state = self._state(tmp_path)
+
+        status = client._handle_torrent_info({"status": "dead"}, state)
+
+        assert status.state == DownloadState.ERROR
+        assert state.phase == "error"
+        assert state.error_message == "Real-Debrid status error: dead"
 
 
 class TestAllDebridAdd:
