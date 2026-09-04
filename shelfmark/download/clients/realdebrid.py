@@ -50,6 +50,7 @@ _STATUS_DOWNLOADING = frozenset(
     {
         "magnet_conversion",
         "waiting_files_selection",
+        "queued",
         "downloading",
         "compressing",
         "uploading",
