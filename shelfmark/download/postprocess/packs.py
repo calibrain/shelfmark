@@ -414,10 +414,29 @@ def match_plan_to_files(
             )
 
     unmatched = [p for p in book_files if p not in claimed]
-    if unmatched:
+    still_unmatched: list[Path] = []
+    for p in unmatched:
+        p_ext = p.suffix.lower().lstrip(".")
+        is_chaptered = p_ext in _CHAPTERED_AUDIO_EXTENSIONS
+
+        matching_groups = [g for g in groups if any(f.parent == p.parent for f in g.files)]
+
+        target_group: BookGroup | None = None
+        if len(matching_groups) == 1 and is_chaptered:
+            target_group = matching_groups[0]
+        elif len(plan) == 1 and len(groups) == 1 and is_chaptered:
+            target_group = groups[0]
+
+        if target_group is not None:
+            target_group.files.append(p)
+            claimed.add(p)
+        else:
+            still_unmatched.append(p)
+
+    if still_unmatched:
         groups.extend(
             group_files_into_books(
-                unmatched, series_name=series_name, author_name=author_name, root=root
+                still_unmatched, series_name=series_name, author_name=author_name, root=root
             )
         )
     return groups
