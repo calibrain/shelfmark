@@ -1939,6 +1939,24 @@ function App() {
     return getDefaultQueryTargetKey(queryTargets);
   }, [queryTargets, activeQueryTarget]);
 
+  // A `search_by` URL hash must win over the cookie-seeded default (it's an explicit deep
+  // link), but at UrlSearchBootstrapMount's one-shot mount, queryTargets can still be missing
+  // the hashed target if the metadata search-fields fetch hasn't resolved yet - so that mount
+  // effect (which only runs once) can silently miss the override. Retry independently here,
+  // reactive to queryTargets, until it either applies or is confirmed it never can be (the
+  // ref just stops us from re-applying after the user changes the selector themselves).
+  const urlSearchByAppliedRef = useRef(false);
+  useDependencyEffect(() => {
+    if (urlSearchByAppliedRef.current) {
+      return;
+    }
+    const hashSearchBy = parsedParams?.searchBy;
+    if (hashSearchBy && queryTargets.some((target) => target.key === hashSearchBy)) {
+      setActiveQueryTarget(hashSearchBy);
+      urlSearchByAppliedRef.current = true;
+    }
+  }, [parsedParams?.searchBy, queryTargets]);
+
   // Persist the user's last-used "Search By" target as the client-side default
   // for their next visit (no URL hash override -> falls back to this cookie).
   useDependencyEffect(() => {
