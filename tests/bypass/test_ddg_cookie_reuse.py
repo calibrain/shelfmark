@@ -1,11 +1,12 @@
 """DDoS-Guard cookie reuse between requests.
 
-Anna's Archive issues nine cookies after a solve, and they are not equivalent:
+Anna's Archive issues ten cookies after a solve, and they are not equivalent:
 
     __ddg1_/__ddg2_/__ddgid_   ~1 year   clearance
     __ddgmark_                 ~1 day
     __ddg5_                    session
     __ddg8_/__ddg9_/__ddg10_   ~40 min   one check: token, CLIENT IP, TIMESTAMP
+    aa_ddg_check               ~90 days  Anna's Archive's own pass for its ?check=1 hop
 
 Replaying the last three is what produces the ?check=1 redirect loop. They describe a
 single check, so once the timestamp ages out - or the egress IP changes, routine
@@ -95,6 +96,15 @@ def test_per_check_cookies_are_not_stored():
     assert set(stored) == {"__ddg1_", "__ddg2_"}
     for ephemeral in ("__ddg8_", "__ddg9_", "__ddg10_", "ddg_last_challenge"):
         assert ephemeral not in stored
+
+
+def test_aa_check_cookie_is_stored():
+    """Without aa_ddg_check the ?check=1 hop loops, whatever __ddg* is replayed."""
+    _store([_Cookie("__ddg1_", "a"), _Cookie("__ddg5_", "b"), _Cookie("aa_ddg_check", "ok")])
+
+    stored = ib.get_cf_cookies_for_domain("annas-archive.gl")
+
+    assert stored == {"__ddg1_": "a", "__ddg5_": "b", "aa_ddg_check": "ok"}
 
 
 def test_clearance_cookies_survive():

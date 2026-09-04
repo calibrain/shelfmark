@@ -38,6 +38,10 @@ DDG_COOKIE_NAMES = {
     "ddg_last_challenge",
 }
 
+# Anna's Archive's own pass for its ?check=1 hop. Without it the hop 302s back
+# forever, however good the __ddg* clearance is.
+AA_COOKIE_NAMES = {"aa_ddg_check"}
+
 # DDoS-Guard cookies that describe *one* check rather than granting clearance, and so
 # must never be replayed on a later request. Observed live on Anna's Archive:
 #
@@ -88,7 +92,8 @@ def _should_extract_cookie(name: str, *, extract_all: bool) -> bool:
         return True
     is_cf = name in CF_COOKIE_NAMES or name.startswith("cf_")
     is_ddg = name in DDG_COOKIE_NAMES or name.startswith("__ddg")
-    return is_cf or is_ddg
+    is_aa = name in AA_COOKIE_NAMES
+    return is_cf or is_ddg or is_aa
 
 
 def _cookie_field(cookie: Any, name: str) -> Any:
