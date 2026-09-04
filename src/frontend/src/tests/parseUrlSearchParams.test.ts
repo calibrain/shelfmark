@@ -60,4 +60,32 @@ describe('parseUrlSearchParams', () => {
     expect(parsed.contentType).toBe(undefined);
     expect(parsed.combinedMode).toBe(true);
   });
+
+  it('parses search_by as the Search By target', () => {
+    const parsed = parseUrlSearchParams(new URLSearchParams('search_by=manual&q=dune'));
+
+    expect(parsed.searchBy).toBe('manual');
+    expect(parsed.searchInput).toBe('dune');
+    expect(parsed.hasSearchParams).toBe(true);
+  });
+
+  it('normalizes search_by casing/whitespace', () => {
+    const parsed = parseUrlSearchParams(new URLSearchParams('search_by=+MANUAL+'));
+
+    expect(parsed.searchBy).toBe('manual');
+  });
+
+  it('keeps search_by-only links from auto-triggering a blank search', () => {
+    const parsed = parseUrlSearchParams(new URLSearchParams('search_by=manual'));
+
+    expect(parsed.searchBy).toBe('manual');
+    expect(parsed.searchInput).toBe('');
+    expect(parsed.hasSearchParams).toBe(false);
+  });
+
+  it('leaves search_by undefined when absent', () => {
+    const parsed = parseUrlSearchParams(new URLSearchParams('q=dune'));
+
+    expect(parsed.searchBy).toBe(undefined);
+  });
 });

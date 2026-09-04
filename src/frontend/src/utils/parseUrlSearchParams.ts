@@ -8,6 +8,8 @@ export interface ParsedUrlSearch {
   advancedFilters: Partial<AdvancedFilterState>;
   contentType?: ContentType;
   combinedMode?: boolean;
+  /** "Search By" target (e.g. general/author/title/series/manual), from the `search_by` param */
+  searchBy?: string;
   hasSearchParams: boolean;
 }
 
@@ -38,17 +40,21 @@ const parseContentTypeParam = (
  * // Direct mode: /?q=harry+potter&author=rowling&format=epub&lang=en
  * // Universal mode: /?q=dune&sort=popularity
  * // Universal combined: /?q=dune&content_type=combined
+ * // Search By deep link: /?search_by=manual&q=dune
  */
 export function parseUrlSearchParams(searchParams: URLSearchParams): ParsedUrlSearch {
   const contentTypeParam = parseContentTypeParam(
     searchParams.get('content_type') || searchParams.get('contentType'),
   );
 
+  const searchByParam = (searchParams.get('search_by') || '').trim().toLowerCase();
+
   const result: ParsedUrlSearch = {
     searchInput: '',
     advancedFilters: {},
     contentType: contentTypeParam.contentType,
     combinedMode: contentTypeParam.combinedMode,
+    searchBy: searchByParam || undefined,
     hasSearchParams: false,
   };
 

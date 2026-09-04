@@ -34,14 +34,14 @@ import { useAuth } from './hooks/useAuth';
 import { useDownloadTracking } from './hooks/useDownloadTracking';
 import { useLatestCallback } from './hooks/useLatestCallback';
 import { useMediaQuery } from './hooks/useMediaQuery';
-import { useMountEffect } from './hooks/useMountEffect';
+import { useDependencyEffect, useMountEffect } from './hooks/useMountEffect';
 import { useRealtimeStatus } from './hooks/useRealtimeStatus';
 import { useRequestPolicy } from './hooks/useRequestPolicy';
 import { useRequests } from './hooks/useRequests';
 import { useSearch } from './hooks/useSearch';
 import { primeSettingsCache } from './hooks/useSettings';
 import { useToast } from './hooks/useToast';
-import { useUrlSearch } from './hooks/useUrlSearch';
+import { useSyncUrlSearchHash, useUrlSearch } from './hooks/useUrlSearch';
 import { primeUsersCache } from './hooks/useUsersFetch';
 import { LoginPage } from './pages/LoginPage';
 import {
@@ -110,6 +110,8 @@ import {
   applyDirectPolicyModeToButtonState,
   applyUniversalPolicyModeToButtonState,
 } from './utils/requestPolicyUi';
+import { getSearchByCookie, setSearchByCookie } from './utils/searchByCookie';
+import { buildUrlSearchHash } from './utils/urlSearchHash';
 
 // eslint-disable-next-line import/no-unassigned-import -- global app stylesheet is loaded for side effects
 import './styles.css';
@@ -617,7 +619,10 @@ function App() {
   const [configuredCombinedMetadataProvider, setConfiguredCombinedMetadataProvider] = useState<
     string | null
   >(null);
-  const [activeQueryTarget, setActiveQueryTarget] = useState('general');
+  // Falls back to the cookie-stored "Search By" default from the user's last-used mode;
+  // an invalid/stale value is harmless since effectiveActiveQueryTarget below re-validates
+  // it against the current queryTargets once config/search fields are known.
+  const [activeQueryTarget, setActiveQueryTarget] = useState(() => getSearchByCookie() || 'general');
   const [downloadsSidebarOpen, setDownloadsSidebarOpen] = useState(false);
   const [sidebarPinnedOpen, setSidebarPinnedOpen] = useState<boolean>(() =>
     getInitialPinnedPreference(),
@@ -1934,6 +1939,29 @@ function App() {
     return getDefaultQueryTargetKey(queryTargets);
   }, [queryTargets, activeQueryTarget]);
 
+  // Persist the user's last-used "Search By" target as the client-side default
+  // for their next visit (no URL hash override -> falls back to this cookie).
+  useDependencyEffect(() => {
+    setSearchByCookie(effectiveActiveQueryTarget);
+  }, [effectiveActiveQueryTarget]);
+
+  // Keep the URL hash fragment live as search state changes. Gated until any URL-driven
+  // bootstrap has applied (or there was nothing to apply), so we don't clobber a shared
+  // link's params with the initial default state before they've been read.
+  const readyToSyncUrlHash = wasProcessed && (!parsedParams || hasExecutedUrlSearchBootstrap);
+  const urlSearchHash = useMemo(
+    () =>
+      buildUrlSearchHash({
+        searchInput,
+        searchBy: effectiveActiveQueryTarget,
+        contentType,
+        combinedMode,
+        advancedFilters,
+      }),
+    [searchInput, effectiveActiveQueryTarget, contentType, combinedMode, advancedFilters],
+  );
+  useSyncUrlSearchHash({ enabled: readyToSyncUrlHash, hash: urlSearchHash });
+
   const activeQueryOption = useMemo(
     () =>
       queryTargets.find((target) => target.key === effectiveActiveQueryTarget) ?? queryTargets[0],
@@ -2757,6 +2785,7 @@ function App() {
         contentType={contentType}
         combinedMode={combinedMode}
         combinedModeAllowed={combinedModeAllowed}
+        queryTargets={queryTargets}
         advancedFilters={advancedFilters}
         resolvedMetadataDefaultSort={resolvedMetadataDefaultSort}
         resolvedMetadataSortOptions={resolvedMetadataSortOptions}

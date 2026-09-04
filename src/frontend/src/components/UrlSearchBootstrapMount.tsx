@@ -1,7 +1,14 @@
 import type { Dispatch, SetStateAction } from 'react';
 
 import { useMountEffect } from '@/hooks/useMountEffect';
-import type { AppConfig, AdvancedFilterState, ContentType, SearchMode, SortOption } from '@/types';
+import type {
+  AppConfig,
+  AdvancedFilterState,
+  ContentType,
+  QueryTargetOption,
+  SearchMode,
+  SortOption,
+} from '@/types';
 import { buildSearchQuery } from '@/utils/buildSearchQuery';
 import { resolveDefaultLanguageCodes } from '@/utils/languageFilters';
 import { getEffectiveMetadataSort } from '@/utils/metadataSort';
@@ -15,6 +22,7 @@ interface UrlSearchBootstrapMountProps {
   contentType: ContentType;
   combinedMode: boolean;
   combinedModeAllowed: boolean;
+  queryTargets: QueryTargetOption[];
   advancedFilters: AdvancedFilterState;
   resolvedMetadataDefaultSort: string;
   resolvedMetadataSortOptions: SortOption[];
@@ -38,6 +46,7 @@ export const UrlSearchBootstrapMount = ({
   contentType,
   combinedMode,
   combinedModeAllowed,
+  queryTargets,
   advancedFilters,
   resolvedMetadataDefaultSort,
   resolvedMetadataSortOptions,
@@ -69,6 +78,17 @@ export const UrlSearchBootstrapMount = ({
       setCombinedMode(false);
     }
 
+    const urlSearchByOverride =
+      parsedParams.searchBy && queryTargets.some((target) => target.key === parsedParams.searchBy)
+        ? parsedParams.searchBy
+        : undefined;
+
+    // Search By target can be deep-linked on its own (e.g. `#search_by=manual`, no query),
+    // so apply it even when there's nothing else to search for.
+    if (urlSearchByOverride) {
+      setActiveQueryTarget(urlSearchByOverride);
+    }
+
     if (!parsedParams.hasSearchParams) {
       return;
     }
@@ -83,8 +103,8 @@ export const UrlSearchBootstrapMount = ({
       setSearchInput(parsedParams.searchInput);
     }
 
-    let nextQueryTarget = 'general';
-    if (parsedSearchMode === 'direct') {
+    let nextQueryTarget = urlSearchByOverride || 'general';
+    if (parsedSearchMode === 'direct' && !urlSearchByOverride) {
       if (parsedParams.advancedFilters.isbn) {
         nextQueryTarget = 'isbn';
       } else if (parsedParams.advancedFilters.author) {
