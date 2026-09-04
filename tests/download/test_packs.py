@@ -307,3 +307,79 @@ class TestMatchPlanToFiles:
         plan = [PackBook(title="Alpha", series_position=1.0, year=None, files=["Book 1 - A/a.m4b"])]
         groups = match_plan_to_files(plan, [a, c])
         assert [(g.title, g.files) for g in groups] == [("Alpha", [a]), ("C", [c])]
+
+    def test_unmatched_chaptered_audio_files_share_group_in_same_folder(self, tmp_path: Path):
+        # Issue #1176: Indexer/metadata lists only a subset of tracks, remaining tracks in
+        # the same folder must append to the existing book group rather than splitting.
+        root = tmp_path / "Westwell - Hot & Cold (2023)"
+        root.mkdir(parents=True)
+        files = [root / f"track_{i:03d}.flac" for i in range(1, 6)]
+        for f in files:
+            f.write_bytes(b"x")
+
+        plan = [
+            PackBook(
+                title="Westwell - Hot & Cold (2023)",
+                series_position=None,
+                year=2023,
+                files=[
+                    f"Westwell - Hot & Cold (2023)/{files[0].name}",
+                    f"Westwell - Hot & Cold (2023)/{files[1].name}",
+                ],
+            )
+        ]
+        groups = match_plan_to_files(plan, files)
+        assert len(groups) == 1
+        assert groups[0].title == "Westwell - Hot & Cold (2023)"
+        assert groups[0].files == files
+
+    def test_single_book_plan_chaptered_audio_multi_disc_grouped_together(self, tmp_path: Path):
+        # Single-book plan with multi-disc audio files: unmatched CD2 tracks belong to the book
+        root = tmp_path / "Audiobook"
+        cd1_file = root / "CD1" / "01.mp3"
+        cd2_file = root / "CD2" / "01.mp3"
+        for f in (cd1_file, cd2_file):
+            f.parent.mkdir(parents=True)
+            f.write_bytes(b"x")
+
+        plan = [
+            PackBook(
+                title="Audiobook",
+                series_position=1.0,
+                year=None,
+                files=["Audiobook/CD1/01.mp3"],
+            )
+        ]
+        groups = match_plan_to_files(plan, [cd1_file, cd2_file])
+        assert len(groups) == 1
+        assert groups[0].title == "Audiobook"
+        assert cd1_file in groups[0].files
+        assert cd2_file in groups[0].files
+
+    def test_multi_book_pack_unmatched_chaptered_audio_attaches_to_corresponding_book(
+        self, tmp_path: Path
+    ):
+        # In a multi-book pack, unmatched tracks in Book 1's folder stay in Book 1
+        root = tmp_path / "Series Pack"
+        b1_t1 = root / "Book 1" / "01.mp3"
+        b1_t2 = root / "Book 1" / "02.mp3"
+        b2_t1 = root / "Book 2" / "01.mp3"
+        b2_t2 = root / "Book 2" / "02.mp3"
+        for f in (b1_t1, b1_t2, b2_t1, b2_t2):
+            f.parent.mkdir(parents=True, exist_ok=True)
+            f.write_bytes(b"x")
+
+        plan = [
+            PackBook(
+                title="Book 1", series_position=1.0, year=None, files=["Series Pack/Book 1/01.mp3"]
+            ),
+            PackBook(
+                title="Book 2", series_position=2.0, year=None, files=["Series Pack/Book 2/01.mp3"]
+            ),
+        ]
+        groups = match_plan_to_files(plan, [b1_t1, b1_t2, b2_t1, b2_t2])
+        assert len(groups) == 2
+        assert groups[0].title == "Book 1"
+        assert set(groups[0].files) == {b1_t1, b1_t2}
+        assert groups[1].title == "Book 2"
+        assert set(groups[1].files) == {b2_t1, b2_t2}
