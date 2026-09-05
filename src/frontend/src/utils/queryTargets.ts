@@ -85,3 +85,24 @@ export const buildQueryTargets = ({
 export const getDefaultQueryTargetKey = (targets: QueryTargetOption[]): string => {
   return targets[0]?.key || 'general';
 };
+
+/**
+ * Resolve a "Search By" key (e.g. from a URL hash) against the live targets.
+ *
+ * Exact match first, then case-insensitive: built-in keys are lowercase, but a
+ * custom metadata provider can declare a camelCase field key.
+ */
+export const findQueryTarget = (
+  targets: QueryTargetOption[],
+  key: string | undefined,
+): QueryTargetOption | undefined => {
+  if (!key) {
+    return undefined;
+  }
+  const exact = targets.find((target) => target.key === key);
+  if (exact) {
+    return exact;
+  }
+  const lowered = key.toLowerCase();
+  return targets.find((target) => target.key.toLowerCase() === lowered);
+};

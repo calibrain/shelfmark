@@ -1,6 +1,10 @@
 import { describe, it, expect } from 'vitest';
 
-import { buildQueryTargets, getDefaultQueryTargetKey } from '../utils/queryTargets';
+import {
+  buildQueryTargets,
+  findQueryTarget,
+  getDefaultQueryTargetKey,
+} from '../utils/queryTargets';
 
 describe('queryTargets', () => {
   it('builds direct-mode query targets', () => {
@@ -42,5 +46,35 @@ describe('queryTargets', () => {
 
   it('falls back to general when choosing a default target', () => {
     expect(getDefaultQueryTargetKey([])).toBe('general');
+  });
+});
+
+describe('findQueryTarget', () => {
+  const targets = buildQueryTargets({ searchMode: 'direct' });
+
+  it('returns undefined for a missing or empty key', () => {
+    expect(findQueryTarget(targets, undefined)).toBeUndefined();
+    expect(findQueryTarget(targets, '')).toBeUndefined();
+    expect(findQueryTarget(targets, 'series')).toBeUndefined();
+  });
+
+  it('matches an exact key', () => {
+    expect(findQueryTarget(targets, 'author')?.key).toBe('author');
+  });
+
+  it('falls back to a case-insensitive match for custom provider field keys', () => {
+    const providerTargets = buildQueryTargets({
+      searchMode: 'universal',
+      metadataSearchFields: [
+        {
+          key: 'hardcoverList',
+          label: 'List',
+          type: 'TextSearchField',
+        },
+      ],
+    });
+
+    expect(findQueryTarget(providerTargets, 'hardcoverlist')?.key).toBe('hardcoverList');
+    expect(findQueryTarget(providerTargets, 'hardcoverList')?.key).toBe('hardcoverList');
   });
 });

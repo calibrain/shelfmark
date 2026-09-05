@@ -1,12 +1,24 @@
 import type { AdvancedFilterState, ContentType } from '../types';
 
 export interface UrlSearchHashState {
-  searchInput: string;
+  /**
+   * Value of the active "Search By" target - the text input for general/direct/text
+   * fields, or the selected provider-field value. Serialized as `q` so a link
+   * round-trips back into whichever target `searchBy` names.
+   */
+  queryValue: string | number | boolean;
   searchBy: string;
   contentType: ContentType;
   combinedMode: boolean;
   advancedFilters: Partial<AdvancedFilterState>;
 }
+
+const serializeQueryValue = (value: string | number | boolean): string => {
+  if (typeof value === 'boolean') {
+    return value ? '1' : '';
+  }
+  return typeof value === 'number' ? String(value) : value;
+};
 
 /**
  * Build the URL hash fragment (without the leading `#`) that mirrors the
@@ -18,8 +30,9 @@ export interface UrlSearchHashState {
 export const buildUrlSearchHash = (state: UrlSearchHashState): string => {
   const params = new URLSearchParams();
 
-  if (state.searchInput) {
-    params.set('q', state.searchInput);
+  const queryValue = serializeQueryValue(state.queryValue);
+  if (queryValue) {
+    params.set('q', queryValue);
   }
   if (state.searchBy && state.searchBy !== 'general') {
     params.set('search_by', state.searchBy);

@@ -69,10 +69,10 @@ describe('parseUrlSearchParams', () => {
     expect(parsed.hasSearchParams).toBe(true);
   });
 
-  it('normalizes search_by casing/whitespace', () => {
+  it('trims search_by but keeps its casing for case-sensitive provider field keys', () => {
     const parsed = parseUrlSearchParams(new URLSearchParams('search_by=+MANUAL+'));
 
-    expect(parsed.searchBy).toBe('manual');
+    expect(parsed.searchBy).toBe('MANUAL');
   });
 
   it('keeps search_by-only links from auto-triggering a blank search', () => {

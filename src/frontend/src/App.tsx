@@ -34,14 +34,14 @@ import { useAuth } from './hooks/useAuth';
 import { useDownloadTracking } from './hooks/useDownloadTracking';
 import { useLatestCallback } from './hooks/useLatestCallback';
 import { useMediaQuery } from './hooks/useMediaQuery';
-import { useDependencyEffect, useMountEffect } from './hooks/useMountEffect';
+import { useMountEffect } from './hooks/useMountEffect';
 import { useRealtimeStatus } from './hooks/useRealtimeStatus';
 import { useRequestPolicy } from './hooks/useRequestPolicy';
 import { useRequests } from './hooks/useRequests';
 import { useSearch } from './hooks/useSearch';
 import { primeSettingsCache } from './hooks/useSettings';
 import { useToast } from './hooks/useToast';
-import { useSyncUrlSearchHash, useUrlSearch } from './hooks/useUrlSearch';
+import { useExternalHashChange, useSyncUrlSearchHash, useUrlSearch } from './hooks/useUrlSearch';
 import { primeUsersCache } from './hooks/useUsersFetch';
 import { LoginPage } from './pages/LoginPage';
 import {
@@ -93,7 +93,7 @@ import { getConfiguredMetadataProviderForContentType } from './utils/metadataPro
 import { getEffectiveMetadataSort } from './utils/metadataSort';
 import { isRecord } from './utils/objectHelpers';
 import { policyTrace } from './utils/policyTrace';
-import { buildQueryTargets, getDefaultQueryTargetKey } from './utils/queryTargets';
+import { buildQueryTargets, findQueryTarget, getDefaultQueryTargetKey } from './utils/queryTargets';
 import { buildReleaseDownloadPayload, type ReleaseDownloadOptions } from './utils/releasePayload';
 import { applyRequestNoteToPayload } from './utils/requestConfirmation';
 import { bookFromRequestData } from './utils/requestFulfil';
@@ -110,7 +110,7 @@ import {
   applyDirectPolicyModeToButtonState,
   applyUniversalPolicyModeToButtonState,
 } from './utils/requestPolicyUi';
-import { getSearchByCookie, setSearchByCookie } from './utils/searchByCookie';
+import { getSearchByPreference, setSearchByPreference } from './utils/searchByPreference';
 import { buildUrlSearchHash } from './utils/urlSearchHash';
 
 // eslint-disable-next-line import/no-unassigned-import -- global app stylesheet is loaded for side effects
@@ -619,11 +619,11 @@ function App() {
   const [configuredCombinedMetadataProvider, setConfiguredCombinedMetadataProvider] = useState<
     string | null
   >(null);
-  // Falls back to the cookie-stored "Search By" default from the user's last-used mode;
+  // Falls back to the stored "Search By" default from the user's last-used mode;
   // an invalid/stale value is harmless since effectiveActiveQueryTarget below re-validates
   // it against the current queryTargets once config/search fields are known.
   const [activeQueryTarget, setActiveQueryTarget] = useState(
-    () => getSearchByCookie() || 'general',
+    () => getSearchByPreference() || 'general',
   );
   const [downloadsSidebarOpen, setDownloadsSidebarOpen] = useState(false);
   const [sidebarPinnedOpen, setSidebarPinnedOpen] = useState<boolean>(() =>
@@ -700,8 +700,18 @@ function App() {
 
   // URL-based search: parse URL params for automatic search on page load
   const urlSearchEnabled = isAuthenticated && config !== null;
-  const { parsedParams, wasProcessed } = useUrlSearch({ enabled: urlSearchEnabled });
+  // Bumped when the hash changes to something we didn't write - a shared link pasted into
+  // an already-open tab. Re-parses the URL and remounts the bootstrap so it applies.
+  const [urlSearchNonce, setUrlSearchNonce] = useState(0);
+  const { parsedParams, wasProcessed } = useUrlSearch({
+    enabled: urlSearchEnabled,
+    nonce: urlSearchNonce,
+  });
   const [hasExecutedUrlSearchBootstrap, setHasExecutedUrlSearchBootstrap] = useState(false);
+  useExternalHashChange(() => {
+    setHasExecutedUrlSearchBootstrap(false);
+    setUrlSearchNonce((value) => value + 1);
+  });
 
   const prevSearchModeRef = useRef<string | undefined>(undefined);
 
@@ -1941,46 +1951,14 @@ function App() {
     return getDefaultQueryTargetKey(queryTargets);
   }, [queryTargets, activeQueryTarget]);
 
-  // A `search_by` URL hash must win over the cookie-seeded default (it's an explicit deep
-  // link), but at UrlSearchBootstrapMount's one-shot mount, queryTargets can still be missing
-  // the hashed target if the metadata search-fields fetch hasn't resolved yet - so that mount
-  // effect (which only runs once) can silently miss the override. Retry independently here,
-  // reactive to queryTargets, until it either applies or is confirmed it never can be (the
-  // ref just stops us from re-applying after the user changes the selector themselves).
-  const urlSearchByAppliedRef = useRef(false);
-  useDependencyEffect(() => {
-    if (urlSearchByAppliedRef.current) {
-      return;
-    }
-    const hashSearchBy = parsedParams?.searchBy;
-    if (hashSearchBy && queryTargets.some((target) => target.key === hashSearchBy)) {
-      setActiveQueryTarget(hashSearchBy);
-      urlSearchByAppliedRef.current = true;
-    }
-  }, [parsedParams?.searchBy, queryTargets]);
-
-  // Persist the user's last-used "Search By" target as the client-side default
-  // for their next visit (no URL hash override -> falls back to this cookie).
-  useDependencyEffect(() => {
-    setSearchByCookie(effectiveActiveQueryTarget);
-  }, [effectiveActiveQueryTarget]);
-
-  // Keep the URL hash fragment live as search state changes. Gated until any URL-driven
-  // bootstrap has applied (or there was nothing to apply), so we don't clobber a shared
-  // link's params with the initial default state before they've been read.
-  const readyToSyncUrlHash = wasProcessed && (!parsedParams || hasExecutedUrlSearchBootstrap);
-  const urlSearchHash = useMemo(
-    () =>
-      buildUrlSearchHash({
-        searchInput,
-        searchBy: effectiveActiveQueryTarget,
-        contentType,
-        combinedMode,
-        advancedFilters,
-      }),
-    [searchInput, effectiveActiveQueryTarget, contentType, combinedMode, advancedFilters],
-  );
-  useSyncUrlSearchHash({ enabled: readyToSyncUrlHash, hash: urlSearchHash });
+  // Persist only what the user explicitly picked in the selector. Persisting the derived
+  // `effectiveActiveQueryTarget` instead would overwrite the stored default with `general`
+  // every time it collapses for reasons the user didn't choose: a cold load before the
+  // metadata search fields resolve, the logo reset, logout, or a `view_series` browse.
+  const handleQueryTargetChange = useCallback((nextTarget: string) => {
+    setActiveQueryTarget(nextTarget);
+    setSearchByPreference(nextTarget);
+  }, []);
 
   const activeQueryOption = useMemo(
     () =>
@@ -2033,6 +2011,23 @@ function App() {
 
     return searchFieldValues[activeQueryOption.field.key] ?? '';
   }, [activeQueryOption, searchInput, searchFieldValues]);
+
+  // Keep the URL hash fragment live as search state changes. Gated until any URL-driven
+  // bootstrap has applied (or there was nothing to apply), so we don't clobber a shared
+  // link's params with the initial default state before they've been read.
+  const readyToSyncUrlHash = wasProcessed && (!parsedParams || hasExecutedUrlSearchBootstrap);
+  const urlSearchHash = useMemo(
+    () =>
+      buildUrlSearchHash({
+        queryValue: activeQueryValue,
+        searchBy: effectiveActiveQueryTarget,
+        contentType,
+        combinedMode,
+        advancedFilters,
+      }),
+    [activeQueryValue, effectiveActiveQueryTarget, contentType, combinedMode, advancedFilters],
+  );
+  useSyncUrlSearchHash({ enabled: readyToSyncUrlHash, hash: urlSearchHash });
 
   const activeQueryValueLabel = useMemo(() => {
     if (!activeQueryOption?.field) {
@@ -2449,7 +2444,7 @@ function App() {
           onCombinedModeChange={combinedModeAllowed ? setCombinedMode : undefined}
           queryTargets={queryTargets}
           activeQueryTarget={effectiveActiveQueryTarget}
-          onQueryTargetChange={setActiveQueryTarget}
+          onQueryTargetChange={handleQueryTargetChange}
           activeQueryField={activeQueryField}
         />
       </div>
@@ -2516,7 +2511,7 @@ function App() {
             onQueryValueChange={handleActiveQueryValueChange}
             queryTargets={queryTargets}
             activeQueryTarget={effectiveActiveQueryTarget}
-            onQueryTargetChange={setActiveQueryTarget}
+            onQueryTargetChange={handleQueryTargetChange}
             showAdvanced={effectiveShowAdvanced}
             onAdvancedToggle={
               hasAdvancedContent ? () => setShowAdvanced(!effectiveShowAdvanced) : undefined
@@ -2797,9 +2792,25 @@ function App() {
   const adminSettingsWarmup = adminSettingsWarmupKey ? (
     <AdminSettingsWarmupMount key={adminSettingsWarmupKey} />
   ) : null;
+  // A `search_by` deep link can name a metadata provider field that isn't in queryTargets
+  // until the search-fields fetch resolves. Bootstrapping before then runs the search
+  // against the wrong target *and* lets the sync effect rewrite the shared hash without
+  // `search_by`, so hold the one-shot mount until the fields have settled (the session
+  // resolves to null on failure, so this can't hang).
+  const searchFieldsSettled =
+    metadataConfigSessionKey === null ||
+    activeMetadataConfigState?.sessionKey === metadataConfigSessionKey;
+  const awaitingSearchByTarget = Boolean(
+    parsedParams?.searchBy && !findQueryTarget(queryTargets, parsedParams.searchBy),
+  );
   const urlSearchBootstrapMount =
-    wasProcessed && parsedParams && config && !hasExecutedUrlSearchBootstrap ? (
+    wasProcessed &&
+    parsedParams &&
+    config &&
+    !hasExecutedUrlSearchBootstrap &&
+    (searchFieldsSettled || !awaitingSearchByTarget) ? (
       <UrlSearchBootstrapMount
+        key={urlSearchNonce}
         parsedParams={parsedParams}
         config={config}
         contentType={contentType}
@@ -2815,6 +2826,7 @@ function App() {
         setAdvancedFilters={setAdvancedFilters}
         setShowAdvanced={setShowAdvanced}
         setActiveQueryTarget={setActiveQueryTarget}
+        setSearchFieldValue={updateSearchFieldValue}
         runSearchWithPolicyRefresh={runSearchWithPolicyRefresh}
         onComplete={() => {
           setHasExecutedUrlSearchBootstrap(true);
