@@ -2012,6 +2012,13 @@ function App() {
     return searchFieldValues[activeQueryOption.field.key] ?? '';
   }, [activeQueryOption, searchInput, searchFieldValues]);
 
+  // The sort the app applies with no user choice, mirroring what loadConfig seeds
+  // advancedFilters.sort with - a sort equal to it is a default, not a shared intent.
+  const urlHashDefaultSort =
+    effectiveSearchMode === 'universal'
+      ? resolvedMetadataDefaultSort
+      : config?.default_sort || 'relevance';
+
   // Keep the URL hash fragment live as search state changes. Gated until any URL-driven
   // bootstrap has applied (or there was nothing to apply), so we don't clobber a shared
   // link's params with the initial default state before they've been read.
@@ -2024,8 +2031,18 @@ function App() {
         contentType,
         combinedMode,
         advancedFilters,
+        defaultSort: urlHashDefaultSort,
+        defaultFormats: supportedFormats,
       }),
-    [activeQueryValue, effectiveActiveQueryTarget, contentType, combinedMode, advancedFilters],
+    [
+      activeQueryValue,
+      effectiveActiveQueryTarget,
+      contentType,
+      combinedMode,
+      advancedFilters,
+      urlHashDefaultSort,
+      supportedFormats,
+    ],
   );
   useSyncUrlSearchHash({ enabled: readyToSyncUrlHash, hash: urlSearchHash });
 
