@@ -622,7 +622,9 @@ function App() {
   // Falls back to the cookie-stored "Search By" default from the user's last-used mode;
   // an invalid/stale value is harmless since effectiveActiveQueryTarget below re-validates
   // it against the current queryTargets once config/search fields are known.
-  const [activeQueryTarget, setActiveQueryTarget] = useState(() => getSearchByCookie() || 'general');
+  const [activeQueryTarget, setActiveQueryTarget] = useState(
+    () => getSearchByCookie() || 'general',
+  );
   const [downloadsSidebarOpen, setDownloadsSidebarOpen] = useState(false);
   const [sidebarPinnedOpen, setSidebarPinnedOpen] = useState<boolean>(() =>
     getInitialPinnedPreference(),

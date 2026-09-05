@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 
-import { useDependencyEffect } from './useMountEffect';
 import type { ParsedUrlSearch } from '../utils/parseUrlSearchParams';
 import { parseUrlSearchParams } from '../utils/parseUrlSearchParams';
+import { useDependencyEffect } from './useMountEffect';
 
 interface UseUrlSearchOptions {
   /** Only process URL params after auth check and config are loaded */
