@@ -708,7 +708,11 @@ function App() {
     nonce: urlSearchNonce,
   });
   const [hasExecutedUrlSearchBootstrap, setHasExecutedUrlSearchBootstrap] = useState(false);
+  // Same fact as the state above, readable from loadConfig's async continuation, which
+  // closes over the render it started in and would otherwise see a stale `false`.
+  const urlSearchBootstrapAppliedRef = useRef(false);
   useExternalHashChange(() => {
+    urlSearchBootstrapAppliedRef.current = false;
     setHasExecutedUrlSearchBootstrap(false);
     setUrlSearchNonce((value) => value + 1);
   });
@@ -847,7 +851,13 @@ function App() {
             : cfg.default_sort || 'relevance';
 
         if (cfg?.supported_formats) {
-          if (mode === 'initial') {
+          // Seeding the defaults must not undo filters a shared link already applied.
+          // The URL bootstrap is gated on config being loaded, so normally it runs after
+          // this and wins on its own - but nothing guarantees this is the only 'initial'
+          // load (React's StrictMode double-invokes the mount effect that triggers it in
+          // development), and a late one would reset `formats` to the full supported list
+          // and drop the link's own sort.
+          if (mode === 'initial' && !urlSearchBootstrapAppliedRef.current) {
             setAdvancedFilters((prev) => ({
               ...prev,
               formats: cfg.supported_formats,
@@ -2846,6 +2856,7 @@ function App() {
         setSearchFieldValue={updateSearchFieldValue}
         runSearchWithPolicyRefresh={runSearchWithPolicyRefresh}
         onComplete={() => {
+          urlSearchBootstrapAppliedRef.current = true;
           setHasExecutedUrlSearchBootstrap(true);
         }}
       />
