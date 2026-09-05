@@ -1,5 +1,7 @@
 """Direct download source - Anna's Archive/Libgen with fallback cascade."""
 
+from __future__ import annotations
+
 import itertools
 import json
 import re
@@ -1418,6 +1420,52 @@ def _try_download_url(
         return download_url
 
 
+def _try_torbox_aa_download(
+    book_info: BrowseRecord,
+    book_path: Path,
+    progress_callback: Callable[[float], None] | None,
+    cancel_flag: Event | None,
+    status_callback: Callable[[str, str | None], None] | None,
+) -> str | None:
+    """Try Torbox's native Anna's Archive page support before local resolution.
+
+    Torbox accepts AA's stable MD5 page and performs its own source selection.
+    Sending it a Shelfmark-resolved mirror URL is less reliable and requires the
+    local Cloudflare bypass first, defeating the purpose of this transport.
+    """
+    from shelfmark.download.clients.torbox import TorboxClient
+
+    url = f"{network.get_aa_base_url()}/md5/{book_info.id}"
+    client = TorboxClient()
+    if not client._api_key:
+        return None
+
+    try:
+        if status_callback:
+            status_callback("resolving", "Sending Anna's Archive download to Torbox")
+        data = client.download_web_url(
+            url,
+            book_info.title,
+            book_info.size or "",
+            progress_callback,
+            cancel_flag,
+            status_callback,
+        )
+        if not data:
+            return None
+        file_size = data.tell()
+        if file_size < _MIN_VALID_FILE_SIZE:
+            _raise_runtime_error(f"File too small ({file_size} bytes)")
+        data.seek(0)
+        with book_path.open("wb") as file:
+            file.write(data.getbuffer())
+    except (requests.exceptions.RequestException, RuntimeError, TypeError, ValueError, OSError) as error:
+        logger.warning("Torbox Anna's Archive download failed; trying configured sources: %s", error)
+        return None
+    else:
+        return url
+
+
 def _get_download_urls_from_welib(
     book_id: str,
     selector: network.AAMirrorSelector | None = None,
@@ -1542,6 +1590,17 @@ def _download_book(
 
     # Get enabled sources in priority order
     priority = [s for s in _get_source_priority() if s.get("enabled", True)]
+
+    if config.get("TORBOX_DIRECT_DOWNLOAD_ENABLED", False) and any(
+        source["id"].startswith("aa-") for source in priority
+    ):
+        if cancel_flag and cancel_flag.is_set():
+            return None
+        result = _try_torbox_aa_download(
+            book_info, book_path, progress_callback, cancel_flag, status_callback
+        )
+        if result:
+            return result
 
     for source_config in priority:
         source_id = source_config["id"]

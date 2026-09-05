@@ -381,6 +381,7 @@ _BUILTIN_CLIENT_MODULES = (
     "shelfmark.download.clients.realdebrid",
     "shelfmark.download.clients.rtorrent",
     "shelfmark.download.clients.sabnzbd",
+    "shelfmark.download.clients.torbox",
     "shelfmark.download.clients.transmission",
 )
 _builtin_client_state = {"loaded": False}

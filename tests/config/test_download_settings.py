@@ -394,6 +394,20 @@ def test_download_source_settings_include_direct_download_toggle():
     assert "Add your own mirror URLs" in toggle_field.description
 
 
+def test_download_source_settings_include_torbox_direct_download_toggle():
+    from shelfmark.config.settings import download_source_settings
+
+    fields = download_source_settings()
+    toggle_field = next(
+        field
+        for field in fields
+        if getattr(field, "key", None) == "TORBOX_DIRECT_DOWNLOAD_ENABLED"
+    )
+
+    assert toggle_field.default is False
+    assert "Torbox API key" in toggle_field.description
+
+
 def test_download_source_settings_include_distant_path_language_toggle():
     from shelfmark.config.settings import download_source_settings
 
