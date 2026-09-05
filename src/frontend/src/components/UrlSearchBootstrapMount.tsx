@@ -1,11 +1,19 @@
 import type { Dispatch, SetStateAction } from 'react';
 
 import { useMountEffect } from '@/hooks/useMountEffect';
-import type { AppConfig, AdvancedFilterState, ContentType, SearchMode, SortOption } from '@/types';
+import type {
+  AppConfig,
+  AdvancedFilterState,
+  ContentType,
+  QueryTargetOption,
+  SearchMode,
+  SortOption,
+} from '@/types';
 import { buildSearchQuery } from '@/utils/buildSearchQuery';
 import { resolveDefaultLanguageCodes } from '@/utils/languageFilters';
 import { getEffectiveMetadataSort } from '@/utils/metadataSort';
 import type { ParsedUrlSearch } from '@/utils/parseUrlSearchParams';
+import { findQueryTarget } from '@/utils/queryTargets';
 
 const ADVANCED_FILTER_VISIBILITY_KEYS = ['content', 'lang', 'formats'] as const;
 
@@ -15,6 +23,7 @@ interface UrlSearchBootstrapMountProps {
   contentType: ContentType;
   combinedMode: boolean;
   combinedModeAllowed: boolean;
+  queryTargets: QueryTargetOption[];
   advancedFilters: AdvancedFilterState;
   resolvedMetadataDefaultSort: string;
   resolvedMetadataSortOptions: SortOption[];
@@ -24,10 +33,12 @@ interface UrlSearchBootstrapMountProps {
   setAdvancedFilters: Dispatch<SetStateAction<AdvancedFilterState>>;
   setShowAdvanced: (value: boolean) => void;
   setActiveQueryTarget: (value: string) => void;
+  setSearchFieldValue: (key: string, value: string | number | boolean, label?: string) => void;
   runSearchWithPolicyRefresh: (opts: {
     query: string;
     contentTypeOverride?: ContentType;
     searchModeOverride?: SearchMode;
+    fieldValues?: Record<string, string | number | boolean>;
   }) => void;
   onComplete: () => void;
 }
@@ -38,6 +49,7 @@ export const UrlSearchBootstrapMount = ({
   contentType,
   combinedMode,
   combinedModeAllowed,
+  queryTargets,
   advancedFilters,
   resolvedMetadataDefaultSort,
   resolvedMetadataSortOptions,
@@ -47,6 +59,7 @@ export const UrlSearchBootstrapMount = ({
   setAdvancedFilters,
   setShowAdvanced,
   setActiveQueryTarget,
+  setSearchFieldValue,
   runSearchWithPolicyRefresh,
   onComplete,
 }: UrlSearchBootstrapMountProps) => {
@@ -69,6 +82,15 @@ export const UrlSearchBootstrapMount = ({
       setCombinedMode(false);
     }
 
+    const urlSearchByTarget = findQueryTarget(queryTargets, parsedParams.searchBy);
+    const urlSearchByOverride = urlSearchByTarget?.key;
+
+    // Search By target can be deep-linked on its own (e.g. `#search_by=manual`, no query),
+    // so apply it even when there's nothing else to search for.
+    if (urlSearchByOverride) {
+      setActiveQueryTarget(urlSearchByOverride);
+    }
+
     if (!parsedParams.hasSearchParams) {
       return;
     }
@@ -79,12 +101,8 @@ export const UrlSearchBootstrapMount = ({
       bookLanguages,
     );
 
-    if (parsedParams.searchInput) {
-      setSearchInput(parsedParams.searchInput);
-    }
-
-    let nextQueryTarget = 'general';
-    if (parsedSearchMode === 'direct') {
+    let nextQueryTarget = urlSearchByOverride || 'general';
+    if (parsedSearchMode === 'direct' && !urlSearchByOverride) {
       if (parsedParams.advancedFilters.isbn) {
         nextQueryTarget = 'isbn';
       } else if (parsedParams.advancedFilters.author) {
@@ -94,6 +112,39 @@ export const UrlSearchBootstrapMount = ({
       }
     }
     setActiveQueryTarget(nextQueryTarget);
+
+    // Route `q` through the active target, mirroring how the live search dispatch reads it:
+    // direct fields and text fields are typed into searchInput, other provider fields are
+    // dispatched as fieldValues. Legacy links carry the value under the field's own param
+    // (`?author=herbert`) instead, so fall back to that.
+    const targetKey = urlSearchByTarget?.field?.key ?? nextQueryTarget;
+    const legacyDirectValue =
+      targetKey === 'isbn' || targetKey === 'author' || targetKey === 'title'
+        ? parsedParams.advancedFilters[targetKey]
+        : undefined;
+    const targetQueryValue = parsedParams.searchInput || legacyDirectValue || '';
+
+    const usesProviderFieldValue =
+      urlSearchByTarget?.source === 'provider-field' &&
+      urlSearchByTarget.field !== undefined &&
+      urlSearchByTarget.field.type !== 'TextSearchField';
+
+    if (usesProviderFieldValue && urlSearchByTarget?.field && targetQueryValue) {
+      setSearchFieldValue(urlSearchByTarget.field.key, targetQueryValue);
+    } else if (targetQueryValue) {
+      setSearchInput(targetQueryValue);
+    }
+
+    const urlFieldValues =
+      urlSearchByTarget?.source === 'provider-field' && urlSearchByTarget.field && targetQueryValue
+        ? { [urlSearchByTarget.field.key]: targetQueryValue }
+        : undefined;
+
+    // Manual mode opens the release browser off an explicit submit - it has no results
+    // list to bootstrap, so a deep link fills the input and stops there.
+    if (urlSearchByTarget?.source === 'manual') {
+      return;
+    }
 
     const resolvedUrlMetadataSort =
       parsedSearchMode === 'universal'
@@ -134,16 +185,13 @@ export const UrlSearchBootstrapMount = ({
     };
 
     const query = buildSearchQuery({
-      searchInput:
-        parsedSearchMode === 'direct' && nextQueryTarget !== 'general'
-          ? ''
-          : parsedParams.searchInput,
+      searchInput: nextQueryTarget === 'general' ? targetQueryValue : '',
       showAdvanced: true,
       advancedFilters: {
         ...mergedFilters,
-        isbn: nextQueryTarget === 'isbn' ? parsedParams.advancedFilters.isbn || '' : '',
-        author: nextQueryTarget === 'author' ? parsedParams.advancedFilters.author || '' : '',
-        title: nextQueryTarget === 'title' ? parsedParams.advancedFilters.title || '' : '',
+        isbn: nextQueryTarget === 'isbn' ? targetQueryValue : '',
+        author: nextQueryTarget === 'author' ? targetQueryValue : '',
+        title: nextQueryTarget === 'title' ? targetQueryValue : '',
       },
       bookLanguages,
       defaultLanguage: defaultLanguageCodes,
@@ -154,6 +202,7 @@ export const UrlSearchBootstrapMount = ({
       query,
       contentTypeOverride: urlContentTypeOverride,
       searchModeOverride: parsedSearchMode,
+      fieldValues: urlFieldValues,
     });
   });
 

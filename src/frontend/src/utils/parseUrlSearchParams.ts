@@ -8,6 +8,12 @@ export interface ParsedUrlSearch {
   advancedFilters: Partial<AdvancedFilterState>;
   contentType?: ContentType;
   combinedMode?: boolean;
+  /**
+   * "Search By" target (e.g. general/author/title/series/manual), from the `search_by`
+   * param. Kept verbatim - provider field keys are matched case-insensitively against
+   * the live targets, so a custom provider's camelCase key still resolves.
+   */
+  searchBy?: string;
   hasSearchParams: boolean;
 }
 
@@ -34,21 +40,28 @@ const parseContentTypeParam = (
  * In Universal mode, query/sort are used for search text, and content_type
  * selects ebook, audiobook, or combined (search both at once).
  *
+ * Params live in the URL hash (legacy query strings are still accepted and
+ * rewritten to a hash on load - see useUrlSearch).
+ *
  * @example
- * // Direct mode: /?q=harry+potter&author=rowling&format=epub&lang=en
- * // Universal mode: /?q=dune&sort=popularity
- * // Universal combined: /?q=dune&content_type=combined
+ * // Direct mode: /#q=harry+potter&author=rowling&format=epub&lang=en
+ * // Universal mode: /#q=dune&sort=popularity
+ * // Universal combined: /#q=dune&content_type=combined
+ * // Search By deep link: /#search_by=manual&q=dune
  */
 export function parseUrlSearchParams(searchParams: URLSearchParams): ParsedUrlSearch {
   const contentTypeParam = parseContentTypeParam(
     searchParams.get('content_type') || searchParams.get('contentType'),
   );
 
+  const searchByParam = (searchParams.get('search_by') || '').trim();
+
   const result: ParsedUrlSearch = {
     searchInput: '',
     advancedFilters: {},
     contentType: contentTypeParam.contentType,
     combinedMode: contentTypeParam.combinedMode,
+    searchBy: searchByParam || undefined,
     hasSearchParams: false,
   };
 
