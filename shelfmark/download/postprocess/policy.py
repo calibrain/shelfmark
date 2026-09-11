@@ -55,6 +55,23 @@ def get_file_organization(*, is_audiobook: bool) -> str:
     return mode if mode in ("none", "rename", "rename_and_group", "organize") else "rename"
 
 
+_WORD_SEPARATORS = {"space": " ", "dot": ".", "underscore": "_", "hyphen": "-"}
+
+
+def get_word_separator() -> str:
+    """Get the configured word separator for naming template values.
+
+    Replaces whitespace inside each placeholder's rendered value (e.g. "Conan
+    Doyle" -> "Conan.Doyle"). Defaults to a plain space, which leaves values
+    unchanged.
+    """
+    choice = _config_text(core_config.config.get("NAMING_WORD_SEPARATOR", "space")).strip().lower()
+    if choice == "custom":
+        custom = core_config.config.get("NAMING_WORD_SEPARATOR_CUSTOM", "")
+        return _config_text(custom) or " "
+    return _WORD_SEPARATORS.get(choice, " ")
+
+
 def get_template(*, is_audiobook: bool, organization_mode: str) -> str:
     """Get the template for the content type and organization mode."""
     if is_audiobook:

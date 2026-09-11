@@ -1023,6 +1023,40 @@ def download_settings() -> list[SettingsField]:
                 "value": "folder",
             },
         ),
+        SelectField(
+            key="NAMING_WORD_SEPARATOR",
+            label="Word Separator",
+            description=(
+                "Replaces spaces inside naming template values (e.g. 'Conan Doyle' -> "
+                "'Conan.Doyle'). Applies to books and audiobooks, rename and organize "
+                "templates alike. Literal characters typed into a template (like the "
+                "'-' in '{Author} - {Title}') are left as-is."
+            ),
+            options=[
+                {"value": "space", "label": "Space (default)", "description": "Keep spaces as-is"},
+                {"value": "dot", "label": "Dot", "description": "Arthur.Conan.Doyle"},
+                {"value": "underscore", "label": "Underscore", "description": "Arthur_Conan_Doyle"},
+                {"value": "hyphen", "label": "Hyphen", "description": "Arthur-Conan-Doyle"},
+                {"value": "custom", "label": "Custom", "description": "Choose your own separator"},
+            ],
+            default="space",
+            show_when={
+                "field": "BOOKS_OUTPUT_MODE",
+                "value": "folder",
+            },
+        ),
+        TextField(
+            key="NAMING_WORD_SEPARATOR_CUSTOM",
+            label="Custom Word Separator",
+            description="Separator to use when Word Separator is set to Custom.",
+            default="",
+            placeholder="~",
+            max_length=5,
+            show_when=[
+                {"field": "BOOKS_OUTPUT_MODE", "value": "folder"},
+                {"field": "NAMING_WORD_SEPARATOR", "value": "custom"},
+            ],
+        ),
         # Rename mode template - filename only
         _naming_template_field(
             key="TEMPLATE_RENAME",

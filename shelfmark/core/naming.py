@@ -42,6 +42,10 @@ BRACE_PATTERN = re.compile(r"\{([^}]+)\}")
 # Characters that are invalid in filenames on various filesystems
 INVALID_CHARS = re.compile(r'[\\/:*?"<>|]')
 
+# Runs of whitespace inside a single placeholder's rendered value, e.g. "Conan Doyle"
+# -- collapsed to the configured word separator (see `parse_naming_template`).
+WHITESPACE_RUN = re.compile(r"\s+")
+
 
 def _sanitize(name: str | None, max_length: int = 245) -> str:
     """Sanitize a string for filesystem use."""
@@ -158,8 +162,16 @@ def parse_naming_template(
     metadata: Mapping[str, str | int | float | None],
     *,
     allow_path_separators: bool = True,
+    word_separator: str = " ",
 ) -> str:
-    """Render a naming template with Shelfmark metadata placeholders."""
+    """Render a naming template with Shelfmark metadata placeholders.
+
+    `word_separator` replaces whitespace *inside* each placeholder's rendered
+    value (e.g. "Conan Doyle" -> "Conan.Doyle" for a "." separator). It never
+    touches literal characters typed into the template itself, so a template
+    like "{Author}.-.{Title}" keeps its own dots regardless of this setting.
+    The default (" ") leaves values untouched, matching prior behavior.
+    """
     if not template:
         return ""
 
@@ -195,6 +207,8 @@ def parse_naming_template(
         if not value:
             return ""
 
+        if word_separator != " ":
+            value = WHITESPACE_RUN.sub(word_separator, value)
         if not allow_path_separators:
             value = value.replace("/", "_")
         value = sanitize_filename(value)
@@ -260,9 +274,13 @@ def build_library_path(
     template: str,
     metadata: Mapping[str, str | int | float | None],
     extension: str | None = None,
+    *,
+    word_separator: str = " ",
 ) -> Path:
     """Build a final library path from a template and metadata."""
-    relative = parse_naming_template(template, metadata, allow_path_separators=True)
+    relative = parse_naming_template(
+        template, metadata, allow_path_separators=True, word_separator=word_separator
+    )
 
     if not relative:
         # Fallback to title if template produces empty result

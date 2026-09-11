@@ -143,3 +143,55 @@ def test_get_template_defaults_when_missing_and_ignores_pre_release_library_temp
         policy.get_template(is_audiobook=True, organization_mode="rename")
         == "{Author} - {Title} ({Year})"
     )
+
+
+def test_get_word_separator_defaults_to_space(monkeypatch):
+    import shelfmark.download.postprocess.policy as policy
+
+    monkeypatch.setattr(policy.core_config.config, "get", lambda key, default=None: default)
+
+    assert policy.get_word_separator() == " "
+
+
+def test_get_word_separator_resolves_named_choices(monkeypatch):
+    import shelfmark.download.postprocess.policy as policy
+
+    for choice, expected in [("space", " "), ("dot", "."), ("underscore", "_"), ("hyphen", "-")]:
+        monkeypatch.setattr(
+            policy.core_config.config,
+            "get",
+            lambda key, default=None, choice=choice: {"NAMING_WORD_SEPARATOR": choice}.get(
+                key, default
+            ),
+        )
+        assert policy.get_word_separator() == expected
+
+
+def test_get_word_separator_uses_custom_value(monkeypatch):
+    import shelfmark.download.postprocess.policy as policy
+
+    monkeypatch.setattr(
+        policy.core_config.config,
+        "get",
+        lambda key, default=None: {
+            "NAMING_WORD_SEPARATOR": "custom",
+            "NAMING_WORD_SEPARATOR_CUSTOM": "~",
+        }.get(key, default),
+    )
+
+    assert policy.get_word_separator() == "~"
+
+
+def test_get_word_separator_falls_back_to_space_for_blank_custom_value(monkeypatch):
+    import shelfmark.download.postprocess.policy as policy
+
+    monkeypatch.setattr(
+        policy.core_config.config,
+        "get",
+        lambda key, default=None: {
+            "NAMING_WORD_SEPARATOR": "custom",
+            "NAMING_WORD_SEPARATOR_CUSTOM": "",
+        }.get(key, default),
+    )
+
+    assert policy.get_word_separator() == " "
