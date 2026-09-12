@@ -15,8 +15,9 @@ _AUTHOR_NOISE_TOKENS = frozenset(
 # Ordering tiers for author agreement between the requested book and what an
 # indexer reported. Lower sorts first.
 AUTHOR_MATCH = 0
-AUTHOR_UNKNOWN = 1
-AUTHOR_MISMATCH = 2
+AUTHOR_PARTIAL = 1
+AUTHOR_UNKNOWN = 2
+AUTHOR_MISMATCH = 3
 
 # A mononym ("Homer") can only ever agree on one token; a longer name needs a
 # given name and a surname to agree before it counts as the same person.
@@ -45,9 +46,15 @@ def author_affinity(wanted: object, offered: object) -> int:
     agree, while a transliteration ("Dostoevsky"/"Dostoyevsky") is merely sorted
     last instead of being hidden.
 
-    Three-way on purpose: an indexer that reports no author at all must not sort
-    below one that reports a wrong author, so "no metadata" ranks between
-    agreement and disagreement rather than counting as either.
+    Graded, not binary, because the ways of falling short are not equally bad.
+    An indexer that reports no author at all must not sort below one that reports
+    a wrong author, so "no metadata" ranks between agreement and disagreement. And
+    a name that merely says *less* than the one asked for is not evidence of a
+    different person: "Petrie" contradicts nothing about "David Petrie", while
+    "Gordon Petrie" does. That gap matters most where a source is searched by
+    surname alone (#1331) - the filenames such a search is meant to reach are
+    exactly the ones filed under a bare surname, and ranking them as wrong put
+    them below every result that named someone else entirely.
     """
     wanted_tokens = _author_tokens(wanted)
     offered_tokens = _author_tokens(offered)
@@ -63,7 +70,22 @@ def author_affinity(wanted: object, offered: object) -> int:
         )
     )
     required = min(_AUTHOR_TOKENS_REQUIRED, len(wanted_tokens))
-    return AUTHOR_MATCH if matched >= required else AUTHOR_MISMATCH
+    if matched >= required:
+        return AUTHOR_MATCH
+
+    # Too little agreement to call it the same person, so the question is whether
+    # what was offered *disagrees*. A name every token of which fits the wanted
+    # name is an abbreviation of it; one carrying a token that fits nothing is a
+    # different name that happens to share a surname.
+    if all(
+        any(
+            _author_tokens_compatible(wanted_token, offered_token) for wanted_token in wanted_tokens
+        )
+        for offered_token in offered_tokens
+    ):
+        return AUTHOR_PARTIAL
+
+    return AUTHOR_MISMATCH
 
 
 def search_surname(author: object) -> str:

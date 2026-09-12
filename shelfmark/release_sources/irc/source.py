@@ -419,9 +419,16 @@ class IRCReleaseSource(ReleaseSource):
         carries `author=""` on purpose (search_plan.py:246), and so does a manual
         query, so reading `plan.author` here would append a surname to searches
         that deliberately have none.
+
+        Returns "" without a title, so the caller reports "no query" rather than
+        posting one. A surname on its own is not a search: `@search Petrie` asks
+        the bot for every Petrie on the channel, and a bare over-broad line is the
+        kind of post `is_available` refuses queries to avoid being banned for.
         """
         variant = plan.title_variants[0] if plan.title_variants else None
         title = variant.title if variant else (book.search_title or book.title)
+        if not title:
+            return ""
         author = variant.author if variant else plan.author
         parts = [part for part in (title, search_surname(author)) if part]
         return " ".join(parts)

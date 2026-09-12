@@ -11,6 +11,7 @@ import pytest
 from shelfmark.core.author_match import (
     AUTHOR_MATCH,
     AUTHOR_MISMATCH,
+    AUTHOR_PARTIAL,
     AUTHOR_UNKNOWN,
     author_affinity,
 )
@@ -62,11 +63,32 @@ class TestAuthorAffinity:
         # An indexer that reports no author must not sort below one that reports
         # the wrong author, so this tier sits between the two.
         assert author_affinity(wanted, offered) == AUTHOR_UNKNOWN
-        assert AUTHOR_MATCH < AUTHOR_UNKNOWN < AUTHOR_MISMATCH
+        assert AUTHOR_MATCH < AUTHOR_PARTIAL < AUTHOR_UNKNOWN < AUTHOR_MISMATCH
 
-    def test_a_surname_alone_is_not_enough_for_a_full_name(self):
-        # "Ferriss" appearing under some other given name is a different person.
+    def test_another_given_name_under_the_same_surname_is_a_different_person(self):
         assert author_affinity("Timothy Ferriss", "Bruce Ferriss") == AUTHOR_MISMATCH
+
+    @pytest.mark.parametrize(
+        ("wanted", "offered"),
+        [
+            ("Timothy Ferriss", "Ferriss"),
+            ("David Petrie", "Petrie"),
+            ("Ursula K. Le Guin", "Guin"),
+            ("Timothy Ferriss", "T."),
+        ],
+    )
+    def test_a_name_that_says_less_is_not_a_name_that_disagrees(self, wanted, offered):
+        # Every token offered fits the name asked for; there is just not enough of
+        # it to confirm the person. Weaker evidence than full agreement, stronger
+        # than none - and far from the wrong-author tier these used to land in,
+        # which is where a surname-only search put most of its own answer (#1331).
+        assert author_affinity(wanted, offered) == AUTHOR_PARTIAL
+        assert AUTHOR_MATCH < AUTHOR_PARTIAL < AUTHOR_UNKNOWN < AUTHOR_MISMATCH
+
+    def test_a_mononym_still_agrees_with_a_longer_name_that_contains_it(self):
+        # The one-token requirement for a mononym is unchanged: the extra token
+        # must not turn an agreement into a partial.
+        assert author_affinity("Homer", "Homer Simpson") == AUTHOR_MATCH
 
 
 class _EnrichedIndexerClient:

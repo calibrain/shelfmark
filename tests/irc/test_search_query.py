@@ -89,6 +89,17 @@ class TestQueryPostedToChannel:
 
         assert IRCReleaseSource()._build_query(book, build_release_search_plan(book)) == "Beowulf"
 
+    def test_a_book_with_no_title_is_not_searched_by_surname_alone(self):
+        # "@search Petrie" asks the bot for every Petrie it holds. It is not a
+        # search for anything, and a bare over-broad line posted to a public
+        # channel is what gets the nick banned - so no query is built at all.
+        book = BookMetadata(provider="hardcover", provider_id="1", title="", authors=["D. Petrie"])
+        plan = build_release_search_plan(book)
+
+        assert plan.title_variants == []
+        assert plan.author == "D. Petrie"
+        assert IRCReleaseSource()._build_query(book, plan) == ""
+
 
 class TestAuthorOrdersTheAnswer:
     def test_requested_author_leads_and_the_rest_stay_visible(self):
@@ -99,6 +110,10 @@ class TestAuthorOrdersTheAnswer:
             # What the parser writes when a filename has no " - " separator; it
             # must not sort below a result that named a different author.
             _release("Unknown"),
+            # The shape the surname query exists to reach: the channel filed this
+            # under the surname alone, so it agrees with everything known about
+            # "David Petrie" and contradicts none of it.
+            _release("Petrie"),
             _release("D Petrie"),
         ]
 
@@ -106,6 +121,7 @@ class TestAuthorOrdersTheAnswer:
 
         assert [release.extra["author"] for release in ranked] == [
             "D Petrie",
+            "Petrie",
             "Unknown",
             "Gordon Petrie",
         ]
