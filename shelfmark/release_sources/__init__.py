@@ -25,6 +25,7 @@ class ReleaseProtocol(StrEnum):
     TORRENT = "torrent"  # BitTorrent
     NZB = "nzb"  # Usenet NZB
     DCC = "dcc"  # IRC DCC
+    SOULSEEK = "soulseek"  # Soulseek peer transfer (via slskd)
 
 
 class SourceUnavailableError(Exception):
@@ -433,6 +434,7 @@ _BUILTIN_SOURCE_MODULES = (
     "shelfmark.release_sources.irc",
     "shelfmark.release_sources.newznab",
     "shelfmark.release_sources.prowlarr",
+    "shelfmark.release_sources.slskd",
 )
 _builtin_source_state = {"loaded": False}
 
