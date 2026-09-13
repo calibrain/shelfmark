@@ -128,7 +128,7 @@ def _parse_spec(username: object, directory: object, raw_files: object) -> Slskd
             continue
         try:
             size = int(raw.get("size") or 0)
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             size = 0
         files.append({"filename": filename, "size": max(size, 0)})
     if not files:
