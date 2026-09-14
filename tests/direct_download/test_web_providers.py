@@ -183,3 +183,28 @@ def test_provider_failure_is_suppressed_when_another_provider_succeeds(monkeypat
     releases = source.search(SimpleNamespace(title="Example"), SimpleNamespace())
 
     assert [release.source_id for release in releases] == ["working:1"]
+
+
+def test_provider_search_error_surfaces_when_no_provider_answers(monkeypatch):
+    from shelfmark.release_sources.direct_download.source import DirectDownloadSource
+
+    class FailingProvider:
+        id = "failing"
+        display_name = "Failing"
+
+        def is_enabled(self):
+            return True
+
+        def search(self, *_args, **_kwargs):
+            raise RuntimeError("No books found. Please try another query.")
+
+    monkeypatch.setattr(
+        registry.config,
+        "get",
+        lambda key, default=None: True if key == "DIRECT_DOWNLOAD_ENABLED" else default,
+    )
+    source = DirectDownloadSource()
+    source._providers = (FailingProvider(),)
+
+    with pytest.raises(RuntimeError, match="No books found"):
+        source.search(SimpleNamespace(title="Example"), SimpleNamespace())

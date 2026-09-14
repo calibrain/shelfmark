@@ -173,7 +173,7 @@ class DirectDownloadSource(ReleaseSource):
             raise DirectDownloadUnavailableError(unavailable_reason)
 
         releases: list[Release] = []
-        unavailable_errors: list[SourceUnavailableError] = []
+        failures: list[Exception] = []
         for provider in registry.enabled_providers(self._providers):
             try:
                 records = provider.search(
@@ -183,7 +183,7 @@ class DirectDownloadSource(ReleaseSource):
                     content_type=content_type,
                 )
             except SourceUnavailableError as exc:
-                unavailable_errors.append(exc)
+                failures.append(exc)
                 continue
             except (
                 RuntimeError,
@@ -192,11 +192,14 @@ class DirectDownloadSource(ReleaseSource):
                 requests.exceptions.RequestException,
             ) as exc:
                 logger.warning("%s search failed: %s", provider.display_name, exc)
+                failures.append(exc)
                 continue
             releases.extend(_browse_record_to_release(record) for record in records)
 
-        if unavailable_errors and not releases:
-            raise unavailable_errors[0]
+        # A provider failure is only quiet when another provider answered. Otherwise the
+        # caller has to see it, or a failed search reads as a search with no hits.
+        if failures and not releases:
+            raise failures[0]
         return releases
 
     def is_available(self) -> bool:

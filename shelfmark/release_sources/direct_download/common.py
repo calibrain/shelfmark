@@ -188,13 +188,19 @@ def parse_search_items(
     *,
     provider_id: str,
     extract_item: Callable[[Tag], ParsedSearchResult | None],
+    filter_languages: bool = True,
 ) -> list[BrowseRecord]:
     """Normalize provider-specific HTML elements into Direct Download records.
 
     Providers only describe how fields are extracted from their DOM. Language and
     format filtering, stable IDs, and BrowseRecord construction stay shared.
+
+    Pass ``filter_languages=False`` when the site already filtered by language: its
+    language cells are free text, and re-matching them locally drops rows it matched.
     """
-    requested_languages = normalize_requested_languages(filters.lang) if filters else set()
+    requested_languages = (
+        normalize_requested_languages(filters.lang) if filters and filter_languages else set()
+    )
     requested_formats = (
         {value.casefold() for value in (filters.format or get_supported_formats())}
         if filters
@@ -253,6 +259,7 @@ def parse_search_page(
     provider_id: str,
     item_selector: str,
     extract_item: Callable[[Tag], ParsedSearchResult | None],
+    filter_languages: bool = True,
 ) -> list[BrowseRecord]:
     """Parse a result page using provider-specific selectors and extraction."""
     root = BeautifulSoup(page, "html.parser") if isinstance(page, str) else page
@@ -261,4 +268,5 @@ def parse_search_page(
         filters,
         provider_id=provider_id,
         extract_item=extract_item,
+        filter_languages=filter_languages,
     )

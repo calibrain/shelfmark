@@ -768,6 +768,9 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
         provider_id="annas_archive",
         item_selector="tr",
         extract_item=_extract_aa_search_result,
+        # AA already applied &lang= server-side; only the path-language pass below
+        # (which skips &lang=) needs a local language filter.
+        filter_languages=False,
     )
 
     if path_language_enabled and requested_langs:

@@ -350,3 +350,38 @@ def test_book_matches_requested_languages_logic():
     assert aa._book_matches_requested_languages(None, set()) is True
     assert aa._book_matches_requested_languages("en", {"fr"}) is False
     assert aa._book_matches_requested_languages("fr", {"fr"}) is True
+
+
+def test_search_books_keeps_server_language_matches_when_path_language_disabled(monkeypatch):
+    monkeypatch.setattr(aa, "_is_language_from_path_enabled", lambda: False)
+    monkeypatch.setattr(aa.network, "get_aa_base_url", lambda: "https://mirror.example")
+    monkeypatch.setattr(aa.network, "AAMirrorSelector", lambda: object())
+
+    captured_url: dict[str, str] = {}
+
+    def _row(record_id: str, language: str) -> str:
+        return f"""
+            <tr>
+                <td><a href="/md5/{record_id}"><img src="c.jpg"></a></td>
+                <td><span>Book {record_id}</span></td><td><span>Author</span></td>
+                <td><span>Publisher</span></td><td><span>2025</span></td>
+                <td><span>-</span></td><td><span>-</span></td>
+                <td><span>{language}</span></td>
+                <td><span>fiction</span></td><td><span>pdf</span></td>
+                <td><span>2 mb</span></td>
+            </tr>
+        """
+
+    def _fake_html_get_page(url: str, selector, **_kwargs):
+        del selector
+        captured_url["url"] = url
+        rows = _row("rec-multi", "English, French") + _row("rec-unknown", "unknown")
+        return f"<table>{rows}</table>"
+
+    monkeypatch.setattr(aa.downloader, "html_get_page", _fake_html_get_page)
+
+    records = aa.search_books("demo", SearchFilters(lang=["en"], format=["pdf"]))
+
+    # AA already narrowed by &lang=; its free-text language cells must not be re-matched.
+    assert "&lang=en" in captured_url["url"]
+    assert [record.id for record in records] == ["rec-multi", "rec-unknown"]
