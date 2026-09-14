@@ -8,7 +8,7 @@ needed. All shelfmark-stateful behaviour lives in source.py/handler.py.
 
 import re
 from http import HTTPStatus
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 
 import requests
 from bs4 import BeautifulSoup, Tag
@@ -79,10 +79,15 @@ def fetch_page(url: str, timeout: tuple[int, int] = (5, 15)) -> str | None:
     and tests patch it. Uses the app's proxy/SSL/DNS configuration so egress stays on
     whatever network the container is bound to (the VPN namespace, in the deployed stack).
     """
+    # libgen.li's ads.php returns an empty 200 body to requests without a Referer (an
+    # anti-hotlinking check the mirrors added). A same-origin Referer is enough and is
+    # harmless for the search page, so send one for every fetch.
+    parts = urlsplit(url)
+    headers = {**downloader.DOWNLOAD_HEADERS, "Referer": f"{parts.scheme}://{parts.netloc}/"}
     try:
         response = requests.get(
             url,
-            headers=downloader.DOWNLOAD_HEADERS,
+            headers=headers,
             timeout=timeout,
             allow_redirects=True,
             proxies=network.get_proxies(url),

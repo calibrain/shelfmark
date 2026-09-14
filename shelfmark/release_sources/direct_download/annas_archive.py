@@ -1392,10 +1392,15 @@ def _extract_libgen_download_url(link: str, cancel_flag: Event | None = None) ->
     base_url = "/".join(link.split("/")[:3])
     logger.debug("Libgen fast: trying %s", link)
 
+    # libgen.li's ads.php returns an empty 200 body to requests without a Referer (an
+    # anti-hotlinking check the mirrors added). A same-origin Referer is enough to get the
+    # real page back.
+    headers = {**downloader.DOWNLOAD_HEADERS, "Referer": f"{base_url}/"}
+
     try:
         response = requests.get(
             link,
-            headers=downloader.DOWNLOAD_HEADERS,
+            headers=headers,
             timeout=(5, 10),
             allow_redirects=True,
             proxies=network.get_proxies(link),
