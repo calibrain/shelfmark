@@ -16,6 +16,7 @@ This document lists all configuration options that can be set via environment va
 - [Advanced](#advanced)
 - [Prowlarr](#prowlarr)
 - [Newznab](#newznab)
+- [Soulseek (slskd)](#soulseek-slskd)
 - [AudiobookBay](#audiobookbay)
 - [IRC](#irc)
 - [Download Clients](#download-clients)
@@ -1394,6 +1395,99 @@ Automatically retry search without category filtering if no results are found
 
 - **Type:** boolean
 - **Default:** `false`
+
+</details>
+
+## Soulseek (slskd)
+
+| Variable | Description | Type | Default |
+|----------|-------------|------|---------|
+| `SLSKD_ENABLED` | Enable searching and downloading books through slskd | boolean | `false` |
+| `SLSKD_URL` | Base URL of the slskd web interface | string | _none_ |
+| `SLSKD_API_KEY` | An API key from slskd's configuration (web.authentication.api_keys) with the readwrite role | string (secret) | _none_ |
+| `SLSKD_DOWNLOAD_PATH` | Where slskd's completed downloads folder is mounted inside Shelfmark. Leave empty when both containers see it at the same path, or use Settings > Advanced > Remote Path Mappings with client 'slskd'. | string | _none_ |
+| `SLSKD_SEARCH_TIMEOUT` | How long a Soulseek search collects peer responses. Longer waits find more peers but make every search slower. | number | `15` |
+| `SLSKD_RESPONSE_LIMIT` | Stop a search early once this many peers have answered | number | `100` |
+| `SLSKD_QUEUE_TIMEOUT_MINUTES` | Give up when the peer has not started sending within this long. Set to 0 to wait indefinitely. | number | `60` |
+| `SLSKD_REMOVE_COMPLETED` | Clear the transfer from slskd's download list after Shelfmark imports it | boolean | `true` |
+
+<details>
+<summary>Detailed descriptions</summary>
+
+#### `SLSKD_ENABLED`
+
+**Enable Soulseek source**
+
+Enable searching and downloading books through slskd
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `SLSKD_URL`
+
+**slskd URL**
+
+Base URL of the slskd web interface
+
+- **Type:** string
+- **Default:** _none_
+
+#### `SLSKD_API_KEY`
+
+**API Key**
+
+An API key from slskd's configuration (web.authentication.api_keys) with the readwrite role
+
+- **Type:** string (secret)
+- **Default:** _none_
+
+#### `SLSKD_DOWNLOAD_PATH`
+
+**Downloads Path**
+
+Where slskd's completed downloads folder is mounted inside Shelfmark. Leave empty when both containers see it at the same path, or use Settings > Advanced > Remote Path Mappings with client 'slskd'.
+
+- **Type:** string
+- **Default:** _none_
+
+#### `SLSKD_SEARCH_TIMEOUT`
+
+**Search Wait (seconds)**
+
+How long a Soulseek search collects peer responses. Longer waits find more peers but make every search slower.
+
+- **Type:** number
+- **Default:** `15`
+- **Constraints:** min: 3, max: 120
+
+#### `SLSKD_RESPONSE_LIMIT`
+
+**Max Peer Responses**
+
+Stop a search early once this many peers have answered
+
+- **Type:** number
+- **Default:** `100`
+- **Constraints:** min: 10, max: 1000
+
+#### `SLSKD_QUEUE_TIMEOUT_MINUTES`
+
+**Queue Timeout (minutes)**
+
+Give up when the peer has not started sending within this long. Set to 0 to wait indefinitely.
+
+- **Type:** number
+- **Default:** `60`
+- **Constraints:** min: 0, max: 1440
+
+#### `SLSKD_REMOVE_COMPLETED`
+
+**Remove completed transfers from slskd**
+
+Clear the transfer from slskd's download list after Shelfmark imports it
+
+- **Type:** boolean
+- **Default:** `true`
 
 </details>
 
