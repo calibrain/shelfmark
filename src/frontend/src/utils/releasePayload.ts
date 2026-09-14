@@ -30,6 +30,16 @@ export function buildReleaseDownloadPayload(
     format: release.format,
     size: release.size,
     size_bytes: release.size_bytes,
+    downloads:
+      typeof release.extra?.downloads === 'number'
+        ? release.extra.downloads
+        : typeof book.downloads === 'number' && book.downloads > 0
+          ? book.downloads
+          : typeof book.extra?.downloads === 'number'
+            ? book.extra.downloads
+            : Array.isArray(book.info?.Downloads) && book.info.Downloads.length > 0
+              ? Number(book.info.Downloads[0]) || 0
+              : 0,
     download_url: release.download_url,
     protocol: release.protocol,
     indexer: release.indexer,

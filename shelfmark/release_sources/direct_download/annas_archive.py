@@ -1,5 +1,6 @@
 """Anna's Archive search, metadata parsing, and MD5 mirror download cascade."""
 
+import concurrent.futures
 import itertools
 import json
 import re
@@ -786,7 +787,58 @@ def search_books(query: str, filters: SearchFilters) -> list[BrowseRecord]:
         )
     )
 
+    # Fetch download counts for all results in batch
+    if books:
+        _enrich_search_results_with_downloads(books)
+
     return books
+
+
+def _fetch_download_count_inline(book_id: str) -> int | None:
+    """Fetch the download count for a single book from Anna's Archive inline_info API."""
+    try:
+        url = f"{network.get_aa_base_url()}/dyn/md5/inline_info/{book_id}"
+        resp = requests.get(url, timeout=5, headers={"Accept": "application/json"})
+        if resp.status_code == 200:
+            data = resp.json()
+            count = data.get("downloads_total")
+            if count is not None:
+                return count
+    except Exception:
+        logger.debug("Failed to fetch download count for %s", book_id, exc_info=True)
+    return None
+
+
+def _enrich_search_results_with_downloads(books: list[BrowseRecord]) -> None:
+    """Fetch download counts for search results in batch and add them to each record's info."""
+    if not books:
+        return
+
+    book_ids = [b.id for b in books if b.id]
+    if not book_ids:
+        return
+
+    # Fetch counts in parallel using the inline_info API (cheaper than summary)
+    counts: dict[str, int] = {}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
+        futures = {
+            executor.submit(_fetch_download_count_inline, bid): bid for bid in book_ids
+        }
+        for future in concurrent.futures.as_completed(futures):
+            bid = futures[future]
+            try:
+                count = future.result()
+                if count is not None:
+                    counts[bid] = count
+            except Exception:
+                logger.debug("Failed to fetch download count for %s", bid, exc_info=True)
+
+    # Add counts to each record's info
+    for book in books:
+        if book.id in counts:
+            if book.info is None:
+                book.info = {}
+            book.info["Downloads"] = [str(counts[book.id])]
 
 
 def get_book_info(book_id: str, *, fetch_download_count: bool = True) -> BrowseRecord:

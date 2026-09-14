@@ -540,6 +540,7 @@ export type DownloadReleasePayload = {
   format?: string;
   size?: string;
   size_bytes?: number;
+  downloads?: number;
   download_url?: string;
   protocol?: string;
   indexer?: string;

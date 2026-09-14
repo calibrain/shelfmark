@@ -207,6 +207,7 @@ class DownloadHistoryService:
             "content_type": row.get("content_type"),
             "source": row.get("source"),
             "source_display_name": row.get("source_display_name"),
+            "downloads": row.get("downloads"),
             "status_message": row.get("status_message"),
             "download_path": DownloadHistoryService._resolve_existing_download_path(
                 row.get("download_path")
@@ -272,6 +273,7 @@ class DownloadHistoryService:
         size: str | None,
         preview: str | None,
         content_type: str | None,
+        downloads: int | None,
         origin: str,
         retry_payload: dict[str, Any] | None = None,
     ) -> None:
@@ -307,15 +309,16 @@ class DownloadHistoryService:
                     title, author, format, size, preview, content_type,
                     origin, final_status,
                     status_message, download_path, retry_payload,
-                    queued_at, terminal_at
+                    queued_at, terminal_at, downloads
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, NULL, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', NULL, NULL, ?, ?, ?, ?)
                 ON CONFLICT(task_id) DO UPDATE SET
                     final_status = 'active',
                     status_message = NULL,
                     download_path = NULL,
                     retry_payload = excluded.retry_payload,
-                    terminal_at = ?
+                    terminal_at = ?,
+                    downloads = excluded.downloads
                 """,
                     (
                         normalized_task_id,
@@ -334,6 +337,7 @@ class DownloadHistoryService:
                         normalized_retry_payload,
                         recorded_at,
                         recorded_at,
+                        downloads,
                         recorded_at,
                     ),
                 )

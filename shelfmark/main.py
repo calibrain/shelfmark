@@ -1073,6 +1073,8 @@ def api_download_release() -> Response | tuple[Response, int]:
             release_payload = dict(data)
             release_payload["content_type"] = resolved_content_type
 
+        logger.info("Download request received. keys=%s downloads=%s extra.downloads=%s", list(data.keys()), data.get("downloads"), data.get("extra", {}).get("downloads") if isinstance(data.get("extra"), dict) else None)
+
         priority = data.get("priority", 0)
         # Per-user download overrides
         db_user_id = session.get("db_user_id")
@@ -1354,6 +1356,7 @@ def _record_download_queued(task_id: str, task: Any) -> None:
             size=normalize_optional_text(getattr(task, "size", None)),
             preview=normalize_optional_text(getattr(task, "preview", None)),
             content_type=normalize_optional_text(getattr(task, "content_type", None)),
+            downloads=getattr(task, "downloads", None),
             origin=origin,
             retry_payload=backend.serialize_task_for_retry(task),
         )

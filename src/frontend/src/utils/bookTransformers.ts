@@ -62,6 +62,7 @@ interface SourceBackedBookData {
   language?: unknown;
   format?: unknown;
   size?: unknown;
+  downloads?: unknown;
   preview?: unknown;
   publisher?: unknown;
   info?: Record<string, string | string[]>;
@@ -157,6 +158,7 @@ const transformSourceBackedDataToBook = (data: SourceBackedBookData): Book => {
     language: toOptionalText(data.language),
     format: toOptionalText(data.format),
     size: toOptionalText(data.size),
+    downloads: typeof data.downloads === 'number' ? data.downloads : undefined,
     preview: toOptionalText(data.preview),
     publisher: toOptionalText(data.publisher),
     info: data.info,
@@ -181,6 +183,7 @@ export function transformReleaseToDirectBook(release: Release): Book {
     language: release.language || extra.language,
     format: release.format,
     size: release.size,
+    downloads: extra.downloads,
     preview: extra.preview,
     publisher: extra.publisher,
     info: parseBookInfo(extra.info),

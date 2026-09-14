@@ -2,6 +2,7 @@ import { useState } from 'react';
 
 import { useSearchMode } from '../../contexts/SearchModeContext';
 import type { Book, ButtonStateInfo } from '../../types';
+import { getDownloadsCount } from '../../types';
 import { bookSupportsTargets } from '../../utils/bookTargetLoader';
 import { BookActionButton } from '../BookActionButton';
 import { BookTargetDropdown } from '../BookTargetDropdown';
@@ -221,6 +222,7 @@ export const CompactView = ({
                   <span>{book.size}</span>
                 </>
               )}
+              {(() => { const d = getDownloadsCount(book); return d != null && d > 0 ? <> <span>•</span> <span>{d.toLocaleString()}</span> </> : null; })()}
             </div>
           )}
 
