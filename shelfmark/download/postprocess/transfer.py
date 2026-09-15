@@ -25,7 +25,11 @@ from shelfmark.download.fs import (
     atomic_move,
     run_blocking_io,
 )
-from shelfmark.download.postprocess.policy import get_file_organization, get_template
+from shelfmark.download.postprocess.policy import (
+    get_file_organization,
+    get_template,
+    get_word_separator,
+)
 
 from .packs import BookGroup, PackBook, group_files_into_books, match_plan_to_files
 from .scan import collect_directory_files, scan_directory_tree
@@ -198,6 +202,7 @@ def transfer_book_files(
 
     is_audiobook = check_audiobook(task.content_type)
     organization_mode = organization_mode or get_file_organization(is_audiobook=is_audiobook)
+    word_separator = get_word_separator()
 
     groups = resolve_book_groups(task, book_files, organization_mode=organization_mode)
     if groups is not None:
@@ -229,6 +234,7 @@ def transfer_book_files(
                 template,
                 file_metadata,
                 extension=ext or None,
+                word_separator=word_separator,
             )
             run_blocking_io(dest_path.parent.mkdir, parents=True, exist_ok=True)
 
@@ -256,6 +262,7 @@ def transfer_book_files(
                     template,
                     file_metadata,
                     extension=ext or None,
+                    word_separator=word_separator,
                 )
                 run_blocking_io(dest_path.parent.mkdir, parents=True, exist_ok=True)
 
@@ -289,7 +296,9 @@ def transfer_book_files(
             metadata = build_file_metadata(task, book_file)
             extension = book_file.suffix.lstrip(".") or task.format or ""
 
-            filename = parse_naming_template(template, metadata, allow_path_separators=False)
+            filename = parse_naming_template(
+                template, metadata, allow_path_separators=False, word_separator=word_separator
+            )
             filename = Path(filename).name if filename else ""
             if filename and extension:
                 filename = f"{sanitize_filename(filename)}.{extension}"
@@ -483,7 +492,12 @@ def transfer_file_to_library(
     template_metadata = dict(metadata)
     template_metadata.setdefault("OriginalName", source_path.stem)
     dest_path = run_blocking_io(
-        build_library_path, library_base, template, template_metadata, extension
+        build_library_path,
+        library_base,
+        template,
+        template_metadata,
+        extension,
+        word_separator=get_word_separator(),
     )
     run_blocking_io(dest_path.parent.mkdir, parents=True, exist_ok=True)
 
@@ -538,12 +552,14 @@ def transfer_directory_to_library(
             safe_cleanup_path(temp_file, task)
         return None
 
+    word_separator = get_word_separator()
     base_library_path = run_blocking_io(
         build_library_path,
         library_base,
         template,
         metadata,
         extension=None,
+        word_separator=word_separator,
     )
     run_blocking_io(base_library_path.parent.mkdir, parents=True, exist_ok=True)
 
@@ -574,7 +590,12 @@ def transfer_directory_to_library(
             ext = source_file.suffix.lstrip(".")
             file_metadata = {**metadata, "PartNumber": part_number}
             file_path = run_blocking_io(
-                build_library_path, library_base, template, file_metadata, extension=ext
+                build_library_path,
+                library_base,
+                template,
+                file_metadata,
+                extension=ext,
+                word_separator=word_separator,
             )
             run_blocking_io(file_path.parent.mkdir, parents=True, exist_ok=True)
 

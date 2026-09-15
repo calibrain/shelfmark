@@ -220,6 +220,61 @@ class TestParseNamingTemplate:
         assert result == "Brandon Sanderson/The Way of Kings"
 
 
+class TestWordSeparator:
+    """Tests for the `word_separator` option (#1230)."""
+
+    def test_default_space_matches_prior_behavior(self):
+        """The default separator (' ') leaves placeholder values untouched."""
+        result = parse_naming_template(
+            "{Author}/{Title}", {"Author": "Arthur Conan Doyle", "Title": "The Hound"}
+        )
+        assert result == "Arthur Conan Doyle/The Hound"
+
+    def test_dot_separator_replaces_internal_spaces(self):
+        result = parse_naming_template(
+            "{Author}/{Title}",
+            {"Author": "Arthur Conan Doyle", "Title": "The Hound of the Baskervilles"},
+            word_separator=".",
+        )
+        assert result == "Arthur.Conan.Doyle/The.Hound.of.the.Baskervilles"
+
+    def test_underscore_and_hyphen_separators(self):
+        metadata = {"Author": "Arthur Conan Doyle", "Title": "The Hound"}
+        assert (
+            parse_naming_template("{Author} - {Title}", metadata, word_separator="_")
+            == "Arthur_Conan_Doyle - The_Hound"
+        )
+        assert (
+            parse_naming_template("{Author} - {Title}", metadata, word_separator="-")
+            == "Arthur-Conan-Doyle - The-Hound"
+        )
+
+    def test_literal_template_characters_are_untouched(self):
+        """A dot typed into the template itself is not affected by the setting."""
+        result = parse_naming_template(
+            "{Author}/{Author}.-.{Title}.({Year})",
+            {"Author": "Arthur Conan Doyle", "Title": "The Hound", "Year": 1902},
+            word_separator=".",
+        )
+        assert result == "Arthur.Conan.Doyle/Arthur.Conan.Doyle.-.The.Hound.(1902)"
+
+    def test_custom_separator(self):
+        result = parse_naming_template(
+            "{Author}", {"Author": "Arthur Conan Doyle"}, word_separator="~"
+        )
+        assert result == "Arthur~Conan~Doyle"
+
+    def test_build_library_path_applies_separator(self):
+        path = build_library_path(
+            "/books",
+            "{Author}/{Title}",
+            {"Author": "Arthur Conan Doyle", "Title": "The Hound"},
+            extension="epub",
+            word_separator=".",
+        )
+        assert path == Path("/books/Arthur.Conan.Doyle/The.Hound.epub")
+
+
 class TestArbitraryPrefixSuffix:
     """Tests for enhanced template syntax with arbitrary prefix/suffix text."""
 
