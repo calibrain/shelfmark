@@ -67,10 +67,7 @@ export const NamingTemplateField = ({
     (token) => !token.audiobookOnly || content === 'audiobook',
   );
   const tokenGroups = groupTokens(availableTokens);
-  const wordSeparator = resolveWordSeparator(
-    values.NAMING_WORD_SEPARATOR,
-    values.NAMING_WORD_SEPARATOR_CUSTOM,
-  );
+  const wordSeparator = resolveWordSeparator(values.NAMING_WORD_SEPARATOR);
   const preview = buildNamingTemplatePreview(value, mode, content, wordSeparator);
   const hasPathSeparatorInFilename = mode === 'filename' && /[\\/]/.test(value);
 

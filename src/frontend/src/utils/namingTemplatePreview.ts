@@ -261,21 +261,9 @@ export const renderNamingTemplate = (
   return { value: result, unknownTokens };
 };
 
-// Mirrors _WORD_SEPARATORS / get_word_separator() in
-// shelfmark/download/postprocess/policy.py.
-const WORD_SEPARATORS: Record<string, string> = {
-  space: ' ',
-  dot: '.',
-  underscore: '_',
-  hyphen: '-',
-};
-
-export const resolveWordSeparator = (choice: unknown, custom: unknown = ''): string => {
-  const normalized = typeof choice === 'string' ? choice.trim().toLowerCase() : 'space';
-  if (normalized === 'custom') {
-    return (typeof custom === 'string' ? custom : '') || ' ';
-  }
-  return WORD_SEPARATORS[normalized] ?? ' ';
+// Mirrors get_word_separator() in shelfmark/download/postprocess/policy.py.
+export const resolveWordSeparator = (value: unknown): string => {
+  return (typeof value === 'string' ? value : '') || ' ';
 };
 
 export const buildNamingTemplatePreview = (

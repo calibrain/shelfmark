@@ -153,45 +153,27 @@ def test_get_word_separator_defaults_to_space(monkeypatch):
     assert policy.get_word_separator() == " "
 
 
-def test_get_word_separator_resolves_named_choices(monkeypatch):
+def test_get_word_separator_uses_configured_character(monkeypatch):
     import shelfmark.download.postprocess.policy as policy
 
-    for choice, expected in [("space", " "), ("dot", "."), ("underscore", "_"), ("hyphen", "-")]:
+    for value, expected in [(".", "."), ("_", "_"), ("-", "-"), ("~", "~")]:
         monkeypatch.setattr(
             policy.core_config.config,
             "get",
-            lambda key, default=None, choice=choice: {"NAMING_WORD_SEPARATOR": choice}.get(
+            lambda key, default=None, value=value: {"NAMING_WORD_SEPARATOR": value}.get(
                 key, default
             ),
         )
         assert policy.get_word_separator() == expected
 
 
-def test_get_word_separator_uses_custom_value(monkeypatch):
+def test_get_word_separator_falls_back_to_space_for_blank_value(monkeypatch):
     import shelfmark.download.postprocess.policy as policy
 
     monkeypatch.setattr(
         policy.core_config.config,
         "get",
-        lambda key, default=None: {
-            "NAMING_WORD_SEPARATOR": "custom",
-            "NAMING_WORD_SEPARATOR_CUSTOM": "~",
-        }.get(key, default),
-    )
-
-    assert policy.get_word_separator() == "~"
-
-
-def test_get_word_separator_falls_back_to_space_for_blank_custom_value(monkeypatch):
-    import shelfmark.download.postprocess.policy as policy
-
-    monkeypatch.setattr(
-        policy.core_config.config,
-        "get",
-        lambda key, default=None: {
-            "NAMING_WORD_SEPARATOR": "custom",
-            "NAMING_WORD_SEPARATOR_CUSTOM": "",
-        }.get(key, default),
+        lambda key, default=None: {"NAMING_WORD_SEPARATOR": ""}.get(key, default),
     )
 
     assert policy.get_word_separator() == " "

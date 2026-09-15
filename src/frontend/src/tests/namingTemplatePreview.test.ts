@@ -125,12 +125,11 @@ describe('namingTemplatePreview', () => {
   });
 
   it('resolves the word separator setting like the backend policy module', () => {
-    expect(resolveWordSeparator('space')).toBe(' ');
-    expect(resolveWordSeparator('dot')).toBe('.');
-    expect(resolveWordSeparator('underscore')).toBe('_');
-    expect(resolveWordSeparator('hyphen')).toBe('-');
-    expect(resolveWordSeparator('custom', '~')).toBe('~');
-    expect(resolveWordSeparator('custom', '')).toBe(' ');
+    expect(resolveWordSeparator('.')).toBe('.');
+    expect(resolveWordSeparator('_')).toBe('_');
+    expect(resolveWordSeparator('-')).toBe('-');
+    expect(resolveWordSeparator('~')).toBe('~');
+    expect(resolveWordSeparator('')).toBe(' ');
     expect(resolveWordSeparator(undefined)).toBe(' ');
   });
 
