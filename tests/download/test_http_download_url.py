@@ -1,5 +1,7 @@
 """Focused tests for download_url() retry, fallback, and resume behavior."""
 
+from unittest.mock import MagicMock
+
 import requests
 
 
@@ -156,3 +158,58 @@ def test_download_url_resumes_partial_download_after_connection_error(monkeypatc
     assert len(calls) == 2
     assert "Range" not in calls[0]["headers"]
     assert calls[1]["headers"]["Range"] == "bytes=4-"
+
+
+def test_download_url_can_redact_a_sensitive_url_from_logs(monkeypatch):
+    http = _prepare_download_test(monkeypatch)
+    logger = MagicMock()
+    monkeypatch.setattr(http, "logger", logger)
+    monkeypatch.setattr(
+        http.requests,
+        "get",
+        lambda url, **_kwargs: _FakeResponse(
+            200,
+            headers={"content-length": "4"},
+            chunks=[b"book"],
+            url=url,
+        ),
+    )
+    sensitive_url = "https://cdn.example/book.epub?signature=secret"
+
+    assert http.download_url(sensitive_url, redact_url=True) is not None
+
+    assert sensitive_url not in str(logger.mock_calls)
+
+
+def test_redacted_download_does_not_log_a_url_bearing_request_error(monkeypatch):
+    http = _prepare_download_test(monkeypatch)
+    logger = MagicMock()
+    monkeypatch.setattr(http, "logger", logger)
+    sensitive_url = "https://cdn.example/book.epub?signature=secret"
+    monkeypatch.setattr(
+        http.requests,
+        "get",
+        lambda url, **_kwargs: (_ for _ in ()).throw(requests.exceptions.ConnectionError(url)),
+    )
+
+    assert http.download_url(sensitive_url, redact_url=True) is None
+
+    assert sensitive_url not in str(logger.mock_calls)
+    logger.warning.assert_any_call("Download error: %s", "ConnectionError")
+
+
+def test_default_download_preserves_url_bearing_request_error_diagnostics(monkeypatch):
+    http = _prepare_download_test(monkeypatch)
+    logger = MagicMock()
+    monkeypatch.setattr(http, "logger", logger)
+    download_url = "https://example.com/file.epub"
+    error = requests.exceptions.ConnectionError(download_url)
+    monkeypatch.setattr(
+        http.requests,
+        "get",
+        lambda _url, **_kwargs: (_ for _ in ()).throw(error),
+    )
+
+    assert http.download_url(download_url) is None
+
+    logger.warning.assert_any_call("Download error: %s: %s", "ConnectionError", error)

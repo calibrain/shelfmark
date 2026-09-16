@@ -565,6 +565,23 @@ def _test_realdebrid_connection(current_values: dict[str, Any] | None = None) ->
     return {"success": success, "message": message}
 
 
+def _test_torbox_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Test the TorBox API connection using current form values."""
+    from shelfmark.core.config import config
+    from shelfmark.download.clients.torbox import TorBoxClient
+
+    current_values = current_values or {}
+    api_key = _resolve_string_setting(current_values, config.get, "TORBOX_API_KEY")
+
+    if not api_key:
+        return {"success": False, "message": "TorBox API Key is required"}
+
+    client = TorBoxClient()
+    client._api_key = api_key
+    success, message = client.test_connection()
+    return {"success": success, "message": message}
+
+
 # ==================== Download Clients Tab ====================
 
 
@@ -593,6 +610,7 @@ def prowlarr_clients_settings() -> list[SettingsField]:
                 {"value": "blackhole", "label": "Blackhole"},
                 {"value": "qbittorrent", "label": "qBittorrent"},
                 {"value": "realdebrid", "label": "Real-Debrid"},
+                {"value": "torbox", "label": "TorBox"},
                 {"value": "transmission", "label": "Transmission"},
                 {"value": "deluge", "label": "Deluge"},
                 {"value": "rtorrent", "label": "rTorrent"},
@@ -635,6 +653,21 @@ def prowlarr_clients_settings() -> list[SettingsField]:
             style="primary",
             callback=_test_realdebrid_connection,
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "realdebrid"},
+        ),
+        # --- TorBox Settings ---
+        PasswordField(
+            key="TORBOX_API_KEY",
+            label="API Key",
+            description="TorBox API Key from your TorBox account settings",
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "torbox"},
+        ),
+        ActionButton(
+            key="test_torbox",
+            label="Test Connection",
+            description="Verify your TorBox configuration",
+            style="primary",
+            callback=_test_torbox_connection,
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "torbox"},
         ),
         # --- qBittorrent Settings ---
         TextField(

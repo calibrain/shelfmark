@@ -852,10 +852,15 @@ def download_url(
     _selector: network.AAMirrorSelector | None = None,
     status_callback: Callable[[str, str | None], None] | None = None,
     referer: str | None = None,
+    redact_url: bool = False,
 ) -> BytesIO | None:
-    """Download content from URL with automatic retry and resume support."""
+    """Download content from URL with automatic retry and resume support.
+
+    Set ``redact_url`` for authenticated URLs that must not appear in logs.
+    """
     selector = _selector or network.AAMirrorSelector()
     current_url = selector.rewrite(link)
+    log_target = "<redacted>" if redact_url else current_url
 
     # Build headers with optional referer
     headers = DOWNLOAD_HEADERS.copy()
@@ -882,7 +887,7 @@ def download_url(
 
             logger.info(
                 "Downloading: %s (attempt %s/%s)",
-                current_url,
+                log_target,
                 attempt + 1,
                 MAX_DOWNLOAD_RETRIES,
             )
@@ -923,7 +928,7 @@ def download_url(
                 and bytes_downloaded < total_size * 0.9
                 and response.headers.get("content-type", "").startswith("text/html")
             ):
-                logger.warning("Received HTML instead of file: %s", current_url)
+                logger.warning("Received HTML instead of file: %s", log_target)
                 return None
 
             logger.debug("Download completed: %s bytes", bytes_downloaded)
@@ -952,7 +957,7 @@ def download_url(
 
             # Non-retryable errors
             if status in _HTTP_STATUS_NON_RETRYABLE:
-                logger.warning("Download failed (%s): %s", status, current_url)
+                logger.warning("Download failed (%s): %s", status, log_target)
                 return None
 
             # Rate limited - skip to next source immediately
@@ -966,7 +971,7 @@ def download_url(
 
             # Timeout - don't retry, server likely overloaded
             if isinstance(e, requests.exceptions.Timeout):
-                logger.warning("Timeout: %s - skipping to next source", current_url)
+                logger.warning("Timeout: %s - skipping to next source", log_target)
                 if status_callback:
                     status_callback("resolving", "Server timed out, trying next")
                 return None
@@ -993,14 +998,17 @@ def download_url(
                     attempt += 1
                     continue
 
-            logger.warning("Download error: %s: %s", type(e).__name__, e)
+            if redact_url:
+                logger.warning("Download error: %s", type(e).__name__)
+            else:
+                logger.warning("Download error: %s: %s", type(e).__name__, e)
             if attempt < MAX_DOWNLOAD_RETRIES - 1:
                 time.sleep(_backoff_delay(attempt + 1))
             attempt += 1
         else:
             return buffer
 
-    logger.error("Download failed after %s attempts: %s", MAX_DOWNLOAD_RETRIES, link)
+    logger.error("Download failed after %s attempts: %s", MAX_DOWNLOAD_RETRIES, log_target)
     return None
 
 

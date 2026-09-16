@@ -1,0 +1,307 @@
+"""TorBox download client lifecycle and API contract tests."""
+
+from io import BytesIO
+from threading import Event
+from unittest.mock import MagicMock
+
+import pytest
+
+from shelfmark.download.clients import DownloadState
+from shelfmark.download.clients.torbox import TorBoxClient, _DownloadState
+from shelfmark.download.clients.torrent_utils import DebridTorrentFile
+
+API_KEY = "torbox-api-key"
+MAGNET = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Dune"
+
+
+def _response(data, *, success=True, error=None, detail="OK", status_code=200):
+    response = MagicMock(status_code=status_code)
+    response.json.return_value = {
+        "success": success,
+        "error": error,
+        "detail": detail,
+        "data": data,
+    }
+    return response
+
+
+def _client(monkeypatch):
+    monkeypatch.setattr(
+        "shelfmark.download.clients.torbox.config.get",
+        lambda key, default="": {"TORBOX_API_KEY": API_KEY}.get(key, default),
+    )
+    return TorBoxClient()
+
+
+def _state(tmp_path):
+    return _DownloadState(torrent_id="42", name="Dune", target_dir=tmp_path)
+
+
+class TestTorBoxConfiguration:
+    def test_is_configured_requires_selected_client_and_api_key(self, monkeypatch):
+        values = {"PROWLARR_TORRENT_CLIENT": "torbox", "TORBOX_API_KEY": API_KEY}
+        monkeypatch.setattr(
+            "shelfmark.download.clients.torbox.config.get",
+            lambda key, default="": values.get(key, default),
+        )
+
+        assert TorBoxClient.is_configured() is True
+
+        values["TORBOX_API_KEY"] = ""
+        assert TorBoxClient.is_configured() is False
+
+    def test_connection_reports_valid_free_plan(self, monkeypatch):
+        client = _client(monkeypatch)
+        get = MagicMock(return_value=_response({"email": "reader@example.com", "plan": 0}))
+        monkeypatch.setattr("shelfmark.download.clients.torbox.requests.get", get)
+
+        assert client.test_connection() == (
+            True,
+            "Connected to TorBox as 'reader@example.com' (Free plan)",
+        )
+        assert get.call_args.kwargs["headers"] == {"Authorization": f"Bearer {API_KEY}"}
+        assert get.call_args.kwargs["params"] == {"settings": "false"}
+
+    def test_connection_returns_provider_detail_without_api_key(self, monkeypatch):
+        client = _client(monkeypatch)
+        get = MagicMock(
+            return_value=_response(
+                None,
+                success=False,
+                error="BAD_TOKEN",
+                detail="Your token is invalid or has expired.",
+            )
+        )
+        monkeypatch.setattr("shelfmark.download.clients.torbox.requests.get", get)
+
+        success, message = client.test_connection()
+
+        assert success is False
+        assert "BAD_TOKEN" in message
+        assert API_KEY not in message
+
+
+class TestTorBoxCreation:
+    def test_magnet_creation_sends_magnet_and_returns_torrent_id(self, monkeypatch, tmp_path):
+        client = _client(monkeypatch)
+        monkeypatch.setattr("shelfmark.download.clients.torbox.TMP_DIR", tmp_path)
+        post = MagicMock(return_value=_response({"torrent_id": 42}))
+        monkeypatch.setattr("shelfmark.download.clients.torbox.requests.post", post)
+
+        assert client.add_download(MAGNET, "Dune") == "42"
+
+        assert post.call_args.args[0].endswith("/torrents/createtorrent")
+        assert post.call_args.kwargs["data"] == {"name": "Dune", "magnet": MAGNET}
+        assert post.call_args.kwargs["files"] is None
+        assert (tmp_path / "torbox_42").is_dir()
+
+    def test_torrent_file_creation_sends_binary_multipart_upload(self, monkeypatch, tmp_path):
+        client = _client(monkeypatch)
+        monkeypatch.setattr("shelfmark.download.clients.torbox.TMP_DIR", tmp_path)
+        monkeypatch.setattr(
+            "shelfmark.download.clients.torbox.resolve_debrid_upload",
+            lambda *_args, **_kwargs: DebridTorrentFile(torrent_data=b"torrent"),
+        )
+        post = MagicMock(return_value=_response({"torrent_id": 42}))
+        monkeypatch.setattr("shelfmark.download.clients.torbox.requests.post", post)
+
+        client.add_download("https://prowlarr.example/download", "Dune")
+
+        assert post.call_args.kwargs["data"] == {"name": "Dune"}
+        assert post.call_args.kwargs["files"] == {
+            "file": ("release.torrent", b"torrent", "application/x-bittorrent")
+        }
+
+    def test_creation_surfaces_torbox_error_detail(self, monkeypatch):
+        client = _client(monkeypatch)
+        post = MagicMock(
+            return_value=_response(
+                None,
+                success=False,
+                error="ACTIVE_LIMIT",
+                detail="You have reached your active download limit.",
+            )
+        )
+        monkeypatch.setattr("shelfmark.download.clients.torbox.requests.post", post)
+
+        with pytest.raises(RuntimeError, match=r"ACTIVE_LIMIT.*active download limit"):
+            client.add_download(MAGNET, "Dune")
+
+
+class TestTorBoxStatus:
+    def test_fractional_and_percentage_progress_are_normalized(self):
+        assert TorBoxClient._normalize_remote_progress(0.25) == 25.0
+        assert TorBoxClient._normalize_remote_progress(25) == 25.0
+        assert TorBoxClient._normalize_remote_progress("invalid") == 0.0
+
+    def test_completed_state_without_finished_flag_remains_pollable(self, tmp_path):
+        client = TorBoxClient.__new__(TorBoxClient)
+        state = _state(tmp_path)
+
+        status = client._handle_torrent_status(
+            {"download_state": "completed", "progress": 100, "name": "Dune"}, state
+        )
+
+        assert status.state == DownloadState.DOWNLOADING
+        assert status.progress == 50.0
+        assert state.phase == "waiting_torbox"
+
+    def test_finished_torrent_starts_retrieval_once(self, monkeypatch, tmp_path):
+        client = TorBoxClient.__new__(TorBoxClient)
+        state = _state(tmp_path)
+        start = MagicMock()
+        monkeypatch.setattr(client, "_maybe_start_download_thread", start)
+        torrent = {
+            "download_state": "cached",
+            "download_finished": True,
+            "download_present": True,
+            "files": [{"id": 1, "name": "Dune.epub"}],
+        }
+
+        status = client._handle_torrent_status(torrent, state)
+
+        assert status.progress == 50.0
+        assert status.state == DownloadState.DOWNLOADING
+        start.assert_called_once_with(state, torrent["files"])
+
+    def test_finished_torrent_without_available_content_is_error(self, tmp_path):
+        client = TorBoxClient.__new__(TorBoxClient)
+        state = _state(tmp_path)
+
+        status = client._handle_torrent_status(
+            {"download_finished": True, "download_present": False}, state
+        )
+
+        assert status.state == DownloadState.ERROR
+        assert "unavailable" in status.message
+        assert state.phase == "error"
+
+    def test_explicit_error_state_is_terminal(self, tmp_path):
+        client = TorBoxClient.__new__(TorBoxClient)
+        state = _state(tmp_path)
+
+        status = client._handle_torrent_status({"download_state": "error"}, state)
+
+        assert status.state == DownloadState.ERROR
+        assert state.error_message == "TorBox status error: error"
+
+    def test_status_request_bypasses_torbox_cache(self, monkeypatch, tmp_path):
+        client = _client(monkeypatch)
+        monkeypatch.setattr("shelfmark.download.clients.torbox.TMP_DIR", tmp_path)
+        get = MagicMock(
+            return_value=_response([{"id": 42, "download_state": "downloading", "progress": 20}])
+        )
+        monkeypatch.setattr("shelfmark.download.clients.torbox.requests.get", get)
+
+        status = client.get_status("42")
+
+        assert status.progress == 10.0
+        assert get.call_args.kwargs["params"] == {"id": "42", "bypass_cache": "true"}
+
+
+class TestTorBoxFileRetrieval:
+    def test_safe_relative_path_rejects_absolute_and_traversal_paths(self, tmp_path):
+        with pytest.raises(RuntimeError, match="unsafe"):
+            TorBoxClient._safe_relative_path({"name": "/Dune.epub"}, tmp_path)
+        with pytest.raises(RuntimeError, match="unsafe"):
+            TorBoxClient._safe_relative_path({"name": r"books\..\Dune.epub"}, tmp_path)
+        with pytest.raises(RuntimeError, match="unsafe"):
+            TorBoxClient._safe_relative_path({"name": r"C:\books\Dune.epub"}, tmp_path)
+
+    def test_process_downloads_supported_file_into_safe_relative_path(self, monkeypatch, tmp_path):
+        client = _client(monkeypatch)
+        state = _state(tmp_path)
+        monkeypatch.setattr(
+            client, "_request_download_link", lambda *_args: "https://cdn.example/Dune"
+        )
+        download = MagicMock(
+            return_value=BytesIO(b"book content"),
+        )
+        monkeypatch.setattr(
+            "shelfmark.download.clients.torbox.download_url",
+            download,
+        )
+
+        client._process_and_download(state, [{"id": 1, "name": "books/Dune.EPUB"}])
+
+        assert (tmp_path / "books" / "Dune.EPUB").read_bytes() == b"book content"
+        assert state.phase == "complete"
+        assert state.progress == 100.0
+        assert download.call_args.kwargs["redact_url"] is True
+
+    def test_remove_cancels_active_retrieval_before_removing_files(self, monkeypatch, tmp_path):
+        client = _client(monkeypatch)
+        target_dir = tmp_path / "torbox_42"
+        target_dir.mkdir()
+        state = _DownloadState(torrent_id="42", name="Dune", target_dir=target_dir)
+        started = Event()
+
+        monkeypatch.setattr(
+            client, "_request_download_link", lambda *_args: "https://cdn.example/Dune"
+        )
+
+        def wait_for_cancellation(_url, *, cancel_flag, **_kwargs):
+            started.set()
+            assert cancel_flag.wait(timeout=1)
+            return None
+
+        monkeypatch.setattr("shelfmark.download.clients.torbox.download_url", wait_for_cancellation)
+        monkeypatch.setattr(
+            "shelfmark.download.clients.torbox.requests.post",
+            MagicMock(return_value=_response(None)),
+        )
+        TorBoxClient._downloads["42"] = state
+
+        try:
+            client._maybe_start_download_thread(state, [{"id": 1, "name": "Dune.epub"}])
+            assert started.wait(timeout=1)
+
+            assert client.remove("42") is True
+        finally:
+            TorBoxClient._downloads.pop("42", None)
+
+        assert not target_dir.exists()
+        assert not state.download_thread or not state.download_thread.is_alive()
+
+    def test_file_link_request_keeps_token_out_of_error_message(self, monkeypatch):
+        client = _client(monkeypatch)
+        get = MagicMock(
+            return_value=_response(
+                None,
+                success=False,
+                error="BAD_TOKEN",
+                detail="Token rejected",
+            )
+        )
+        monkeypatch.setattr("shelfmark.download.clients.torbox.requests.get", get)
+
+        with pytest.raises(RuntimeError) as excinfo:
+            client._request_download_link("42", 7)
+
+        assert API_KEY not in str(excinfo.value)
+        assert get.call_args.kwargs["params"]["token"] == API_KEY
+
+
+class TestTorBoxCleanup:
+    def test_remove_cleans_local_state_when_torbox_rejects_deletion(self, monkeypatch, tmp_path):
+        client = _client(monkeypatch)
+        target_dir = tmp_path / "torbox_42"
+        target_dir.mkdir()
+        state = _DownloadState(torrent_id="42", name="Dune", target_dir=target_dir)
+        monkeypatch.setattr("shelfmark.download.clients.torbox.TMP_DIR", tmp_path)
+        monkeypatch.setattr(
+            "shelfmark.download.clients.torbox.requests.post",
+            MagicMock(
+                return_value=_response(
+                    None, success=False, error="NOT_OWNER", detail="You are not the owner."
+                )
+            ),
+        )
+        TorBoxClient._downloads["42"] = state
+
+        try:
+            assert client.remove("42") is False
+        finally:
+            TorBoxClient._downloads.pop("42", None)
+
+        assert not target_dir.exists()
