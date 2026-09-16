@@ -160,6 +160,55 @@ def test_download_url_resumes_partial_download_after_connection_error(monkeypatc
     assert calls[1]["headers"]["Range"] == "bytes=4-"
 
 
+def test_redacted_download_does_not_log_a_url_bearing_resume_error(monkeypatch):
+    http = _prepare_download_test(monkeypatch)
+    logger = MagicMock()
+    monkeypatch.setattr(http, "logger", logger)
+    monkeypatch.setattr(http, "MAX_DOWNLOAD_RETRIES", 1)
+    sensitive_url = "https://cdn.example/book.epub?signature=secret"
+    initial_response = _FakeResponse(
+        200,
+        headers={"content-length": "8"},
+        chunks=[b"book"],
+        iter_error=requests.exceptions.ConnectionError(sensitive_url),
+    )
+    get = MagicMock(
+        side_effect=[
+            initial_response,
+            requests.exceptions.ConnectionError(sensitive_url),
+            requests.exceptions.ConnectionError(sensitive_url),
+            requests.exceptions.ConnectionError(sensitive_url),
+        ]
+    )
+    monkeypatch.setattr(http.requests, "get", get)
+
+    assert http.download_url(sensitive_url, redact_url=True) is None
+
+    assert sensitive_url not in str(logger.mock_calls)
+    logger.debug.assert_any_call("Resume attempt %s failed: %s", 1, "ConnectionError")
+
+
+def test_default_download_preserves_resume_error_diagnostics(monkeypatch):
+    http = _prepare_download_test(monkeypatch)
+    logger = MagicMock()
+    monkeypatch.setattr(http, "logger", logger)
+    monkeypatch.setattr(http, "MAX_DOWNLOAD_RETRIES", 1)
+    download_url = "https://example.com/file.epub"
+    error = requests.exceptions.ConnectionError(download_url)
+    initial_response = _FakeResponse(
+        200,
+        headers={"content-length": "8"},
+        chunks=[b"book"],
+        iter_error=error,
+    )
+    get = MagicMock(side_effect=[initial_response, error, error, error])
+    monkeypatch.setattr(http.requests, "get", get)
+
+    assert http.download_url(download_url) is None
+
+    logger.debug.assert_any_call("Resume attempt %s failed: %s", 1, error)
+
+
 def test_download_url_can_redact_a_sensitive_url_from_logs(monkeypatch):
     http = _prepare_download_test(monkeypatch)
     logger = MagicMock()
@@ -213,3 +262,20 @@ def test_default_download_preserves_url_bearing_request_error_diagnostics(monkey
     assert http.download_url(download_url) is None
 
     logger.warning.assert_any_call("Download error: %s: %s", "ConnectionError", error)
+
+
+def test_download_logs_rotated_url_after_retry(monkeypatch):
+    http = _prepare_download_test(monkeypatch)
+    logger = MagicMock()
+    monkeypatch.setattr(http, "logger", logger)
+    monkeypatch.setattr(http, "MAX_DOWNLOAD_RETRIES", 2)
+    source_url = "https://source.example/file.epub"
+    rotated_url = "https://rotated.example/file.epub"
+    error = requests.exceptions.ConnectionError("connection reset")
+    monkeypatch.setattr(http.requests, "get", MagicMock(side_effect=error))
+    monkeypatch.setattr(http, "_try_rotation", MagicMock(side_effect=[rotated_url, None]))
+
+    assert http.download_url(source_url) is None
+
+    logger.info.assert_any_call("Downloading: %s (attempt %s/%s)", rotated_url, 2, 2)
+    logger.error.assert_called_once_with("Download failed after %s attempts: %s", 2, rotated_url)

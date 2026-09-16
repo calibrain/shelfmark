@@ -5,6 +5,7 @@ from threading import Event
 from unittest.mock import MagicMock
 
 import pytest
+import requests
 
 from shelfmark.download.clients import DownloadState
 from shelfmark.download.clients.torbox import TorBoxClient, _DownloadState
@@ -127,6 +128,17 @@ class TestTorBoxCreation:
         with pytest.raises(RuntimeError, match=r"ACTIVE_LIMIT.*active download limit"):
             client.add_download(MAGNET, "Dune")
 
+    def test_creation_rejects_unsafe_torrent_id_before_creating_files(self, monkeypatch, tmp_path):
+        client = _client(monkeypatch)
+        monkeypatch.setattr("shelfmark.download.clients.torbox.TMP_DIR", tmp_path)
+        post = MagicMock(return_value=_response({"torrent_id": "x/../../escape"}))
+        monkeypatch.setattr("shelfmark.download.clients.torbox.requests.post", post)
+
+        with pytest.raises(RuntimeError, match="invalid torrent ID"):
+            client.add_download(MAGNET, "Dune")
+
+        assert not (tmp_path.parent / "escape").exists()
+
 
 class TestTorBoxStatus:
     def test_fractional_and_percentage_progress_are_normalized(self):
@@ -164,6 +176,23 @@ class TestTorBoxStatus:
         assert status.state == DownloadState.DOWNLOADING
         start.assert_called_once_with(state, torrent["files"])
 
+    def test_starting_file_retrieval_preserves_completed_torrent_progress(
+        self, monkeypatch, tmp_path
+    ):
+        client = TorBoxClient.__new__(TorBoxClient)
+        state = _state(tmp_path)
+        thread = MagicMock()
+        thread.is_alive.return_value = False
+        monkeypatch.setattr(
+            "shelfmark.download.clients.torbox.threading.Thread", lambda **_kwargs: thread
+        )
+
+        client._maybe_start_download_thread(state, [{"id": 1, "name": "Dune.epub"}])
+
+        assert state.phase == "downloading_http"
+        assert state.progress == 50.0
+        thread.start.assert_called_once()
+
     def test_finished_torrent_without_available_content_is_error(self, tmp_path):
         client = TorBoxClient.__new__(TorBoxClient)
         state = _state(tmp_path)
@@ -197,6 +226,34 @@ class TestTorBoxStatus:
 
         assert status.progress == 10.0
         assert get.call_args.kwargs["params"] == {"id": "42", "bypass_cache": "true"}
+
+    def test_status_normalizes_torrent_id_before_rehydrating_state(self, monkeypatch, tmp_path):
+        client = _client(monkeypatch)
+        monkeypatch.setattr("shelfmark.download.clients.torbox.TMP_DIR", tmp_path)
+        get = MagicMock(
+            return_value=_response([{"id": 42, "download_state": "downloading", "progress": 20}])
+        )
+        monkeypatch.setattr("shelfmark.download.clients.torbox.requests.get", get)
+
+        try:
+            client.get_status("0042")
+
+            assert get.call_args.kwargs["params"] == {"id": "42", "bypass_cache": "true"}
+            assert "42" in TorBoxClient._downloads
+        finally:
+            TorBoxClient._downloads.pop("42", None)
+
+    def test_status_rejects_unsafe_torrent_id_before_rehydrating_state(self, monkeypatch, tmp_path):
+        client = _client(monkeypatch)
+        monkeypatch.setattr("shelfmark.download.clients.torbox.TMP_DIR", tmp_path)
+        get = MagicMock()
+        monkeypatch.setattr("shelfmark.download.clients.torbox.requests.get", get)
+
+        with pytest.raises(RuntimeError, match="invalid torrent ID"):
+            client.get_status("x/../../escape")
+
+        get.assert_not_called()
+        assert not (tmp_path.parent / "escape").exists()
 
 
 class TestTorBoxFileRetrieval:
@@ -281,6 +338,23 @@ class TestTorBoxFileRetrieval:
         assert API_KEY not in str(excinfo.value)
         assert get.call_args.kwargs["params"]["token"] == API_KEY
 
+    def test_file_link_transport_failure_keeps_token_out_of_state_and_logs(
+        self, monkeypatch, tmp_path
+    ):
+        client = _client(monkeypatch)
+        logger = MagicMock()
+        monkeypatch.setattr("shelfmark.download.clients.torbox.logger", logger)
+        monkeypatch.setattr(
+            "shelfmark.download.clients.torbox.requests.get",
+            MagicMock(side_effect=requests.exceptions.ConnectionError(f"token={API_KEY}")),
+        )
+        state = _state(tmp_path)
+
+        client._process_and_download(state, [{"id": 1, "name": "Dune.epub"}])
+
+        assert state.error_message == "TorBox file-link request failed: ConnectionError"
+        assert API_KEY not in str(logger.mock_calls)
+
 
 class TestTorBoxCleanup:
     def test_remove_cleans_local_state_when_torbox_rejects_deletion(self, monkeypatch, tmp_path):
@@ -305,3 +379,17 @@ class TestTorBoxCleanup:
             TorBoxClient._downloads.pop("42", None)
 
         assert not target_dir.exists()
+
+    def test_remove_rejects_unsafe_torrent_id_before_deleting_files(self, monkeypatch, tmp_path):
+        client = _client(monkeypatch)
+        monkeypatch.setattr("shelfmark.download.clients.torbox.TMP_DIR", tmp_path)
+        escaped_dir = tmp_path.parent / "escape"
+        escaped_dir.mkdir()
+        post = MagicMock()
+        monkeypatch.setattr("shelfmark.download.clients.torbox.requests.post", post)
+
+        with pytest.raises(RuntimeError, match="invalid torrent ID"):
+            client.remove("x/../../escape")
+
+        post.assert_not_called()
+        assert escaped_dir.is_dir()

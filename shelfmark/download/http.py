@@ -986,6 +986,7 @@ def download_url(
                     progress_callback,
                     cancel_flag,
                     headers,
+                    redact_url=redact_url,
                 )
                 if resumed:
                     return resumed
@@ -995,6 +996,7 @@ def download_url(
                 new_url = _try_rotation(link, current_url, selector)
                 if new_url:
                     current_url = new_url
+                    log_target = "<redacted>" if redact_url else current_url
                     attempt += 1
                     continue
 
@@ -1038,6 +1040,7 @@ def _try_resume(
     progress_callback: Callable[[float], None] | None,
     cancel_flag: Event | None,
     base_headers: dict | None = None,
+    redact_url: bool = False,
 ) -> BytesIO | None:
     """Try to resume an interrupted download."""
     for attempt in range(MAX_RESUME_ATTEMPTS):
@@ -1098,7 +1101,10 @@ def _try_resume(
             logger.info("Resume completed: %s bytes", start_byte)
 
         except requests.exceptions.RequestException as e:
-            logger.debug("Resume attempt %s failed: %s", attempt + 1, e)
+            if redact_url:
+                logger.debug("Resume attempt %s failed: %s", attempt + 1, type(e).__name__)
+            else:
+                logger.debug("Resume attempt %s failed: %s", attempt + 1, e)
         else:
             return buffer
 

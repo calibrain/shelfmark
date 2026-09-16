@@ -154,9 +154,7 @@ class TorBoxClient(DownloadClient):
         try:
             upload = resolve_debrid_upload(url, expected_hash=expected_hash)
             data = self._send_torrent(upload, name)
-            torrent_id = str(data.get("torrent_id", ""))
-            if not torrent_id:
-                _raise_runtime_error("No torrent ID returned from TorBox")
+            torrent_id = self._normalize_torrent_id(data.get("torrent_id"))
 
             target_dir = TMP_DIR / f"torbox_{torrent_id}"
             target_dir.mkdir(parents=True, exist_ok=True)
@@ -203,6 +201,7 @@ class TorBoxClient(DownloadClient):
 
     def get_status(self, download_id: str) -> DownloadStatus:
         """Poll TorBox for torrent status and drive local file retrieval."""
+        download_id = self._normalize_torrent_id(download_id)
         state = self._ensure_state(download_id)
         with state.lock:
             if state.phase == "error":
@@ -243,6 +242,7 @@ class TorBoxClient(DownloadClient):
 
     def remove(self, download_id: str, *, delete_files: bool = False) -> bool:
         """Delete the remote torrent and clean up its local temporary directory."""
+        download_id = self._normalize_torrent_id(download_id)
         remote_removed = True
         try:
             self._request_data(
@@ -280,6 +280,7 @@ class TorBoxClient(DownloadClient):
 
     def get_download_path(self, download_id: str) -> str | None:
         """Return the local directory once TorBox files have been retrieved."""
+        download_id = self._normalize_torrent_id(download_id)
         with self._downloads_lock:
             state = self._downloads.get(download_id)
         if state and state.phase == "complete":
@@ -303,7 +304,10 @@ class TorBoxClient(DownloadClient):
             **kwargs,
         }
         request: Any = requests.get if method == "GET" else requests.post
-        response = request(url, **request_kwargs)
+        try:
+            response = request(url, **request_kwargs)
+        except requests.exceptions.RequestException as e:
+            raise RuntimeError(f"TorBox {operation} failed: {type(e).__name__}") from None
 
         try:
             payload = response.json()
@@ -332,6 +336,7 @@ class TorBoxClient(DownloadClient):
 
     def _ensure_state(self, download_id: str) -> _DownloadState:
         """Get or create download state for a TorBox torrent ID."""
+        download_id = self._normalize_torrent_id(download_id)
         with self._downloads_lock:
             state = self._downloads.get(download_id)
             if state is None:
@@ -342,6 +347,18 @@ class TorBoxClient(DownloadClient):
                 )
                 self._downloads[download_id] = state
         return state
+
+    @staticmethod
+    def _normalize_torrent_id(value: object) -> str:
+        """Return a canonical positive decimal TorBox torrent ID."""
+        torrent_id = str(value) if value is not None else ""
+        if not torrent_id.isascii() or not torrent_id.isdecimal():
+            _raise_runtime_error("TorBox returned an invalid torrent ID")
+
+        normalized = str(int(torrent_id))
+        if normalized == "0":
+            _raise_runtime_error("TorBox returned an invalid torrent ID")
+        return normalized
 
     @staticmethod
     def _extract_torrent(data: Any, download_id: str) -> dict[str, Any]:
@@ -441,6 +458,7 @@ class TorBoxClient(DownloadClient):
             if already_running or thread_alive:
                 return
             state.phase = "downloading_http"
+            state.progress = 50.0
             state.download_thread = threading.Thread(
                 target=self._process_and_download,
                 args=(state, files),
