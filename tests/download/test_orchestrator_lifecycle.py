@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from threading import Event
-from unittest.mock import ANY, MagicMock
+from unittest.mock import ANY, MagicMock, call
 
 import pytest
 
@@ -298,3 +298,10 @@ def test_download_task_completes_blackhole_handoff_without_post_processing(
         queue.update_progress.assert_called_once_with(task.task_id, 100)
     else:
         queue.update_progress.assert_not_called()
+    if handoff == "cancelled":
+        # The publication is already out of our hands, so a bare "Cancelled" would
+        # misdescribe what the watcher is about to do with it.
+        assert (
+            call(task.task_id, "Cancelled, but the torrent was already handed off to blackhole")
+            in queue.update_status_message.call_args_list
+        )

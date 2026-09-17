@@ -873,11 +873,25 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 )
                 if getattr(client, "handoff_only", False) is True:
                     if cancel_flag.is_set():
-                        self._handle_cancelled_download(
-                            client, download_id, request.protocol, status_callback
+                        # The file is published and unpublishing it would race a watcher
+                        # that may already have consumed it, so the handoff stands even
+                        # though the task is cancelled. Say so rather than leaving a bare
+                        # "Cancelled" the user cannot act on.
+                        logger.info(
+                            "Cancelled after handoff to %s; leaving publication in place: %s",
+                            client.name,
+                            download_id,
+                        )
+                        status_callback(
+                            "cancelled",
+                            f"Cancelled, but the torrent was already handed off to {client.name}",
                         )
                         return None
-                    # A watcher can consume the publication as soon as add_download returns.
+                    # A watcher can consume the publication as soon as add_download returns,
+                    # so the handoff completes here rather than in the poll loop. The
+                    # orchestrator deliberately does not check that this path still exists:
+                    # a consumed publication is indistinguishable from a bogus one, and
+                    # treating it as an error is the failure this avoids (#1345).
                     progress_callback(100)
                     self._on_download_complete(task)
                     return HandoffResult(
