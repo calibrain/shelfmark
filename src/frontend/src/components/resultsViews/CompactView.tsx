@@ -222,7 +222,15 @@ export const CompactView = ({
                   <span>{book.size}</span>
                 </>
               )}
-              {(() => { const d = getDownloadsCount(book); return d != null && d > 0 ? <> <span>•</span> <span>{d.toLocaleString()}</span> </> : null; })()}
+              {(() => {
+                const d = getDownloadsCount(book);
+                return d != null && d > 0 ? (
+                  <>
+                    {' '}
+                    <span>•</span> <span>{d.toLocaleString()}</span>{' '}
+                  </>
+                ) : null;
+              })()}
             </div>
           )}
 

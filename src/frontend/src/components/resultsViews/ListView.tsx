@@ -291,7 +291,10 @@ export const ListView = ({
                 {/* Direct mode: Downloads - Desktop only */}
                 {searchMode !== 'universal' && (
                   <div className="hidden justify-center text-xs text-gray-700 sm:flex dark:text-gray-200">
-                    {(() => { const d = getDownloadsCount(book); return d != null && d > 0 ? d.toLocaleString() : '-'; })()}
+                    {(() => {
+                      const d = getDownloadsCount(book);
+                      return d != null && d > 0 ? d.toLocaleString() : '-';
+                    })()}
                   </div>
                 )}
 

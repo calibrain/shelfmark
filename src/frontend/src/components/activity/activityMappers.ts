@@ -89,7 +89,8 @@ export const downloadToActivityItem = (book: Book, statusKey: DownloadStatusKey)
       ? Math.trunc(book.request_id)
       : undefined;
   const downloadsCount = getDownloadsCount(book);
-  const downloadsText = downloadsCount != null ? `${downloadsCount.toLocaleString()} downloads` : undefined;
+  const downloadsText =
+    downloadsCount != null ? `${downloadsCount.toLocaleString()} downloads` : undefined;
   const metaLine = joinMetaParts([
     toOptionalText(book.format)?.toUpperCase(),
     toOptionalText(book.size),

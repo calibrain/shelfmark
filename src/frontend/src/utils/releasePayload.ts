@@ -8,6 +8,23 @@ export interface ReleaseDownloadOptions {
   bookPlan?: PackBook[];
 }
 
+/** Download count for a release, preferring what the release itself reports. */
+const releaseDownloads = (book: Book, release: Release): number => {
+  if (typeof release.extra?.downloads === 'number') {
+    return release.extra.downloads;
+  }
+  if (typeof book.downloads === 'number' && book.downloads > 0) {
+    return book.downloads;
+  }
+  if (typeof book.extra?.downloads === 'number') {
+    return book.extra.downloads;
+  }
+  if (Array.isArray(book.info?.Downloads) && book.info.Downloads.length > 0) {
+    return Number(book.info.Downloads[0]) || 0;
+  }
+  return 0;
+};
+
 /** Build the body for /api/releases/download (and /api/releases/inspect). */
 export function buildReleaseDownloadPayload(
   book: Book,
@@ -30,16 +47,7 @@ export function buildReleaseDownloadPayload(
     format: release.format,
     size: release.size,
     size_bytes: release.size_bytes,
-    downloads:
-      typeof release.extra?.downloads === 'number'
-        ? release.extra.downloads
-        : typeof book.downloads === 'number' && book.downloads > 0
-          ? book.downloads
-          : typeof book.extra?.downloads === 'number'
-            ? book.extra.downloads
-            : Array.isArray(book.info?.Downloads) && book.info.Downloads.length > 0
-              ? Number(book.info.Downloads[0]) || 0
-              : 0,
+    downloads: releaseDownloads(book, release),
     download_url: release.download_url,
     protocol: release.protocol,
     indexer: release.indexer,

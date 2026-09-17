@@ -320,7 +320,14 @@ def queue_release(
             logger.info("Release already in queue: %s", task.title)
             return False, "Release is already in the download queue"
 
-        logger.info("Release queued with priority %s: %s (downloads=%s, release_data.downloads=%s, extra=%s)", priority, task.title, task.downloads, release_data.get("downloads"), extra)
+        logger.info(
+            "Release queued with priority %s: %s (downloads=%s, release_data.downloads=%s, extra=%s)",
+            priority,
+            task.title,
+            task.downloads,
+            release_data.get("downloads"),
+            extra,
+        )
 
         # Broadcast status update via WebSocket
         if ws_manager:

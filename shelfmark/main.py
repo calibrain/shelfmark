@@ -1073,7 +1073,12 @@ def api_download_release() -> Response | tuple[Response, int]:
             release_payload = dict(data)
             release_payload["content_type"] = resolved_content_type
 
-        logger.info("Download request received. keys=%s downloads=%s extra.downloads=%s", list(data.keys()), data.get("downloads"), data.get("extra", {}).get("downloads") if isinstance(data.get("extra"), dict) else None)
+        logger.info(
+            "Download request received. keys=%s downloads=%s extra.downloads=%s",
+            list(data.keys()),
+            data.get("downloads"),
+            data.get("extra", {}).get("downloads") if isinstance(data.get("extra"), dict) else None,
+        )
 
         priority = data.get("priority", 0)
         # Per-user download overrides

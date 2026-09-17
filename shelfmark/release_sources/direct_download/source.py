@@ -1,5 +1,6 @@
 """Direct Download search and release-source integration."""
 
+import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
@@ -43,10 +44,8 @@ def _extract_downloads(record: BrowseRecord) -> int | None:
     if record.info and "Downloads" in record.info:
         downloads_value = record.info["Downloads"]
         if isinstance(downloads_value, list) and len(downloads_value) > 0:
-            try:
+            with contextlib.suppress(ValueError, TypeError):
                 downloads = int(downloads_value[0])
-            except (ValueError, TypeError):
-                pass
         elif isinstance(downloads_value, (int, float)):
             downloads = int(downloads_value)
     return downloads

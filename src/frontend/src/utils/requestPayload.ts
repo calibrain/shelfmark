@@ -95,30 +95,36 @@ export const buildReleaseDataFromMetadataRelease = (
   };
 };
 
- export const buildReleaseDataFromDirectBook = (book: Book) => {
-   const source = getBrowseSource(book);
-   const downloads =
-     typeof book.downloads === 'number' && book.downloads > 0
-       ? book.downloads
-       : Array.isArray(book.info?.Downloads) && book.info.Downloads.length > 0
-         ? Number(book.info.Downloads[0]) || 0
-         : 0;
-   return {
-     source,
-     source_id: book.id,
-     title: book.title || 'Unknown title',
-     author: book.author,
-     year: book.year,
-     format: book.format,
-     size: book.size,
-     downloads,
-     preview: book.preview,
-     content_type: 'ebook' as const,
-     // Browsing a source directly means the book record IS the release record.
-     language: book.language,
-     search_mode: 'direct' as const,
-   };
- };
+/** Download count for a book queued straight from a browse result. */
+const directBookDownloads = (book: Book): number => {
+  if (typeof book.downloads === 'number' && book.downloads > 0) {
+    return book.downloads;
+  }
+  if (Array.isArray(book.info?.Downloads) && book.info.Downloads.length > 0) {
+    return Number(book.info.Downloads[0]) || 0;
+  }
+  return 0;
+};
+
+export const buildReleaseDataFromDirectBook = (book: Book) => {
+  const source = getBrowseSource(book);
+  const downloads = directBookDownloads(book);
+  return {
+    source,
+    source_id: book.id,
+    title: book.title || 'Unknown title',
+    author: book.author,
+    year: book.year,
+    format: book.format,
+    size: book.size,
+    downloads,
+    preview: book.preview,
+    content_type: 'ebook' as const,
+    // Browsing a source directly means the book record IS the release record.
+    language: book.language,
+    search_mode: 'direct' as const,
+  };
+};
 
 export const buildDirectRequestPayload = (book: Book): CreateRequestPayload => {
   const bookData = buildDirectBookRequestData(book);

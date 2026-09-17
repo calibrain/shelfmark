@@ -821,9 +821,7 @@ def _enrich_search_results_with_downloads(books: list[BrowseRecord]) -> None:
     # Fetch counts in parallel using the inline_info API (cheaper than summary)
     counts: dict[str, int] = {}
     with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
-        futures = {
-            executor.submit(_fetch_download_count_inline, bid): bid for bid in book_ids
-        }
+        futures = {executor.submit(_fetch_download_count_inline, bid): bid for bid in book_ids}
         for future in concurrent.futures.as_completed(futures):
             bid = futures[future]
             try:

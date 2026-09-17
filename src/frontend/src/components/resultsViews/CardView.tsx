@@ -211,7 +211,16 @@ export const CardView = ({
                   <span>{book.size}</span>
                 </>
               )}
-              {searchMode !== 'universal' && (() => { const d = getDownloadsCount(book); return d != null && d > 0 ? <> <span>•</span> <span>{d.toLocaleString()}</span> </> : null; })()}
+              {searchMode !== 'universal' &&
+                (() => {
+                  const d = getDownloadsCount(book);
+                  return d != null && d > 0 ? (
+                    <>
+                      {' '}
+                      <span>•</span> <span>{d.toLocaleString()}</span>{' '}
+                    </>
+                  ) : null;
+                })()}
             </div>
           )}
         </div>
