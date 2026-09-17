@@ -328,7 +328,11 @@ def _try_rotation(
         )
         if action in ("mirror", "dns") and new_base:
             new_url = selector.rewrite(original_url)
-            logger.info("[%s] switching to: %s", action, log_target)
+            logger.info(
+                "[%s] switching to: %s",
+                action,
+                "<redacted>" if redact_url else new_url,
+            )
             return new_url
     elif network.should_rotate_dns_for_url(current_url) and network.rotate_dns_provider():
         logger.info("[dns-rotate] retrying: %s", log_target)
