@@ -432,3 +432,47 @@ class TestTorBoxCleanup:
 
         post.assert_not_called()
         assert escaped_dir.is_dir()
+
+
+class TestTorBoxTorrentSelection:
+    def test_list_entries_must_match_the_requested_torrent_id(self):
+        torrent = {"id": 42, "download_state": "downloading"}
+
+        assert TorBoxClient._extract_torrent([torrent], "42") is torrent
+
+    def test_list_entry_with_a_different_id_is_rejected(self):
+        with pytest.raises(RuntimeError, match="torrent 42 was not found"):
+            TorBoxClient._extract_torrent([{"id": 99, "download_state": "downloading"}], "42")
+
+    def test_sole_list_entry_without_an_id_is_rejected(self):
+        with pytest.raises(RuntimeError, match="torrent 42 was not found"):
+            TorBoxClient._extract_torrent([{"download_state": "downloading"}], "42")
+
+
+class TestTorBoxRemoveWorkerTimeout:
+    def test_remove_defers_cleanup_when_worker_thread_survives_join_timeout(
+        self, monkeypatch, tmp_path
+    ):
+        client = _client(monkeypatch)
+        target_dir = tmp_path / "torbox_42"
+        target_dir.mkdir()
+        (target_dir / "Dune.epub").write_bytes(b"book")
+        state = _DownloadState(torrent_id="42", name="Dune", target_dir=target_dir)
+        thread = MagicMock()
+        thread.is_alive.return_value = True
+        state.download_thread = thread
+        post = MagicMock(return_value=_response(None))
+        monkeypatch.setattr("shelfmark.download.clients.torbox.requests.post", post)
+        monkeypatch.setattr("shelfmark.download.clients.torbox._WORKER_JOIN_TIMEOUT", 0.01)
+        TorBoxClient._downloads["42"] = state
+
+        try:
+            assert client.remove("42") is False
+            assert state.cancel_event.is_set()
+            thread.join.assert_called_once()
+            (timeout_arg,) = thread.join.call_args.args
+            assert timeout_arg > 0
+            assert "42" in TorBoxClient._downloads
+            assert target_dir.exists()
+        finally:
+            TorBoxClient._downloads.pop("42", None)

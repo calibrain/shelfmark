@@ -35,6 +35,7 @@ logger = setup_logger(__name__)
 _API_BASE = "https://api.torbox.app/v1/api"
 _API_TIMEOUT = 30
 _STATUS_TIMEOUT = 15
+_WORKER_JOIN_TIMEOUT = 5.0
 
 _BOOK_EXTENSIONS = (
     ".aac",
@@ -259,13 +260,21 @@ class TorBoxClient(DownloadClient):
             logger.warning("Failed to delete TorBox torrent", extra={"torrent_id": download_id})
 
         with self._downloads_lock:
-            state = self._downloads.pop(download_id, None)
-        target_dir = state.target_dir if state else TMP_DIR / f"torbox_{download_id}"
+            state = self._downloads.get(download_id)
         if state:
             with state.lock:
                 state.cancel_event.set()
             if state.download_thread and state.download_thread is not threading.current_thread():
-                state.download_thread.join()
+                state.download_thread.join(_WORKER_JOIN_TIMEOUT)
+                if state.download_thread.is_alive():
+                    logger.warning(
+                        "TorBox retrieval thread did not stop; deferring cleanup",
+                        extra={"torrent_id": download_id},
+                    )
+                    return False
+            with self._downloads_lock:
+                state = self._downloads.pop(download_id, None)
+        target_dir = state.target_dir if state else TMP_DIR / f"torbox_{download_id}"
 
         local_removed = True
         if target_dir.exists():
@@ -370,8 +379,6 @@ class TorBoxClient(DownloadClient):
             for torrent in data:
                 if isinstance(torrent, dict) and str(torrent.get("id", "")) == download_id:
                     return torrent
-            if len(data) == 1 and isinstance(data[0], dict):
-                return data[0]
         _raise_runtime_error(f"TorBox torrent {download_id} was not found")
 
     def _handle_torrent_status(
