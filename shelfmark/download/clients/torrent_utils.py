@@ -9,7 +9,7 @@ import time
 from binascii import Error as BinasciiError
 from dataclasses import dataclass
 from threading import Lock
-from urllib.parse import ParseResult, parse_qs, urljoin, urlparse
+from urllib.parse import ParseResult, parse_qs, urljoin, urlparse, urlunparse
 
 import requests
 
@@ -49,6 +49,28 @@ _torrent_fetch_cache_lock = Lock()
 _torrent_fetch_cache: dict[str, tuple[float, TorrentInfo]] = {}
 
 type BencodeValue = dict[str | bytes, BencodeValue] | list[BencodeValue] | int | bytes | str
+
+
+def _safe_url(url: str, *, limit: int = 120) -> str:
+    """Return a log-safe URL: scheme/host/path kept, query and fragment dropped.
+
+    Torrent download URLs commonly carry credentials in their query string
+    (Prowlarr's ``apikey=...`` proxy links among them), so raw URLs must never
+    reach logs or exception messages.
+    """
+    parsed = urlparse(url)
+    if not parsed.scheme or not parsed.netloc:
+        return f"<unparsed url: {type(url).__name__}>"
+    safe = urlunparse(parsed._replace(query="", fragment=""))
+    return safe[:limit]
+
+
+_URL_IN_TEXT_PATTERN = re.compile(r"https?://\S+")
+
+
+def _redact_urls_in_text(text: str) -> str:
+    """Scrub credential-bearing URLs out of free-form text such as exception messages."""
+    return _URL_IN_TEXT_PATTERN.sub(lambda match: _safe_url(match.group(0)), text)
 
 
 @dataclass
@@ -133,7 +155,7 @@ def resolve_debrid_upload(url: str, *, expected_hash: str | None = None) -> Debr
         return DebridMagnet(magnet_url=f"magnet:?xt=urn:btih:{info.info_hash}")
 
     reason = info.fetch_error or "no magnet link, info hash, or torrent file was available"
-    msg = f"Could not resolve a torrent to send from {url[:120]} ({reason})"
+    msg = f"Could not resolve a torrent to send from {_safe_url(url)} ({reason})"
     raise ValueError(msg)
 
 
@@ -185,7 +207,7 @@ def _get_cached_torrent_fetch(url: str) -> TorrentInfo | None:
         if time.monotonic() - fetched_at > _TORRENT_FETCH_CACHE_TTL_SECONDS:
             del _torrent_fetch_cache[url]
             return None
-    logger.debug("Reusing recently fetched torrent data for: %s...", url[:80])
+    logger.debug("Reusing recently fetched torrent data for: %s...", _safe_url(url))
     return info
 
 
@@ -231,7 +253,7 @@ def _fetch_torrent_info(url: str) -> TorrentInfo:
         return urljoin(current, location)
 
     try:
-        logger.debug("Fetching torrent file from: %s...", url[:80])
+        logger.debug("Fetching torrent file from: %s...", _safe_url(url))
 
         # Redirects are followed manually: some indexers redirect download URLs
         # to magnet links, and each hop must decide anew whether it may see the
@@ -264,7 +286,7 @@ def _fetch_torrent_info(url: str) -> TorrentInfo:
                     magnet_url=redirect_url,
                 )
             if redirects_remaining <= 0:
-                logger.warning("Too many redirects fetching torrent file: %s...", url[:80])
+                logger.warning("Too many redirects fetching torrent file: %s...", _safe_url(url))
                 return TorrentInfo(
                     info_hash=None,
                     torrent_data=None,
@@ -272,7 +294,7 @@ def _fetch_torrent_info(url: str) -> TorrentInfo:
                     fetch_error="too many redirects",
                 )
             redirects_remaining -= 1
-            logger.debug("Following redirect to: %s...", redirect_url[:80])
+            logger.debug("Following redirect to: %s...", _safe_url(redirect_url))
             current_url = redirect_url
 
         resp.raise_for_status()
@@ -298,8 +320,11 @@ def _fetch_torrent_info(url: str) -> TorrentInfo:
             logger.warning("Could not extract hash from torrent file")
         return TorrentInfo(info_hash=info_hash, torrent_data=torrent_data, is_magnet=False)
     except _TORRENT_FETCH_ERRORS as e:
-        logger.warning("Could not fetch torrent file: %s", e)
-        return TorrentInfo(info_hash=None, torrent_data=None, is_magnet=False, fetch_error=str(e))
+        # Exception messages can repeat the source or redirect URL, including its
+        # credentials; scrub them before logging or storing the reason.
+        message = _redact_urls_in_text(str(e))
+        logger.warning("Could not fetch torrent file: %s: %s", type(e).__name__, message)
+        return TorrentInfo(info_hash=None, torrent_data=None, is_magnet=False, fetch_error=message)
 
 
 def _is_trusted_torrent_fetch_url(url: str) -> bool:

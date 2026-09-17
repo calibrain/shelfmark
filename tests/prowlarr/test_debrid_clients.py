@@ -91,6 +91,49 @@ class TestResolveDebridUpload:
 
         assert "tracker unreachable" in str(excinfo.value)
 
+    def test_resolver_does_not_log_the_raw_url_or_exception_text(self, monkeypatch):
+        import shelfmark.download.clients.torrent_utils as torrent_utils
+
+        logger = MagicMock()
+        monkeypatch.setattr(torrent_utils, "logger", logger)
+        _mock_fetch(monkeypatch, error=OSError(f"boom {_PROWLARR_PROXY_URL}"))
+
+        with pytest.raises(ValueError):
+            resolve_debrid_upload(_PROWLARR_PROXY_URL)
+
+        logged = str(logger.mock_calls)
+        assert _PROWLARR_PROXY_URL not in logged
+        assert torrent_utils._safe_url(_PROWLARR_PROXY_URL) in logged
+
+    def test_resolver_does_not_log_a_credential_bearing_redirect(self, monkeypatch):
+        import shelfmark.download.clients.torrent_utils as torrent_utils
+
+        logger = MagicMock()
+        monkeypatch.setattr(torrent_utils, "logger", logger)
+        redirect_url = "https://tracker.example/get/Dune?t=secret&apikey=k"
+        response = MagicMock(
+            status_code=302,
+            headers={"Location": redirect_url},
+            content=b"",
+        )
+        response.raise_for_status = MagicMock()
+        mock_get = MagicMock(return_value=response)
+        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+
+        resolve_debrid_upload(_PROWLARR_PROXY_URL, expected_hash="a" * 40)
+
+        logged = str(logger.mock_calls)
+        assert redirect_url not in logged
+        assert torrent_utils._safe_url(redirect_url) in logged
+
+    def test_resolver_failure_message_keeps_out_the_source_url(self, monkeypatch):
+        _mock_fetch(monkeypatch, error=OSError("tracker unreachable"))
+
+        with pytest.raises(ValueError, match="Could not resolve a torrent") as excinfo:
+            resolve_debrid_upload(_PROWLARR_PROXY_URL)
+
+        assert "apikey=k" not in str(excinfo.value)
+
 
 class TestRealDebridAdd:
     @staticmethod

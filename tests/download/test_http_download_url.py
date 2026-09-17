@@ -279,3 +279,61 @@ def test_download_logs_rotated_url_after_retry(monkeypatch):
 
     logger.info.assert_any_call("Downloading: %s (attempt %s/%s)", rotated_url, 2, 2)
     logger.error.assert_called_once_with("Download failed after %s attempts: %s", 2, rotated_url)
+
+
+def test_redacted_download_passes_redaction_into_rotation(monkeypatch):
+    http = _prepare_download_test(monkeypatch)
+    monkeypatch.setattr(http, "MAX_DOWNLOAD_RETRIES", 1)
+    sensitive_url = "https://cdn.example/book.epub?signature=secret"
+    monkeypatch.setattr(
+        http.requests,
+        "get",
+        lambda _url, **_kwargs: (_ for _ in ()).throw(requests.exceptions.ConnectionError("x")),
+    )
+    rotation = MagicMock(return_value=None)
+    monkeypatch.setattr(http, "_try_rotation", rotation)
+
+    assert http.download_url(sensitive_url, redact_url=True) is None
+
+    assert rotation.call_args.kwargs["redact_url"] is True
+
+
+def test_redacted_download_does_not_log_a_rotated_url(monkeypatch):
+    http = _prepare_download_test(monkeypatch)
+    logger = MagicMock()
+    monkeypatch.setattr(http, "logger", logger)
+    monkeypatch.setattr(http, "MAX_DOWNLOAD_RETRIES", 2)
+    sensitive_url = "https://cdn.example/book.epub?signature=secret"
+    rotated_url = "https://rotated.example/book.epub?signature=secret"
+    error = requests.exceptions.ConnectionError("connection reset")
+    monkeypatch.setattr(http.requests, "get", MagicMock(side_effect=error))
+    monkeypatch.setattr(http, "_try_rotation", MagicMock(side_effect=[rotated_url, None]))
+
+    assert http.download_url(sensitive_url, redact_url=True) is None
+
+    logged = str(logger.mock_calls)
+    assert sensitive_url not in logged
+    assert rotated_url not in logged
+    assert "<redacted>" in logged
+
+
+def test_default_download_still_logs_the_rotated_url_for_diagnostics(monkeypatch):
+    http = _prepare_download_test(monkeypatch)
+    logger = MagicMock()
+    monkeypatch.setattr(http, "logger", logger)
+    monkeypatch.setattr(http, "MAX_DOWNLOAD_RETRIES", 2)
+    source_url = "https://source.example/file.epub?apikey=k"
+    rotated_url = "https://rotated.example/file.epub?apikey=k"
+    error = requests.exceptions.ConnectionError("connection reset")
+    monkeypatch.setattr(http.requests, "get", MagicMock(side_effect=error))
+
+    def fake_rotation(original_url, _current, _selector, *, fatal_reason=None, redact_url=False):
+        assert redact_url is False
+        logger.info("rotation to %s", rotated_url)
+        return rotated_url
+
+    monkeypatch.setattr(http, "_try_rotation", fake_rotation)
+
+    assert http.download_url(source_url) is None
+
+    assert rotated_url in str(logger.mock_calls)

@@ -8,6 +8,7 @@ import threading
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, ClassVar, NoReturn
+from urllib.parse import urlparse
 
 import requests
 
@@ -547,7 +548,12 @@ class TorBoxClient(DownloadClient):
             },
             timeout=_API_TIMEOUT,
         )
-        if not isinstance(data, str) or not data.startswith(("https://", "http://")):
+        if not isinstance(data, str) or not data.startswith("https://"):
+            _raise_runtime_error(
+                f"TorBox returned an invalid download link for torrent {torrent_id}, file {file_id}"
+            )
+        parsed = urlparse(data)
+        if parsed.scheme != "https" or not parsed.hostname:
             _raise_runtime_error(
                 f"TorBox returned an invalid download link for torrent {torrent_id}, file {file_id}"
             )
@@ -579,9 +585,11 @@ class TorBoxClient(DownloadClient):
 
         normalized = name.replace("\\", "/")
         relative_path = PurePosixPath(normalized)
+        windows_path = PureWindowsPath(name)
         if (
             relative_path.is_absolute()
-            or PureWindowsPath(normalized).is_absolute()
+            or windows_path.is_absolute()
+            or windows_path.drive
             or ".." in relative_path.parts
         ):
             _raise_runtime_error(f"TorBox returned an unsafe file path: {name}")

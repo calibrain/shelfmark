@@ -317,8 +317,10 @@ def _try_rotation(
     selector: network.AAMirrorSelector,
     *,
     fatal_reason: str | None = None,
+    redact_url: bool = False,
 ) -> str | None:
     """Try mirror/DNS rotation. Returns new URL or None."""
+    log_target = "<redacted>" if redact_url else original_url
     aa_base_url = network.get_aa_base_url()
     if aa_base_url and current_url.startswith(aa_base_url):
         new_base, action = selector.next_mirror_or_rotate_dns(
@@ -326,10 +328,10 @@ def _try_rotation(
         )
         if action in ("mirror", "dns") and new_base:
             new_url = selector.rewrite(original_url)
-            logger.info("[%s] switching to: %s", action, new_url)
+            logger.info("[%s] switching to: %s", action, log_target)
             return new_url
     elif network.should_rotate_dns_for_url(current_url) and network.rotate_dns_provider():
-        logger.info("[dns-rotate] retrying: %s", original_url)
+        logger.info("[dns-rotate] retrying: %s", log_target)
         return original_url
     return None
 
@@ -993,7 +995,7 @@ def download_url(
 
             # Try mirror/DNS rotation if nothing downloaded yet
             if bytes_downloaded == 0 and retryable:
-                new_url = _try_rotation(link, current_url, selector)
+                new_url = _try_rotation(link, current_url, selector, redact_url=redact_url)
                 if new_url:
                     current_url = new_url
                     log_target = "<redacted>" if redact_url else current_url

@@ -264,6 +264,8 @@ class TestTorBoxFileRetrieval:
             TorBoxClient._safe_relative_path({"name": r"books\..\Dune.epub"}, tmp_path)
         with pytest.raises(RuntimeError, match="unsafe"):
             TorBoxClient._safe_relative_path({"name": r"C:\books\Dune.epub"}, tmp_path)
+        with pytest.raises(RuntimeError, match="unsafe"):
+            TorBoxClient._safe_relative_path({"name": r"C:books\Dune.epub"}, tmp_path)
 
     def test_process_downloads_supported_file_into_safe_relative_path(self, monkeypatch, tmp_path):
         client = _client(monkeypatch)
@@ -337,6 +339,43 @@ class TestTorBoxFileRetrieval:
 
         assert API_KEY not in str(excinfo.value)
         assert get.call_args.kwargs["params"]["token"] == API_KEY
+
+    def test_file_link_accepts_an_https_url(self, monkeypatch):
+        client = _client(monkeypatch)
+        signed_url = "https://cdn.example/Dune?token=signed"
+        monkeypatch.setattr(
+            "shelfmark.download.clients.torbox.requests.get",
+            MagicMock(return_value=_response(signed_url)),
+        )
+
+        assert client._request_download_link("42", 7) == signed_url
+
+    @staticmethod
+    def _link_request(monkeypatch, data: object) -> MagicMock:
+        get = MagicMock(return_value=_response(data))
+        monkeypatch.setattr("shelfmark.download.clients.torbox.requests.get", get)
+        return get
+
+    def test_file_link_rejects_http_urls(self, monkeypatch):
+        client = _client(monkeypatch)
+        self._link_request(monkeypatch, "http://cdn.example/Dune?token=signed")
+
+        with pytest.raises(RuntimeError, match="invalid download link"):
+            client._request_download_link("42", 7)
+
+    def test_file_link_rejects_non_url_data(self, monkeypatch):
+        client = _client(monkeypatch)
+        self._link_request(monkeypatch, "not a link")
+
+        with pytest.raises(RuntimeError, match="invalid download link"):
+            client._request_download_link("42", 7)
+
+    def test_file_link_rejects_hostless_urls(self, monkeypatch):
+        client = _client(monkeypatch)
+        self._link_request(monkeypatch, "https:///Dune")
+
+        with pytest.raises(RuntimeError, match="invalid download link"):
+            client._request_download_link("42", 7)
 
     def test_file_link_transport_failure_keeps_token_out_of_state_and_logs(
         self, monkeypatch, tmp_path
