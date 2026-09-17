@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
 from threading import Event
 from unittest.mock import ANY, MagicMock
 
 import pytest
 
 from shelfmark.core.models import DownloadTask
-from shelfmark.release_sources import HandoffResult
 
 
 class _StopLoop(BaseException):
@@ -231,27 +231,70 @@ def test_start_replaces_dead_coordinator_thread(monkeypatch):
     assert orchestrator._coordinator_thread is new_thread
 
 
-def test_download_task_completes_blackhole_handoff_without_post_processing(monkeypatch, tmp_path):
+@pytest.mark.parametrize("handoff", ["resident", "consumed", "write_error", "cancelled"])
+def test_download_task_completes_blackhole_handoff_without_post_processing(
+    monkeypatch, tmp_path, handoff
+):
     import shelfmark.download.orchestrator as orchestrator
+    from shelfmark.download.clients import blackhole
+    from shelfmark.download.clients.base_handler import DownloadRequest
+    from shelfmark.download.clients.torrent_utils import TorrentInfo
+    from shelfmark.release_sources.prowlarr.handler import ProwlarrHandler
 
-    handoff_file = tmp_path / "release.torrent"
-    handoff_file.write_bytes(b"torrent-bytes")
+    handoff_file = tmp_path / "Book.torrent"
+    cancel = Event()
     task = DownloadTask(task_id="blackhole-task", source="prowlarr", title="Book")
     queue = MagicMock()
     queue.get_task.return_value = task
-    handler = MagicMock()
-    handler.download.return_value = HandoffResult(
-        path=str(handoff_file),
-        message=f"Torrent file saved to {handoff_file}",
+    monkeypatch.setattr(
+        blackhole.config,
+        "get",
+        lambda key, default=None: str(tmp_path) if key == "BLACKHOLE_DIRECTORY" else default,
     )
+    monkeypatch.setattr(
+        blackhole,
+        "extract_torrent_info",
+        lambda *_args, **_kwargs: TorrentInfo("abc123", b"torrent-bytes", False),
+    )
+    client = blackhole.BlackholeClient()
+    handler = ProwlarrHandler()
+    monkeypatch.setattr(handler, "_get_client", lambda _protocol: client)
+    monkeypatch.setattr(
+        handler,
+        "_resolve_download",
+        lambda *_args: DownloadRequest(
+            "https://indexer.example/book.torrent", "torrent", "Book", None
+        ),
+    )
+    replace = Path.replace
+    consumed = []
 
+    def publish(path, target):
+        if handoff == "write_error":
+            raise OSError("handoff directory is not writable")
+        result = replace(path, target)
+        if handoff == "consumed":
+            consumed.append(target.read_bytes())
+            target.unlink()
+        elif handoff == "cancelled":
+            cancel.set()
+        return result
+
+    monkeypatch.setattr(Path, "replace", publish)
     monkeypatch.setattr(orchestrator, "book_queue", queue)
     monkeypatch.setattr(orchestrator, "get_handler", lambda _source: handler)
     monkeypatch.setattr(orchestrator, "_source_unavailable_message", lambda _source: None)
     monkeypatch.setattr(orchestrator, "post_process_download", MagicMock())
 
-    result = orchestrator._download_task(task.task_id, Event())
+    result = orchestrator._download_task(task.task_id, cancel)
 
-    assert result == str(handoff_file)
+    assert result == (None if handoff in ("write_error", "cancelled") else str(handoff_file))
+    assert handoff_file.exists() is (handoff in ("resident", "cancelled"))
+    assert consumed == ([b"torrent-bytes"] if handoff == "consumed" else [])
+    assert (task.last_error_message is not None) is (handoff == "write_error")
+    assert not list(tmp_path.glob(".blackhole-*"))
     orchestrator.post_process_download.assert_not_called()
-    handler.post_process_cleanup.assert_called_once_with(task, success=True)
+    if result:
+        queue.update_progress.assert_called_once_with(task.task_id, 100)
+    else:
+        queue.update_progress.assert_not_called()

@@ -871,6 +871,19 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 logger.info(
                     "Added to %s: %s for '%s'", client.name, download_id, request.release_name
                 )
+                if getattr(client, "handoff_only", False) is True:
+                    if cancel_flag.is_set():
+                        self._handle_cancelled_download(
+                            client, download_id, request.protocol, status_callback
+                        )
+                        return None
+                    # A watcher can consume the publication as soon as add_download returns.
+                    progress_callback(100)
+                    self._on_download_complete(task)
+                    return HandoffResult(
+                        path=download_id,
+                        message=f"Torrent file saved to {download_id}",
+                    )
 
             # Poll for progress
             return self._poll_and_complete(
@@ -897,7 +910,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         cancel_flag: Event,
         progress_callback: Callable[[float], None],
         status_callback: Callable[[str, str | None], None],
-    ) -> str | HandoffResult | None:
+    ) -> str | None:
         """Poll the download client for progress and handle completion."""
         poll_interval = self._poll_interval()
         # Track consecutive "not found" errors - torrents may take time to appear in client
@@ -905,7 +918,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         max_not_found_retries = 15  # 15 retries * poll interval ~= 30s grace period
 
         try:
-            result: str | HandoffResult | None = None
+            result: str | None = None
             logger.debug("Starting poll for %s (content_type=%s)", download_id, task.content_type)
             while not cancel_flag.is_set():
                 status = client.get_status(download_id)
@@ -1020,18 +1033,12 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 )
                 return None
 
-            if getattr(client, "handoff_only", False) is True:
-                result = HandoffResult(
-                    path=str(source_path_obj),
-                    message=f"Torrent file saved to {source_path_obj}",
-                )
-            else:
-                result = self._handle_completed_file(
-                    source_path=source_path_obj,
-                    protocol=protocol,
-                    task=task,
-                    status_callback=status_callback,
-                )
+            result = self._handle_completed_file(
+                source_path=source_path_obj,
+                protocol=protocol,
+                task=task,
+                status_callback=status_callback,
+            )
 
         except Exception as e:
             logger.exception("Error during download polling")
@@ -1042,8 +1049,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         # Clean up on success
         if result:
             self._on_download_complete(task)
-            if not isinstance(result, HandoffResult):
-                self._cleanup_refs[task.task_id] = (client, download_id, protocol)
+            self._cleanup_refs[task.task_id] = (client, download_id, protocol)
 
         return result
 

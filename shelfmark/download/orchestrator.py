@@ -753,14 +753,6 @@ def _download_task(task_id: str, cancel_flag: Event) -> str | None:
 
         if isinstance(temp_path, HandoffResult):
             handoff_path = Path(temp_path.path)
-            if not run_blocking_io(handoff_path.exists):
-                logger.error("Handler returned non-existent handoff path: %s", handoff_path)
-                _capture_task_error(
-                    task,
-                    message=f"Download file missing: {handoff_path}",
-                    exc_type="MissingDownloadPath",
-                )
-                return None
             status_callback("complete", temp_path.message)
             handler.post_process_cleanup(task, success=True)
             _clear_task_error_state(task)
