@@ -39,9 +39,11 @@ interface UseSearchReturn {
     contentTypeOverride?: ContentType;
     searchMode?: SearchMode;
     providerOverride?: string;
+    sort?: string;
   }) => Promise<void>;
   handleResetSearch: (config: AppConfig | null) => void;
   resetSortFilter: () => void;
+  reSortByDownloads: () => void;
   // Universal mode search field values
   searchFieldValues: SearchFieldValues;
   updateSearchFieldValue: (key: string, value: string | number | boolean, label?: string) => void;
@@ -106,6 +108,24 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
     setAdvancedFilters((prev) => ({ ...prev, ...updates }));
   }, []);
 
+  // Sort books by downloads descending (no downloads go to the end)
+  const sortBooksByDownloads = useCallback((bookList: Book[]): Book[] => {
+    const sorted = bookList.toSorted((a, b) => {
+      const aDownloads = a.downloads ?? 0;
+      const bDownloads = b.downloads ?? 0;
+      // Books with downloads come first, sorted by count descending
+      if (aDownloads > 0 && bDownloads === 0) return -1;
+      if (aDownloads === 0 && bDownloads > 0) return 1;
+      return bDownloads - aDownloads;
+    });
+    return sorted;
+  }, []);
+
+  // Re-sort current books by downloads descending (client-side only, no search)
+  const reSortByDownloads = useCallback(() => {
+    setBooks((prev) => sortBooksByDownloads(prev));
+  }, [sortBooksByDownloads]);
+
   const updateSearchFieldValue = useCallback(
     (key: string, value: string | number | boolean, label?: string) => {
       setSearchFieldValues((prev) => ({ ...prev, [key]: value }));
@@ -157,6 +177,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
       contentTypeOverride,
       searchMode: searchModeOverride,
       providerOverride,
+      sort,
     }: {
       query: string;
       config: AppConfig | null;
@@ -164,6 +185,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
       contentTypeOverride?: ContentType;
       searchMode?: SearchMode;
       providerOverride?: string;
+      sort?: string;
     }) => {
       const effectiveContentType = contentTypeOverride ?? contentType;
       const searchMode = (searchModeOverride ?? config?.search_mode) || 'universal';
@@ -177,7 +199,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
         const hasFieldValues = Object.values(effectiveFieldValues).some(
           (v) => v !== '' && v !== false,
         );
-        const sort = params.get('sort') || 'relevance';
+        const sortOrder = params.get('sort') || 'relevance';
 
         if (!searchQuery && !hasFieldValues) {
           setBooks([]);
@@ -202,7 +224,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
           const result = await searchMetadata(
             searchQuery,
             40,
-            sort,
+            sortOrder,
             effectiveFieldValues,
             1,
             effectiveContentType,
@@ -221,7 +243,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
             // Store params for loadMore
             lastSearchParamsRef.current = {
               query: searchQuery,
-              sort,
+              sort: sortOrder,
               fieldValues: effectiveFieldValues,
               providerOverride,
               contentType: effectiveContentType,
@@ -255,7 +277,13 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
         const results = await searchBooks(query);
 
         if (results.length > 0) {
-          setBooks(results);
+          // When no explicit server-side sort is selected (empty or "downloads"),
+          // sort locally by downloads descending so the most popular results
+          // appear first.
+          const effectiveSort = sort ?? advancedFilters.sort;
+          const isDownloadsSort = !effectiveSort || effectiveSort === 'downloads';
+          const sorted = isDownloadsSort ? sortBooksByDownloads(results) : results;
+          setBooks(sorted);
         } else {
           showToast('No results found', 'error');
         }
@@ -270,7 +298,14 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
         setIsSearching(false);
       }
     },
-    [showToast, searchFieldValues, handleSearchError, contentType],
+    [
+      showToast,
+      searchFieldValues,
+      handleSearchError,
+      contentType,
+      advancedFilters,
+      sortBooksByDownloads,
+    ],
   );
 
   const handleResetSearch = useCallback(
@@ -367,6 +402,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
     handleSearch,
     handleResetSearch,
     resetSortFilter,
+    reSortByDownloads,
     // Universal mode search field values
     searchFieldValues,
     updateSearchFieldValue,

@@ -47,8 +47,11 @@ export const buildSearchQuery = ({
   if (content) queryParts.push(`content=${encodeURIComponent(content)}`);
   formats.forEach((format) => queryParts.push(`format=${encodeURIComponent(format)}`));
 
-  if (advancedFilters.sort) {
-    queryParts.push(`sort=${encodeURIComponent(advancedFilters.sort)}`);
+  // "downloads" is a client-side-only sort — send empty string so the server
+  // doesn't receive an invalid sort parameter.
+  const serverSort = advancedFilters.sort === 'downloads' ? '' : advancedFilters.sort;
+  if (serverSort) {
+    queryParts.push(`sort=${encodeURIComponent(serverSort)}`);
   }
 
   return queryParts.join('&');

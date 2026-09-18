@@ -1197,8 +1197,8 @@ def api_config() -> Response | tuple[Response, int]:
             "onboarding_complete": _get_onboarding_complete(),
             # Default sort orders
             "default_sort": app_config.get(
-                "AA_DEFAULT_SORT", "relevance"
-            ),  # For direct mode (Anna's Archive)
+                "AA_DEFAULT_SORT", ""
+            ),  # For direct mode (Anna's Archive) — empty means use local downloads sort
             "metadata_default_sort": get_provider_default_sort(
                 metadata_ui_provider
             ),  # For universal mode

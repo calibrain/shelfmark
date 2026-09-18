@@ -1,6 +1,7 @@
 // Direct download mode sort options
 export const SORT_OPTIONS = [
-  { value: '', label: 'Most relevant' },
+  { value: 'downloads', label: 'Most downloads' },
+  { value: 'relevance', label: 'Most relevant' },
   { value: 'newest', label: 'Newest (publication year)' },
   { value: 'oldest', label: 'Oldest (publication year)' },
   { value: 'largest', label: 'Largest (filesize)' },

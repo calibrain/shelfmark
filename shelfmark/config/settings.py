@@ -204,6 +204,7 @@ register_group(
 
 # Direct mode sort options
 _AA_SORT_OPTIONS = [
+    {"value": "", "label": "Most downloads"},
     {"value": "relevance", "label": "Most relevant"},
     {"value": "newest", "label": "Newest (publication year)"},
     {"value": "oldest", "label": "Oldest (publication year)"},
@@ -483,7 +484,7 @@ def search_mode_settings() -> list[SettingsField]:
             label="Default Sort Order",
             description="Default sort order for search results.",
             options=_AA_SORT_OPTIONS,
-            default="relevance",
+            default="",
             show_when={"field": "SEARCH_MODE", "value": "direct"},
         ),
         CheckboxField(

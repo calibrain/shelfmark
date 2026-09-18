@@ -478,6 +478,7 @@ function App() {
     updateAdvancedFilters,
     handleSearch,
     handleResetSearch,
+    reSortByDownloads,
     searchFieldValues,
     updateSearchFieldValue,
     searchFieldLabels,
@@ -846,9 +847,7 @@ function App() {
 
         // Determine the default sort based on search mode
         const defaultSort =
-          cfg.search_mode === 'universal'
-            ? resolvedMetadataDefaultSort
-            : cfg.default_sort || 'relevance';
+          cfg.search_mode === 'universal' ? resolvedMetadataDefaultSort : (cfg.default_sort ?? '');
 
         if (cfg?.supported_formats) {
           // Seeding the defaults must not undo filters a shared link already applied.
@@ -951,6 +950,7 @@ function App() {
       contentTypeOverride?: ContentType;
       searchModeOverride?: SearchMode;
       providerOverride?: string;
+      sort?: string;
     }) => {
       void refreshRequestPolicy();
       void handleSearch({
@@ -960,6 +960,7 @@ function App() {
         contentTypeOverride: opts.contentTypeOverride,
         searchMode: opts.searchModeOverride,
         providerOverride: opts.providerOverride,
+        sort: opts.sort,
       });
     },
     [refreshRequestPolicy, handleSearch, config],
@@ -2027,7 +2028,7 @@ function App() {
   const urlHashDefaultSort =
     effectiveSearchMode === 'universal'
       ? resolvedMetadataDefaultSort
-      : config?.default_sort || 'relevance';
+      : (config?.default_sort ?? '');
 
   // Keep the URL hash fragment live as search state changes. Gated until any URL-driven
   // bootstrap has applied (or there was nothing to apply), so we don't clobber a shared
@@ -2360,6 +2361,7 @@ function App() {
       fieldValues: request.fieldValues,
       searchModeOverride: effectiveSearchMode,
       providerOverride: request.providerOverride,
+      sort: advancedFilters.sort,
     });
   }, [
     activeQueryOption,
@@ -2583,11 +2585,19 @@ function App() {
                 updateAdvancedFilters({ sort: request.appliedSort });
               }
               setActiveResultsSort(request.appliedSort);
+
+              // "Most downloads" is a client-side sort — just re-sort existing books
+              if (request.appliedSort === 'downloads' && effectiveSearchMode === 'direct') {
+                reSortByDownloads();
+                return;
+              }
+
               runSearchWithPolicyRefresh({
                 query: request.query,
                 fieldValues: request.fieldValues,
                 searchModeOverride: effectiveSearchMode,
                 providerOverride: request.providerOverride,
+                sort: request.appliedSort,
               });
             }}
             metadataSortOptions={resolvedMetadataSortOptions}
