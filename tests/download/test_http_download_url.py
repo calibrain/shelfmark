@@ -160,7 +160,7 @@ def test_download_url_resumes_partial_download_after_connection_error(monkeypatc
     assert calls[1]["headers"]["Range"] == "bytes=4-"
 
 
-def test_redacted_download_does_not_log_a_url_bearing_resume_error(monkeypatch):
+def test_download_does_not_log_a_url_bearing_resume_error(monkeypatch):
     http = _prepare_download_test(monkeypatch)
     logger = MagicMock()
     monkeypatch.setattr(http, "logger", logger)
@@ -182,18 +182,18 @@ def test_redacted_download_does_not_log_a_url_bearing_resume_error(monkeypatch):
     )
     monkeypatch.setattr(http.requests, "get", get)
 
-    assert http.download_url(sensitive_url, redact_url=True) is None
+    assert http.download_url(sensitive_url) is None
 
     assert sensitive_url not in str(logger.mock_calls)
     logger.debug.assert_any_call("Resume attempt %s failed: %s", 1, "ConnectionError")
 
 
-def test_default_download_preserves_resume_error_diagnostics(monkeypatch):
+def test_download_logs_resume_error_type_without_exception_details(monkeypatch):
     http = _prepare_download_test(monkeypatch)
     logger = MagicMock()
     monkeypatch.setattr(http, "logger", logger)
     monkeypatch.setattr(http, "MAX_DOWNLOAD_RETRIES", 1)
-    download_url = "https://example.com/file.epub"
+    download_url = "https://cdn.example/file.epub?signature=secret"
     error = requests.exceptions.ConnectionError(download_url)
     initial_response = _FakeResponse(
         200,
@@ -206,10 +206,10 @@ def test_default_download_preserves_resume_error_diagnostics(monkeypatch):
 
     assert http.download_url(download_url) is None
 
-    logger.debug.assert_any_call("Resume attempt %s failed: %s", 1, error)
+    logger.debug.assert_any_call("Resume attempt %s failed: %s", 1, "ConnectionError")
 
 
-def test_download_url_can_redact_a_sensitive_url_from_logs(monkeypatch):
+def test_download_url_does_not_log_a_sensitive_url(monkeypatch):
     http = _prepare_download_test(monkeypatch)
     logger = MagicMock()
     monkeypatch.setattr(http, "logger", logger)
@@ -225,12 +225,12 @@ def test_download_url_can_redact_a_sensitive_url_from_logs(monkeypatch):
     )
     sensitive_url = "https://cdn.example/book.epub?signature=secret"
 
-    assert http.download_url(sensitive_url, redact_url=True) is not None
+    assert http.download_url(sensitive_url) is not None
 
     assert sensitive_url not in str(logger.mock_calls)
 
 
-def test_redacted_download_does_not_log_a_url_bearing_request_error(monkeypatch):
+def test_download_does_not_log_a_url_bearing_request_error(monkeypatch):
     http = _prepare_download_test(monkeypatch)
     logger = MagicMock()
     monkeypatch.setattr(http, "logger", logger)
@@ -241,17 +241,17 @@ def test_redacted_download_does_not_log_a_url_bearing_request_error(monkeypatch)
         lambda url, **_kwargs: (_ for _ in ()).throw(requests.exceptions.ConnectionError(url)),
     )
 
-    assert http.download_url(sensitive_url, redact_url=True) is None
+    assert http.download_url(sensitive_url) is None
 
     assert sensitive_url not in str(logger.mock_calls)
     logger.warning.assert_any_call("Download error: %s", "ConnectionError")
 
 
-def test_default_download_preserves_url_bearing_request_error_diagnostics(monkeypatch):
+def test_download_logs_request_error_type_without_exception_details(monkeypatch):
     http = _prepare_download_test(monkeypatch)
     logger = MagicMock()
     monkeypatch.setattr(http, "logger", logger)
-    download_url = "https://example.com/file.epub"
+    download_url = "https://cdn.example/file.epub?signature=secret"
     error = requests.exceptions.ConnectionError(download_url)
     monkeypatch.setattr(
         http.requests,
@@ -261,10 +261,10 @@ def test_default_download_preserves_url_bearing_request_error_diagnostics(monkey
 
     assert http.download_url(download_url) is None
 
-    logger.warning.assert_any_call("Download error: %s: %s", "ConnectionError", error)
+    logger.warning.assert_any_call("Download error: %s", "ConnectionError")
 
 
-def test_download_logs_rotated_url_after_retry(monkeypatch):
+def test_download_does_not_log_rotated_url_after_retry(monkeypatch):
     http = _prepare_download_test(monkeypatch)
     logger = MagicMock()
     monkeypatch.setattr(http, "logger", logger)
@@ -277,11 +277,12 @@ def test_download_logs_rotated_url_after_retry(monkeypatch):
 
     assert http.download_url(source_url) is None
 
-    logger.info.assert_any_call("Downloading: %s (attempt %s/%s)", rotated_url, 2, 2)
-    logger.error.assert_called_once_with("Download failed after %s attempts: %s", 2, rotated_url)
+    assert rotated_url not in str(logger.mock_calls)
+    logger.info.assert_any_call("Downloading (attempt %s/%s)", 2, 2)
+    logger.error.assert_called_once_with("Download failed after %s attempts", 2)
 
 
-def test_redacted_download_passes_redaction_into_rotation(monkeypatch):
+def test_download_does_not_pass_url_redaction_state_into_rotation(monkeypatch):
     http = _prepare_download_test(monkeypatch)
     monkeypatch.setattr(http, "MAX_DOWNLOAD_RETRIES", 1)
     sensitive_url = "https://cdn.example/book.epub?signature=secret"
@@ -293,12 +294,12 @@ def test_redacted_download_passes_redaction_into_rotation(monkeypatch):
     rotation = MagicMock(return_value=None)
     monkeypatch.setattr(http, "_try_rotation", rotation)
 
-    assert http.download_url(sensitive_url, redact_url=True) is None
+    assert http.download_url(sensitive_url) is None
 
-    assert rotation.call_args.kwargs["redact_url"] is True
+    assert rotation.call_args.kwargs == {}
 
 
-def test_redacted_download_does_not_log_a_rotated_url(monkeypatch):
+def test_download_does_not_log_a_rotated_url(monkeypatch):
     http = _prepare_download_test(monkeypatch)
     logger = MagicMock()
     monkeypatch.setattr(http, "logger", logger)
@@ -309,15 +310,15 @@ def test_redacted_download_does_not_log_a_rotated_url(monkeypatch):
     monkeypatch.setattr(http.requests, "get", MagicMock(side_effect=error))
     monkeypatch.setattr(http, "_try_rotation", MagicMock(side_effect=[rotated_url, None]))
 
-    assert http.download_url(sensitive_url, redact_url=True) is None
+    assert http.download_url(sensitive_url) is None
 
     logged = str(logger.mock_calls)
     assert sensitive_url not in logged
     assert rotated_url not in logged
-    assert "<redacted>" in logged
+    assert "<redacted>" not in logged
 
 
-def test_default_download_still_logs_the_rotated_url_for_diagnostics(monkeypatch):
+def test_default_download_does_not_log_the_rotated_url(monkeypatch):
     http = _prepare_download_test(monkeypatch)
     logger = MagicMock()
     monkeypatch.setattr(http, "logger", logger)
@@ -327,13 +328,11 @@ def test_default_download_still_logs_the_rotated_url_for_diagnostics(monkeypatch
     error = requests.exceptions.ConnectionError("connection reset")
     monkeypatch.setattr(http.requests, "get", MagicMock(side_effect=error))
 
-    def fake_rotation(original_url, _current, _selector, *, fatal_reason=None, redact_url=False):
-        assert redact_url is False
-        logger.info("rotation to %s", rotated_url)
+    def fake_rotation(original_url, _current, _selector, *, fatal_reason=None):
         return rotated_url
 
     monkeypatch.setattr(http, "_try_rotation", fake_rotation)
 
     assert http.download_url(source_url) is None
 
-    assert rotated_url in str(logger.mock_calls)
+    assert rotated_url not in str(logger.mock_calls)

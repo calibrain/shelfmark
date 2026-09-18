@@ -286,7 +286,7 @@ class TestTorBoxFileRetrieval:
         assert (tmp_path / "books" / "Dune.EPUB").read_bytes() == b"book content"
         assert state.phase == "complete"
         assert state.progress == 100.0
-        assert download.call_args.kwargs["redact_url"] is True
+        assert download.call_args.kwargs["referer"] == "https://torbox.app/"
 
     def test_remove_cancels_active_retrieval_before_removing_files(self, monkeypatch, tmp_path):
         client = _client(monkeypatch)

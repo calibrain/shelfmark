@@ -317,10 +317,8 @@ def _try_rotation(
     selector: network.AAMirrorSelector,
     *,
     fatal_reason: str | None = None,
-    redact_url: bool = False,
 ) -> str | None:
     """Try mirror/DNS rotation. Returns new URL or None."""
-    log_target = "<redacted>" if redact_url else original_url
     aa_base_url = network.get_aa_base_url()
     if aa_base_url and current_url.startswith(aa_base_url):
         new_base, action = selector.next_mirror_or_rotate_dns(
@@ -328,14 +326,10 @@ def _try_rotation(
         )
         if action in ("mirror", "dns") and new_base:
             new_url = selector.rewrite(original_url)
-            logger.info(
-                "[%s] switching to: %s",
-                action,
-                "<redacted>" if redact_url else new_url,
-            )
+            logger.info("[%s] switching mirror", action)
             return new_url
     elif network.should_rotate_dns_for_url(current_url) and network.rotate_dns_provider():
-        logger.info("[dns-rotate] retrying: %s", log_target)
+        logger.info("[dns-rotate] retrying download")
         return original_url
     return None
 
@@ -858,15 +852,10 @@ def download_url(
     _selector: network.AAMirrorSelector | None = None,
     status_callback: Callable[[str, str | None], None] | None = None,
     referer: str | None = None,
-    redact_url: bool = False,
 ) -> BytesIO | None:
-    """Download content from URL with automatic retry and resume support.
-
-    Set ``redact_url`` for authenticated URLs that must not appear in logs.
-    """
+    """Download content from URL with automatic retry and resume support."""
     selector = _selector or network.AAMirrorSelector()
     current_url = selector.rewrite(link)
-    log_target = "<redacted>" if redact_url else current_url
 
     # Build headers with optional referer
     headers = DOWNLOAD_HEADERS.copy()
@@ -891,12 +880,7 @@ def download_url(
                     f"Connecting (Attempt {attempt + 1}/{MAX_DOWNLOAD_RETRIES})",
                 )
 
-            logger.info(
-                "Downloading: %s (attempt %s/%s)",
-                log_target,
-                attempt + 1,
-                MAX_DOWNLOAD_RETRIES,
-            )
+            logger.info("Downloading (attempt %s/%s)", attempt + 1, MAX_DOWNLOAD_RETRIES)
             # Try with CF cookies/UA if available
             cookies = _apply_cf_bypass(current_url, headers)
             response = requests.get(
@@ -934,7 +918,7 @@ def download_url(
                 and bytes_downloaded < total_size * 0.9
                 and response.headers.get("content-type", "").startswith("text/html")
             ):
-                logger.warning("Received HTML instead of file: %s", log_target)
+                logger.warning("Received HTML instead of file")
                 return None
 
             logger.debug("Download completed: %s bytes", bytes_downloaded)
@@ -952,18 +936,21 @@ def download_url(
                 parsed = urlparse(current_url)
                 if _is_configured_zlib_host(parsed.hostname) and referer:
                     zlib_cookie_refresh_attempted = True
-                    logger.info("Z-Library 403 - refreshing cookies via referer: %s", referer)
+                    logger.info("Z-Library 403 - refreshing cookies via referer")
                     try:
                         get_bypassed_page(referer, selector, cancel_flag)
                         time.sleep(0.5)
                         # Retry with fresh cookies (don't increment attempt)
                         continue
                     except _BYPASSER_ERRORS as cookie_err:
-                        logger.warning("Z-Library cookie refresh failed: %s", cookie_err)
+                        logger.warning(
+                            "Z-Library cookie refresh failed: %s",
+                            type(cookie_err).__name__,
+                        )
 
             # Non-retryable errors
             if status in _HTTP_STATUS_NON_RETRYABLE:
-                logger.warning("Download failed (%s): %s", status, log_target)
+                logger.warning("Download failed (%s)", status)
                 return None
 
             # Rate limited - skip to next source immediately
@@ -977,7 +964,7 @@ def download_url(
 
             # Timeout - don't retry, server likely overloaded
             if isinstance(e, requests.exceptions.Timeout):
-                logger.warning("Timeout: %s - skipping to next source", log_target)
+                logger.warning("Timeout - skipping to next source")
                 if status_callback:
                     status_callback("resolving", "Server timed out, trying next")
                 return None
@@ -992,31 +979,26 @@ def download_url(
                     progress_callback,
                     cancel_flag,
                     headers,
-                    redact_url=redact_url,
                 )
                 if resumed:
                     return resumed
 
             # Try mirror/DNS rotation if nothing downloaded yet
             if bytes_downloaded == 0 and retryable:
-                new_url = _try_rotation(link, current_url, selector, redact_url=redact_url)
+                new_url = _try_rotation(link, current_url, selector)
                 if new_url:
                     current_url = new_url
-                    log_target = "<redacted>" if redact_url else current_url
                     attempt += 1
                     continue
 
-            if redact_url:
-                logger.warning("Download error: %s", type(e).__name__)
-            else:
-                logger.warning("Download error: %s: %s", type(e).__name__, e)
+            logger.warning("Download error: %s", type(e).__name__)
             if attempt < MAX_DOWNLOAD_RETRIES - 1:
                 time.sleep(_backoff_delay(attempt + 1))
             attempt += 1
         else:
             return buffer
 
-    logger.error("Download failed after %s attempts: %s", MAX_DOWNLOAD_RETRIES, log_target)
+    logger.error("Download failed after %s attempts", MAX_DOWNLOAD_RETRIES)
     return None
 
 
@@ -1046,7 +1028,6 @@ def _try_resume(
     progress_callback: Callable[[float], None] | None,
     cancel_flag: Event | None,
     base_headers: dict | None = None,
-    redact_url: bool = False,
 ) -> BytesIO | None:
     """Try to resume an interrupted download."""
     for attempt in range(MAX_RESUME_ATTEMPTS):
@@ -1107,10 +1088,7 @@ def _try_resume(
             logger.info("Resume completed: %s bytes", start_byte)
 
         except requests.exceptions.RequestException as e:
-            if redact_url:
-                logger.debug("Resume attempt %s failed: %s", attempt + 1, type(e).__name__)
-            else:
-                logger.debug("Resume attempt %s failed: %s", attempt + 1, e)
+            logger.debug("Resume attempt %s failed: %s", attempt + 1, type(e).__name__)
         else:
             return buffer
 

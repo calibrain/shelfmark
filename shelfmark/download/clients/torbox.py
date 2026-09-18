@@ -501,7 +501,6 @@ class TorBoxClient(DownloadClient):
                     direct_url,
                     referer="https://torbox.app/",
                     cancel_flag=state.cancel_event,
-                    redact_url=True,
                 )
                 if state.cancel_event.is_set():
                     return
