@@ -326,10 +326,10 @@ def _try_rotation(
         )
         if action in ("mirror", "dns") and new_base:
             new_url = selector.rewrite(original_url)
-            logger.info("[%s] switching to: %s", action, new_url)
+            logger.info("[%s] switching mirror", action)
             return new_url
     elif network.should_rotate_dns_for_url(current_url) and network.rotate_dns_provider():
-        logger.info("[dns-rotate] retrying: %s", original_url)
+        logger.info("[dns-rotate] retrying download")
         return original_url
     return None
 
@@ -880,12 +880,7 @@ def download_url(
                     f"Connecting (Attempt {attempt + 1}/{MAX_DOWNLOAD_RETRIES})",
                 )
 
-            logger.info(
-                "Downloading: %s (attempt %s/%s)",
-                current_url,
-                attempt + 1,
-                MAX_DOWNLOAD_RETRIES,
-            )
+            logger.info("Downloading (attempt %s/%s)", attempt + 1, MAX_DOWNLOAD_RETRIES)
             # Try with CF cookies/UA if available
             cookies = _apply_cf_bypass(current_url, headers)
             response = requests.get(
@@ -923,7 +918,7 @@ def download_url(
                 and bytes_downloaded < total_size * 0.9
                 and response.headers.get("content-type", "").startswith("text/html")
             ):
-                logger.warning("Received HTML instead of file: %s", current_url)
+                logger.warning("Received HTML instead of file")
                 return None
 
             logger.debug("Download completed: %s bytes", bytes_downloaded)
@@ -941,18 +936,21 @@ def download_url(
                 parsed = urlparse(current_url)
                 if _is_configured_zlib_host(parsed.hostname) and referer:
                     zlib_cookie_refresh_attempted = True
-                    logger.info("Z-Library 403 - refreshing cookies via referer: %s", referer)
+                    logger.info("Z-Library 403 - refreshing cookies via referer")
                     try:
                         get_bypassed_page(referer, selector, cancel_flag)
                         time.sleep(0.5)
                         # Retry with fresh cookies (don't increment attempt)
                         continue
                     except _BYPASSER_ERRORS as cookie_err:
-                        logger.warning("Z-Library cookie refresh failed: %s", cookie_err)
+                        logger.warning(
+                            "Z-Library cookie refresh failed: %s",
+                            type(cookie_err).__name__,
+                        )
 
             # Non-retryable errors
             if status in _HTTP_STATUS_NON_RETRYABLE:
-                logger.warning("Download failed (%s): %s", status, current_url)
+                logger.warning("Download failed (%s)", status)
                 return None
 
             # Rate limited - skip to next source immediately
@@ -966,7 +964,7 @@ def download_url(
 
             # Timeout - don't retry, server likely overloaded
             if isinstance(e, requests.exceptions.Timeout):
-                logger.warning("Timeout: %s - skipping to next source", current_url)
+                logger.warning("Timeout - skipping to next source")
                 if status_callback:
                     status_callback("resolving", "Server timed out, trying next")
                 return None
@@ -993,14 +991,14 @@ def download_url(
                     attempt += 1
                     continue
 
-            logger.warning("Download error: %s: %s", type(e).__name__, e)
+            logger.warning("Download error: %s", type(e).__name__)
             if attempt < MAX_DOWNLOAD_RETRIES - 1:
                 time.sleep(_backoff_delay(attempt + 1))
             attempt += 1
         else:
             return buffer
 
-    logger.error("Download failed after %s attempts: %s", MAX_DOWNLOAD_RETRIES, link)
+    logger.error("Download failed after %s attempts", MAX_DOWNLOAD_RETRIES)
     return None
 
 
@@ -1090,7 +1088,7 @@ def _try_resume(
             logger.info("Resume completed: %s bytes", start_byte)
 
         except requests.exceptions.RequestException as e:
-            logger.debug("Resume attempt %s failed: %s", attempt + 1, e)
+            logger.debug("Resume attempt %s failed: %s", attempt + 1, type(e).__name__)
         else:
             return buffer
 
