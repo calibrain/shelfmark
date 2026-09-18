@@ -46,6 +46,7 @@ class BrowseRecord:
     content: str | None = None
     format: str | None = None
     size: str | None = None
+    downloads: int | None = None
     info: dict[str, list[str]] | None = None
     description: str | None = None
     download_urls: list[str] = field(default_factory=list)

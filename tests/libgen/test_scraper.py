@@ -72,6 +72,30 @@ def test_resolve_download_url_missing_get_returns_none():
     assert scraper.resolve_download_url(html.ADS_HTML_NO_GET, "https://libgen.li") is None
 
 
+def test_fetch_page_sends_same_origin_referer():
+    # libgen.li's ads.php returns an empty 200 without a Referer; fetch_page must send a
+    # same-origin one or every download-page fetch comes back blank.
+    captured = {}
+
+    class FakeResponse:
+        status_code = 200
+        text = "<html>ok</html>"
+
+    def fake_get(url, **kwargs):
+        captured["headers"] = kwargs["headers"]
+        return FakeResponse()
+
+    with (
+        patch.object(scraper.requests, "get", side_effect=fake_get),
+        patch.object(scraper.network, "get_proxies", return_value=None),
+        patch.object(scraper.network, "get_ssl_verify", return_value=True),
+    ):
+        result = scraper.fetch_page("https://libgen.li/ads.php?md5=abc")
+
+    assert result == "<html>ok</html>"
+    assert captured["headers"]["Referer"] == "https://libgen.li/"
+
+
 def test_search_libgen_falls_through_dead_mirror():
     calls = []
 

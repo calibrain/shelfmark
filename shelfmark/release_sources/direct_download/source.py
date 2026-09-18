@@ -1,5 +1,6 @@
 """Direct Download search and release-source integration."""
 
+import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
@@ -37,6 +38,19 @@ if TYPE_CHECKING:
 logger = setup_logger(__name__)
 
 
+def _extract_downloads(record: BrowseRecord) -> int | None:
+    """Extract download count from record info for Release.extra.downloads."""
+    downloads = None
+    if record.info and "Downloads" in record.info:
+        downloads_value = record.info["Downloads"]
+        if isinstance(downloads_value, list) and len(downloads_value) > 0:
+            with contextlib.suppress(ValueError, TypeError):
+                downloads = int(downloads_value[0])
+        elif isinstance(downloads_value, (int, float)):
+            downloads = int(downloads_value)
+    return downloads
+
+
 def _browse_record_to_release(record: BrowseRecord) -> Release:
     """Convert a browse record to a Release object.
 
@@ -67,6 +81,7 @@ def _browse_record_to_release(record: BrowseRecord) -> Release:
             "download_urls": record.download_urls,
             "info": record.info,
             "direct_download_provider": provider_id,
+            "downloads": _extract_downloads(record),
             # Kept for older frontends and persisted request payloads.
             "web_provider": provider_id if provider_id != "annas_archive" else None,
         },
@@ -98,8 +113,8 @@ class DirectDownloadSource(ReleaseSource):
     def get_column_config(self) -> ReleaseColumnConfig:
         """Column configuration for Direct Download source.
 
-        Shows language, format, and size badges for each release.
-        Language is hidden on mobile; format and size are shown.
+        Shows language, format, size, and downloads for each release.
+        Language, format, size, and downloads are all shown on mobile.
         """
         return ReleaseColumnConfig(
             columns=[
@@ -131,8 +146,16 @@ class DirectDownloadSource(ReleaseSource):
                     width="80px",
                     hide_mobile=False,  # Size shown on mobile
                 ),
+                ColumnSchema(
+                    key="extra.downloads",
+                    label="Downloads",
+                    render_type=ColumnRenderType.NUMBER,
+                    align=ColumnAlign.CENTER,
+                    width="80px",
+                    hide_mobile=False,  # Downloads shown on mobile
+                ),
             ],
-            grid_template="minmax(0,2fr) 60px 80px 80px",
+            grid_template="minmax(0,2fr) 60px 80px 80px 80px",
             supported_filters=["format", "language"],  # AA has reliable language metadata
         )
 

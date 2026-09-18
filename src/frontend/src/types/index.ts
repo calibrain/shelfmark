@@ -56,6 +56,23 @@ export interface Book {
   titles_by_language?: Record<string, string>;
   username?: string;
   retry_available?: boolean;
+  downloads?: number;
+  extra?: Record<string, unknown>;
+}
+
+/**
+ * Extract download count from a book's data.
+ * Checks both the direct `downloads` field and the `extra.downloads` fallback.
+ */
+export function getDownloadsCount(book: Book): number | null {
+  if (book.downloads != null && book.downloads > 0) {
+    return book.downloads;
+  }
+  const extraDownloads = book.extra?.downloads;
+  if (extraDownloads != null && typeof extraDownloads === 'number' && extraDownloads > 0) {
+    return extraDownloads;
+  }
+  return null;
 }
 
 // Status response types

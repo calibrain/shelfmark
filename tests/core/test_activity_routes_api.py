@@ -71,6 +71,7 @@ def _record_terminal_download(
         size="1 MB",
         preview=None,
         content_type="ebook",
+        downloads=None,
         origin=origin,
     )
     svc.finalize_download(
@@ -414,6 +415,7 @@ class TestActivityRoutes:
             size="1 MB",
             preview=None,
             content_type="ebook",
+            downloads=None,
             origin="direct",
         )
         active_status = _sample_status_payload()
@@ -597,6 +599,7 @@ class TestActivityRoutes:
             size="1 MB",
             preview=None,
             content_type="ebook",
+            downloads=None,
             origin="direct",
         )
 
@@ -652,6 +655,7 @@ class TestActivityRoutes:
             size="1 MB",
             preview=None,
             content_type="ebook",
+            downloads=None,
             origin="requested",
             retry_payload=retry_payload,
         )
@@ -1005,6 +1009,7 @@ class TestActivityRoutes:
             size="1 MB",
             preview=None,
             content_type="ebook",
+            downloads=None,
             origin="direct",
         )
 
@@ -1053,6 +1058,7 @@ class TestActivityRoutes:
             size="1 MB",
             preview=None,
             content_type="ebook",
+            downloads=None,
             origin="requested",
             retry_payload=retry_payload,
         )
@@ -1152,6 +1158,7 @@ class TestActivityRoutes:
             size="1 MB",
             preview=None,
             content_type="ebook",
+            downloads=None,
             origin="requested",
             retry_payload=retry_payload,
         )
@@ -1197,6 +1204,7 @@ class TestActivityRoutes:
             size="2 MB",
             preview=None,
             content_type="ebook",
+            downloads=None,
             origin="direct",
         )
 

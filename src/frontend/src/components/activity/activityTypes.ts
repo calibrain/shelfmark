@@ -32,6 +32,7 @@ export interface ActivityItem {
   progress?: number;
   progressAnimated?: boolean;
   sizeRaw?: string;
+  downloads?: number;
 
   timestamp: number;
   username?: string;

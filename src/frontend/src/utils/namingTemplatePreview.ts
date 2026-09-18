@@ -12,6 +12,8 @@ export interface NamingTemplateToken {
 
 interface RenderOptions {
   allowPathSeparators: boolean;
+  /** Mirrors `word_separator` in shelfmark/core/naming.py. Defaults to ' ' (no change). */
+  wordSeparator?: string;
 }
 
 interface RenderResult {
@@ -128,6 +130,7 @@ const firstAuthor = (value: string): string => value.split(/\s*[,;]\s*/)[0]?.tri
 
 const BRACE_PATTERN = /\{([^}]+)\}/g;
 const INVALID_CHARS_PATTERN = /[\\/:*?"<>|]/g;
+const WHITESPACE_RUN_PATTERN = /\s+/g;
 
 export const SAMPLE_NAMING_METADATA = NAMING_TEMPLATE_TOKENS.reduce<Record<string, string>>(
   (metadata, token) => {
@@ -193,9 +196,14 @@ export const renderNamingTemplate = (
 
     const prefix = content.slice(0, index);
     const suffix = content.slice(index + name.length);
-    const rawValue = placeholderValue(name);
+    let rawValue = placeholderValue(name);
     if (!rawValue) {
       return '';
+    }
+
+    const wordSeparator = options.wordSeparator ?? ' ';
+    if (wordSeparator !== ' ') {
+      rawValue = rawValue.replace(WHITESPACE_RUN_PATTERN, wordSeparator);
     }
 
     const value = sanitizeFilename(
@@ -253,13 +261,20 @@ export const renderNamingTemplate = (
   return { value: result, unknownTokens };
 };
 
+// Mirrors get_word_separator() in shelfmark/download/postprocess/policy.py.
+export const resolveWordSeparator = (value: unknown): string => {
+  return (typeof value === 'string' ? value : '') || ' ';
+};
+
 export const buildNamingTemplatePreview = (
   template: string,
   mode: NamingTemplateMode,
   content: NamingTemplateContent,
+  wordSeparator = ' ',
 ): RenderResult => {
   const rendered = renderNamingTemplate(template, SAMPLE_NAMING_METADATA, {
     allowPathSeparators: mode === 'path',
+    wordSeparator,
   });
   const fallback = SAMPLE_NAMING_METADATA.PrimaryTitle;
   const extension = content === 'audiobook' ? 'mp3' : 'epub';

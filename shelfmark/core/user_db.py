@@ -87,7 +87,8 @@ CREATE TABLE IF NOT EXISTS download_history (
     download_path TEXT,
     retry_payload TEXT,
     queued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    terminal_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+    terminal_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    downloads INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_download_history_user_status
@@ -203,6 +204,7 @@ class UserDB:
                 self._migrate_request_delivery_columns(conn)
                 self._migrate_download_history_queued_at(conn)
                 self._migrate_download_history_retry_payload(conn)
+                self._migrate_download_history_downloads(conn)
                 conn.commit()
                 # WAL mode must be changed outside an open transaction.
                 conn.execute("PRAGMA journal_mode=WAL")
@@ -269,6 +271,13 @@ class UserDB:
         column_names = {str(col["name"]) for col in columns}
         if "retry_payload" not in column_names:
             conn.execute("ALTER TABLE download_history ADD COLUMN retry_payload TEXT")
+
+    def _migrate_download_history_downloads(self, conn: sqlite3.Connection) -> None:
+        """Ensure download_history.downloads exists for download count persistence."""
+        columns = conn.execute("PRAGMA table_info(download_history)").fetchall()
+        column_names = {str(col["name"]) for col in columns}
+        if "downloads" not in column_names:
+            conn.execute("ALTER TABLE download_history ADD COLUMN downloads INTEGER")
 
     def create_user(
         self,

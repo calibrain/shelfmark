@@ -97,6 +97,7 @@ class DownloadTask:
     year: str | None = None
     format: str | None = None
     size: str | None = None
+    downloads: int | None = None  # Download count from source
     preview: str | None = None
     content_type: str | None = None  # "book (fiction)", "audiobook", "magazine", etc.
     source_url: str | None = None  # Original release URL used by source-specific handlers

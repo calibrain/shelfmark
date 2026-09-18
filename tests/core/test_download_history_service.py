@@ -34,6 +34,7 @@ def test_record_download_stores_utc_iso_timestamps():
             size=None,
             preview=None,
             content_type="ebook",
+            downloads=None,
             origin="direct",
         )
 

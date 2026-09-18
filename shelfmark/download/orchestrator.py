@@ -296,6 +296,7 @@ def queue_release(
             year=year,
             format=release_data.get("format"),
             size=release_data.get("size"),
+            downloads=release_data.get("downloads") or extra.get("downloads"),
             preview=preview,
             content_type=content_type,
             source_url=source_url,
@@ -319,7 +320,14 @@ def queue_release(
             logger.info("Release already in queue: %s", task.title)
             return False, "Release is already in the download queue"
 
-        logger.info("Release queued with priority %s: %s", priority, task.title)
+        logger.info(
+            "Release queued with priority %s: %s (downloads=%s, release_data.downloads=%s, extra=%s)",
+            priority,
+            task.title,
+            task.downloads,
+            release_data.get("downloads"),
+            extra,
+        )
 
         # Broadcast status update via WebSocket
         if ws_manager:
@@ -521,6 +529,7 @@ def _restore_task_from_retry_payload(payload: object) -> DownloadTask | None:
         year=normalize_optional_text(payload.get("year")),
         format=normalize_optional_text(payload.get("format")),
         size=normalize_optional_text(payload.get("size")),
+        downloads=int(payload["downloads"]) if payload.get("downloads") is not None else None,
         preview=normalize_optional_text(payload.get("preview")),
         content_type=normalize_optional_text(payload.get("content_type")),
         source_url=normalize_optional_text(payload.get("source_url")),
@@ -617,6 +626,7 @@ def _task_to_dict(
         "author": task.author,
         "format": task.format,
         "size": task.size,
+        "downloads": task.downloads,
         "preview": preview,
         "content_type": task.content_type,
         "source": task.source,
@@ -753,14 +763,6 @@ def _download_task(task_id: str, cancel_flag: Event) -> str | None:
 
         if isinstance(temp_path, HandoffResult):
             handoff_path = Path(temp_path.path)
-            if not run_blocking_io(handoff_path.exists):
-                logger.error("Handler returned non-existent handoff path: %s", handoff_path)
-                _capture_task_error(
-                    task,
-                    message=f"Download file missing: {handoff_path}",
-                    exc_type="MissingDownloadPath",
-                )
-                return None
             status_callback("complete", temp_path.message)
             handler.post_process_cleanup(task, success=True)
             _clear_task_error_state(task)

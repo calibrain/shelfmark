@@ -4,6 +4,7 @@ import {
   buildNamingTemplatePreview,
   NAMING_TEMPLATE_TOKENS,
   renderNamingTemplate,
+  resolveWordSeparator,
   SAMPLE_NAMING_METADATA,
 } from '../utils/namingTemplatePreview';
 
@@ -95,6 +96,41 @@ describe('namingTemplatePreview', () => {
     expect(swedish.value).toBe('Andy Weir/Project Hail Mary (sv)');
     expect(english.value).toBe('Andy Weir/Project Hail Mary');
     expect(swedish.value).not.toBe(english.value);
+  });
+
+  it('replaces internal whitespace with the configured word separator', () => {
+    const preview = renderNamingTemplate('{Author}/{PrimaryTitle}', SAMPLE_NAMING_METADATA, {
+      allowPathSeparators: true,
+      wordSeparator: '.',
+    });
+
+    expect(preview.value).toBe('Arthur.Conan.Doyle/The.Hound.of.the.Baskervilles');
+  });
+
+  it('leaves values unchanged for the default space separator', () => {
+    const preview = renderNamingTemplate('{Author}', SAMPLE_NAMING_METADATA, {
+      allowPathSeparators: true,
+    });
+
+    expect(preview.value).toBe('Arthur Conan Doyle');
+  });
+
+  it('never touches literal template characters, only placeholder values', () => {
+    const preview = renderNamingTemplate('{Author}.-.{PrimaryTitle}', SAMPLE_NAMING_METADATA, {
+      allowPathSeparators: true,
+      wordSeparator: '.',
+    });
+
+    expect(preview.value).toBe('Arthur.Conan.Doyle.-.The.Hound.of.the.Baskervilles');
+  });
+
+  it('resolves the word separator setting like the backend policy module', () => {
+    expect(resolveWordSeparator('.')).toBe('.');
+    expect(resolveWordSeparator('_')).toBe('_');
+    expect(resolveWordSeparator('-')).toBe('-');
+    expect(resolveWordSeparator('~')).toBe('~');
+    expect(resolveWordSeparator('')).toBe(' ');
+    expect(resolveWordSeparator(undefined)).toBe(' ');
   });
 
   it('keeps the picker and the known-token list in lockstep', () => {

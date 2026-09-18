@@ -1023,6 +1023,24 @@ def download_settings() -> list[SettingsField]:
                 "value": "folder",
             },
         ),
+        TextField(
+            key="NAMING_WORD_SEPARATOR",
+            label="Word Separator",
+            description=(
+                "Replaces spaces inside naming template values (e.g. 'Conan Doyle' -> "
+                "'Conan.Doyle' with '.'). Applies to books and audiobooks, rename and "
+                "organize templates alike. Literal characters typed into a template "
+                "(like the '-' in '{Author} - {Title}') are left as-is. Leave empty to "
+                "keep spaces as-is."
+            ),
+            default="",
+            placeholder=".",
+            max_length=5,
+            show_when={
+                "field": "BOOKS_OUTPUT_MODE",
+                "value": "folder",
+            },
+        ),
         # Rename mode template - filename only
         _naming_template_field(
             key="TEMPLATE_RENAME",

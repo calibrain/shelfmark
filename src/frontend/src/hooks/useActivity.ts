@@ -103,6 +103,7 @@ const parseHistoryBook = (value: unknown): Book | null => {
     ...(typeof value.retry_available === 'boolean'
       ? { retry_available: value.retry_available }
       : {}),
+    ...(typeof value.downloads === 'number' ? { downloads: value.downloads } : {}),
   };
 };
 

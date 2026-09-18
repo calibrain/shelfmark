@@ -187,7 +187,9 @@ def scan_directory_tree(
                 file_path = Path(root) / filename
                 suffix = file_path.suffix.lower()
 
-                if suffix in supported_exts:
+                # zip/rar can also be enabled as supported formats. Keep archives
+                # out of book_files so they are extracted rather than imported whole.
+                if suffix in supported_exts and not is_archive(file_path):
                     book_files.append(file_path)
                 elif suffix in trackable_exts:
                     rejected_files.append(file_path)
