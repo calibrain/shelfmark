@@ -512,7 +512,8 @@ class TorBoxClient(DownloadClient):
                 destination = state.target_dir / relative_path
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 with destination.open("wb") as output:
-                    output.write(buffer.getvalue())
+                    buffer.seek(0)
+                    shutil.copyfileobj(buffer, output)
                 with state.lock:
                     state.progress = 50.0 + index / len(relevant) * 50.0
 

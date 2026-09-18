@@ -270,12 +270,17 @@ class TestTorBoxFileRetrieval:
     def test_process_downloads_supported_file_into_safe_relative_path(self, monkeypatch, tmp_path):
         client = _client(monkeypatch)
         state = _state(tmp_path)
+
+        class StreamingBuffer(BytesIO):
+            def getvalue(self):
+                raise AssertionError("file retrieval must stream the download buffer")
+
         monkeypatch.setattr(
             client, "_request_download_link", lambda *_args: "https://cdn.example/Dune"
         )
-        download = MagicMock(
-            return_value=BytesIO(b"book content"),
-        )
+        buffer = StreamingBuffer(b"book content")
+        buffer.seek(0, 2)
+        download = MagicMock(return_value=buffer)
         monkeypatch.setattr(
             "shelfmark.download.clients.torbox.download_url",
             download,
