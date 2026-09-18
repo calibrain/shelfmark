@@ -555,7 +555,7 @@ class TorBoxClient(DownloadClient):
             },
             timeout=_API_TIMEOUT,
         )
-        if not isinstance(data, str) or not data.startswith("https://"):
+        if not isinstance(data, str):
             _raise_runtime_error(
                 f"TorBox returned an invalid download link for torrent {torrent_id}, file {file_id}"
             )

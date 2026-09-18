@@ -347,7 +347,7 @@ class TestTorBoxFileRetrieval:
 
     def test_file_link_accepts_an_https_url(self, monkeypatch):
         client = _client(monkeypatch)
-        signed_url = "https://cdn.example/Dune?token=signed"
+        signed_url = "HtTpS://cdn.example/Dune?token=signed"
         monkeypatch.setattr(
             "shelfmark.download.clients.torbox.requests.get",
             MagicMock(return_value=_response(signed_url)),
