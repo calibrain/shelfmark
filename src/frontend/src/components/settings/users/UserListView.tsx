@@ -1,6 +1,8 @@
 import { useState } from 'react';
 
 import type { AdminUser, DownloadDefaults } from '../../../services/api';
+import { listUserApiKeys, revokeUserApiKey } from '../../../services/api';
+import { ApiKeysPanel } from './ApiKeysPanel';
 import type { CreateUserFormState } from './types';
 import { canCreateLocalUsersForAuthMode } from './types';
 import {
@@ -43,6 +45,7 @@ interface UserListViewProps {
   deletingUserId: number | null;
   onSyncCwa: () => Promise<void> | void;
   syncingCwa: boolean;
+  onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
 export const UserListView = ({
@@ -78,6 +81,7 @@ export const UserListView = ({
   deletingUserId,
   onSyncCwa,
   syncingCwa,
+  onShowToast,
 }: UserListViewProps) => {
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const canCreateLocalUsers = canCreateLocalUsersForAuthMode(authMode);
@@ -205,29 +209,37 @@ export const UserListView = ({
                   {isEditingRow && (
                     <div id={editorPanelId} className="space-y-5 rounded-b-lg bg-(--bg) p-4">
                       {hasLoadedEditUser && editingUser ? (
-                        <UserAccountCardContent
-                          user={editingUser}
-                          onUserChange={onEditingUserChange}
-                          onSave={onEditSave}
-                          saving={saving}
-                          onCancel={onCancelEdit}
-                          editPassword={editPassword}
-                          onEditPasswordChange={onEditPasswordChange}
-                          editPasswordConfirm={editPasswordConfirm}
-                          onEditPasswordConfirmChange={onEditPasswordConfirmChange}
-                          onDelete={() => setConfirmDelete(user.id)}
-                          onConfirmDelete={() => {
-                            void handleDelete(user.id);
-                          }}
-                          onCancelDelete={() => setConfirmDelete(null)}
-                          isDeletePending={confirmDelete === user.id}
-                          deleting={deletingUserId === user.id}
-                          preferencesPanel={{
-                            description: 'Customise delivery and request settings for this user.',
-                            actionLabel: 'Open User Preferences',
-                            onAction: onOpenOverrides,
-                          }}
-                        />
+                        <>
+                          <UserAccountCardContent
+                            user={editingUser}
+                            onUserChange={onEditingUserChange}
+                            onSave={onEditSave}
+                            saving={saving}
+                            onCancel={onCancelEdit}
+                            editPassword={editPassword}
+                            onEditPasswordChange={onEditPasswordChange}
+                            editPasswordConfirm={editPasswordConfirm}
+                            onEditPasswordConfirmChange={onEditPasswordConfirmChange}
+                            onDelete={() => setConfirmDelete(user.id)}
+                            onConfirmDelete={() => {
+                              void handleDelete(user.id);
+                            }}
+                            onCancelDelete={() => setConfirmDelete(null)}
+                            isDeletePending={confirmDelete === user.id}
+                            deleting={deletingUserId === user.id}
+                            preferencesPanel={{
+                              description: 'Customise delivery and request settings for this user.',
+                              actionLabel: 'Open User Preferences',
+                              onAction: onOpenOverrides,
+                            }}
+                          />
+                          <ApiKeysPanel
+                            listKeys={() => listUserApiKeys(user.id)}
+                            revokeKey={(keyId) => revokeUserApiKey(user.id, keyId)}
+                            onShowToast={onShowToast}
+                            disabled={editingUser.api_keys_enabled === false}
+                          />
+                        </>
                       ) : (
                         <div className="text-sm opacity-60">Loading user details...</div>
                       )}

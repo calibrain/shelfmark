@@ -42,6 +42,21 @@ CREATE TABLE IF NOT EXISTS user_settings (
     settings_json TEXT NOT NULL DEFAULT '{}'
 );
 
+CREATE TABLE IF NOT EXISTS api_keys (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name          TEXT NOT NULL,
+    key_prefix    TEXT NOT NULL,
+    key_hash      TEXT NOT NULL UNIQUE,
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at    TIMESTAMP,
+    last_used_at  TIMESTAMP,
+    revoked_at    TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix);
+CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
+
 CREATE TABLE IF NOT EXISTS download_requests (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -176,6 +191,15 @@ def sync_builtin_admin_user(
         role="admin",
     )
     logger.info("Created local admin user '%s' from builtin settings", normalized_username)
+
+
+class ApiKeyLimitReachedError(Exception):
+    """Raised when a user has already reached their active API key cap.
+
+    Signals a check-and-insert done atomically inside ``create_api_key``, so
+    callers must not pre-check the count themselves -- that race let two
+    concurrent requests both succeed and blow past the cap.
+    """
 
 
 class UserDB:
@@ -484,6 +508,152 @@ class UserDB:
                 conn.commit()
             finally:
                 conn.close()
+
+    # --- API keys -----------------------------------------------------------
+
+    def create_api_key(
+        self,
+        user_id: int,
+        name: str,
+        key_prefix: str,
+        key_hash: str,
+        expires_at: str | None,
+        *,
+        max_active: int | None = None,
+    ) -> dict[str, Any]:
+        """Store a hashed API key for a user and return the stored row.
+
+        When ``max_active`` is given, the active-key count check and the
+        insert run inside a single ``BEGIN IMMEDIATE`` transaction on this
+        connection, so two concurrent callers can't both pass the check
+        before either has inserted. Raises ``ApiKeyLimitReachedError``
+        instead of inserting when the cap is already reached.
+        """
+        with self._lock:
+            conn = self._connect()
+            try:
+                conn.execute("BEGIN IMMEDIATE")
+                if max_active is not None:
+                    count_row = conn.execute(
+                        "SELECT COUNT(*) AS n FROM api_keys WHERE user_id = ? "
+                        "AND revoked_at IS NULL "
+                        "AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)",
+                        (user_id,),
+                    ).fetchone()
+                    if int(count_row["n"]) >= max_active:
+                        conn.rollback()
+                        raise ApiKeyLimitReachedError
+                cursor = conn.execute(
+                    "INSERT INTO api_keys (user_id, name, key_prefix, key_hash, expires_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (user_id, name, key_prefix, key_hash, expires_at),
+                )
+                key_id = cursor.lastrowid
+                if key_id is None:
+                    msg = "Failed to create API key"
+                    raise sqlite3.OperationalError(msg)
+                row = conn.execute(
+                    "SELECT * FROM api_keys WHERE id = ?",
+                    (key_id,),
+                ).fetchone()
+                if row is None:
+                    msg = "Failed to load created API key"
+                    raise sqlite3.OperationalError(msg)
+                conn.commit()
+                return dict(row)
+            finally:
+                conn.close()
+
+    def get_api_keys_by_prefix(self, key_prefix: str) -> list[dict[str, Any]]:
+        """Return every key row sharing a display prefix (the caller verifies the hash)."""
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM api_keys WHERE key_prefix = ?",
+                (key_prefix,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            conn.close()
+
+    def list_api_keys(self, user_id: int) -> list[dict[str, Any]]:
+        """Return all keys for a user, newest first, including revoked ones."""
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM api_keys WHERE user_id = ? ORDER BY created_at DESC, id DESC",
+                (user_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            conn.close()
+
+    def get_api_key(self, key_id: int, user_id: int) -> dict[str, Any] | None:
+        """Return one key row, only if it belongs to the given user.
+
+        No production code path calls this today; it exists for tests and
+        admin tooling that need to look up a single key by id.
+        """
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT * FROM api_keys WHERE id = ? AND user_id = ?",
+                (key_id, user_id),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def revoke_api_key(self, key_id: int, user_id: int) -> bool:
+        """Mark a key revoked. Returns False when the key is not this user's."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                exists = conn.execute(
+                    "SELECT 1 FROM api_keys WHERE id = ? AND user_id = ?",
+                    (key_id, user_id),
+                ).fetchone()
+                if exists is None:
+                    return False
+                conn.execute(
+                    "UPDATE api_keys SET revoked_at = CURRENT_TIMESTAMP "
+                    "WHERE id = ? AND user_id = ? AND revoked_at IS NULL",
+                    (key_id, user_id),
+                )
+                conn.commit()
+                return True
+            finally:
+                conn.close()
+
+    def touch_api_key_last_used(self, key_id: int) -> None:
+        """Record that a key was just used."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                conn.execute(
+                    "UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (key_id,),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def count_active_api_keys(self, user_id: int) -> int:
+        """Count keys that count toward the per-user cap: not revoked, not expired.
+
+        Timestamps are stored as ``%Y-%m-%d %H:%M:%S`` UTC strings, so a plain
+        lexical comparison against ``CURRENT_TIMESTAMP`` is safe here.
+        """
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM api_keys WHERE user_id = ? AND revoked_at IS NULL "
+                "AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)",
+                (user_id,),
+            ).fetchone()
+            return int(row["n"])
+        finally:
+            conn.close()
 
     @staticmethod
     def _serialize_json(value: Any, field: str) -> str | None:

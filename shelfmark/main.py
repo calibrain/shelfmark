@@ -14,7 +14,7 @@ from importlib import import_module
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable, NoReturn, cast
 
-from flask import Flask, jsonify, request, send_file, send_from_directory, session
+from flask import Flask, g, jsonify, request, send_file, send_from_directory, session
 from flask_cors import CORS
 from flask_socketio import SocketIO, emit
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -44,6 +44,8 @@ from shelfmark.config.settings import (
 )
 from shelfmark.core import search_deadline
 from shelfmark.core.activity_view_state_service import ActivityViewStateService
+from shelfmark.core.api_keys import authenticate as authenticate_api_key
+from shelfmark.core.api_keys import extract_api_key
 from shelfmark.core.auth_modes import (
     get_auth_check_admin_status,
     is_settings_or_onboarding_path,
@@ -550,7 +552,7 @@ if _is_debug_enabled():
             r"/*": {
                 "origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
                 "supports_credentials": True,
-                "allow_headers": ["Content-Type", "Authorization"],
+                "allow_headers": ["Content-Type", "Authorization", "X-Api-Key"],
                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             }
         },
@@ -658,6 +660,65 @@ logger.info(
 logger.info("Session cookie name: %s", SESSION_COOKIE_NAME)
 
 
+_API_KEY_EXEMPT_PREFIXES = ("/api/auth/",)
+_API_KEY_EXEMPT_PATHS = frozenset({"/api/health"})
+
+
+def _api_key_unauthorized() -> tuple[Response, int]:
+    response = jsonify({"error": "Invalid or expired API key"})
+    response.headers["WWW-Authenticate"] = "Bearer"
+    return response, 401
+
+
+@app.before_request
+def api_key_auth_middleware() -> Response | tuple[Response, int] | None:
+    """Authenticate requests that present a personal API key.
+
+    A key authenticates the request on its own: any session cookie is ignored
+    and no cookie is written back. The resolved identity is placed in the
+    session for this request only, so every existing guard keeps working.
+    """
+    if not request.path.startswith("/api/"):
+        return None
+    if request.path in _API_KEY_EXEMPT_PATHS or request.path.startswith(_API_KEY_EXEMPT_PREFIXES):
+        return None
+
+    raw_key = extract_api_key(
+        request.headers.get("Authorization"), request.headers.get("X-Api-Key")
+    )
+    if raw_key is None:
+        return None
+
+    # Any key-shaped credential must never refresh or clear the browser's
+    # session cookie, whether it is ultimately accepted or refused.
+    g.api_key_attempt = True
+
+    auth_mode = get_auth_mode()
+    if auth_mode == "none":
+        return None
+    if user_db is None:
+        return _api_key_unauthorized()
+
+    try:
+        result = authenticate_api_key(user_db, raw_key, auth_mode)
+    except _OPERATIONAL_ERRORS:
+        logger.exception("API key auth middleware error")
+        return jsonify({"error": "Authentication error"}), 500
+
+    if result is None:
+        return _api_key_unauthorized()
+
+    session.clear()
+    session["user_id"] = result.user["username"]
+    session["is_admin"] = result.user.get("role") == "admin"
+    session["db_user_id"] = result.user["id"]
+    session.permanent = False
+    # Identity is per request; never persist it as a cookie.
+    session.modified = False
+    g.api_key_id = result.key_id
+    return None
+
+
 @app.before_request
 def proxy_auth_middleware() -> Response | tuple[Response, int] | None:
     """Middleware to handle proxy authentication.
@@ -669,6 +730,10 @@ def proxy_auth_middleware() -> Response | tuple[Response, int] | None:
 
     # Only run for proxy auth mode
     if auth_mode != "proxy":
+        return None
+
+    # A request already authenticated by an API key needs no proxy headers.
+    if getattr(g, "api_key_id", None) is not None:
         return None
 
     # Skip for public endpoints that don't need auth
@@ -797,6 +862,27 @@ def set_security_headers(response: Response) -> Response:
     )
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     response.headers.setdefault("Cross-Origin-Embedder-Policy", "credentialless")
+    return response
+
+
+@app.after_request
+def strip_cookie_for_api_key_requests(response: Response) -> Response:
+    """Requests presenting a key-shaped credential never mint a session cookie.
+
+    This covers a successful key auth (which also sets ``g.api_key_id``) and a
+    refused one alike, and holds even if a handler dirties the session, so a
+    rejected key can never refresh -- or clear -- the caller's existing
+    session cookie.
+    """
+    if g.get("api_key_attempt"):
+        # Flask's session interface writes Set-Cookie *after* every
+        # after_request hook runs, driven by session.modified/permanent, so
+        # popping the header alone would just have it reappear. Setting
+        # `permanent` mutates the session dict (re-marking it modified), so
+        # it must be reset before `modified`, not after.
+        session.permanent = False
+        session.modified = False
+        response.headers.pop("Set-Cookie", None)
     return response
 
 

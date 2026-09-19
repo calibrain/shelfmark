@@ -1,4 +1,5 @@
 export { UserListView } from './UserListView';
+export { ApiKeysPanel } from './ApiKeysPanel';
 export { RequestPolicyGrid } from './RequestPolicyGrid';
 export {
   UserOverridesSections,

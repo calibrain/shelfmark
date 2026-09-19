@@ -8,9 +8,19 @@ from flask import Flask, Response, g, jsonify, request, session
 from werkzeug.security import generate_password_hash
 
 from shelfmark.config.env import CWA_DB_PATH
+from shelfmark.core import api_keys
 from shelfmark.core.admin_settings_routes import (
     build_user_notification_test_response,
     validate_user_settings,
+)
+from shelfmark.core.api_keys import (
+    MAX_ACTIVE_KEYS_PER_USER,
+    generate_key,
+    hash_key,
+    is_api_keys_enabled,
+    key_prefix,
+    parse_create_request,
+    serialize_api_key,
 )
 from shelfmark.core.auth_modes import (
     AUTH_SOURCE_BUILTIN,
@@ -23,6 +33,7 @@ from shelfmark.core.auth_modes import (
 )
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.user_db import ApiKeyLimitReachedError
 from shelfmark.core.user_settings_overrides import (
     build_user_preferences_payload as _build_user_preferences_payload,
 )
@@ -266,6 +277,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
                 "notificationPreferences": notification_preferences,
                 "userOverridableKeys": user_overridable_keys,
                 "visibleUserSettingsSections": visible_self_settings_sections,
+                "apiKeysEnabled": is_api_keys_enabled(),
             }
         )
 
@@ -415,3 +427,58 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
         result["settings"] = user_db.get_user_settings(user_id)
         logger.info("User %s updated their own account", user_id)
         return jsonify(result)
+
+    @app.route("/api/users/me/api-keys", methods=["GET"])
+    @_require_authenticated_user
+    def users_me_list_api_keys() -> Response | tuple[Response, int]:
+        user_id, _user, user_error = _get_current_user(user_db)
+        if user_error:
+            return user_error
+        if user_id is None:
+            return jsonify({"error": "User not found"}), 404
+        keys = [serialize_api_key(row) for row in user_db.list_api_keys(user_id)]
+        return jsonify({"keys": keys})
+
+    @app.route("/api/users/me/api-keys", methods=["POST"])
+    @_require_authenticated_user
+    def users_me_create_api_key() -> Response | tuple[Response, int]:
+        if not api_keys.is_api_keys_enabled():
+            return jsonify({"error": "API keys are disabled"}), 403
+        user_id, _user, user_error = _get_current_user(user_db)
+        if user_error:
+            return user_error
+        if user_id is None:
+            return jsonify({"error": "User not found"}), 404
+
+        try:
+            name, expires_at = parse_create_request(request.get_json(silent=True))
+        except ValueError as exc:
+            return jsonify({"error": str(exc)}), 400
+
+        raw_key = generate_key()
+        try:
+            row = user_db.create_api_key(
+                user_id,
+                name,
+                key_prefix(raw_key),
+                hash_key(raw_key),
+                expires_at,
+                max_active=MAX_ACTIVE_KEYS_PER_USER,
+            )
+        except ApiKeyLimitReachedError:
+            return jsonify(
+                {"error": f"You can have at most {MAX_ACTIVE_KEYS_PER_USER} active API keys"}
+            ), 409
+        return jsonify({"key": serialize_api_key(row), "token": raw_key}), 201
+
+    @app.route("/api/users/me/api-keys/<int:key_id>", methods=["DELETE"])
+    @_require_authenticated_user
+    def users_me_revoke_api_key(key_id: int) -> Response | tuple[Response, int]:
+        user_id, _user, user_error = _get_current_user(user_db)
+        if user_error:
+            return user_error
+        if user_id is None:
+            return jsonify({"error": "User not found"}), 404
+        if not user_db.revoke_api_key(key_id, user_id):
+            return jsonify({"error": "API key not found"}), 404
+        return jsonify({"success": True})

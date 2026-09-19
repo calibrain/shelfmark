@@ -875,6 +875,7 @@ export interface AdminUser {
   oidc_subject: string | null;
   created_at: string;
   edit_capabilities: AdminUserEditCapabilities;
+  api_keys_enabled?: boolean;
   settings?: Record<string, unknown>;
 }
 
@@ -885,6 +886,7 @@ interface SelfUserEditContext {
   notificationPreferences: DeliveryPreferencesResponse | null;
   userOverridableKeys: string[];
   visibleUserSettingsSections?: string[];
+  apiKeysEnabled?: boolean;
 }
 
 export const getAdminUsers = async (): Promise<AdminUser[]> => {
@@ -1065,5 +1067,61 @@ export const updateSelfUser = async (
   return fetchJSON<AdminUser>(`${API_BASE}/users/me`, {
     method: 'PUT',
     body: JSON.stringify(data),
+  });
+};
+
+export interface ApiKeySummary {
+  id: number;
+  name: string;
+  key_prefix: string;
+  created_at: string;
+  expires_at: string | null;
+  last_used_at: string | null;
+  revoked_at: string | null;
+}
+
+export interface CreateApiKeyResponse {
+  key: ApiKeySummary;
+  token: string;
+}
+
+interface ApiKeyListResponse {
+  keys: ApiKeySummary[];
+}
+
+export const listMyApiKeys = async (): Promise<ApiKeySummary[]> => {
+  const response = await fetchJSON<ApiKeyListResponse>(`${API_BASE}/users/me/api-keys`);
+  return response.keys;
+};
+
+export const createMyApiKey = async (
+  name: string,
+  expiresInDays: number | null,
+): Promise<CreateApiKeyResponse> => {
+  return fetchJSON<CreateApiKeyResponse>(`${API_BASE}/users/me/api-keys`, {
+    method: 'POST',
+    body: JSON.stringify({ name, expires_in_days: expiresInDays }),
+  });
+};
+
+export const revokeMyApiKey = async (keyId: number): Promise<{ success: boolean }> => {
+  return fetchJSON<{ success: boolean }>(`${API_BASE}/users/me/api-keys/${keyId}`, {
+    method: 'DELETE',
+  });
+};
+
+export const listUserApiKeys = async (userId: number): Promise<ApiKeySummary[]> => {
+  const response = await fetchJSON<ApiKeyListResponse>(
+    `${API_BASE}/admin/users/${userId}/api-keys`,
+  );
+  return response.keys;
+};
+
+export const revokeUserApiKey = async (
+  userId: number,
+  keyId: number,
+): Promise<{ success: boolean }> => {
+  return fetchJSON<{ success: boolean }>(`${API_BASE}/admin/users/${userId}/api-keys/${keyId}`, {
+    method: 'DELETE',
   });
 };
