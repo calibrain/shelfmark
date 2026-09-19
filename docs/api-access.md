@@ -16,14 +16,18 @@ on a non-admin user.
 
 Admins can see and revoke any user's keys from **Settings → Users → edit**.
 Admins can also turn keys off for everyone with **Settings → Security →
-Allow personal API keys**; existing keys are kept and work again when re-enabled.
+Allow personal API keys** (or the `API_KEYS_ENABLED=false` environment
+variable); existing keys are kept and work again when re-enabled.
 
 A user can hold at most 25 active keys; creating another one beyond that
 returns `409`.
 
 ## Send the key
 
-Either header works; `Authorization` wins if both are present.
+Either header works; `Authorization` wins if both are present. A Bearer
+token that does not start with `smk_` is ignored by the key middleware and
+the request continues with normal session authentication, so proxies that
+forward their own bearer tokens are unaffected.
 
 ```bash
 curl -s -H "Authorization: Bearer smk_…" https://shelfmark.example.com/api/downloads/active

@@ -804,6 +804,7 @@ How long to keep completed/failed downloads in the queue display.
 | `OIDC_USE_ADMIN_GROUP` | When enabled, users in the Admin Group are granted admin access. When disabled, admin access is determined solely by database roles. | boolean | `true` |
 | `OIDC_AUTO_PROVISION` | Automatically create a user account on first OIDC login. When disabled, users must be pre-created by an admin. | boolean | `true` |
 | `OIDC_BUTTON_LABEL` | Custom label for the OIDC sign-in button on the login page. | string | _empty string_ |
+| `API_KEYS_ENABLED` | Let users create API keys from their account settings for scripts and integrations. A key is sent as 'Authorization: Bearer <key>' and acts with the permissions of the user who created it. Turning this off blocks every key immediately; existing keys are kept and work again when re-enabled. | boolean | `true` |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -937,6 +938,15 @@ Custom label for the OIDC sign-in button on the login page.
 
 - **Type:** string
 - **Default:** _empty string_
+
+#### `API_KEYS_ENABLED`
+
+**Allow personal API keys**
+
+Let users create API keys from their account settings for scripts and integrations. A key is sent as 'Authorization: Bearer <key>' and acts with the permissions of the user who created it. Turning this off blocks every key immediately; existing keys are kept and work again when re-enabled.
+
+- **Type:** boolean
+- **Default:** `true`
 
 </details>
 
