@@ -23,6 +23,7 @@ from shelfmark.core.admin_settings_routes import (
     register_admin_settings_routes,
     validate_user_settings,
 )
+from shelfmark.core.api_keys import serialize_api_key
 from shelfmark.core.auth_modes import (
     AUTH_SOURCE_BUILTIN,
     AUTH_SOURCE_CWA,
@@ -471,4 +472,23 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
         user_db.delete_user(user_id)
         logger.info("Admin deleted user %s: %s", user_id, user["username"])
+        return jsonify({"success": True})
+
+    @app.route("/api/admin/users/<int:user_id>/api-keys", methods=["GET"])
+    @_require_admin
+    def admin_list_user_api_keys(user_id: int) -> Response | tuple[Response, int]:
+        """List a user's API keys (revoked ones included) for admin oversight."""
+        if not user_db.get_user(user_id=user_id):
+            return jsonify({"error": "User not found"}), 404
+        keys = [serialize_api_key(row) for row in user_db.list_api_keys(user_id)]
+        return jsonify({"keys": keys})
+
+    @app.route("/api/admin/users/<int:user_id>/api-keys/<int:key_id>", methods=["DELETE"])
+    @_require_admin
+    def admin_revoke_user_api_key(user_id: int, key_id: int) -> Response | tuple[Response, int]:
+        """Revoke one of a user's API keys."""
+        if not user_db.get_user(user_id=user_id):
+            return jsonify({"error": "User not found"}), 404
+        if not user_db.revoke_api_key(key_id, user_id):
+            return jsonify({"error": "API key not found"}), 404
         return jsonify({"success": True})

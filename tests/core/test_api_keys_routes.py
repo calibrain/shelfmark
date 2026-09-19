@@ -166,3 +166,57 @@ class TestSelfRoutes:
     def test_requires_session(self, app):
         resp = app.test_client().get("/api/users/me/api-keys")
         assert resp.status_code == 401
+
+
+class TestAdminRoutes:
+    def test_admin_lists_user_keys(self, app, user_db):
+        root = user_db.create_user(username="root", role="admin")
+        alice = user_db.create_user(username="alice")
+        _client_for(app, alice).post("/api/users/me/api-keys", json={"name": "laptop"})
+
+        resp = _client_for(app, root, is_admin=True).get(f"/api/admin/users/{alice['id']}/api-keys")
+
+        assert resp.status_code == 200
+        keys = resp.get_json()["keys"]
+        assert [k["name"] for k in keys] == ["laptop"]
+        assert "key_hash" not in keys[0]
+
+    def test_admin_list_unknown_user_is_404(self, app, user_db):
+        root = user_db.create_user(username="root", role="admin")
+        resp = _client_for(app, root, is_admin=True).get("/api/admin/users/9999/api-keys")
+        assert resp.status_code == 404
+
+    def test_admin_revokes_user_key(self, app, user_db):
+        root = user_db.create_user(username="root", role="admin")
+        alice = user_db.create_user(username="alice")
+        created = (
+            _client_for(app, alice).post("/api/users/me/api-keys", json={"name": "x"}).get_json()
+        )
+
+        resp = _client_for(app, root, is_admin=True).delete(
+            f"/api/admin/users/{alice['id']}/api-keys/{created['key']['id']}"
+        )
+
+        assert resp.status_code == 200
+        assert api_keys.authenticate(user_db, created["token"], "builtin") is None
+
+    def test_admin_revoke_wrong_user_is_404(self, app, user_db):
+        root = user_db.create_user(username="root", role="admin")
+        alice = user_db.create_user(username="alice")
+        bob = user_db.create_user(username="bob")
+        key_id = (
+            _client_for(app, alice)
+            .post("/api/users/me/api-keys", json={"name": "x"})
+            .get_json()["key"]["id"]
+        )
+
+        resp = _client_for(app, root, is_admin=True).delete(
+            f"/api/admin/users/{bob['id']}/api-keys/{key_id}"
+        )
+
+        assert resp.status_code == 404
+
+    def test_non_admin_cannot_use_admin_routes(self, app, user_db):
+        alice = user_db.create_user(username="alice")
+        resp = _client_for(app, alice).get(f"/api/admin/users/{alice['id']}/api-keys")
+        assert resp.status_code == 403
