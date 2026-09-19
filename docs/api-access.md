@@ -18,6 +18,9 @@ Admins can see and revoke any user's keys from **Settings → Users → edit**.
 Admins can also turn keys off for everyone with **Settings → Security →
 Allow personal API keys**; existing keys are kept and work again when re-enabled.
 
+A user can hold at most 25 active keys; creating another one beyond that
+returns `409`.
+
 ## Send the key
 
 Either header works; `Authorization` wins if both are present.
@@ -29,7 +32,8 @@ curl -s -H "X-Api-Key: smk_…" https://shelfmark.example.com/api/downloads/acti
 
 A request that carries a key is authenticated by the key alone. Session
 cookies are ignored and none are set. An invalid, expired or revoked key
-returns `401 {"error": "Invalid or expired API key"}`.
+returns `401 {"error": "Invalid or expired API key"}` with a
+`WWW-Authenticate: Bearer` header.
 
 ## Examples
 

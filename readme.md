@@ -247,6 +247,7 @@ volumes:
 ### Multi-User Support
 
 With any authentication method enabled, Shelfmark supports multi-user management with admin/user roles. Users can have per-user settings for download destinations, email recipients, and notification preferences. Non-admin users only see their own downloads and can submit book requests for admin review. Admins can configure request policies per source to control whether users can download directly, must submit a request, or are blocked entirely.
+
 See [API Access](docs/api-access.md) for using personal API keys from scripts and integrations.
 
 ## Project Scope
