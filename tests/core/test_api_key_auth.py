@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib
 import os
+import sqlite3
 import tempfile
 from unittest.mock import patch
 
@@ -63,6 +64,29 @@ class TestKeyedRequests:
     def test_no_set_cookie_on_keyed_request(self, wired, user_db):
         user = user_db.create_user(username="alice")
         raw = _issue(user_db, user)
+        client = wired.app.test_client()
+        # An existing session cookie must be neither refreshed nor deleted.
+        with client.session_transaction() as sess:
+            sess["some_preexisting_flag"] = True
+
+        response = client.get("/api/downloads/active", headers=_bearer(raw))
+
+        assert response.status_code == 200
+        assert "Set-Cookie" not in response.headers
+
+    def test_no_set_cookie_when_handler_dirties_session(self, wired, user_db, monkeypatch):
+        from flask import session as flask_session
+
+        user = user_db.create_user(username="alice")
+        raw = _issue(user_db, user)
+
+        def _dirty_session_view():
+            # Simulate a handler that writes to the session; the after_request
+            # hook must still strip any resulting Set-Cookie on a keyed request.
+            flask_session["handler_wrote_this"] = True
+            return wired.jsonify({"ok": True})
+
+        monkeypatch.setitem(wired.app.view_functions, "api_active_downloads", _dirty_session_view)
 
         response = wired.app.test_client().get("/api/downloads/active", headers=_bearer(raw))
 
@@ -156,6 +180,26 @@ class TestKeyedRequests:
         response = wired.app.test_client().get("/api/downloads/active", headers=_bearer(raw))
 
         assert response.status_code == 401
+        assert response.get_json() == {"error": "Invalid or expired API key"}
+
+    def test_authenticate_error_is_500(self, wired, user_db, monkeypatch):
+        user = user_db.create_user(username="alice")
+        raw = _issue(user_db, user)
+
+        def _raise(*_args: object, **_kwargs: object) -> None:
+            raise sqlite3.OperationalError("boom")
+
+        monkeypatch.setattr(wired, "authenticate_api_key", _raise)
+
+        response = wired.app.test_client().get("/api/downloads/active", headers=_bearer(raw))
+
+        assert response.status_code == 500
+        assert response.get_json() == {"error": "Authentication error"}
+
+    def test_static_route_is_unaffected_by_bad_key(self, wired):
+        response = wired.app.test_client().get("/", headers=_bearer("smk_bad"))
+
+        assert response.status_code != 401
 
 
 class TestAuthModeInteraction:
@@ -191,3 +235,4 @@ class TestAuthModeInteraction:
             )
 
         assert response.status_code == 401
+        assert response.get_json() == {"error": "Invalid or expired API key"}

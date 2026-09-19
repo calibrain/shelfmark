@@ -678,6 +678,8 @@ def api_key_auth_middleware() -> Response | tuple[Response, int] | None:
     and no cookie is written back. The resolved identity is placed in the
     session for this request only, so every existing guard keeps working.
     """
+    if not request.path.startswith("/api/"):
+        return None
     if request.path in _API_KEY_EXEMPT_PATHS or request.path.startswith(_API_KEY_EXEMPT_PREFIXES):
         return None
 
@@ -856,6 +858,21 @@ def set_security_headers(response: Response) -> Response:
     )
     response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
     response.headers.setdefault("Cross-Origin-Embedder-Policy", "credentialless")
+    return response
+
+
+@app.after_request
+def strip_cookie_for_api_key_requests(response: Response) -> Response:
+    """Keyed requests never mint a session cookie, even if a handler dirties the session."""
+    if g.get("api_key_id") is not None:
+        # Flask's session interface writes Set-Cookie *after* every
+        # after_request hook runs, driven by session.modified/permanent, so
+        # popping the header alone would just have it reappear. Setting
+        # `permanent` mutates the session dict (re-marking it modified), so
+        # it must be reset before `modified`, not after.
+        session.permanent = False
+        session.modified = False
+        response.headers.pop("Set-Cookie", None)
     return response
 
 
