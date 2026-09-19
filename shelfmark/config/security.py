@@ -179,6 +179,18 @@ def security_settings() -> list[SettingsField]:
             placeholder="e.g. admins",
             default="",
         ),
+        _auth_field(
+            SelectField,
+            "proxy",
+            key="PROXY_AUTH_DEFAULT_ROLE",
+            label="Proxy Auth Default Role",
+            description="Role for users the proxy authenticates for the first time when no admin group is configured. The first account is always an admin so the instance is never left without one.",
+            options=[
+                {"value": "user", "label": "User"},
+                {"value": "admin", "label": "Admin"},
+            ],
+            default="user",
+        ),
     ]
 
     fields.append(

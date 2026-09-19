@@ -433,6 +433,15 @@ class UserDB:
         finally:
             conn.close()
 
+    def has_admin(self) -> bool:
+        """Return True when at least one admin user exists."""
+        conn = self._connect()
+        try:
+            row = conn.execute("SELECT 1 FROM users WHERE role = 'admin' LIMIT 1").fetchone()
+            return row is not None
+        finally:
+            conn.close()
+
     def has_admin_with_password(self) -> bool:
         """Return True when at least one admin user with a password hash exists."""
         conn = self._connect()

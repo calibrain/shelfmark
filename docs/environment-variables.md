@@ -794,6 +794,7 @@ How long to keep completed/failed downloads in the queue display.
 | `PROXY_AUTH_USER_HEADER` | The HTTP header your proxy uses to pass the authenticated username. | string | `X-Auth-User` |
 | `PROXY_AUTH_LOGOUT_URL` | The URL to redirect users to for logging out. Leave empty to disable logout functionality. | string | _empty string_ |
 | `PROXY_AUTH_ADMIN_GROUP_HEADER` | Optional: header your proxy uses to pass user groups/roles. | string | `X-Auth-Groups` |
+| `PROXY_AUTH_DEFAULT_ROLE` | Role for users the proxy authenticates for the first time when no admin group is configured. The first account is always an admin so the instance is never left without one. | string (choice) | `user` |
 | `PROXY_AUTH_ADMIN_GROUP_NAME` | Optional: users in this group are treated as admins. Leave blank to skip group-based admin detection. | string | _empty string_ |
 | `OIDC_DISCOVERY_URL` | OpenID Connect discovery endpoint URL. Usually ends with /.well-known/openid-configuration. | string | _none_ |
 | `OIDC_CLIENT_ID` | OAuth2 client ID from your identity provider. | string | _none_ |
@@ -853,6 +854,16 @@ Optional: users in this group are treated as admins. Leave blank to skip group-b
 
 - **Type:** string
 - **Default:** _empty string_
+#### `PROXY_AUTH_DEFAULT_ROLE`
+
+**Proxy Auth Default Role**
+
+Role for users the proxy authenticates for the first time when no admin group is configured. The first account is always an admin so the instance is never left without one.
+
+- **Type:** string (choice)
+- **Default:** `user`
+- **Options:** `user` (User), `admin` (Admin)
+
 
 #### `OIDC_DISCOVERY_URL`
 

@@ -87,6 +87,7 @@ Configure in Settings → Security:
 | Proxy Auth Logout URL | `https://auth.example.com/logout` |
 | Proxy Auth Admin Group Header | `Remote-Groups` |
 | Proxy Auth Admin Group Name | `admins` (or your admin group) |
+| Proxy Auth Default Role | `User` — first-time users are regular users; the very first account is still made admin. Only consulted when no admin group is set |
 
 #### Nginx Configuration with Authelia
 

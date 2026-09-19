@@ -658,6 +658,18 @@ logger.info(
 logger.info("Session cookie name: %s", SESSION_COOKIE_NAME)
 
 
+def _proxy_default_is_admin(db: UserDB) -> bool:
+    """Role for a proxy user seen for the first time when no admin group is configured.
+
+    The first account ever provisioned is an admin so the instance is never left without
+    one; later accounts follow PROXY_AUTH_DEFAULT_ROLE (default: user).
+    """
+    if not db.has_admin():
+        return True
+    role = str(app_config.get("PROXY_AUTH_DEFAULT_ROLE", "user") or "user").strip().lower()
+    return role == "admin"
+
+
 @app.before_request
 def proxy_auth_middleware() -> Response | tuple[Response, int] | None:
     """Middleware to handle proxy authentication.
@@ -710,8 +722,9 @@ def proxy_auth_middleware() -> Response | tuple[Response, int] | None:
 
         # Resolve admin role for proxy sessions.
         # If an admin group is configured, derive from groups header.
-        # Otherwise preserve existing DB role for known users and default
-        # first-time users to admin (to avoid lockouts).
+        # Otherwise preserve the existing DB role for known users; a first-time user
+        # is an admin only while the instance has none (so nobody is locked out),
+        # after that PROXY_AUTH_DEFAULT_ROLE decides (default: user).
         admin_group_header = (
             normalize_optional_text(
                 app_config.get("PROXY_AUTH_ADMIN_GROUP_HEADER", "X-Auth-Groups")
@@ -734,6 +747,8 @@ def proxy_auth_middleware() -> Response | tuple[Response, int] | None:
             existing_db_user = user_db.get_user(username=username)
             if existing_db_user:
                 is_admin = existing_db_user.get("role") == "admin"
+            else:
+                is_admin = _proxy_default_is_admin(user_db)
 
         # Create or update session
         previous_username = session.get("user_id")
