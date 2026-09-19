@@ -300,6 +300,19 @@ def security_settings() -> list[SettingsField]:
             show_when=_auth_condition("oidc"),
         )
     )
+    fields.append(
+        CheckboxField(
+            key="API_KEYS_ENABLED",
+            label="Allow personal API keys",
+            description=(
+                "Let users create API keys from their account settings for scripts and "
+                "integrations. A key is sent as 'Authorization: Bearer <key>' and acts with "
+                "the permissions of the user who created it. Turning this off blocks every "
+                "key immediately; existing keys are kept and work again when re-enabled."
+            ),
+            default=True,
+        )
+    )
     return fields
 
 

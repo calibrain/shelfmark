@@ -12,6 +12,7 @@ from shelfmark.core.admin_settings_routes import (
     build_user_notification_test_response,
     validate_user_settings,
 )
+from shelfmark.core.api_keys import is_api_keys_enabled
 from shelfmark.core.auth_modes import (
     AUTH_SOURCE_BUILTIN,
     AUTH_SOURCE_CWA,
@@ -266,6 +267,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
                 "notificationPreferences": notification_preferences,
                 "userOverridableKeys": user_overridable_keys,
                 "visibleUserSettingsSections": visible_self_settings_sections,
+                "apiKeysEnabled": is_api_keys_enabled(),
             }
         )
 

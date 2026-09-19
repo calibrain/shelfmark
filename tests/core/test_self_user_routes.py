@@ -242,3 +242,15 @@ def test_users_me_update_rejects_oidc_email_change(app, user_db):
     assert resp.status_code == 400
     assert resp.json["error"] == "Cannot change email for OIDC users"
     assert user_db.get_user(user_id=user["id"])["email"] is None
+
+
+def test_users_me_edit_context_reports_api_keys_flag(app, user_db):
+    user = user_db.create_user(username="alice")
+    client = _authed_client_for_user(app, user)
+
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
+        with patch("shelfmark.core.self_user_routes.is_api_keys_enabled", return_value=False):
+            resp = client.get("/api/users/me/edit-context")
+
+    assert resp.status_code == 200
+    assert resp.get_json()["apiKeysEnabled"] is False

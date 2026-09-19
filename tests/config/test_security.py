@@ -567,3 +567,14 @@ class TestSecurityOnSave:
 
         assert result["error"] is False
         assert result["values"]["PROXY_AUTH_LOGOUT_URL"] == "https://auth.example.com/logout"
+
+
+def test_security_tab_exposes_api_keys_switch():
+    import shelfmark.config.security  # noqa: F401 - registers the tab
+    from shelfmark.core.settings_registry import get_settings_tab
+
+    tab = get_settings_tab("security")
+    assert tab is not None
+    field = next(f for f in tab.fields if getattr(f, "key", None) == "API_KEYS_ENABLED")
+    assert field.get_field_type() == "CheckboxField"
+    assert field.default is True
