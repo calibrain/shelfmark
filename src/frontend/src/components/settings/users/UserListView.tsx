@@ -45,6 +45,7 @@ interface UserListViewProps {
   deletingUserId: number | null;
   onSyncCwa: () => Promise<void> | void;
   syncingCwa: boolean;
+  onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 
 export const UserListView = ({
@@ -80,6 +81,7 @@ export const UserListView = ({
   deletingUserId,
   onSyncCwa,
   syncingCwa,
+  onShowToast,
 }: UserListViewProps) => {
   const [confirmDelete, setConfirmDelete] = useState<number | null>(null);
   const canCreateLocalUsers = canCreateLocalUsersForAuthMode(authMode);
@@ -234,6 +236,7 @@ export const UserListView = ({
                           <ApiKeysPanel
                             listKeys={() => listUserApiKeys(user.id)}
                             revokeKey={(keyId) => revokeUserApiKey(user.id, keyId)}
+                            onShowToast={onShowToast}
                           />
                         </>
                       ) : (

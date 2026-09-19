@@ -328,6 +328,7 @@ export const UsersManagementField = ({
       deletingUserId={deletingUserId}
       onSyncCwa={handleSyncCwa}
       syncingCwa={syncingCwa}
+      onShowToast={onShowToast}
     />
   );
 };

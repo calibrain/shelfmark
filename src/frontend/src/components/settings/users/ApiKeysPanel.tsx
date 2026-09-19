@@ -156,7 +156,7 @@ export const ApiKeysPanel = ({
       <div>
         <h4 className="text-sm font-medium">API keys</h4>
         <p className="text-xs opacity-60">
-          Keys let scripts and integrations use Shelfmark as this account. Send one as{' '}
+          Keys let scripts and integrations use Shelfmark as the key's owner. Send one as{' '}
           <code className="font-mono">Authorization: Bearer &lt;key&gt;</code>.
         </p>
       </div>
