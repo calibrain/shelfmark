@@ -3,6 +3,7 @@
 import os
 import sqlite3
 import tempfile
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -118,6 +119,17 @@ def test_count_active_excludes_revoked(user_db, alice):
     user_db.revoke_api_key(a["id"], alice["id"])
 
     assert user_db.count_active_api_keys(alice["id"]) == 1
+
+
+def test_count_active_excludes_expired(user_db, alice):
+    past = (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+    active = user_db.create_api_key(alice["id"], "active", "smk_aaaaaaaa", "hash-a", None)
+    revoked = user_db.create_api_key(alice["id"], "revoked", "smk_bbbbbbbb", "hash-b", None)
+    user_db.create_api_key(alice["id"], "expired", "smk_cccccccc", "hash-c", past)
+    user_db.revoke_api_key(revoked["id"], alice["id"])
+
+    assert user_db.count_active_api_keys(alice["id"]) == 1
+    assert user_db.get_api_key(active["id"], alice["id"])["revoked_at"] is None
 
 
 def test_touch_last_used(user_db, alice):

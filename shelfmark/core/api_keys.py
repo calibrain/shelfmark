@@ -179,7 +179,10 @@ def authenticate(user_db: UserDB, raw_key: str, auth_mode: str) -> ApiKeyAuthRes
             matched = candidate
 
     if matched is None:
-        logger.info("API key authentication failed: unknown key %s", prefix)
+        # An unrecognised prefix is unauthenticated noise (scanners, typos, stale
+        # keys from another instance) rather than evidence of a real key, so it
+        # doesn't warrant info-level logging like the cases below.
+        logger.debug("API key authentication failed: unknown key %s", prefix)
         return None
     if matched.get("revoked_at") is not None:
         logger.info("API key authentication failed: revoked key %s", prefix)

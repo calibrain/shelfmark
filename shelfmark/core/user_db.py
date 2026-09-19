@@ -502,10 +502,6 @@ class UserDB:
 
     # --- API keys -----------------------------------------------------------
 
-    _API_KEY_COLUMNS = (
-        "id, user_id, name, key_prefix, key_hash, created_at, expires_at, last_used_at, revoked_at"
-    )
-
     def create_api_key(
         self,
         user_id: int,
@@ -529,7 +525,7 @@ class UserDB:
                     msg = "Failed to create API key"
                     raise sqlite3.OperationalError(msg)
                 row = conn.execute(
-                    f"SELECT {self._API_KEY_COLUMNS} FROM api_keys WHERE id = ?",  # noqa: S608
+                    "SELECT * FROM api_keys WHERE id = ?",
                     (key_id,),
                 ).fetchone()
                 if row is None:
@@ -544,7 +540,7 @@ class UserDB:
         conn = self._connect()
         try:
             rows = conn.execute(
-                f"SELECT {self._API_KEY_COLUMNS} FROM api_keys WHERE key_prefix = ?",  # noqa: S608
+                "SELECT * FROM api_keys WHERE key_prefix = ?",
                 (key_prefix,),
             ).fetchall()
             return [dict(row) for row in rows]
@@ -556,8 +552,7 @@ class UserDB:
         conn = self._connect()
         try:
             rows = conn.execute(
-                f"SELECT {self._API_KEY_COLUMNS} FROM api_keys WHERE user_id = ? "  # noqa: S608
-                "ORDER BY created_at DESC, id DESC",
+                "SELECT * FROM api_keys WHERE user_id = ? ORDER BY created_at DESC, id DESC",
                 (user_id,),
             ).fetchall()
             return [dict(row) for row in rows]
@@ -565,11 +560,15 @@ class UserDB:
             conn.close()
 
     def get_api_key(self, key_id: int, user_id: int) -> dict[str, Any] | None:
-        """Return one key row, only if it belongs to the given user."""
+        """Return one key row, only if it belongs to the given user.
+
+        No production code path calls this today; it exists for tests and
+        admin tooling that need to look up a single key by id.
+        """
         conn = self._connect()
         try:
             row = conn.execute(
-                f"SELECT {self._API_KEY_COLUMNS} FROM api_keys WHERE id = ? AND user_id = ?",  # noqa: S608
+                "SELECT * FROM api_keys WHERE id = ? AND user_id = ?",
                 (key_id, user_id),
             ).fetchone()
             return dict(row) if row else None
@@ -611,14 +610,19 @@ class UserDB:
                 conn.close()
 
     def count_active_api_keys(self, user_id: int) -> int:
-        """Count keys that have not been revoked (expired keys still count)."""
+        """Count keys that count toward the per-user cap: not revoked, not expired.
+
+        Timestamps are stored as ``%Y-%m-%d %H:%M:%S`` UTC strings, so a plain
+        lexical comparison against ``CURRENT_TIMESTAMP`` is safe here.
+        """
         conn = self._connect()
         try:
             row = conn.execute(
-                "SELECT COUNT(*) AS n FROM api_keys WHERE user_id = ? AND revoked_at IS NULL",
+                "SELECT COUNT(*) AS n FROM api_keys WHERE user_id = ? AND revoked_at IS NULL "
+                "AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)",
                 (user_id,),
             ).fetchone()
-            return int(row["n"]) if row else 0
+            return int(row["n"])
         finally:
             conn.close()
 
