@@ -14,6 +14,7 @@ interface ApiKeysPanelProps {
   revokeKey: (keyId: number) => Promise<unknown>;
   createKey?: (name: string, expiresInDays: number | null) => Promise<CreateApiKeyResponse>;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+  disabled?: boolean;
 }
 
 const errorText = (error: unknown, fallback: string): string =>
@@ -27,6 +28,7 @@ export const ApiKeysPanel = ({
   revokeKey,
   createKey,
   onShowToast,
+  disabled,
 }: ApiKeysPanelProps) => {
   const [keys, setKeys] = useState<ApiKeySummary[]>([]);
   const [loading, setLoading] = useState(true);
@@ -161,6 +163,13 @@ export const ApiKeysPanel = ({
         </p>
       </div>
 
+      {disabled && (
+        <p className="rounded-lg border border-(--border-muted) bg-(--bg-soft) p-2 text-xs opacity-60">
+          API keys are disabled in Security settings. Existing keys are kept and can still be
+          revoked here; they will work again when re-enabled.
+        </p>
+      )}
+
       {revealed && (
         <div className="space-y-2 rounded-lg border border-(--border-muted) bg-(--bg-soft) p-3">
           <div className="text-sm font-medium">New key “{revealed.key.name}”</div>
@@ -188,7 +197,7 @@ export const ApiKeysPanel = ({
         </div>
       )}
 
-      {createKey && (
+      {createKey && !disabled && (
         <form
           className="flex flex-wrap items-end gap-2"
           onSubmit={(event) => {

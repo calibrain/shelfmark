@@ -408,6 +408,16 @@ class TestAdminUserGetEndpoint:
         resp = admin_client.get(f"/api/admin/users/{user['id']}")
         assert "password_hash" not in resp.json
 
+    def test_get_user_reports_api_keys_enabled(self, admin_client, user_db):
+        user = user_db.create_user(username="alice")
+
+        resp = admin_client.get(f"/api/admin/users/{user['id']}")
+        assert resp.json["api_keys_enabled"] is True
+
+        with patch("shelfmark.core.admin_routes.is_api_keys_enabled", return_value=False):
+            resp = admin_client.get(f"/api/admin/users/{user['id']}")
+        assert resp.json["api_keys_enabled"] is False
+
     def test_get_nonexistent_user(self, admin_client):
         resp = admin_client.get("/api/admin/users/9999")
         assert resp.status_code == 404

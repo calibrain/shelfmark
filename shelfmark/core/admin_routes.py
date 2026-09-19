@@ -23,7 +23,7 @@ from shelfmark.core.admin_settings_routes import (
     register_admin_settings_routes,
     validate_user_settings,
 )
-from shelfmark.core.api_keys import serialize_api_key
+from shelfmark.core.api_keys import is_api_keys_enabled, serialize_api_key
 from shelfmark.core.auth_modes import (
     AUTH_SOURCE_BUILTIN,
     AUTH_SOURCE_CWA,
@@ -261,6 +261,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             user,
             g.auth_mode,
         )
+        result["api_keys_enabled"] = is_api_keys_enabled()
         result["settings"] = user_db.get_user_settings(user_id)
         return jsonify(result)
 

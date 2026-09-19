@@ -20,7 +20,9 @@ Admins can see and revoke any user's keys by expanding that user's row under
 **Settings → Users & Requests**.
 Admins can also turn keys off for everyone with **Settings → Security →
 Allow personal API keys** (or the `API_KEYS_ENABLED=false` environment
-variable); existing keys are kept and work again when re-enabled.
+variable); existing keys are kept and work again when re-enabled. While
+disabled, admins still see each user's keys under **Users & Requests**, with
+a notice that keys are disabled, so they can revoke a key if needed.
 
 A user can hold at most 25 active keys; creating another one beyond that
 returns `409`.

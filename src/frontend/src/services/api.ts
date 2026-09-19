@@ -875,6 +875,7 @@ export interface AdminUser {
   oidc_subject: string | null;
   created_at: string;
   edit_capabilities: AdminUserEditCapabilities;
+  api_keys_enabled?: boolean;
   settings?: Record<string, unknown>;
 }
 

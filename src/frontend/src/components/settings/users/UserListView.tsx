@@ -237,6 +237,7 @@ export const UserListView = ({
                             listKeys={() => listUserApiKeys(user.id)}
                             revokeKey={(keyId) => revokeUserApiKey(user.id, keyId)}
                             onShowToast={onShowToast}
+                            disabled={editingUser.api_keys_enabled === false}
                           />
                         </>
                       ) : (
