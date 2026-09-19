@@ -5,7 +5,10 @@ import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useMountEffect } from '../../hooks/useMountEffect';
 import type { AdminUser, DeliveryPreferencesResponse } from '../../services/api';
 import {
+  createMyApiKey,
   getSelfUserEditContext,
+  listMyApiKeys,
+  revokeMyApiKey,
   testSelfNotificationPreferences,
   updateSelfUser,
 } from '../../services/api';
@@ -17,6 +20,7 @@ import {
 import { SelectField } from './fields';
 import { FieldWrapper } from './shared';
 import {
+  ApiKeysPanel,
   DEFAULT_SELF_USER_OVERRIDE_SECTIONS,
   normalizeUserOverrideSections,
   UserOverridesSections,
@@ -118,6 +122,7 @@ const SelfSettingsModalSession = ({
   const [notificationPreferences, setNotificationPreferences] =
     useState<DeliveryPreferencesResponse | null>(null);
   const [visibleSections, setVisibleSections] = useState(DEFAULT_SELF_USER_OVERRIDE_SECTIONS);
+  const [apiKeysEnabled, setApiKeysEnabled] = useState(false);
 
   const [editPassword, setEditPassword] = useState('');
   const [editPasswordConfirm, setEditPasswordConfirm] = useState('');
@@ -151,6 +156,7 @@ const SelfSettingsModalSession = ({
       setVisibleSections(
         normalizeUserOverrideSections(context.visibleUserSettingsSections, 'self'),
       );
+      setApiKeysEnabled(context.apiKeysEnabled !== false);
       applyUserOverridesContext({
         settings: context.user.settings || {},
         userOverridableKeys: context.userOverridableKeys || [],
@@ -377,6 +383,15 @@ const SelfSettingsModalSession = ({
                       ),
                     }}
                   />
+
+                  {apiKeysEnabled && (
+                    <ApiKeysPanel
+                      listKeys={listMyApiKeys}
+                      createKey={createMyApiKey}
+                      revokeKey={revokeMyApiKey}
+                      onShowToast={onShowToast}
+                    />
+                  )}
                 </div>
               );
             }
