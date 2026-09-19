@@ -82,6 +82,15 @@ class TestExtractApiKey:
         assert api_keys.extract_api_key(None, None) is None
         assert api_keys.extract_api_key("Bearer ", "") is None
 
+    def test_foreign_bearer_token_ignored(self):
+        assert api_keys.extract_api_key("Bearer eyJhbGciOi.foo.bar", None) is None
+
+    def test_foreign_x_api_key_ignored(self):
+        assert api_keys.extract_api_key(None, "notakey") is None
+
+    def test_bearer_with_prefix_still_returned(self):
+        assert api_keys.extract_api_key("Bearer smk_abc", None) == "smk_abc"
+
 
 class TestParseCreateRequest:
     def test_valid_without_expiry(self):

@@ -74,15 +74,21 @@ def key_prefix(raw_key: str) -> str:
 
 
 def extract_api_key(authorization_header: str | None, api_key_header: str | None) -> str | None:
-    """Pull a raw key out of ``Authorization: Bearer`` or ``X-Api-Key``. Bearer wins."""
+    """Pull a raw key out of ``Authorization: Bearer`` or ``X-Api-Key``. Bearer wins.
+
+    Only a token carrying the ``smk_`` prefix is recognised as ours. A foreign
+    Bearer token (e.g. one a reverse proxy forwards for its own auth) is
+    treated as if the header were absent, so the request falls through to
+    normal session authentication instead of being rejected as an invalid key.
+    """
     if authorization_header:
         scheme, _, token = authorization_header.strip().partition(" ")
         token = token.strip()
-        if scheme.lower() == "bearer" and token:
+        if scheme.lower() == "bearer" and token.startswith(KEY_PREFIX):
             return token
     if api_key_header:
         token = api_key_header.strip()
-        if token:
+        if token.startswith(KEY_PREFIX):
             return token
     return None
 

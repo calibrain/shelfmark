@@ -202,6 +202,28 @@ class TestKeyedRequests:
         assert response.status_code != 401
 
 
+class TestForeignBearerTokens:
+    def test_foreign_bearer_token_falls_through_to_cookie_auth(self, wired, user_db):
+        user = user_db.create_user(username="alice")
+        client = wired.app.test_client()
+        with client.session_transaction() as sess:
+            sess["user_id"] = user["username"]
+            sess["is_admin"] = False
+            sess["db_user_id"] = user["id"]
+
+        response = client.get("/api/downloads/active", headers=_bearer("eyJhbGciOi.foo.bar"))
+
+        assert response.status_code == 200
+
+    def test_foreign_bearer_without_session_is_plain_unauthorized(self, wired):
+        response = wired.app.test_client().get(
+            "/api/downloads/active", headers=_bearer("eyJhbGciOi.foo.bar")
+        )
+
+        assert response.status_code == 401
+        assert response.get_json() == {"error": "Unauthorized"}
+
+
 class TestAuthModeInteraction:
     def test_none_mode_ignores_header(self, main_module, user_db, monkeypatch):
         monkeypatch.setattr(main_module, "user_db", user_db)
