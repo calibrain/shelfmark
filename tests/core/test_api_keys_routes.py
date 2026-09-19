@@ -164,8 +164,16 @@ class TestSelfRoutes:
         assert user_db.get_api_key(key_id, alice["id"])["revoked_at"] is None
 
     def test_requires_session(self, app):
-        resp = app.test_client().get("/api/users/me/api-keys")
-        assert resp.status_code == 401
+        client = app.test_client()
+        assert client.get("/api/users/me/api-keys").status_code == 401
+        assert client.post("/api/users/me/api-keys", json={"name": "x"}).status_code == 401
+        assert client.delete("/api/users/me/api-keys/1").status_code == 401
+
+    def test_self_routes_in_none_mode_are_refused_by_guard(self, app):
+        with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="none"):
+            resp = app.test_client().get("/api/users/me/api-keys")
+
+        assert resp.status_code == 403
 
 
 class TestAdminRoutes:
@@ -215,6 +223,7 @@ class TestAdminRoutes:
         )
 
         assert resp.status_code == 404
+        assert user_db.get_api_key(key_id, alice["id"])["revoked_at"] is None
 
     def test_non_admin_cannot_use_admin_routes(self, app, user_db):
         alice = user_db.create_user(username="alice")

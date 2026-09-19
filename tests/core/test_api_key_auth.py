@@ -201,6 +201,15 @@ class TestKeyedRequests:
 
         assert response.status_code != 401
 
+    def test_security_headers_present_on_keyed_response(self, wired, user_db):
+        user = user_db.create_user(username="alice")
+        raw = _issue(user_db, user)
+
+        response = wired.app.test_client().get("/api/downloads/active", headers=_bearer(raw))
+
+        assert response.status_code == 200
+        assert response.headers.get("X-Content-Type-Options") == "nosniff"
+
 
 class TestForeignBearerTokens:
     def test_foreign_bearer_token_falls_through_to_cookie_auth(self, wired, user_db):
