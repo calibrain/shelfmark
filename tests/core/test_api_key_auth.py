@@ -122,6 +122,37 @@ class TestKeyedRequests:
 
         assert response.status_code == 401
 
+    def test_refused_key_with_permanent_cookie_sets_no_cookie(self, wired, user_db):
+        user = user_db.create_user(username="alice")
+        client = wired.app.test_client()
+        with client.session_transaction() as sess:
+            sess["user_id"] = user["username"]
+            sess["is_admin"] = False
+            sess["db_user_id"] = user["id"]
+            sess.permanent = True
+
+        response = client.get("/api/downloads/active", headers=_bearer("smk_" + "x" * 43))
+
+        assert response.status_code == 401
+        assert response.get_json() == {"error": "Invalid or expired API key"}
+        assert "Set-Cookie" not in response.headers
+
+    def test_refused_key_leaves_browser_session_intact(self, wired, user_db):
+        user = user_db.create_user(username="alice")
+        client = wired.app.test_client()
+        with client.session_transaction() as sess:
+            sess["user_id"] = user["username"]
+            sess["is_admin"] = False
+            sess["db_user_id"] = user["id"]
+            sess.permanent = True
+
+        refused = client.get("/api/downloads/active", headers=_bearer("smk_" + "x" * 43))
+        assert refused.status_code == 401
+
+        response = client.get("/api/downloads/active")
+
+        assert response.status_code == 200
+
     def test_key_identity_overrides_cookie_identity(self, wired, user_db):
         admin = user_db.create_user(username="root", role="admin")
         alice = user_db.create_user(username="alice")

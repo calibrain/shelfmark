@@ -689,6 +689,10 @@ def api_key_auth_middleware() -> Response | tuple[Response, int] | None:
     if raw_key is None:
         return None
 
+    # Any key-shaped credential must never refresh or clear the browser's
+    # session cookie, whether it is ultimately accepted or refused.
+    g.api_key_attempt = True
+
     auth_mode = get_auth_mode()
     if auth_mode == "none":
         return None
@@ -863,8 +867,14 @@ def set_security_headers(response: Response) -> Response:
 
 @app.after_request
 def strip_cookie_for_api_key_requests(response: Response) -> Response:
-    """Keyed requests never mint a session cookie, even if a handler dirties the session."""
-    if g.get("api_key_id") is not None:
+    """Requests presenting a key-shaped credential never mint a session cookie.
+
+    This covers a successful key auth (which also sets ``g.api_key_id``) and a
+    refused one alike, and holds even if a handler dirties the session, so a
+    rejected key can never refresh -- or clear -- the caller's existing
+    session cookie.
+    """
+    if g.get("api_key_attempt"):
         # Flask's session interface writes Set-Cookie *after* every
         # after_request hook runs, driven by session.modified/permanent, so
         # popping the header alone would just have it reappear. Setting
