@@ -14,12 +14,14 @@ import time
 from collections.abc import Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.auth_modes import is_user_active_for_auth_mode
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.user_db import UserDB
+
+if TYPE_CHECKING:
+    from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
 
@@ -100,11 +102,12 @@ def _parse_timestamp(value: object) -> datetime | None:
 
 def parse_create_request(data: object) -> tuple[str, str | None]:
     """Validate a create-key payload. Returns ``(name, expires_at)``; raises ``ValueError``."""
-    if not isinstance(data, Mapping):
+    payload = data if isinstance(data, Mapping) else None
+    if payload is None:
         msg = "Request body must be a JSON object"
         raise ValueError(msg)
 
-    name = str(data.get("name") or "").strip()
+    name = str(payload.get("name") or "").strip()
     if not name:
         msg = "Key name is required"
         raise ValueError(msg)
@@ -112,17 +115,22 @@ def parse_create_request(data: object) -> tuple[str, str | None]:
         msg = f"Key name must be at most {MAX_KEY_NAME_LENGTH} characters"
         raise ValueError(msg)
 
-    expires_in_days = data.get("expires_in_days")
+    expires_in_days = payload.get("expires_in_days")
     if expires_in_days is None:
         return name, None
-    if isinstance(expires_in_days, bool) or not isinstance(expires_in_days, int):
+    days = (
+        expires_in_days
+        if isinstance(expires_in_days, int) and not isinstance(expires_in_days, bool)
+        else None
+    )
+    if days is None:
         msg = "expires_in_days must be a whole number of days"
         raise ValueError(msg)
-    if expires_in_days < 1 or expires_in_days > MAX_EXPIRES_IN_DAYS:
+    if days < 1 or days > MAX_EXPIRES_IN_DAYS:
         msg = f"expires_in_days must be between 1 and {MAX_EXPIRES_IN_DAYS}"
         raise ValueError(msg)
 
-    expires_at = datetime.now(UTC) + timedelta(days=expires_in_days)
+    expires_at = datetime.now(UTC) + timedelta(days=days)
     return name, _format_timestamp(expires_at)
 
 
