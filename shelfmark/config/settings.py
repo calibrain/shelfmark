@@ -1941,6 +1941,7 @@ def advanced_settings() -> list[SettingsField]:
                         {"value": "rtorrent", "label": "rTorrent"},
                         {"value": "nzbget", "label": "NZBGet"},
                         {"value": "sabnzbd", "label": "SABnzbd"},
+                        {"value": "slskd", "label": "slskd"},
                     ],
                     "defaultValue": "qbittorrent",
                 },
