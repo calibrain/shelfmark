@@ -10,11 +10,14 @@ on a non-admin user.
 
 ## Create a key
 
-1. Open **My Account** (your avatar in the header).
+1. Open the user menu (top right) and choose **Settings**. As a regular user
+   this opens your account settings; as an admin, go to
+   **Users & Requests** and expand your own row.
 2. Under **API keys**, enter a name, choose an expiry, and click **Create key**.
 3. Copy the key. It is shown once and only its prefix is stored.
 
-Admins can see and revoke any user's keys from **Settings → Users → edit**.
+Admins can see and revoke any user's keys by expanding that user's row under
+**Settings → Users & Requests**.
 Admins can also turn keys off for everyone with **Settings → Security →
 Allow personal API keys** (or the `API_KEYS_ENABLED=false` environment
 variable); existing keys are kept and work again when re-enabled.
