@@ -33,6 +33,7 @@ from shelfmark.core.auth_modes import (
 )
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.user_db import ApiKeyLimitReachedError
 from shelfmark.core.user_settings_overrides import (
     build_user_preferences_payload as _build_user_preferences_payload,
 )
@@ -454,15 +455,20 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
         except ValueError as exc:
             return jsonify({"error": str(exc)}), 400
 
-        if user_db.count_active_api_keys(user_id) >= MAX_ACTIVE_KEYS_PER_USER:
+        raw_key = generate_key()
+        try:
+            row = user_db.create_api_key(
+                user_id,
+                name,
+                key_prefix(raw_key),
+                hash_key(raw_key),
+                expires_at,
+                max_active=MAX_ACTIVE_KEYS_PER_USER,
+            )
+        except ApiKeyLimitReachedError:
             return jsonify(
                 {"error": f"You can have at most {MAX_ACTIVE_KEYS_PER_USER} active API keys"}
             ), 409
-
-        raw_key = generate_key()
-        row = user_db.create_api_key(
-            user_id, name, key_prefix(raw_key), hash_key(raw_key), expires_at
-        )
         return jsonify({"key": serialize_api_key(row), "token": raw_key}), 201
 
     @app.route("/api/users/me/api-keys/<int:key_id>", methods=["DELETE"])

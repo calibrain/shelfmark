@@ -3,9 +3,12 @@
 import os
 import sqlite3
 import tempfile
+import threading
 from datetime import UTC, datetime, timedelta
 
 import pytest
+
+from shelfmark.core.user_db import ApiKeyLimitReachedError
 
 
 @pytest.fixture
@@ -155,3 +158,70 @@ def test_key_hash_is_unique(user_db, alice):
     user_db.create_api_key(alice["id"], "a", "smk_aaaaaaaa", "same-hash", None)
     with pytest.raises(sqlite3.IntegrityError):
         user_db.create_api_key(alice["id"], "b", "smk_bbbbbbbb", "same-hash", None)
+
+
+def test_create_api_key_respects_max_active(user_db, alice):
+    past = (datetime.now(UTC) - timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+
+    first = user_db.create_api_key(alice["id"], "one", "smk_aaaaaaaa", "hash-a", None, max_active=2)
+    second = user_db.create_api_key(
+        alice["id"], "two", "smk_bbbbbbbb", "hash-b", None, max_active=2
+    )
+
+    with pytest.raises(ApiKeyLimitReachedError):
+        user_db.create_api_key(alice["id"], "three", "smk_cccccccc", "hash-c", None, max_active=2)
+
+    # Revoking one of the two active keys frees a slot for a new one.
+    user_db.revoke_api_key(first["id"], alice["id"])
+    fourth = user_db.create_api_key(
+        alice["id"], "four", "smk_dddddddd", "hash-d", None, max_active=2
+    )
+    assert user_db.count_active_api_keys(alice["id"]) == 2
+
+    # An already-expired key does not count toward the cap, so it neither
+    # gets blocked by a full cap once a slot is free, nor blocks the next one.
+    user_db.revoke_api_key(second["id"], alice["id"])
+    user_db.create_api_key(alice["id"], "five", "smk_eeeeeeee", "hash-e", past, max_active=2)
+    assert user_db.count_active_api_keys(alice["id"]) == 1
+
+    sixth = user_db.create_api_key(alice["id"], "six", "smk_ffffffff", "hash-f", None, max_active=2)
+    assert user_db.count_active_api_keys(alice["id"]) == 2
+    assert {
+        row["id"] for row in user_db.list_api_keys(alice["id"]) if row["revoked_at"] is None
+    } & {
+        fourth["id"],
+        sixth["id"],
+    } == {fourth["id"], sixth["id"]}
+
+
+def test_create_api_key_max_active_is_atomic_under_threads(user_db, alice):
+    successes: list[dict] = []
+    failures: list[BaseException] = []
+    lock = threading.Lock()
+
+    def _create(index: int) -> None:
+        try:
+            row = user_db.create_api_key(
+                alice["id"],
+                f"key-{index}",
+                f"smk_{index:08d}",
+                f"hash-{index}",
+                None,
+                max_active=3,
+            )
+        except ApiKeyLimitReachedError as exc:
+            with lock:
+                failures.append(exc)
+        else:
+            with lock:
+                successes.append(row)
+
+    threads = [threading.Thread(target=_create, args=(i,)) for i in range(8)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join()
+
+    assert len(successes) == 3
+    assert len(failures) == 5
+    assert user_db.count_active_api_keys(alice["id"]) == 3

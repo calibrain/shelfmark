@@ -193,6 +193,15 @@ def sync_builtin_admin_user(
     logger.info("Created local admin user '%s' from builtin settings", normalized_username)
 
 
+class ApiKeyLimitReachedError(Exception):
+    """Raised when a user has already reached their active API key cap.
+
+    Signals a check-and-insert done atomically inside ``create_api_key``, so
+    callers must not pre-check the count themselves -- that race let two
+    concurrent requests both succeed and blow past the cap.
+    """
+
+
 class UserDB:
     """Thread-safe SQLite user database."""
 
@@ -509,17 +518,36 @@ class UserDB:
         key_prefix: str,
         key_hash: str,
         expires_at: str | None,
+        *,
+        max_active: int | None = None,
     ) -> dict[str, Any]:
-        """Store a hashed API key for a user and return the stored row."""
+        """Store a hashed API key for a user and return the stored row.
+
+        When ``max_active`` is given, the active-key count check and the
+        insert run inside a single ``BEGIN IMMEDIATE`` transaction on this
+        connection, so two concurrent callers can't both pass the check
+        before either has inserted. Raises ``ApiKeyLimitReachedError``
+        instead of inserting when the cap is already reached.
+        """
         with self._lock:
             conn = self._connect()
             try:
+                conn.execute("BEGIN IMMEDIATE")
+                if max_active is not None:
+                    count_row = conn.execute(
+                        "SELECT COUNT(*) AS n FROM api_keys WHERE user_id = ? "
+                        "AND revoked_at IS NULL "
+                        "AND (expires_at IS NULL OR expires_at > CURRENT_TIMESTAMP)",
+                        (user_id,),
+                    ).fetchone()
+                    if int(count_row["n"]) >= max_active:
+                        conn.rollback()
+                        raise ApiKeyLimitReachedError
                 cursor = conn.execute(
                     "INSERT INTO api_keys (user_id, name, key_prefix, key_hash, expires_at) "
                     "VALUES (?, ?, ?, ?, ?)",
                     (user_id, name, key_prefix, key_hash, expires_at),
                 )
-                conn.commit()
                 key_id = cursor.lastrowid
                 if key_id is None:
                     msg = "Failed to create API key"
@@ -531,6 +559,7 @@ class UserDB:
                 if row is None:
                     msg = "Failed to load created API key"
                     raise sqlite3.OperationalError(msg)
+                conn.commit()
                 return dict(row)
             finally:
                 conn.close()
