@@ -42,6 +42,21 @@ CREATE TABLE IF NOT EXISTS user_settings (
     settings_json TEXT NOT NULL DEFAULT '{}'
 );
 
+CREATE TABLE IF NOT EXISTS api_keys (
+    id            INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id       INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    name          TEXT NOT NULL,
+    key_prefix    TEXT NOT NULL,
+    key_hash      TEXT NOT NULL UNIQUE,
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    expires_at    TIMESTAMP,
+    last_used_at  TIMESTAMP,
+    revoked_at    TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_api_keys_prefix ON api_keys(key_prefix);
+CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys(user_id);
+
 CREATE TABLE IF NOT EXISTS download_requests (
     id             INTEGER PRIMARY KEY AUTOINCREMENT,
     user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -484,6 +499,128 @@ class UserDB:
                 conn.commit()
             finally:
                 conn.close()
+
+    # --- API keys -----------------------------------------------------------
+
+    _API_KEY_COLUMNS = (
+        "id, user_id, name, key_prefix, key_hash, created_at, expires_at, last_used_at, revoked_at"
+    )
+
+    def create_api_key(
+        self,
+        user_id: int,
+        name: str,
+        key_prefix: str,
+        key_hash: str,
+        expires_at: str | None,
+    ) -> dict[str, Any]:
+        """Store a hashed API key for a user and return the stored row."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                cursor = conn.execute(
+                    "INSERT INTO api_keys (user_id, name, key_prefix, key_hash, expires_at) "
+                    "VALUES (?, ?, ?, ?, ?)",
+                    (user_id, name, key_prefix, key_hash, expires_at),
+                )
+                conn.commit()
+                key_id = cursor.lastrowid
+                if key_id is None:
+                    msg = "Failed to create API key"
+                    raise sqlite3.OperationalError(msg)
+                row = conn.execute(
+                    f"SELECT {self._API_KEY_COLUMNS} FROM api_keys WHERE id = ?",  # noqa: S608
+                    (key_id,),
+                ).fetchone()
+                if row is None:
+                    msg = "Failed to load created API key"
+                    raise sqlite3.OperationalError(msg)
+                return dict(row)
+            finally:
+                conn.close()
+
+    def get_api_keys_by_prefix(self, key_prefix: str) -> list[dict[str, Any]]:
+        """Return every key row sharing a display prefix (the caller verifies the hash)."""
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                f"SELECT {self._API_KEY_COLUMNS} FROM api_keys WHERE key_prefix = ?",  # noqa: S608
+                (key_prefix,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            conn.close()
+
+    def list_api_keys(self, user_id: int) -> list[dict[str, Any]]:
+        """Return all keys for a user, newest first, including revoked ones."""
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                f"SELECT {self._API_KEY_COLUMNS} FROM api_keys WHERE user_id = ? "  # noqa: S608
+                "ORDER BY created_at DESC, id DESC",
+                (user_id,),
+            ).fetchall()
+            return [dict(row) for row in rows]
+        finally:
+            conn.close()
+
+    def get_api_key(self, key_id: int, user_id: int) -> dict[str, Any] | None:
+        """Return one key row, only if it belongs to the given user."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                f"SELECT {self._API_KEY_COLUMNS} FROM api_keys WHERE id = ? AND user_id = ?",  # noqa: S608
+                (key_id, user_id),
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
+    def revoke_api_key(self, key_id: int, user_id: int) -> bool:
+        """Mark a key revoked. Returns False when the key is not this user's."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                exists = conn.execute(
+                    "SELECT 1 FROM api_keys WHERE id = ? AND user_id = ?",
+                    (key_id, user_id),
+                ).fetchone()
+                if exists is None:
+                    return False
+                conn.execute(
+                    "UPDATE api_keys SET revoked_at = CURRENT_TIMESTAMP "
+                    "WHERE id = ? AND user_id = ? AND revoked_at IS NULL",
+                    (key_id, user_id),
+                )
+                conn.commit()
+                return True
+            finally:
+                conn.close()
+
+    def touch_api_key_last_used(self, key_id: int) -> None:
+        """Record that a key was just used."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                conn.execute(
+                    "UPDATE api_keys SET last_used_at = CURRENT_TIMESTAMP WHERE id = ?",
+                    (key_id,),
+                )
+                conn.commit()
+            finally:
+                conn.close()
+
+    def count_active_api_keys(self, user_id: int) -> int:
+        """Count keys that have not been revoked (expired keys still count)."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT COUNT(*) AS n FROM api_keys WHERE user_id = ? AND revoked_at IS NULL",
+                (user_id,),
+            ).fetchone()
+            return int(row["n"]) if row else 0
+        finally:
+            conn.close()
 
     @staticmethod
     def _serialize_json(value: Any, field: str) -> str | None:
