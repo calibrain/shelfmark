@@ -398,7 +398,7 @@ def _resolve_policy_mode_for_current_user(*, source: Any, content_type: Any) -> 
     auth_mode = get_auth_mode()
     if auth_mode == "none":
         return None
-    if session.get("is_admin", True):
+    if session.get("is_admin", False):
         return None
     if user_db is None:
         return None

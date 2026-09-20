@@ -98,6 +98,38 @@ class TestDownloadPolicyGuards:
         assert resp.json["required_mode"] == "request_release"
         mock_queue_release.assert_not_called()
 
+    def test_release_download_endpoint_applies_policy_when_session_lacks_is_admin(
+        self, main_module, client
+    ):
+        user = _create_user(main_module, prefix="reader")
+        with client.session_transaction() as sess:
+            sess["user_id"] = user["username"]
+            sess["db_user_id"] = user["id"]
+            sess.pop("is_admin", None)
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(
+                main_module,
+                "load_users_request_policy_settings",
+                return_value=_policy(default_ebook="request_release"),
+            ):
+                with patch.object(
+                    main_module.backend, "queue_release", return_value=(True, None)
+                ) as mock_queue_release:
+                    resp = client.post(
+                        "/api/releases/download",
+                        json={
+                            "source": "direct_download",
+                            "source_id": "book-123",
+                            "search_mode": "direct",
+                        },
+                    )
+
+        assert resp.status_code == 403
+        assert resp.json["code"] == "policy_requires_request"
+        assert resp.json["required_mode"] == "request_release"
+        mock_queue_release.assert_not_called()
+
     def test_release_download_endpoint_blocks_before_queue_when_policy_blocked(
         self, main_module, client
     ):
