@@ -10,6 +10,8 @@ from unittest.mock import ANY, patch
 
 import pytest
 
+from shelfmark.core.models import DownloadTask, QueueStatus
+
 
 @pytest.fixture(scope="module")
 def main_module():
@@ -320,6 +322,67 @@ class TestActivityRoutes:
         assert response.status_code == 200
         assert response.data == file_bytes
         assert "attachment" in response.headers.get("Content-Disposition", "").lower()
+
+    def test_localdownload_serves_own_live_queue_task(self, main_module, client, tmp_path):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        task_id = f"live-localdownload-{uuid.uuid4().hex[:8]}"
+        file_path = tmp_path / "live-owned.epub"
+        file_bytes = b"live download payload"
+        file_path.write_bytes(file_bytes)
+
+        task = DownloadTask(
+            task_id=task_id,
+            source="direct_download",
+            title="Live Local Download",
+            user_id=user["id"],
+            username=user["username"],
+            download_path=str(file_path),
+        )
+        assert main_module.backend.book_queue.add(task) is True
+
+        try:
+            main_module.backend.book_queue.update_status(task_id, QueueStatus.COMPLETE)
+            with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+                response = client.get(f"/api/localdownload?id={task_id}")
+        finally:
+            main_module.backend.book_queue.cancel_download(task_id)
+
+        assert response.status_code == 200
+        assert response.data == file_bytes
+
+    def test_localdownload_returns_not_found_for_other_users_live_queue_task(
+        self, main_module, client, tmp_path
+    ):
+        owner = _create_user(main_module, prefix="owner")
+        viewer = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=viewer["username"], db_user_id=viewer["id"], is_admin=False)
+
+        task_id = f"live-localdownload-{uuid.uuid4().hex[:8]}"
+        file_path = tmp_path / "live-other.epub"
+        file_bytes = b"live download payload"
+        file_path.write_bytes(file_bytes)
+
+        task = DownloadTask(
+            task_id=task_id,
+            source="direct_download",
+            title="Live Local Download",
+            user_id=owner["id"],
+            username=owner["username"],
+            download_path=str(file_path),
+        )
+        assert main_module.backend.book_queue.add(task) is True
+
+        try:
+            main_module.backend.book_queue.update_status(task_id, QueueStatus.COMPLETE)
+            with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+                response = client.get(f"/api/localdownload?id={task_id}")
+        finally:
+            main_module.backend.book_queue.cancel_download(task_id)
+
+        assert response.status_code == 404
+        assert response.json == {"error": "File not found"}
 
     def test_dismiss_legacy_fulfilled_request_creates_minimal_history_snapshot(
         self, main_module, client

@@ -1649,6 +1649,17 @@ def api_local_download() -> Response | tuple[Response, int]:
 
             # Book data not found or not available
             return jsonify({"error": "File not found"}), 404
+
+        is_admin, db_user_id, can_access_status = _resolve_status_scope()
+        if not is_admin:
+            actor_username = session.get("user_id")
+            if not can_access_status or not _task_owned_by_actor(
+                book_info,
+                actor_user_id=db_user_id,
+                actor_username=actor_username if isinstance(actor_username, str) else None,
+            ):
+                return jsonify({"error": "File not found"}), 404
+
         file_name = book_info.get_filename() if book_info is not None else Path(book_id).name
         # Prepare the file for sending to the client
         data = io.BytesIO(file_data)
