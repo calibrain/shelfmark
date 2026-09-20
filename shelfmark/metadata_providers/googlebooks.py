@@ -158,10 +158,11 @@ class GoogleBooksProvider(MetadataProvider):
         query = "+".join(query_parts)
 
         # Build request params
+        page_size = min(options.limit, 40)  # Google max is 40
         params: dict[str, Any] = {
             "q": query,
-            "maxResults": min(options.limit, 40),  # Google max is 40
-            "startIndex": (options.page - 1) * options.limit,
+            "maxResults": page_size,
+            "startIndex": (options.page - 1) * page_size,
             "printType": "books",  # Exclude magazines
         }
 

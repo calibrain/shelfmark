@@ -39,6 +39,15 @@ class _FlakyGoogleBooksSession:
         )
 
 
+class _RecordingGoogleBooksSession:
+    def __init__(self):
+        self.params = []
+
+    def get(self, *args, **kwargs):
+        self.params.append(dict(kwargs["params"]))
+        return _GoogleBooksResponse({"items": []})
+
+
 def test_googlebooks_search_does_not_cache_request_failures():
     get_metadata_cache().clear()
     provider = GoogleBooksProvider(api_key="test-key")
@@ -52,6 +61,33 @@ def test_googlebooks_search_does_not_cache_request_failures():
 
     assert session.calls == 2
     assert [book.title for book in result] == ["Recovered Book"]
+
+
+def test_googlebooks_pages_tile_when_limit_exceeds_api_maximum():
+    get_metadata_cache().clear()
+    provider = GoogleBooksProvider(api_key="test-key")
+    session = _RecordingGoogleBooksSession()
+    provider.session = session
+
+    for page in (1, 2):
+        provider.search(MetadataSearchOptions(query="Dune", limit=50, page=page))
+
+    first, second = session.params
+    assert first["maxResults"] == 40
+    assert first["startIndex"] == 0
+    assert second["startIndex"] == first["startIndex"] + first["maxResults"]
+
+
+def test_googlebooks_page_stride_follows_limit_below_api_maximum():
+    get_metadata_cache().clear()
+    provider = GoogleBooksProvider(api_key="test-key")
+    session = _RecordingGoogleBooksSession()
+    provider.session = session
+
+    provider.search(MetadataSearchOptions(query="Dune", limit=25, page=3))
+
+    assert session.params[0]["maxResults"] == 25
+    assert session.params[0]["startIndex"] == 50
 
 
 class TestGoogleBooksParseVolume:
