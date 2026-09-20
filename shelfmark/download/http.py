@@ -1104,5 +1104,7 @@ def get_absolute_url(base_url: str, url: str) -> str:
     parsed = urlparse(url)
     base = urlparse(base_url)
     if not parsed.netloc or not parsed.scheme:
-        parsed = parsed._replace(netloc=base.netloc, scheme=base.scheme)
+        parsed = parsed._replace(
+            netloc=parsed.netloc or base.netloc, scheme=parsed.scheme or base.scheme
+        )
     return parsed.geturl()
