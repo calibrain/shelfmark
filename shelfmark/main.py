@@ -551,7 +551,7 @@ if _is_debug_enabled():
             r"/*": {
                 "origins": ["http://localhost:5173", "http://127.0.0.1:5173"],
                 "supports_credentials": True,
-                "allow_headers": ["Content-Type", "Authorization"],
+                "allow_headers": ["Content-Type", "Authorization", "X-Api-Key"],
                 "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             }
         },
@@ -705,6 +705,10 @@ def api_key_auth_middleware() -> Response | tuple[Response, int] | None:
     if get_auth_mode() == "none":
         return None
 
+    # Mark the request as keyed before the lookup so the after-request cookie
+    # reset also covers the error path below.
+    g.api_key_auth = True
+
     try:
         admin = user_db.get_first_admin() if user_db is not None else None
     except _OPERATIONAL_ERRORS:
@@ -719,7 +723,6 @@ def api_key_auth_middleware() -> Response | tuple[Response, int] | None:
     session.permanent = False
     # Identity is per request; never persist it as a cookie.
     session.modified = False
-    g.api_key_auth = True
     return None
 
 

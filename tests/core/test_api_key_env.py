@@ -226,6 +226,21 @@ class TestKeyedRequests:
         assert response.status_code == 500
         assert response.get_json() == {"error": "Authentication error"}
 
+    def test_store_error_does_not_refresh_browser_cookie(self, wired, user_db, monkeypatch):
+        alice = user_db.create_user(username="alice")
+        monkeypatch.setattr(
+            user_db,
+            "get_first_admin",
+            lambda: (_ for _ in ()).throw(sqlite3.OperationalError("boom")),
+        )
+        client = _cookie_client(wired.app, alice, permanent=True)
+        response = client.get("/api/downloads/active", headers=_bearer("s3cret"))
+        assert response.status_code == 500
+        assert "Set-Cookie" not in response.headers
+
+        # The browser's own session is untouched and still usable afterwards.
+        assert client.get("/api/downloads/active").status_code == 200
+
 
 class TestMismatchFallsThrough:
     def test_mismatch_no_cookie_is_plain_unauthorized(self, wired):
