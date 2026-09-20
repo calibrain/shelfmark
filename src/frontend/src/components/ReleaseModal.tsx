@@ -1801,8 +1801,13 @@ const ReleaseModalSession = ({
                     </div>
                   </div>
 
-                  {/* Center: Results count from release sources */}
-                  <div className="flex flex-1 justify-center">
+                  {/* Results count from release sources. Deliberately not flex-1: a
+                      second growing child would halve the scrollable tab strip beside
+                      it, and it would claim that space even on tabs whose source
+                      reports no total (only direct_download does). Hidden below sm:
+                      the label is ~150px and the full-screen mobile modal has no room
+                      for it without pushing the tabs out of reach. */}
+                  <div className="hidden flex-none justify-center sm:flex">
                     {(() => {
                       const searchInfo = releasesBySource[activeTab]?.search_info?.[activeTab];
                       const totalCount = searchInfo?.total_results;

@@ -210,6 +210,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
           setLastSearchQuery('');
           setHasMore(false);
           setTotalFound(0);
+          setDirectTotalResults(null);
           setCurrentPage(1);
           setResultsSourceUrl(undefined);
           setResultsSourceTitle(undefined);
@@ -219,10 +220,13 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
 
         setIsSearching(true);
         setLastSearchQuery(query);
-        // Reset pagination for new search
+        // Reset pagination for new search. directTotalResults belongs to direct mode
+        // and is never written here, so without clearing it a count from an earlier
+        // direct search survives the mode switch and renders over these results.
         setCurrentPage(1);
         setHasMore(false);
         setTotalFound(0);
+        setDirectTotalResults(null);
 
         try {
           const result = await searchMetadata(
