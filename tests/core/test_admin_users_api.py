@@ -980,6 +980,40 @@ class TestAdminUserPasswordUpdate:
         assert resp.status_code == 400
         assert "Cannot set password for PROXY users" in resp.json["error"]
 
+    def test_update_password_not_applied_when_role_is_rejected(self, admin_client, user_db):
+        """A rejected role leaves the stored password untouched."""
+        user = user_db.create_user(username="alice", role="user", password_hash="old_hash")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={"password": "newpass99", "role": "superuser"},
+        )
+        assert resp.status_code == 400
+        assert resp.json["error"] == "Role must be 'admin' or 'user'"
+
+        updated = user_db.get_user(user_id=user["id"])
+        assert updated["password_hash"] == "old_hash"
+        assert updated["role"] == "user"
+
+    def test_update_password_not_applied_when_settings_are_rejected(self, admin_client, user_db):
+        """A rejected settings payload leaves the password and fields untouched."""
+        user = user_db.create_user(username="alice", role="user", password_hash="old_hash")
+
+        resp = admin_client.put(
+            f"/api/admin/users/{user['id']}",
+            json={
+                "password": "newpass99",
+                "role": "admin",
+                "settings": {"BOOK_LANGUAGE": ["klingon"]},
+            },
+        )
+        assert resp.status_code == 400
+        assert resp.json["error"] == "Invalid settings payload"
+
+        updated = user_db.get_user(user_id=user["id"])
+        assert updated["password_hash"] == "old_hash"
+        assert updated["role"] == "user"
+
 
 # ---------------------------------------------------------------------------
 # POST /api/admin/users/sync-cwa

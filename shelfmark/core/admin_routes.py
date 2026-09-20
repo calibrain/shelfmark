@@ -280,6 +280,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
 
         # Handle optional password update
         password = data.get("password", "")
+        password_hash: str | None = None
         if password:
             if not capabilities["canSetPassword"]:
                 return jsonify(
@@ -292,7 +293,7 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
                 return jsonify(
                     {"error": f"Password must be at least {MIN_PASSWORD_LENGTH} characters"}
                 ), 400
-            user_db.update_user(user_id, password_hash=generate_password_hash(password))
+            password_hash = generate_password_hash(password)
 
         # Update user fields
         user_fields = {}
@@ -358,10 +359,8 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             if field in user_fields and user_fields[field] == user.get(field):
                 user_fields.pop(field)
 
-        if user_fields:
-            user_db.update_user(user_id, **user_fields)
-
-        # Update per-user settings
+        # Validate per-user settings
+        validated_settings: dict[str, Any] | None = None
         if "settings" in data:
             if not isinstance(data["settings"], dict):
                 return jsonify({"error": "Settings must be an object"}), 400
@@ -375,6 +374,14 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
                     }
                 ), 400
 
+        # Apply the writes only once the whole payload has been accepted.
+        if password_hash is not None:
+            user_fields["password_hash"] = password_hash
+
+        if user_fields:
+            user_db.update_user(user_id, **user_fields)
+
+        if validated_settings is not None:
             user_db.set_user_settings(user_id, validated_settings)
             # Ensure runtime reads see updated per-user overrides immediately.
             try:

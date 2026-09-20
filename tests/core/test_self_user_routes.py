@@ -242,3 +242,67 @@ def test_users_me_update_rejects_oidc_email_change(app, user_db):
     assert resp.status_code == 400
     assert resp.json["error"] == "Cannot change email for OIDC users"
     assert user_db.get_user(user_id=user["id"])["email"] is None
+
+
+def test_users_me_update_keeps_password_and_profile_when_settings_rejected(app, user_db):
+    user = user_db.create_user(
+        username="alice",
+        display_name="Alice Old",
+        password_hash="old_hash",
+    )
+    client = _authed_client_for_user(app, user)
+
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
+        with patch(
+            "shelfmark.core.self_user_routes.app_config.get",
+            side_effect=_visible_sections_config_get(["delivery"]),
+        ):
+            resp = client.put(
+                "/api/users/me",
+                json={
+                    "password": "newpass99",
+                    "display_name": "Alice New",
+                    "settings": {
+                        "USER_NOTIFICATION_ROUTES": [
+                            {"event": "all", "url": "ntfys://ntfy.sh/alice"}
+                        ],
+                    },
+                },
+            )
+
+    assert resp.status_code == 400
+    assert resp.json["error"] == "Some settings are admin-only"
+
+    stored = user_db.get_user(user_id=user["id"])
+    assert stored["password_hash"] == "old_hash"
+    assert stored["display_name"] == "Alice Old"
+
+
+def test_users_me_update_applies_password_profile_and_settings_together(app, user_db):
+    user = user_db.create_user(
+        username="alice",
+        display_name="Alice Old",
+        password_hash="old_hash",
+    )
+    client = _authed_client_for_user(app, user)
+
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
+        with patch(
+            "shelfmark.core.self_user_routes.app_config.get",
+            side_effect=_visible_sections_config_get(["delivery"]),
+        ):
+            resp = client.put(
+                "/api/users/me",
+                json={
+                    "password": "newpass99",
+                    "display_name": "Alice New",
+                    "settings": {"DESTINATION": "/books/alice"},
+                },
+            )
+
+    assert resp.status_code == 200
+
+    stored = user_db.get_user(user_id=user["id"])
+    assert stored["password_hash"] != "old_hash"
+    assert stored["display_name"] == "Alice New"
+    assert user_db.get_user_settings(user["id"])["DESTINATION"] == "/books/alice"
