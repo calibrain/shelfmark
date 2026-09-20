@@ -109,7 +109,7 @@ def _normalize_return_to(raw_return_to: object) -> str | None:
         return None
 
     parsed = urlsplit(value)
-    if parsed.scheme or parsed.netloc:
+    if parsed.scheme or parsed.netloc or "\\" in parsed.path:
         return None
 
     script_root = request.script_root.rstrip("/")

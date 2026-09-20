@@ -182,6 +182,56 @@ class TestOIDCLoginEndpoint:
         with client.session_transaction() as sess:
             assert "oidc_return_to" not in sess
 
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_login_ignores_backslash_return_to(self, mock_get_client, client):
+        fake_client = Mock()
+        fake_client.authorize_redirect.return_value = redirect("https://auth.example.com/authorize")
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/login?return_to=%2F%5Cevil.example.com%2Fphish")
+
+        assert resp.status_code == 302
+        with client.session_transaction() as sess:
+            assert "oidc_return_to" not in sess
+
+    @pytest.mark.parametrize(
+        "raw",
+        [
+            "/\\evil.example.com",
+            "/\\evil.example.com/phish",
+            "/\\\\evil.example.com",
+            "/\\/evil.example.com",
+        ],
+    )
+    def test_normalize_return_to_rejects_backslash_paths(self, app, raw):
+        from shelfmark.core.oidc_routes import _normalize_return_to
+
+        with app.test_request_context("/api/auth/oidc/login"):
+            assert _normalize_return_to(raw) is None
+
+    def test_normalize_return_to_rejects_backslash_under_script_root(self, app):
+        from shelfmark.core.oidc_routes import _normalize_return_to
+
+        with app.test_request_context(
+            "/shelfmark/api/auth/oidc/login",
+            environ_overrides={"SCRIPT_NAME": "/shelfmark"},
+        ):
+            assert _normalize_return_to("/shelfmark/\\evil.example.com") is None
+
+    @pytest.mark.parametrize(
+        ("raw", "expected"),
+        [
+            ("/", "/"),
+            ("/settings", "/settings"),
+            ("/search?q=x#frag", "/search?q=x#frag"),
+        ],
+    )
+    def test_normalize_return_to_keeps_local_paths(self, app, raw, expected):
+        from shelfmark.core.oidc_routes import _normalize_return_to
+
+        with app.test_request_context("/api/auth/oidc/login"):
+            assert _normalize_return_to(raw) == expected
+
 
 class TestOIDCCallbackEndpoint:
     def test_normalize_claims_returns_empty_dict_for_invalid_mapping(self):
