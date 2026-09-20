@@ -433,6 +433,17 @@ class UserDB:
         finally:
             conn.close()
 
+    def get_first_admin(self) -> dict[str, Any] | None:
+        """Return the lowest-id admin user, or None. Used as the identity for API_KEY requests."""
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT * FROM users WHERE role = 'admin' ORDER BY id LIMIT 1"
+            ).fetchone()
+            return dict(row) if row else None
+        finally:
+            conn.close()
+
     def has_admin(self) -> bool:
         """Return True when at least one admin user exists."""
         conn = self._connect()
