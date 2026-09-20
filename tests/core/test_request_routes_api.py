@@ -775,6 +775,54 @@ class TestRequestRoutes:
         assert resp.json["code"] == "duplicate_pending_request"
         assert main_module.user_db.list_requests(user_id=user["id"]) == []
 
+    @pytest.mark.parametrize("bad_item", [1, "book", None, ["x"]])
+    def test_batch_rejects_non_object_request_items(self, main_module, client, bad_item):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            resp = client.post("/api/requests/batch", json={"requests": [bad_item]})
+
+        assert resp.status_code == 400
+        assert "requests must contain objects" in resp.json["error"]
+
+    def test_batch_non_object_item_rejects_whole_batch(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        policy = _policy(default_ebook="request_book")
+
+        valid_request = {
+            "book_data": {
+                "title": "Batch Valid Alongside Bad Item",
+                "author": "Shelfmark",
+                "content_type": "ebook",
+                "provider": "openlibrary",
+                "provider_id": "batch-valid-alongside-bad-1",
+            },
+            "context": {
+                "source": "*",
+                "content_type": "ebook",
+                "request_level": "book",
+            },
+        }
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            with patch.object(
+                main_module, "load_users_request_policy_settings", return_value=policy
+            ):
+                with patch(
+                    "shelfmark.core.request_routes.load_users_request_policy_settings",
+                    return_value=policy,
+                ):
+                    resp = client.post(
+                        "/api/requests/batch",
+                        json={"requests": [valid_request, "not-an-object"]},
+                    )
+
+        assert resp.status_code == 400
+        assert "requests must contain objects" in resp.json["error"]
+        assert main_module.user_db.list_requests(user_id=user["id"]) == []
+
     def test_create_request_emits_websocket_events(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)

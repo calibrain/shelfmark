@@ -715,6 +715,8 @@ def register_request_routes(
         raw_requests = data.get("requests")
         if not isinstance(raw_requests, list) or len(raw_requests) == 0:
             return jsonify({"error": "requests must contain at least one request"}), 400
+        if not all(isinstance(raw_request, dict) for raw_request in raw_requests):
+            return jsonify({"error": "requests must contain objects"}), 400
 
         try:
             prepared_requests = [
