@@ -145,28 +145,36 @@ class BookQueue:
         with self._lock:
             self._queue_hook = hook
 
-    def update_status(self, book_id: str, status: QueueStatus) -> None:
-        """Update status of a book in the queue."""
+    def _apply_status_locked(
+        self, book_id: str, status: QueueStatus
+    ) -> tuple[Callable[[str, QueueStatus, DownloadTask], None] | None, DownloadTask | None]:
+        """Apply a status change; returns the terminal hook to run after releasing the lock."""
         hook: Callable[[str, QueueStatus, DownloadTask], None] | None = None
         hook_task: DownloadTask | None = None
+        previous_status = self._status.get(book_id)
+        self._update_status(book_id, status)
+
+        if (
+            status in TERMINAL_QUEUE_STATUSES
+            and previous_status != status
+            and self._terminal_status_hook is not None
+        ):
+            current_task = self._task_data.get(book_id)
+            if current_task is not None:
+                hook = self._terminal_status_hook
+                hook_task = current_task
+
+        # Clean up active download tracking when finished
+        if status in TERMINAL_QUEUE_STATUSES:
+            self._active_downloads.pop(book_id, None)
+            self._cancel_flags.pop(book_id, None)
+
+        return hook, hook_task
+
+    def update_status(self, book_id: str, status: QueueStatus) -> None:
+        """Update status of a book in the queue."""
         with self._lock:
-            previous_status = self._status.get(book_id)
-            self._update_status(book_id, status)
-
-            if (
-                status in TERMINAL_QUEUE_STATUSES
-                and previous_status != status
-                and self._terminal_status_hook is not None
-            ):
-                current_task = self._task_data.get(book_id)
-                if current_task is not None:
-                    hook = self._terminal_status_hook
-                    hook_task = current_task
-
-            # Clean up active download tracking when finished
-            if status in TERMINAL_QUEUE_STATUSES:
-                self._active_downloads.pop(book_id, None)
-                self._cancel_flags.pop(book_id, None)
+            hook, hook_task = self._apply_status_locked(book_id, status)
 
         if hook is not None and hook_task is not None:
             hook(book_id, status, hook_task)
@@ -257,7 +265,11 @@ class BookQueue:
                 # Not in a cancellable state
                 return False
 
-        self.update_status(task_id, QueueStatus.CANCELLED)
+            # Write under the same lock so a download that finishes first is not overwritten
+            hook, hook_task = self._apply_status_locked(task_id, QueueStatus.CANCELLED)
+
+        if hook is not None and hook_task is not None:
+            hook(task_id, QueueStatus.CANCELLED, hook_task)
         return True
 
     def set_priority(self, task_id: str, new_priority: int) -> bool:
