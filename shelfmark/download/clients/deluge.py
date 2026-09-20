@@ -292,11 +292,14 @@ class DelugeClient(DownloadClient):
             # Per-torrent seeding limits from indexer
             seeding_time_limit = coerce_optional_int(kwargs.get("seeding_time_limit"))
             if seeding_time_limit is not None:
-                options["seed_time_limit"] = seeding_time_limit
+                logger.debug(
+                    "Deluge has no per-torrent seeding time limit, ignoring %s minutes",
+                    seeding_time_limit,
+                )
             ratio_limit = coerce_optional_float(kwargs.get("ratio_limit"))
             if ratio_limit is not None:
-                options["stop_at_ratio"] = ratio_limit
-                options["stop_at_ratio_enabled"] = True
+                options["stop_ratio"] = ratio_limit
+                options["stop_at_ratio"] = True
 
             if torrent_info.is_magnet:
                 magnet_url = torrent_info.magnet_url or url

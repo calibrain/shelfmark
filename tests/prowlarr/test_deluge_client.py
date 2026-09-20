@@ -114,6 +114,82 @@ class TestDelugeClientAddDownload:
             {},
         )
 
+    def test_add_download_sends_ratio_limit_as_stop_ratio(self, monkeypatch):
+        """Ratio limits should use Deluge's stop_ratio float plus the stop_at_ratio switch."""
+        config_values = {
+            "DELUGE_HOST": "http://localhost",
+            "DELUGE_PORT": "8112",
+            "DELUGE_PASSWORD": "password",
+            "DELUGE_CATEGORY": "books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.deluge.config.get",
+            make_config_getter(config_values),
+        )
+
+        from shelfmark.download.clients.deluge import DelugeClient
+
+        client = DelugeClient()
+        monkeypatch.setattr(client, "_ensure_connected", lambda: None)
+        mock_rpc_call = MagicMock(return_value="abcdef1234567890abcdef1234567890abcdef12")
+        monkeypatch.setattr(client, "_rpc_call", mock_rpc_call)
+        monkeypatch.setattr(client, "_try_set_label", MagicMock())
+
+        magnet = "magnet:?xt=urn:btih:ABCDEF1234567890ABCDEF1234567890ABCDEF12&dn=test"
+        with patch(
+            "shelfmark.download.clients.deluge.extract_torrent_info", autospec=True
+        ) as mock_extract:
+            mock_extract.return_value = TorrentInfo(
+                info_hash="abcdef1234567890abcdef1234567890abcdef12",
+                torrent_data=None,
+                is_magnet=True,
+                magnet_url=magnet,
+            )
+            client.add_download(magnet, "Test", ratio_limit=1.5)
+
+        mock_rpc_call.assert_called_once_with(
+            "core.add_torrent_magnet",
+            magnet,
+            {"stop_ratio": 1.5, "stop_at_ratio": True},
+        )
+
+    def test_add_download_skips_options_deluge_does_not_define(self, monkeypatch):
+        """Deluge has no per-torrent seeding time limit, so no unknown keys are sent."""
+        config_values = {
+            "DELUGE_HOST": "http://localhost",
+            "DELUGE_PORT": "8112",
+            "DELUGE_PASSWORD": "password",
+            "DELUGE_CATEGORY": "books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.deluge.config.get",
+            make_config_getter(config_values),
+        )
+
+        from shelfmark.download.clients.deluge import DelugeClient
+
+        client = DelugeClient()
+        monkeypatch.setattr(client, "_ensure_connected", lambda: None)
+        mock_rpc_call = MagicMock(return_value="abcdef1234567890abcdef1234567890abcdef12")
+        monkeypatch.setattr(client, "_rpc_call", mock_rpc_call)
+        monkeypatch.setattr(client, "_try_set_label", MagicMock())
+
+        magnet = "magnet:?xt=urn:btih:ABCDEF1234567890ABCDEF1234567890ABCDEF12&dn=test"
+        with patch(
+            "shelfmark.download.clients.deluge.extract_torrent_info", autospec=True
+        ) as mock_extract:
+            mock_extract.return_value = TorrentInfo(
+                info_hash="abcdef1234567890abcdef1234567890abcdef12",
+                torrent_data=None,
+                is_magnet=True,
+                magnet_url=magnet,
+            )
+            client.add_download(magnet, "Test", ratio_limit=1.5, seeding_time_limit=120)
+
+        options = mock_rpc_call.call_args.args[2]
+        assert "stop_at_ratio_enabled" not in options
+        assert "seed_time_limit" not in options
+
 
 class TestDelugeClientErrors:
     """Tests for Deluge error handling fallbacks."""
