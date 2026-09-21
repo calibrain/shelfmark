@@ -1,0 +1,51 @@
+name: Debounce dev image
+# A burst of merges to main should publish one dev image, not one per commit.
+# Each push to main waits out the 60-minute wait timer on the
+# dev-image-debounce environment (Settings → Environments; waiting holds no
+# runner), then dispatches the Docker workflow only if main still points at
+# its commit. So only the last push of a burst builds, and the Docker
+# workflow's history holds real builds only.
+on:
+  push:
+    branches:
+      - main
+permissions: {}
+
+jobs:
+  debounce:
+    runs-on: ubuntu-latest
+    environment:
+      name: dev-image-debounce
+      deployment: false
+    permissions:
+      actions: write # dispatch the build, delete finished debounce runs
+      contents: read
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Dispatch the dev build if main is still at this commit
+        env:
+          CURRENT_SHA: ${{ github.sha }}
+        run: |
+          HEAD_SHA=$(gh api "repos/${GH_REPO}/git/ref/heads/main" --jq '.object.sha')
+          echo "This run's commit: ${CURRENT_SHA}"
+          echo "main HEAD now:     ${HEAD_SHA}"
+          if [[ "$HEAD_SHA" == "$CURRENT_SHA" ]]; then
+            echo "No newer commits on main — dispatching the dev build."
+            gh workflow run build-and-publish-docker-image.yml --ref main
+          else
+            echo "main has moved on — the newer push's run will build it."
+          fi
+
+      # A finished debounce run is noise: it either did nothing or its build
+      # run is the record. Best effort, since runs from the same burst race to
+      # delete the same runs.
+      - name: Delete finished debounce runs
+        run: |
+          # On an HTTP error gh prints the error body to stdout, so bail out
+          # rather than loop over it.
+          ids=$(gh api "repos/${GH_REPO}/actions/workflows/dev-image-debounce.yml/runs?status=success&per_page=100" --jq '.workflow_runs[].id') || exit 0
+          for id in $ids; do
+            gh api -X DELETE "repos/${GH_REPO}/actions/runs/${id}" || true
+          done
