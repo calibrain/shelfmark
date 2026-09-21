@@ -1675,6 +1675,7 @@ How long to keep cached search results before they expire.
 | `PROWLARR_TORRENT_CLIENT` | Choose which torrent client to use | string (choice) | _empty string_ |
 | `BLACKHOLE_DIRECTORY` | Directory where Shelfmark saves .torrent files for another downloader | string | _none_ |
 | `ALLDEBRID_API_KEY` | AllDebrid API Key (apiv4) from your AllDebrid account settings | string (secret) | _none_ |
+| `DEBRIDLINK_API_KEY` | Debrid-Link API Key from your Debrid-Link account settings | string (secret) | _none_ |
 | `REALDEBRID_API_KEY` | Real-Debrid API Key (Secret Token) from your Real-Debrid account settings | string (secret) | _none_ |
 | `TORBOX_API_KEY` | TorBox API Key from your TorBox account settings | string (secret) | _none_ |
 | `QBITTORRENT_URL` | Web UI URL of your qBittorrent instance | string | _none_ |
@@ -1728,7 +1729,7 @@ Choose which torrent client to use
 
 - **Type:** string (choice)
 - **Default:** _empty string_
-- **Options:** `""` (None), `alldebrid` (AllDebrid), `blackhole` (Blackhole), `qbittorrent` (qBittorrent), `realdebrid` (Real-Debrid), `torbox` (TorBox), `transmission` (Transmission), `deluge` (Deluge), `rtorrent` (rTorrent)
+- **Options:** `""` (None), `alldebrid` (AllDebrid), `blackhole` (Blackhole), `debridlink` (Debrid-Link), `qbittorrent` (qBittorrent), `realdebrid` (Real-Debrid), `torbox` (TorBox), `transmission` (Transmission), `deluge` (Deluge), `rtorrent` (rTorrent)
 
 #### `BLACKHOLE_DIRECTORY`
 
@@ -1744,6 +1745,15 @@ Directory where Shelfmark saves .torrent files for another downloader
 **API Key**
 
 AllDebrid API Key (apiv4) from your AllDebrid account settings
+
+- **Type:** string (secret)
+- **Default:** _none_
+
+#### `DEBRIDLINK_API_KEY`
+
+**API Key**
+
+Debrid-Link API Key from your Debrid-Link account settings
 
 - **Type:** string (secret)
 - **Default:** _none_
