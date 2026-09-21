@@ -367,8 +367,38 @@ def queue_status(user_id: int | None = None) -> dict[str, dict[str, Any]]:
     }
 
 
+def get_book_path(task_id: str) -> tuple[str | None, DownloadTask | None]:
+    """Path of a task's downloaded file, without reading it into memory.
+
+    Serving a completed book used to go through :func:`get_book_data`, which read the
+    whole file so the route could wrap it in a BytesIO: two copies resident for a
+    transfer that the web server can stream straight off disk. On a large audiobook
+    that is enough to reach a container's memory limit.
+    """
+    task = None
+    try:
+        task = book_queue.get_task(task_id)
+        if not task:
+            return None, None
+
+        path = task.download_path
+        if not path or not Path(path).is_file():
+            return None, task
+    except OSError as e:
+        logger.error_trace(f"Error resolving book path: {e}")
+        if task:
+            task.download_path = None
+        return None, task
+    else:
+        return path, task
+
+
 def get_book_data(task_id: str) -> tuple[bytes | None, DownloadTask | None]:
-    """Get downloaded file data for a specific task."""
+    """Get downloaded file data for a specific task.
+
+    Prefer :func:`get_book_path` when the bytes are only going to be written straight
+    back out; this reads the entire file into memory.
+    """
     task = None
     try:
         task = book_queue.get_task(task_id)

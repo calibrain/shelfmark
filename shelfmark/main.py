@@ -1,7 +1,6 @@
 """Flask app - routes, WebSocket handlers, and middleware."""
 
 import binascii
-import io
 import logging
 import os
 import re
@@ -1698,8 +1697,10 @@ def api_local_download() -> Response | tuple[Response, int]:
         return jsonify({"error": "No book ID provided"}), 400
 
     try:
-        file_data, book_info = backend.get_book_data(book_id)
-        if file_data is None:
+        # The path, not the bytes: send_file streams it off disk, where reading it
+        # first cost two resident copies of the whole book.
+        file_path, book_info = backend.get_book_path(book_id)
+        if file_path is None:
             # Fallback for dismissed/history entries where queue task may no longer exist.
             if download_history_service is not None:
                 is_admin, db_user_id, can_access_status = _resolve_status_scope()
@@ -1732,9 +1733,7 @@ def api_local_download() -> Response | tuple[Response, int]:
                 return jsonify({"error": "File not found"}), 404
 
         file_name = book_info.get_filename() if book_info is not None else Path(book_id).name
-        # Prepare the file for sending to the client
-        data = io.BytesIO(file_data)
-        return send_file(data, download_name=file_name, as_attachment=True)
+        return send_file(file_path, download_name=file_name, as_attachment=True)
 
     except _OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Local download error: {e}")
