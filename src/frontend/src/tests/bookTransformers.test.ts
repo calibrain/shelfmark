@@ -95,9 +95,9 @@ describe('bookTransformers.transformMetadataToBook', () => {
   };
 
   it('carries the library ownership flags through to the Book', () => {
-    const book = transformMetadataToBook({ ...metadata, library: { ebook: true } });
+    const book = transformMetadataToBook({ ...metadata, library: { ebook: 'owned' as const } });
 
-    expect(book.library).toEqual({ ebook: true });
+    expect(book.library).toEqual({ ebook: 'owned' });
   });
 
   it('leaves library undefined when the API sends none', () => {

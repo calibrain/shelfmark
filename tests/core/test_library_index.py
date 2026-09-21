@@ -341,9 +341,9 @@ def test_ownership_reports_only_formats_with_an_enabled_library(providers):
     providers.append(_Provider("calibre", {"ebook"}, [owned]))
     providers.append(_Provider("audiobooks", {"audiobook"}, [], enabled=False))
 
-    assert library_index.ownership(_book(isbn_13="9780593820247")) == {"ebook": True}
+    assert library_index.ownership(_book(isbn_13="9780593820247")) == {"ebook": "owned"}
     assert library_index.ownership(_book(isbn_13="9999999999999", title="Something Else")) == {
-        "ebook": False
+        "ebook": None
     }
 
 
@@ -364,6 +364,58 @@ def test_ownership_covers_both_formats_when_both_libraries_are_enabled(providers
     providers.append(_Provider("audiobooks", {"audiobook"}, [entry]))
 
     assert library_index.ownership(_book(isbn_13="9780593820247")) == {
-        "ebook": False,
-        "audiobook": True,
+        "ebook": None,
+        "audiobook": "owned",
     }
+
+
+def _shelf_entry(title_tokens: set[str], context: set[str] | None = None) -> LibraryEntry:
+    context = context or set()
+    return LibraryEntry(
+        frozenset(title_tokens | context),
+        frozenset(),
+        frozenset(),
+        frozenset(),
+        frozenset(title_tokens),
+        frozenset(context),
+    )
+
+
+def test_a_longer_shelf_title_naming_another_work_is_not_a_match() -> None:
+    # "Dune" is a subset of "Dune Messiah", which is a different book.
+    shelf = [_shelf_entry({"dune", "messiah"}, {"frank", "herbert"})]
+    book = _book(title="Dune", authors=["Frank Herbert"])
+
+    assert library_index.match_entries(book, shelf) is None
+
+
+def test_the_series_and_volume_a_shelf_title_repeats_do_not_block_a_match() -> None:
+    # Calibre titles often carry the series and its number: "Alex Cross 25: Cross Kill".
+    shelf = [_shelf_entry({"alex", "cross", "25", "kill"}, {"alex", "cross", "james", "patterson"})]
+    book = _book(title="Cross Kill", authors=["James Patterson"])
+
+    assert library_index.match_entries(book, shelf) == "owned"
+
+
+def test_an_edition_word_does_not_block_a_match() -> None:
+    shelf = [_shelf_entry({"dune", "illustrated", "edition"}, {"frank", "herbert"})]
+
+    assert (
+        library_index.match_entries(_book(title="Dune", authors=["Frank Herbert"]), shelf)
+        == "owned"
+    )
+
+
+def test_a_collection_reports_itself_as_a_collection() -> None:
+    shelf = [_shelf_entry({"dungeon", "crawler", "carl", "books", "1", "6"}, {"matt", "dinniman"})]
+    book = _book(title="Dungeon Crawler Carl", authors=["Matt Dinniman"])
+
+    assert library_index.match_entries(book, shelf) == "collection"
+
+
+def test_an_exact_shelf_title_outranks_a_collection_holding_the_same_book() -> None:
+    collection = _shelf_entry({"dungeon", "crawler", "carl", "omnibus"}, {"matt", "dinniman"})
+    single = _shelf_entry({"dungeon", "crawler", "carl"}, {"matt", "dinniman"})
+    book = _book(title="Dungeon Crawler Carl", authors=["Matt Dinniman"])
+
+    assert library_index.match_entries(book, [collection, single]) == "owned"

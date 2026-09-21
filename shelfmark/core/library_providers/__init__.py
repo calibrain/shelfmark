@@ -23,6 +23,14 @@ class LibraryEntry:
     asins: frozenset[str]
     # (metadata provider name, id in that provider) pairs, e.g. ("hardcover", "446681").
     external_ids: frozenset[tuple[str, str]] = frozenset()
+    # Title tokens alone, without the author and series that `tokens` also carries.
+    # The matcher needs them to tell "the shelf title says more than the search did"
+    # from "the shelf entry merely has an author", which decides whether a shorter
+    # search title is the same book or a different one in the same series.
+    title_tokens: frozenset[str] = frozenset()
+    # Series and author words. Shelf titles often bake these in ("Alex Cross 25:
+    # Cross Kill"), so the matcher must not read them as naming a different work.
+    context_tokens: frozenset[str] = frozenset()
 
 
 class LibraryProvider(Protocol):

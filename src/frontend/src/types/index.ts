@@ -278,9 +278,12 @@ export interface QueuedDownloadResult {
 
 export type RequestSubmissionResult = RequestRecord | QueuedDownloadResult;
 
+/** How the library holds a book, per format: owned outright, or inside a collection. */
+export type LibraryHolding = 'owned' | 'collection';
+
 export interface LibraryOwnership {
-  ebook?: boolean;
-  audiobook?: boolean;
+  ebook?: LibraryHolding | null;
+  audiobook?: LibraryHolding | null;
 }
 
 export type BooksOutputMode = 'folder' | 'booklore' | 'email';

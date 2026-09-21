@@ -13,6 +13,7 @@ write or checkpoint refreshes the index ahead of the cache TTL.
 
 from __future__ import annotations
 
+import re
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -27,6 +28,9 @@ if TYPE_CHECKING:
     from collections.abc import Mapping
 
 logger = setup_logger(__name__)
+
+# "(Alex Cross Series #11)", "[Illustrated Edition]" and friends.
+_PARENTHETICAL = re.compile(r"[(\[][^)\]]*[)\]]")
 
 _DEFAULT_DB_PATH = "/calibre-library/metadata.db"
 _BUSY_TIMEOUT_SECONDS = 5
@@ -106,15 +110,23 @@ def _read_entries(conn: sqlite3.Connection) -> list[LibraryEntry]:
 
     entries: list[LibraryEntry] = []
     for book_id, title in titles.items():
-        tok = set(tokens(title)) | set(tokens(series.get(book_id)))
+        # A trailing parenthetical is series or edition metadata by convention rather
+        # than part of the work name, and Calibre users often put it there instead of
+        # in the series field. It stays in the recall set below and is dropped from the
+        # title set, which is what decides whether the shelf holds a different book.
+        title_tok = set(tokens(_PARENTHETICAL.sub(" ", title)))
+        context_tok = set(tokens(series.get(book_id)))
         for name in authors.get(book_id, ()):
-            tok |= set(tokens(name))
+            context_tok |= set(tokens(name))
+        tok = title_tok | context_tok
         entries.append(
             LibraryEntry(
                 frozenset(tok),
                 frozenset(isbns.get(book_id, ())),
                 frozenset(asins.get(book_id, ())),
                 frozenset(external_ids.get(book_id, ())),
+                frozenset(title_tok),
+                frozenset(context_tok),
             )
         )
     return entries
