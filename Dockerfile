@@ -33,12 +33,6 @@ FROM ghcr.io/astral-sh/uv:0.12.16@sha256:adc68cd785ca65ea25c0611043b0a00b4ea3a22
 # Use python-slim as the base image
 FROM python:3.14.7-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6 AS base
 
-# Add build argument for version
-ARG BUILD_VERSION
-ENV BUILD_VERSION=${BUILD_VERSION}
-ARG RELEASE_VERSION
-ENV RELEASE_VERSION=${RELEASE_VERSION}
-
 # Set shell to bash with pipefail option
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
@@ -246,6 +240,15 @@ RUN mkdir -p \
     chmod +x /app/entrypoint.sh /app/tor.sh /app/wireguard.sh /app/genDebug.sh
 
 # Default command to run the application entrypoint script
+
+# Version stamp last. These carry the commit sha, so they change on every
+# build and everything below them rebuilds. Kept here, the dependency and
+# browser layers above stay valid and a pull only fetches what changed.
+ARG BUILD_VERSION
+ENV BUILD_VERSION=${BUILD_VERSION}
+ARG RELEASE_VERSION
+ENV RELEASE_VERSION=${RELEASE_VERSION}
+
 CMD ["/app/entrypoint.sh"]
 
 
@@ -273,5 +276,14 @@ RUN mkdir -p \
     chown -R 1000:1000 /config /books /home/shelfmark /tmp/shelfmark /var/log/shelfmark && \
     chmod -R a+rX /app && \
     chmod +x /app/entrypoint.sh /app/tor.sh /app/wireguard.sh /app/genDebug.sh
+
+
+# Version stamp last. These carry the commit sha, so they change on every
+# build and everything below them rebuilds. Kept here, the dependency and
+# browser layers above stay valid and a pull only fetches what changed.
+ARG BUILD_VERSION
+ENV BUILD_VERSION=${BUILD_VERSION}
+ARG RELEASE_VERSION
+ENV RELEASE_VERSION=${RELEASE_VERSION}
 
 CMD ["/app/entrypoint.sh"]
