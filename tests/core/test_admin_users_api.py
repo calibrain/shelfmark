@@ -1367,6 +1367,7 @@ class TestAdminSearchPreferences:
         assert data["keys"] == [
             "SEARCH_MODE",
             "BOOK_LANGUAGE",
+            "DEFAULT_CONTENT_TYPE",
             "SHOW_COMBINED_SELECTOR",
             "FORCE_COMBINED_SEARCH",
             "METADATA_PROVIDER",

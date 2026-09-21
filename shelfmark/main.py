@@ -1178,6 +1178,9 @@ def api_config() -> Response | tuple[Response, int]:
             "release_version": RELEASE_VERSION,
             "book_languages": _SUPPORTED_BOOK_LANGUAGE,
             "default_language": app_config.get("BOOK_LANGUAGE", ["en"], user_id=db_user_id),
+            "default_content_type": app_config.get(
+                "DEFAULT_CONTENT_TYPE", "ebook", user_id=db_user_id
+            ),
             "supported_formats": app_config.SUPPORTED_FORMATS,
             "supported_audiobook_formats": app_config.SUPPORTED_AUDIOBOOK_FORMATS,
             "search_mode": search_mode,

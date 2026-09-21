@@ -480,6 +480,20 @@ def search_mode_settings() -> list[SettingsField]:
             user_overridable=True,
         ),
         SelectField(
+            key="DEFAULT_CONTENT_TYPE",
+            label="Default Content Type",
+            description=(
+                "Which tab the search page opens on. Users can override this for their "
+                "own account, and a browser that has already picked a tab keeps its choice."
+            ),
+            options=[
+                {"value": "ebook", "label": "Ebook"},
+                {"value": "audiobook", "label": "Audiobook"},
+            ],
+            default="ebook",
+            user_overridable=True,
+        ),
+        SelectField(
             key="AA_DEFAULT_SORT",
             label="Default Sort Order",
             description="Default sort order for search results.",

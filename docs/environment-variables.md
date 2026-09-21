@@ -306,6 +306,7 @@ Audiobook formats to include in search results. ZIP/RAR archives are extracted a
 |----------|-------------|------|---------|
 | `SEARCH_MODE` | How you want to search for and download books. | string (choice) | `universal` |
 | `BOOK_LANGUAGE` | Default language filter for searches. Users can override this for their own account. | string (comma-separated) | `en` |
+| `DEFAULT_CONTENT_TYPE` | Which tab the search page opens on. Users can override this for their own account, and a browser that has already picked a tab keeps its choice. | string (choice) | `ebook` |
 | `AA_DEFAULT_SORT` | Default sort order for search results. | string (choice) | `relevance` |
 | `SHOW_RELEASE_SOURCE_LINKS` | Show clickable release-source links in release and details modals. Metadata provider links stay enabled. | boolean | `true` |
 | `SHOW_COMBINED_SELECTOR` | Show the option to search for and download both a book and audiobook together. | boolean | `true` |
@@ -337,6 +338,16 @@ Default language filter for searches. Users can override this for their own acco
 
 - **Type:** string (comma-separated)
 - **Default:** `en`
+
+#### `DEFAULT_CONTENT_TYPE`
+
+**Default Content Type**
+
+Which tab the search page opens on. Users can override this for their own account, and a browser that has already picked a tab keeps its choice.
+
+- **Type:** string (choice)
+- **Default:** `ebook`
+- **Options:** `ebook` (Ebook), `audiobook` (Audiobook)
 
 #### `AA_DEFAULT_SORT`
 

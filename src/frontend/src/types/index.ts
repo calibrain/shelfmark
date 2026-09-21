@@ -288,6 +288,7 @@ export interface AppConfig {
   release_version: string;
   book_languages: Language[];
   default_language: string[];
+  default_content_type: ContentType;
   supported_formats: string[];
   supported_audiobook_formats: string[]; // Audiobook formats (m4b, mp3)
   search_mode: SearchMode;
