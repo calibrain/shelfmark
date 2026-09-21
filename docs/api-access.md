@@ -1,7 +1,7 @@
 # API access with an API key
 
 Shelfmark's web interface is driven entirely by a JSON API under `/api/`. Set
-the `API_KEY` environment variable and scripts, dashboards and assistants can
+the `SHELFMARK_API_KEY` environment variable and scripts, dashboards and assistants can
 call the same API without a browser session. Browser logins keep working
 exactly as before: it is cookie **or** key.
 
@@ -9,7 +9,7 @@ exactly as before: it is cookie **or** key.
 
 ```yaml
 environment:
-  API_KEY: "a-long-random-secret"
+  SHELFMARK_API_KEY: "a-long-random-secret"
 ```
 
 Generate something long and random (for example `openssl rand -base64 32`).
@@ -28,8 +28,8 @@ Either header works, and both are checked, so the key can be sent in
 `X-Api-Key` behind a reverse proxy that sets its own `Authorization` header.
 
 ```bash
-curl -s -H "Authorization: Bearer $API_KEY" https://shelfmark.example.com/api/downloads/active
-curl -s -H "X-Api-Key: $API_KEY" https://shelfmark.example.com/api/downloads/active
+curl -s -H "Authorization: Bearer $SHELFMARK_API_KEY" https://shelfmark.example.com/api/downloads/active
+curl -s -H "X-Api-Key: $SHELFMARK_API_KEY" https://shelfmark.example.com/api/downloads/active
 ```
 
 A request that carries the key is authenticated by the key alone. Session
@@ -47,19 +47,19 @@ use `/api/status` to verify a key.
 Search, then look up releases, then queue one (the same calls the web UI makes):
 
 ```bash
-curl -s -H "Authorization: Bearer $API_KEY" \
+curl -s -H "Authorization: Bearer $SHELFMARK_API_KEY" \
   "https://shelfmark.example.com/api/metadata/search?query=dune%20frank%20herbert"
 # -> {"books":[{"provider":"hardcover","provider_id":"427363", ...}]}
 
-curl -s -H "Authorization: Bearer $API_KEY" \
+curl -s -H "Authorization: Bearer $SHELFMARK_API_KEY" \
   "https://shelfmark.example.com/api/releases?provider=hardcover&book_id=427363&content_type=ebook"
 # -> {"releases":[{"source":"direct_download","source_id":"...", ...}], ...}
 
-curl -s -X POST -H "Authorization: Bearer $API_KEY" -H "Content-Type: application/json" \
+curl -s -X POST -H "Authorization: Bearer $SHELFMARK_API_KEY" -H "Content-Type: application/json" \
   -d @release.json https://shelfmark.example.com/api/releases/download
 # release.json = one object from "releases" (source and source_id are required)
 
-curl -s -H "Authorization: Bearer $API_KEY" https://shelfmark.example.com/api/status
+curl -s -H "Authorization: Bearer $SHELFMARK_API_KEY" https://shelfmark.example.com/api/status
 ```
 
 ## Security notes

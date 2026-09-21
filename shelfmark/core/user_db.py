@@ -434,7 +434,7 @@ class UserDB:
             conn.close()
 
     def get_first_admin(self) -> dict[str, Any] | None:
-        """Return the lowest-id admin user, or None. Used as the identity for API_KEY requests."""
+        """Return the lowest-id admin user, or None. Used as the identity for SHELFMARK_API_KEY requests."""
         conn = self._connect()
         try:
             row = conn.execute(

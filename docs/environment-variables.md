@@ -47,7 +47,7 @@ These environment variables are used at startup before the settings system loads
 | `CWA_DB_PATH` | Path to the Calibre-Web database for authentication integration. | string (path) | `/auth/app.db` |
 | `HIDE_LOCAL_AUTH` | Hide the username/password login form when OIDC is active. | boolean | `false` |
 | `DISABLE_LOCAL_AUTH` | Disable username/password login and remove the local-admin prerequisite for OIDC. Implies HIDE_LOCAL_AUTH; with AUTH_METHOD=builtin, everyone is locked out until auth env vars are changed. | boolean | `false` |
-| `API_KEY` | Optional static API key. When set, requests carrying it as 'Authorization: Bearer <key>' (or X-Api-Key) are authenticated as an admin; browser sessions keep working. Unset = off. | string | `unset` |
+| `SHELFMARK_API_KEY` | Optional static API key. When set, requests carrying it as 'Authorization: Bearer <key>' (or X-Api-Key) are authenticated as an admin; browser sessions keep working. Unset = off. | string | `unset` |
 | `OIDC_AUTO_REDIRECT` | Automatically redirect to the OIDC provider instead of showing the login page. | boolean | `false` |
 | `DOCKERMODE` | Indicates the application is running inside a Docker container. | boolean | `false` |
 | `ONBOARDING` | Show the onboarding wizard on first run. Set to false to skip (useful for ephemeral storage). | boolean | `true` |
@@ -125,7 +125,7 @@ Disable username/password login and remove the local-admin prerequisite for OIDC
 - **Type:** boolean
 - **Default:** `false`
 
-#### `API_KEY`
+#### `SHELFMARK_API_KEY`
 
 Optional static API key. When set, requests carrying it as 'Authorization: Bearer <key>' (or X-Api-Key) are authenticated as an admin; browser sessions keep working. Unset = off.
 

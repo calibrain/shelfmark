@@ -185,7 +185,7 @@ def _generate_bootstrap_env_docs() -> list[str]:
             "default": "false",
         },
         {
-            "name": "API_KEY",
+            "name": "SHELFMARK_API_KEY",
             "description": "Optional static API key. When set, requests carrying it as 'Authorization: Bearer <key>' (or X-Api-Key) are authenticated as an admin; browser sessions keep working. Unset = off.",
             "type": "string",
             "default": "unset",

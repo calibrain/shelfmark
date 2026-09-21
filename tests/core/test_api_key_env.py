@@ -1,4 +1,4 @@
-"""Tests for the API_KEY environment-variable authentication."""
+"""Tests for the SHELFMARK_API_KEY environment-variable authentication."""
 
 from __future__ import annotations
 
@@ -47,16 +47,16 @@ class TestExtractCandidates:
 
 class TestMatches:
     def test_unset_never_matches(self, monkeypatch):
-        monkeypatch.setattr(api_key, "API_KEY", "")
+        monkeypatch.setattr(api_key, "SHELFMARK_API_KEY", "")
         assert api_key.matches_api_key("anything") is False
         assert api_key.matches_api_key("") is False
 
     def test_match(self, monkeypatch):
-        monkeypatch.setattr(api_key, "API_KEY", "s3cret")
+        monkeypatch.setattr(api_key, "SHELFMARK_API_KEY", "s3cret")
         assert api_key.matches_api_key("s3cret") is True
 
     def test_mismatch_and_prefix(self, monkeypatch):
-        monkeypatch.setattr(api_key, "API_KEY", "s3cret")
+        monkeypatch.setattr(api_key, "SHELFMARK_API_KEY", "s3cret")
         assert api_key.matches_api_key("s3cre") is False
         assert api_key.matches_api_key("s3cret ") is False
         assert api_key.matches_api_key("") is False
@@ -87,7 +87,7 @@ def main_module():
 @pytest.fixture
 def wired(main_module, user_db, monkeypatch):
     monkeypatch.setattr(main_module, "user_db", user_db)
-    monkeypatch.setattr(api_key, "API_KEY", "s3cret")
+    monkeypatch.setattr(api_key, "SHELFMARK_API_KEY", "s3cret")
     with patch.object(main_module, "get_auth_mode", return_value="builtin"):
         yield main_module
 
@@ -152,7 +152,7 @@ class TestKeyedRequests:
 
     def test_match_no_user_db(self, main_module, monkeypatch):
         monkeypatch.setattr(main_module, "user_db", None)
-        monkeypatch.setattr(api_key, "API_KEY", "s3cret")
+        monkeypatch.setattr(api_key, "SHELFMARK_API_KEY", "s3cret")
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             assert (
                 main_module.app.test_client()
@@ -289,7 +289,7 @@ class TestMismatchFallsThrough:
 
     def test_unset_key_is_noop(self, main_module, user_db, monkeypatch):
         monkeypatch.setattr(main_module, "user_db", user_db)
-        monkeypatch.setattr(api_key, "API_KEY", "")
+        monkeypatch.setattr(api_key, "SHELFMARK_API_KEY", "")
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             response = main_module.app.test_client().get(
                 "/api/downloads/active", headers=_bearer("s3cret")
@@ -316,7 +316,7 @@ class TestScopeAndModes:
 
     def test_none_mode_noop(self, main_module, user_db, monkeypatch):
         monkeypatch.setattr(main_module, "user_db", user_db)
-        monkeypatch.setattr(api_key, "API_KEY", "s3cret")
+        monkeypatch.setattr(api_key, "SHELFMARK_API_KEY", "s3cret")
         with patch.object(main_module, "get_auth_mode", return_value="none"):
             assert (
                 main_module.app.test_client()
@@ -329,7 +329,7 @@ class TestScopeAndModes:
         self, main_module, user_db, monkeypatch
     ):
         monkeypatch.setattr(main_module, "user_db", user_db)
-        monkeypatch.setattr(api_key, "API_KEY", "s3cret")
+        monkeypatch.setattr(api_key, "SHELFMARK_API_KEY", "s3cret")
         user_db.create_user(username="root", role="admin", auth_source="proxy")
         with patch.object(main_module, "get_auth_mode", return_value="proxy"):
             assert (

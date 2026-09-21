@@ -1,6 +1,6 @@
-"""Static API-key authentication backed by the API_KEY environment variable.
+"""Static API-key authentication backed by the SHELFMARK_API_KEY environment variable.
 
-When ``API_KEY`` is set, a request carrying that value as a Bearer token or in
+When ``SHELFMARK_API_KEY`` is set, a request carrying that value as a Bearer token or in
 ``X-Api-Key`` is treated as an admin for that request only. Both headers are
 checked, since a reverse proxy in front of Shelfmark may set its own
 ``Authorization`` header, which would otherwise shadow an operator-supplied
@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import hmac
 
-from shelfmark.config.env import API_KEY
+from shelfmark.config.env import SHELFMARK_API_KEY
 
 
 def extract_api_key_candidates(
@@ -34,6 +34,6 @@ def extract_api_key_candidates(
 
 def matches_api_key(candidate: str) -> bool:
     """Constant-time comparison against the configured key. False when unset."""
-    if not API_KEY or not candidate:
+    if not SHELFMARK_API_KEY or not candidate:
         return False
-    return hmac.compare_digest(candidate.encode("utf-8"), API_KEY.encode("utf-8"))
+    return hmac.compare_digest(candidate.encode("utf-8"), SHELFMARK_API_KEY.encode("utf-8"))

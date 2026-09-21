@@ -42,7 +42,7 @@ from shelfmark.config.settings import (
     _SUPPORTED_BOOK_LANGUAGE,
     migrate_audiobook_format_settings,
 )
-from shelfmark.core import api_key as api_key_module  # module access lets tests monkeypatch API_KEY
+from shelfmark.core import api_key as api_key_module  # module access lets tests monkeypatch the key
 from shelfmark.core import search_deadline
 from shelfmark.core.activity_view_state_service import ActivityViewStateService
 from shelfmark.core.auth_modes import (
@@ -677,7 +677,7 @@ _API_KEY_EXEMPT_PATHS = frozenset({"/api/health"})
 
 @app.before_request
 def api_key_auth_middleware() -> Response | tuple[Response, int] | None:
-    """Authenticate requests that present the configured API_KEY.
+    """Authenticate requests that present the configured SHELFMARK_API_KEY.
 
     Both Authorization: Bearer and X-Api-Key are checked, and either
     matching authenticates the request as an admin for this request only:
@@ -691,7 +691,7 @@ def api_key_auth_middleware() -> Response | tuple[Response, int] | None:
         return None
     if request.path in _API_KEY_EXEMPT_PATHS or request.path.startswith(_API_KEY_EXEMPT_PREFIXES):
         return None
-    if not api_key_module.API_KEY:
+    if not api_key_module.SHELFMARK_API_KEY:
         return None
 
     candidates = api_key_module.extract_api_key_candidates(
@@ -739,7 +739,7 @@ def proxy_auth_middleware() -> Response | tuple[Response, int] | None:
     if auth_mode != "proxy":
         return None
 
-    # A request already authenticated by API_KEY needs no proxy headers.
+    # A request already authenticated by SHELFMARK_API_KEY needs no proxy headers.
     if g.get("api_key_auth"):
         return None
 
