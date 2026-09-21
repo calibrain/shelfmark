@@ -127,26 +127,13 @@ RUN rm -rf \
         /usr/local/lib/python*/site-packages/pip \
         /usr/local/lib/python*/site-packages/pip-*.dist-info
 
-# Copy application code *after* dependencies are installed
-COPY . .
-
-# Copy built frontend from frontend-builder stage
-COPY --from=frontend-builder /frontend/dist /app/frontend-dist
-
-# Final setup: create image-owned runtime paths for the fixed non-root user.
-# Root/PUID mode still re-homes ownership at startup when needed.
-RUN mkdir -p \
-        /config \
-        /books \
-        /var/log/shelfmark \
-        /tmp/shelfmark/seleniumbase/downloaded_files \
-        /tmp/shelfmark/seleniumbase/archived_files && \
-    rm -rf /app/downloaded_files /app/archived_files && \
-    ln -s /tmp/shelfmark/seleniumbase/downloaded_files /app/downloaded_files && \
-    ln -s /tmp/shelfmark/seleniumbase/archived_files /app/archived_files && \
-    chown -R 1000:1000 /config /books /home/shelfmark /tmp/shelfmark /var/log/shelfmark && \
-    chmod -R a+rX /app && \
-    chmod +x /app/entrypoint.sh /app/tor.sh /app/wireguard.sh /app/genDebug.sh
+# The application code is deliberately NOT copied here. `base` is shared by the
+# final stages, so a COPY of the source at this point invalidates every layer
+# built on top of it -- the Chromium install, the browser dependency sync and
+# the SeleniumBase driver download -- on any source change. Each stage copies
+# the source as its last step instead, so a code-only rebuild rewrites one small
+# layer and every expensive layer is reused. `[tool.uv] package = false` is what
+# makes this safe: no `uv sync` needs the project source.
 
 # Expose the application port
 EXPOSE ${FLASK_PORT}
@@ -237,11 +224,54 @@ RUN SELENIUMBASE_DRIVERS_DIR=$(/app/.venv/bin/python -c "import pathlib, seleniu
 # Grant read/execute permissions to others
 RUN chmod -R o+rx /usr/bin/chromium
 
+# --- Application code: last, so every expensive layer above stays cached ---
+
+COPY . .
+
+COPY --from=frontend-builder /frontend/dist /app/frontend-dist
+
+# Image-owned runtime paths for the fixed non-root user. Root/PUID mode still
+# re-homes ownership at startup when needed.
+RUN mkdir -p \
+        /config \
+        /books \
+        /var/log/shelfmark \
+        /tmp/shelfmark/seleniumbase/downloaded_files \
+        /tmp/shelfmark/seleniumbase/archived_files && \
+    rm -rf /app/downloaded_files /app/archived_files && \
+    ln -s /tmp/shelfmark/seleniumbase/downloaded_files /app/downloaded_files && \
+    ln -s /tmp/shelfmark/seleniumbase/archived_files /app/archived_files && \
+    chown -R 1000:1000 /config /books /home/shelfmark /tmp/shelfmark /var/log/shelfmark && \
+    chmod -R a+rX /app && \
+    chmod +x /app/entrypoint.sh /app/tor.sh /app/wireguard.sh /app/genDebug.sh
+
 # Default command to run the application entrypoint script
 CMD ["/app/entrypoint.sh"]
+
 
 FROM base AS shelfmark-lite
 
 ENV USING_EXTERNAL_BYPASSER=true
+
+# --- Application code: last, so every expensive layer above stays cached ---
+
+COPY . .
+
+COPY --from=frontend-builder /frontend/dist /app/frontend-dist
+
+# Image-owned runtime paths for the fixed non-root user. Root/PUID mode still
+# re-homes ownership at startup when needed.
+RUN mkdir -p \
+        /config \
+        /books \
+        /var/log/shelfmark \
+        /tmp/shelfmark/seleniumbase/downloaded_files \
+        /tmp/shelfmark/seleniumbase/archived_files && \
+    rm -rf /app/downloaded_files /app/archived_files && \
+    ln -s /tmp/shelfmark/seleniumbase/downloaded_files /app/downloaded_files && \
+    ln -s /tmp/shelfmark/seleniumbase/archived_files /app/archived_files && \
+    chown -R 1000:1000 /config /books /home/shelfmark /tmp/shelfmark /var/log/shelfmark && \
+    chmod -R a+rX /app && \
+    chmod +x /app/entrypoint.sh /app/tor.sh /app/wireguard.sh /app/genDebug.sh
 
 CMD ["/app/entrypoint.sh"]
