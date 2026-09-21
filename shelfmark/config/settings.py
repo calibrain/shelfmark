@@ -389,6 +389,13 @@ def _clear_metadata_cache(current_values: dict) -> dict:
         }
 
 
+def _test_calibre_library(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Action-button callback: read the Calibre database and count the books."""
+    from shelfmark.core import library_index
+
+    return library_index.test_connection("calibre", current_values)
+
+
 @register_settings("general", "General", icon="settings", order=0)
 def general_settings() -> list[SettingsField]:
     """Core application settings."""
@@ -411,6 +418,31 @@ def general_settings() -> list[SettingsField]:
             label="Audiobook Library URL",
             description="Adds a separate navigation button for your audiobook library (Audiobookshelf, Plex, etc). When both URLs are set, icons are shown instead of text.",
             placeholder="http://audiobookshelf:8080",
+        ),
+        CheckboxField(
+            key="LIBRARY_CHECK_CALIBRE_ENABLED",
+            label="Mark books already in your Calibre library",
+            description=(
+                "Read the Calibre metadata.db and mark search results you already own, so you "
+                "do not download a second copy. Read only, nothing is written to the library."
+            ),
+            default=False,
+        ),
+        TextField(
+            key="CALIBRE_LIBRARY_DB_PATH",
+            label="Calibre metadata.db path",
+            description=(
+                "Path to metadata.db as seen from inside the Shelfmark container. Mount the "
+                "Calibre library folder read-only, e.g. /path/to/calibre-library:/calibre-library:ro."
+            ),
+            default="/calibre-library/metadata.db",
+            placeholder="/calibre-library/metadata.db",
+        ),
+        ActionButton(
+            key="test_calibre_library",
+            label="Test Calibre library",
+            description="Check that Shelfmark can read the Calibre database and count the books.",
+            callback=_test_calibre_library,
         ),
         HeadingField(
             key="search_defaults_heading",

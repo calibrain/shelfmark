@@ -2698,6 +2698,8 @@ def api_metadata_search() -> Response | tuple[Response, int]:
             if book_dict.get("cover_url"):
                 cache_id = f"{book_dict['provider']}_{book_dict['provider_id']}"
                 book_dict["cover_url"] = transform_cover_url(book_dict["cover_url"], cache_id)
+        for book, book_dict in zip(search_result.books, books_data, strict=True):
+            _attach_library_ownership(book, book_dict)
 
         response_data = {
             "books": books_data,
@@ -2758,6 +2760,15 @@ def api_metadata_field_options() -> Response:
         return jsonify({"options": []})
 
 
+def _attach_library_ownership(book: Any, book_dict: dict[str, Any]) -> None:
+    """Add per-format ownership under ``library`` when a library check is enabled."""
+    from shelfmark.core import library_index
+
+    owned = library_index.ownership(book)
+    if owned is not None:
+        book_dict["library"] = owned
+
+
 def _resolve_metadata_provider(provider_name: str) -> MetadataProvider:
     """Validate, instantiate and return a ready metadata provider.
 
@@ -2806,6 +2817,7 @@ def api_metadata_book(provider: str, book_id: str) -> Response | tuple[Response,
             return jsonify({"error": "Book not found"}), 404
 
         book_dict = asdict(book)
+        _attach_library_ownership(book, book_dict)
 
         # Transform cover_url to local proxy URL when caching is enabled
         from shelfmark.core.utils import transform_cover_url
@@ -3112,6 +3124,7 @@ def api_releases() -> Response | tuple[Response, int]:
 
         # Convert book to dict and transform cover_url
         book_dict = asdict(book)
+        _attach_library_ownership(book, book_dict)
         from shelfmark.core.utils import transform_cover_url
 
         if book_dict.get("cover_url"):
