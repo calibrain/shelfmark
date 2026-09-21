@@ -60,6 +60,31 @@ def test_ffmpeg_errors_are_captured_to_a_file_beside_the_recording(monkeypatch, 
     assert error_log.name.startswith("screen_recording_")
 
 
+def test_capture_is_not_pinned_to_the_fingerprint_size(monkeypatch, tmp_path):
+    """Issue #1364: every recording died on "Capture area ... outside the screen size".
+
+    The capture size was the fingerprint size plus margin, but the Xvfb is not built at
+    that size (SeleniumBase falls back to a fixed 1440x1880 screen when xauth is missing),
+    so any fingerprint wider than 1340px asked for more than the screen had. Left unset,
+    x11grab records the whole screen, whatever it turned out to be.
+    """
+    monkeypatch.setattr(ib, "RECORDING_DIR", tmp_path)
+    captured: dict[str, object] = {}
+
+    def fake_popen(cmd, **kwargs):
+        captured["cmd"] = cmd
+        return _Proc(None)
+
+    monkeypatch.setattr(ib.subprocess, "Popen", fake_popen)
+
+    ib._start_ffmpeg_recording(display=":99")
+
+    cmd = captured["cmd"]
+    assert "-video_size" not in cmd
+    assert cmd[cmd.index("-f") + 1] == "x11grab"
+    assert cmd[cmd.index("-i") + 1] == ":99"
+
+
 def test_an_early_exit_is_reported_with_ffmpegs_own_reason(monkeypatch, tmp_path, caplog):
     reason = "[x11grab @ 0x1] Cannot open display :99, error 1."
     error_log = tmp_path / "screen_recording_x.ffmpeg.log"

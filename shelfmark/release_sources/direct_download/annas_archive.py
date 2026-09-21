@@ -131,17 +131,32 @@ def _find_first_anchor_with_text(
     text: str,
     *,
     contains: bool = False,
+    href_contains: str | None = None,
 ) -> Tag | None:
-    """Find the first anchor whose text matches the requested value."""
+    """Find the first anchor whose text matches the requested value.
+
+    With ``href_contains``, anchors whose href does not include it are skipped.
+    """
     expected = text.lower()
     for anchor in container.find_all("a", href=True):
         anchor_text = anchor.get_text(strip=True)
         if not anchor_text:
             continue
+        if href_contains and href_contains.lower() not in (get_attr(anchor, "href") or "").lower():
+            continue
         candidate = anchor_text.lower()
         if candidate == expected or (contains and expected in candidate):
             return anchor
     return None
+
+
+_MD5_PAGE_PATH = re.compile(r"/md5/([0-9a-f]{32})(?:/|$)", re.IGNORECASE)
+
+
+def _md5_from_page_url(url: str) -> str | None:
+    """Return the md5 an ``/md5/<md5>`` page URL is for, or None for any other URL."""
+    match = _MD5_PAGE_PATH.search(urlparse(url).path)
+    return match.group(1).lower() if match else None
 
 
 def _find_text_node(container: BeautifulSoup | Tag, needle: str) -> NavigableString | None:
@@ -415,17 +430,6 @@ def _get_source_priority() -> list[SourcePriorityEntry]:
             source["enabled"] = False
 
     return fast_sources + slow_sources
-
-
-def _is_source_enabled(source_id: str) -> bool:
-    """Check if a source is enabled in the priority config.
-
-    Returns False for unknown sources.
-    """
-    for item in _get_source_priority():
-        if item["id"] == source_id:
-            return item.get("enabled", True)
-    return False
 
 
 def get_unavailable_reason() -> str | None:
@@ -1314,17 +1318,6 @@ def _get_urls_for_source(
             urls.append(url)
         return urls
 
-    # Welib - fetch page and parse for slow_download links
-    if source_id == "welib":
-        if status_callback:
-            status_callback("resolving", "Fetching welib sources")
-        return _get_download_urls_from_welib(
-            book_info.id,
-            selector=selector,
-            cancel_flag=cancel_flag,
-            status_callback=status_callback,
-        )
-
     # AA page sources - fetch AA page if not already done
     if source_id in _AA_PAGE_SOURCES:
         if not urls_by_source:
@@ -1402,53 +1395,6 @@ def _try_download_url(
         return None
     else:
         return download_url
-
-
-def _get_download_urls_from_welib(
-    book_id: str,
-    selector: network.AAMirrorSelector | None = None,
-    cancel_flag: Event | None = None,
-    status_callback: Callable[[str, str | None], None] | None = None,
-) -> list[str]:
-    """Get download URLs from welib.org (bypasser required)."""
-    from shelfmark.core import mirrors
-
-    if not _is_source_enabled("welib"):
-        return []
-    template = mirrors.get_welib_url_template()
-    if not template:
-        return []
-    url = template.format(md5=book_id)
-    logger.info("Fetching welib download URLs for %s", book_id)
-    try:
-        html = downloader.html_get_page(
-            url,
-            use_bypasser=True,
-            selector=selector or network.AAMirrorSelector(),
-            cancel_flag=cancel_flag,
-            status_callback=status_callback,
-        )
-    except (
-        SearchUnavailableError,
-        requests.exceptions.RequestException,
-        RuntimeError,
-        ValueError,
-        TypeError,
-        AttributeError,
-    ) as exc:
-        logger.error_trace(f"Welib fetch failed for {book_id}: {exc}")
-        return []
-    if not html:
-        logger.warning("Welib page empty for %s", book_id)
-        return []
-
-    soup = BeautifulSoup(html_response_text(html), "html.parser")
-    links = [
-        downloader.get_absolute_url(url, href)
-        for a in soup.find_all("a", href=True)
-        if (href := get_attr(a, "href")) and "/slow_download/" in href
-    ]
-    return list(dict.fromkeys(links))  # Dedupe while preserving order
 
 
 def _extract_libgen_download_url(link: str, cancel_flag: Event | None = None) -> str:
@@ -1680,14 +1626,19 @@ def _get_download_url(
         )
 
     else:
-        get_btn = _find_first_anchor_with_text(soup, "GET") or _find_first_anchor_with_text(
-            soup, "Download"
-        )
+        # Welib answers /md5/<md5> with a search for that md5. When it does not have the
+        # file, the first "Download" on that page belongs to whichever book ranked first,
+        # so a link is only taken when it names the md5 we asked for (#1364).
+        md5 = _md5_from_page_url(link)
+        get_btn = _find_first_anchor_with_text(
+            soup, "GET", href_contains=md5
+        ) or _find_first_anchor_with_text(soup, "Download", href_contains=md5)
         if get_btn:
             url = get_attr(get_btn, "href") or ""
+        elif md5:
+            logger.info("No download link for md5 %s on %s", md5, link)
         else:
             logger.warning("Unknown source type, couldn't find download link: %s", link)
-            url = ""
 
     return downloader.get_absolute_url(link, url)
 

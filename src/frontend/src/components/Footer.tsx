@@ -1,3 +1,5 @@
+import { shortBuildId } from '../utils/buildVersion';
+
 interface FooterProps {
   buildVersion?: string;
   releaseVersion?: string;
@@ -8,11 +10,7 @@ export const Footer = ({ buildVersion, releaseVersion, debug }: FooterProps) => 
   // Determine version display - show "dev" if no version is set
   const versionDisplay = releaseVersion && releaseVersion !== 'N/A' ? releaseVersion : 'dev';
 
-  // Truncate long build versions (e.g., git hashes) to 7 chars
-  let truncatedBuild: string | null = null;
-  if (buildVersion && buildVersion !== 'N/A') {
-    truncatedBuild = buildVersion.length > 7 ? buildVersion.slice(0, 7) : buildVersion;
-  }
+  const buildId = shortBuildId(buildVersion);
 
   return (
     <footer
@@ -35,7 +33,7 @@ export const Footer = ({ buildVersion, releaseVersion, debug }: FooterProps) => 
           title={buildVersion && buildVersion !== 'N/A' ? `Build: ${buildVersion}` : undefined}
         >
           {versionDisplay}
-          {truncatedBuild && ` (${truncatedBuild})`}
+          {buildId && ` (${buildId})`}
         </span>
         {debug && (
           <span

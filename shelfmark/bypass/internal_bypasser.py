@@ -1491,17 +1491,16 @@ def _start_ffmpeg_recording(display: str) -> None:
     timestamp = datetime.now(UTC).strftime("%y%m%d-%H%M%S")
     output_file = RECORDING_DIR / f"screen_recording_{timestamp}.mp4"
 
-    screen_width, screen_height = get_screen_size()
-    display_width = screen_width + 100
-    display_height = screen_height + 150
-
+    # No -video_size: x11grab then captures the whole screen, whatever size it is. The
+    # size we ask SeleniumBase for (xvfb_metrics) is not the size we get. It builds that
+    # display with use_xauth=True, the image ships no xauth binary, so it falls back to a
+    # fixed 1440x1880 Xvfb. Asking ffmpeg for the fingerprint size plus margin then asked
+    # for an area larger than the screen, and every recording died at startup (#1364).
     ffmpeg_cmd = [
         "ffmpeg",
         "-y",
         "-f",
         "x11grab",
-        "-video_size",
-        f"{display_width}x{display_height}",
         "-i",
         display,
         "-c:v",
