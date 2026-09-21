@@ -26,20 +26,18 @@ export const useContentTypePreferences = (
   combinedMode: boolean;
   setCombinedMode: Dispatch<SetStateAction<boolean>>;
 } => {
-  // Whether this browser had already picked a tab, captured before the effect below
-  // writes one, so a server default is not mistaken for the user's own choice.
-  const [hadStoredPreference] = useState(() => readStoredPreference() !== null);
   // Both values live in one state object so each setter can derive the other
   // from a pure updater instead of mirroring it into a ref during render.
   const [preference, setPreference] = useState<ContentTypePreference>(() =>
-    resolveContentTypePreference(readStoredPreference(), serverDefault),
+    resolveContentTypePreference(readStoredPreference(), null),
   );
-  const { contentType, combinedMode } = preference;
+  const { contentType, combinedMode, source } = preference;
 
   const setContentType: Dispatch<SetStateAction<ContentType>> = useCallback((value) => {
     setPreference((current) => ({
       ...current,
       contentType: typeof value === 'function' ? value(current.contentType) : value,
+      source: 'chosen',
     }));
   }, []);
 
@@ -47,25 +45,34 @@ export const useContentTypePreferences = (
     setPreference((current) => ({
       ...current,
       combinedMode: typeof value === 'function' ? value(current.combinedMode) : value,
+      source: 'chosen',
     }));
   }, []);
 
-  // The config arrives after the first render, so adopt the server default then,
-  // but only for a browser that had nothing stored when the page loaded.
+  // The config arrives after the first render, so the configured default is applied here.
+  // It only lands while nothing has chosen a tab, which leaves a deep-linked content type
+  // and a stored choice both untouched, and it does not count as a choice itself.
   useDependencyEffect(() => {
-    if (hadStoredPreference || !serverDefault) {
+    if (!serverDefault) {
       return;
     }
-    setPreference(resolveContentTypePreference(null, serverDefault));
-  }, [serverDefault, hadStoredPreference]);
+    setPreference((current) =>
+      current.source === 'unset' ? resolveContentTypePreference(null, serverDefault) : current,
+    );
+  }, [serverDefault]);
 
+  // Persist only what the user actually chose. Writing on every load would store a default
+  // nobody picked, which is what stopped the configured default from ever being seen.
   useDependencyEffect(() => {
+    if (source !== 'chosen') {
+      return;
+    }
     try {
       localStorage.setItem(CONTENT_TYPE_STORAGE_KEY, combinedMode ? 'combined' : contentType);
     } catch {
       // localStorage may be unavailable in private browsing
     }
-  }, [contentType, combinedMode]);
+  }, [contentType, combinedMode, source]);
 
   return {
     contentType,
