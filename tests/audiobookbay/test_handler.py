@@ -6,10 +6,16 @@ from pathlib import Path
 from threading import Event
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from shelfmark.core.models import DownloadTask
 from shelfmark.download.clients import (
     DownloadState,
     DownloadStatus,
+)
+from shelfmark.download.orchestrator import (
+    _restore_task_from_retry_payload,
+    serialize_task_for_retry,
 )
 from shelfmark.release_sources.audiobookbay.handler import AudiobookBayHandler
 
@@ -242,6 +248,105 @@ class TestAudiobookBayHandlerDownload:
 
         assert result == "/path/to/book.m4b"
         mock_client.add_download.assert_not_called()
+
+    @pytest.mark.parametrize("restarted", [False, True], ids=["in_memory", "after_restart"])
+    @patch("shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link")
+    @patch("shelfmark.release_sources.audiobookbay.handler.get_client")
+    def test_retry_imports_finished_torrent_while_site_is_down(
+        self, mock_get_client, mock_extract_magnet, restarted
+    ):
+        """A retry reuses the first attempt's magnet instead of re-scraping AudiobookBay (#1388)."""
+        magnet = "magnet:?xt=urn:btih:abc123"
+        mock_extract_magnet.return_value = magnet
+
+        mock_client = MagicMock()
+        mock_client.name = "qbittorrent"
+        mock_client.find_existing.return_value = None
+        mock_client.add_download.return_value = "abc123"
+        mock_get_client.return_value = mock_client
+
+        handler = AudiobookBayHandler()
+        task = DownloadTask(
+            task_id="35f56a3e5734bfa69c3169ee8e605a60",
+            source="audiobookbay",
+            title="Test Book",
+            content_type="audiobook",
+            source_url="https://audiobookbay.lu/abss/test-book/",
+        )
+        recorder = ProgressRecorder()
+
+        # First attempt hands the magnet to the client, then gives up (e.g. stall timeout).
+        with patch.object(AudiobookBayHandler, "_poll_and_complete", return_value=None):
+            handler.download(
+                task=task,
+                cancel_flag=Event(),
+                progress_callback=recorder.progress_callback,
+                status_callback=recorder.status_callback,
+            )
+        mock_client.add_download.assert_called_once()
+
+        if restarted:
+            task = _restore_task_from_retry_payload(serialize_task_for_retry(task))
+            assert task is not None
+
+        # AudiobookBay goes down while the torrent finishes in the client.
+        mock_extract_magnet.reset_mock()
+        mock_extract_magnet.return_value = None
+        mock_client.find_existing.return_value = (
+            "abc123",
+            DownloadStatus(
+                progress=100,
+                state=DownloadState.COMPLETE,
+                message="Complete",
+                complete=True,
+                file_path="/path/to/book.m4b",
+            ),
+        )
+
+        with patch.object(
+            AudiobookBayHandler,
+            "_wait_for_completed_path",
+            return_value=(Path("/path/to/book.m4b"), None),
+        ):
+            result = handler.download(
+                task=task,
+                cancel_flag=Event(),
+                progress_callback=recorder.progress_callback,
+                status_callback=recorder.status_callback,
+            )
+
+        assert result == "/path/to/book.m4b"
+        mock_extract_magnet.assert_not_called()
+        assert mock_client.find_existing.call_args.args[0] == magnet
+        mock_client.add_download.assert_called_once()
+
+    @patch("shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link")
+    @patch("shelfmark.release_sources.audiobookbay.handler.get_client")
+    def test_failed_scrape_caches_no_magnet(self, mock_get_client, mock_extract_magnet):
+        """Only a magnet that was actually resolved is reused, so a retry scrapes again."""
+        mock_extract_magnet.return_value = None
+
+        handler = AudiobookBayHandler()
+        task = DownloadTask(
+            task_id="35f56a3e5734bfa69c3169ee8e605a60",
+            source="audiobookbay",
+            title="Test Book",
+            content_type="audiobook",
+            source_url="https://audiobookbay.lu/abss/test-book/",
+        )
+        recorder = ProgressRecorder()
+
+        for _ in range(2):
+            handler.download(
+                task=task,
+                cancel_flag=Event(),
+                progress_callback=recorder.progress_callback,
+                status_callback=recorder.status_callback,
+            )
+
+        assert mock_extract_magnet.call_count == 2
+        assert task.retry_source_context == {}
+        mock_get_client.assert_not_called()
 
     @patch("shelfmark.release_sources.audiobookbay.handler.scraper.extract_magnet_link")
     @patch("shelfmark.release_sources.audiobookbay.handler.get_client")

@@ -27,6 +27,10 @@ if TYPE_CHECKING:
 logger = setup_logger(__name__)
 DEFAULT_ABB_HOSTNAME = "audiobookbay.lu"
 ALLOWED_DETAIL_URL_SCHEMES = {"https"}
+# retry_source_context key for the magnet resolved on an earlier attempt. It lives in the
+# handler-owned context rather than retry_download_url, which queue time fills from the
+# client-supplied release data.
+MAGNET_LINK_CONTEXT_KEY = "magnet_link"
 
 
 def _resolve_configured_hostname() -> str:
@@ -96,6 +100,18 @@ class AudiobookBayHandler(ExternalClientHandler):
         status_callback: Callable[[str, str | None], None],
     ) -> DownloadRequest | None:
         """Resolve ABB detail page into a magnet-link download request."""
+        # A retry must not depend on AudiobookBay being reachable: the torrent may already
+        # be finished in the client, and the magnet cannot go stale (#1388).
+        cached_magnet = task.retry_source_context.get(MAGNET_LINK_CONTEXT_KEY)
+        if isinstance(cached_magnet, str) and cached_magnet:
+            logger.info("Reusing magnet link from an earlier attempt for task %s", task.task_id)
+            return DownloadRequest(
+                url=cached_magnet,
+                protocol="torrent",
+                release_name=task.title or "Unknown",
+                expected_hash=None,
+            )
+
         detail_url = self._resolve_detail_url(task)
         if not detail_url:
             status_callback("error", "Missing AudiobookBay details URL")
@@ -119,6 +135,7 @@ class AudiobookBayHandler(ExternalClientHandler):
             return None
 
         logger.info("Extracted magnet link for task %s", task.task_id)
+        task.retry_source_context[MAGNET_LINK_CONTEXT_KEY] = magnet_link
 
         return DownloadRequest(
             url=magnet_link,
