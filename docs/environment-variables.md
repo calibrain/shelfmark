@@ -2384,7 +2384,7 @@ Override destination based on content type metadata.
 | `EXT_BYPASSER_PATH` | API path for the external bypasser. | string | `/v1` |
 | `EXT_BYPASSER_TIMEOUT` | Timeout for external bypasser requests in milliseconds. | number | `60000` |
 | `BYPASS_PAGE_SOURCE_TIMEOUT` | How long to wait for a solved page to produce its content before the bypass is retried. Raise it if solves succeed but searches still fail. | number | `20` |
-| `BYPASS_BROWSER_IDLE_TIMEOUT` | How long the bypass helper process may sit unused before it is shut down. Higher keeps more searches fast, lower frees memory sooner. | number | `180` |
+| `BYPASS_BROWSER_IDLE_TIMEOUT` | How long the bypass helper process may sit unused before it is shut down. Higher keeps more searches fast, lower frees memory sooner. Set to 0 to keep the helper alive until Shelfmark stops. | number | `180` |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -2454,7 +2454,7 @@ How long to wait for a solved page to produce its content before the bypass is r
 
 **Bypasser Idle Timeout (seconds)**
 
-How long the bypass helper process may sit unused before it is shut down. Higher keeps more searches fast, lower frees memory sooner.
+How long the bypass helper process may sit unused before it is shut down. Higher keeps more searches fast, lower frees memory sooner. Set to 0 to keep the helper alive until Shelfmark stops.
 
 - **Type:** number
 - **Default:** `180`

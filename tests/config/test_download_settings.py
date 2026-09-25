@@ -1,6 +1,19 @@
 from unittest.mock import patch
 
 
+def test_bypass_helper_idle_timeout_can_disable_reaping() -> None:
+    from shelfmark.config.settings import cloudflare_bypass_settings
+
+    idle_timeout = next(
+        field
+        for field in cloudflare_bypass_settings()
+        if getattr(field, "key", None) == "BYPASS_BROWSER_IDLE_TIMEOUT"
+    )
+
+    assert idle_timeout.min_value == 0
+    assert "Set to 0" in idle_timeout.description
+
+
 def _base_email_mode_values() -> dict[str, object]:
     return {
         "BOOKS_OUTPUT_MODE": "email",

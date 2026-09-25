@@ -820,17 +820,23 @@ def migrate_download_to_browser_settings() -> None:
         logger.exception("Failed to migrate download-to-browser settings")
 
 
-def get_setting_value(field: FieldBase, tab_name: str) -> object:
+def get_setting_value(
+    field: FieldBase,
+    tab_name: str,
+    *,
+    config_values: dict[str, Any] | None = None,
+) -> object:
     """Resolve the effective value for a settings field."""
     # 1. Check environment variable (if supported for this field)
     has_env_value, parsed_env_value = _get_env_value_for_field(field)
     if has_env_value:
         return parsed_env_value
 
-    # 2. Check config file
-    config = load_config_file(tab_name)
-    if field.key in config:
-        return config[field.key]
+    # 2. Check config file. Bulk callers can supply one tab snapshot so loading all
+    # registered fields does not reopen the same JSON file for every field.
+    resolved_config = load_config_file(tab_name) if config_values is None else config_values
+    if field.key in resolved_config:
+        return resolved_config[field.key]
 
     # 3. Return default
     return field.default

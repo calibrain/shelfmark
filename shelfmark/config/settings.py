@@ -1719,10 +1719,11 @@ def cloudflare_bypass_settings() -> list[SettingsField]:
             label="Bypasser Idle Timeout (seconds)",
             description=(
                 "How long the bypass helper process may sit unused before it is shut down. "
-                "Higher keeps more searches fast, lower frees memory sooner."
+                "Higher keeps more searches fast, lower frees memory sooner. Set to 0 to "
+                "keep the helper alive until Shelfmark stops."
             ),
             default=180,
-            min_value=30,
+            min_value=0,
             max_value=3600,
             requires_restart=True,
             show_when={"field": "USING_EXTERNAL_BYPASSER", "value": False},

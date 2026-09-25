@@ -114,19 +114,29 @@ class Config:
 
         registry = _get_registry()
 
-        # On first load, sync ENV values to config files
-        # This ensures ENV values persist even if ENV vars are later removed
+        # On first load, sync ENV values to config files. The internal bypass helper
+        # inherits the parent's environment and reads ENV values directly, so repeating
+        # this persistence from every cold helper only adds writes to the bind-mounted
+        # config directory before browser work can begin.
         if not hasattr(self, "_env_synced"):
-            registry.sync_env_to_config()
+            if os.environ.get("SHELFMARK_INTERNAL_BYPASSER_CHILD") != "1":
+                registry.sync_env_to_config()
             self._env_synced = True
 
         # Build field map from all registered tabs
         self._field_map.clear()
         self._cache.clear()
 
+        config_by_tab: dict[str, dict[str, Any]] = {}
         for key, (field, tab_name) in registry.get_settings_field_map().items():
             self._field_map[key] = (field, tab_name)
-            self._cache[key] = registry.get_setting_value(field, tab_name)
+            if tab_name not in config_by_tab:
+                config_by_tab[tab_name] = registry.load_config_file(tab_name)
+            self._cache[key] = registry.get_setting_value(
+                field,
+                tab_name,
+                config_values=config_by_tab[tab_name],
+            )
 
         self._loaded = True
 
