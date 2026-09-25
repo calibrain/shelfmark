@@ -26,6 +26,12 @@ User accounts are synced from your Calibre-Web `app.db`. If a local user with a 
 
 Requires mounting your Calibre-Web `app.db` to `/auth/app.db`.
 
+### If a method's requirements go missing
+
+Once a method is selected, Shelfmark keeps requiring sign-in even if that method's requirements go missing later (a deleted local admin, a missing `app.db`, incomplete OIDC settings, or an unrecognized `AUTH_METHOD` value). It never falls back to "No Authentication" on its own. While Local or OIDC authentication is active, the last local admin can't be deleted or demoted.
+
+If you're locked out, start the container once with `AUTH_METHOD=none`, create a local admin under **Settings → Users**, then remove the override. Keep Shelfmark off the public internet while the override is set.
+
 ## Per-User Settings
 
 Admins can configure per-user settings by editing a user in the user management panel. Non-admin users can also edit their own settings through **My Account** (accessible from the user menu). Admins control which sections are visible in My Account via the **Visible Self-Settings Sections** option.

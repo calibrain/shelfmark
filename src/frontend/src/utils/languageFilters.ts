@@ -123,7 +123,7 @@ export const buildLanguageNormalizer = (languages: Language[]): Map<string, stri
  * (e.g., "English, Spanish", "English/Spanish", "English + Spanish", "English & Spanish").
  *
  * @param releaseLang - Language string from the release (can be code or full name)
- * @param selectedCodes - Array of selected ISO language codes
+ * @param selectedCodes - Array of selected ISO language codes; null or empty means no filter
  * @param languageNormalizer - Optional map to normalize language names to codes
  */
 export const releaseLanguageMatchesFilter = (
@@ -131,7 +131,9 @@ export const releaseLanguageMatchesFilter = (
   selectedCodes: string[] | null,
   languageNormalizer?: Map<string, string>,
 ): boolean => {
-  if (!releaseLang || !selectedCodes) {
+  // An empty list is an explicitly empty BOOK_LANGUAGE ("no default filter"), which the
+  // backend does not filter on either; treating it as "match nothing" hid every release.
+  if (!releaseLang || !selectedCodes || selectedCodes.length === 0) {
     return true;
   }
   if (selectedCodes.includes(LANGUAGE_OPTION_ALL)) {

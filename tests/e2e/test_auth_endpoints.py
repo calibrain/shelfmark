@@ -52,26 +52,10 @@ class TestGetAuthMode:
             assert main_module.get_auth_mode() == "none"
 
     def test_get_auth_mode_builtin(self, main_module):
-        with (
-            patch.object(
-                main_module.app_config,
-                "get",
-                side_effect=_config_getter({"AUTH_METHOD": "builtin"}),
-            ),
-            patch("shelfmark.core.auth_modes.has_local_password_admin", return_value=True),
+        with patch.object(
+            main_module.app_config, "get", side_effect=_config_getter({"AUTH_METHOD": "builtin"})
         ):
             assert main_module.get_auth_mode() == "builtin"
-
-    def test_get_auth_mode_builtin_without_local_admin_falls_back_to_none(self, main_module):
-        with (
-            patch.object(
-                main_module.app_config,
-                "get",
-                side_effect=_config_getter({"AUTH_METHOD": "builtin"}),
-            ),
-            patch("shelfmark.core.auth_modes.has_local_password_admin", return_value=False),
-        ):
-            assert main_module.get_auth_mode() == "none"
 
     def test_get_auth_mode_proxy(self, main_module):
         with patch.object(
@@ -92,12 +76,31 @@ class TestGetAuthMode:
         ):
             assert main_module.get_auth_mode() == "cwa"
 
-    def test_get_auth_mode_default_on_error(self, main_module):
+    def test_get_auth_mode_fails_closed_on_error(self, main_module):
         with patch.object(main_module.app_config, "get", side_effect=RuntimeError("boom")):
-            assert main_module.get_auth_mode() == "none"
+            assert main_module.get_auth_mode() == "unavailable"
 
 
 class TestAuthCheckEndpoint:
+    @pytest.mark.parametrize("auth_method", ["builtin", "oidc"])
+    def test_auth_check_requires_login_without_local_admin(self, main_module, auth_method):
+        """Regression for #1387: with no local admin, visitors were treated as admins."""
+        with (
+            patch.object(
+                main_module.app_config,
+                "get",
+                side_effect=_config_getter({"AUTH_METHOD": auth_method}),
+            ),
+            patch.object(main_module.user_db, "has_admin_with_password", return_value=False),
+            main_module.app.test_request_context("/api/auth/check"),
+        ):
+            data = _as_response(main_module.api_auth_check()).get_json()
+
+        assert data["auth_mode"] == auth_method
+        assert data["auth_required"] is True
+        assert data["authenticated"] is False
+        assert data["is_admin"] is False
+
     def test_auth_check_no_auth(self, main_module):
         with (
             patch.object(main_module, "get_auth_mode", return_value="none"),

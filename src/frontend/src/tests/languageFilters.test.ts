@@ -5,6 +5,7 @@ import {
   LANGUAGE_OPTION_ALL,
   LANGUAGE_OPTION_DEFAULT,
   buildLanguageNormalizer,
+  getLanguageFilterValues,
   getReleaseSearchLanguageParams,
   releaseLanguageMatchesFilter,
   resolveDefaultLanguageCodes,
@@ -66,6 +67,25 @@ describe('releaseLanguageMatchesFilter', () => {
     );
 
     expect(visibleLanguages).toHaveLength(48);
+  });
+
+  it('shows every release when the default language list is explicitly empty', () => {
+    // Issue 1384: an empty BOOK_LANGUAGE with the "Default" filter hid all releases.
+    const normalizer = buildLanguageNormalizer(supportedLanguages);
+    const defaults = resolveDefaultLanguageCodes([], supportedLanguages);
+    const selectedCodes =
+      getLanguageFilterValues([LANGUAGE_OPTION_DEFAULT], supportedLanguages, defaults) ?? defaults;
+
+    expect(releaseLanguageMatchesFilter('en', selectedCodes, normalizer)).toBe(true);
+    expect(releaseLanguageMatchesFilter('German', selectedCodes, normalizer)).toBe(true);
+    expect(releaseLanguageMatchesFilter('de, en', selectedCodes, normalizer)).toBe(true);
+  });
+
+  it('still filters by a configured default language', () => {
+    const normalizer = buildLanguageNormalizer(supportedLanguages);
+
+    expect(releaseLanguageMatchesFilter('en', ['en'], normalizer)).toBe(true);
+    expect(releaseLanguageMatchesFilter('de', ['en'], normalizer)).toBe(false);
   });
 });
 

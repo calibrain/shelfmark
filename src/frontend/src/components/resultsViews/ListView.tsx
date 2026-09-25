@@ -7,7 +7,7 @@ import { bookSupportsTargets } from '../../utils/bookTargetLoader';
 import { getFormatColor, getLanguageColor } from '../../utils/colorMaps';
 import { BookActionButton } from '../BookActionButton';
 import { BookTargetDropdown } from '../BookTargetDropdown';
-import { DisplayFieldIcon, DisplayFieldBadge } from '../shared';
+import { DisplayFieldIcon, DisplayFieldBadge, LibraryBadge } from '../shared';
 
 interface ListViewProps {
   books: Book[];
@@ -203,6 +203,7 @@ export const ListView = ({
                     {book.author || 'Unknown author'}
                     {book.year && <span className="sm:hidden"> • {book.year}</span>}
                   </p>
+                  <LibraryBadge library={book.library} className="mt-0.5" />
                 </div>
 
                 {/* Mobile universal mode info */}

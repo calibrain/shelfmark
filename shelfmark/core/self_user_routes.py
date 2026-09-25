@@ -7,7 +7,6 @@ from typing import TYPE_CHECKING, Any
 from flask import Flask, Response, g, jsonify, request, session
 from werkzeug.security import generate_password_hash
 
-from shelfmark.config.env import CWA_DB_PATH
 from shelfmark.core.admin_settings_routes import (
     build_user_notification_test_response,
     validate_user_settings,
@@ -191,7 +190,7 @@ def register_self_user_routes(app: Flask, user_db: UserDB) -> None:
 
         @wraps(f)
         def decorated(*args: object, **kwargs: object) -> Response | tuple[Response, int]:
-            auth_mode = load_active_auth_mode(CWA_DB_PATH, user_db=user_db)
+            auth_mode = load_active_auth_mode()
             g.auth_mode = auth_mode
             if auth_mode != "none" and "user_id" not in session:
                 return jsonify({"error": "Authentication required"}), 401
