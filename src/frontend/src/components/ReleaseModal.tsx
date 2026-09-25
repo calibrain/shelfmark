@@ -552,7 +552,7 @@ const ReleaseRow = ({
           </p>
           {/* Plugin-provided info line (format, size, indexer, seeders, etc.) */}
           {mobileColumns.length > 0 && (
-            <div className="mt-1 flex items-center gap-1.5 text-[10px] text-zinc-500 dark:text-zinc-400">
+            <div className="mt-1 flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[10px] text-zinc-500 dark:text-zinc-400">
               {(() => {
                 // Pre-filter columns that will render content to avoid orphan dots
                 const columnsWithContent = mobileColumns.filter((col) => {
@@ -577,6 +577,11 @@ const ReleaseRow = ({
                     if (!value || value === col.fallback) {
                       return Boolean(col.fallback);
                     }
+                  }
+
+                  if (col.render_type === 'text' || col.render_type === 'number') {
+                    // Optional detail columns (series, narrator, bitrate) are often blank
+                    return value.trim() !== '';
                   }
 
                   return true;

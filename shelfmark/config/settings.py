@@ -389,6 +389,13 @@ def _clear_metadata_cache(current_values: dict) -> dict:
         }
 
 
+def _test_calibre_library(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Action-button callback: read the Calibre database and count the books."""
+    from shelfmark.core import library_index
+
+    return library_index.test_connection("calibre", current_values)
+
+
 @register_settings("general", "General", icon="settings", order=0)
 def general_settings() -> list[SettingsField]:
     """Core application settings."""
@@ -411,6 +418,31 @@ def general_settings() -> list[SettingsField]:
             label="Audiobook Library URL",
             description="Adds a separate navigation button for your audiobook library (Audiobookshelf, Plex, etc). When both URLs are set, icons are shown instead of text.",
             placeholder="http://audiobookshelf:8080",
+        ),
+        CheckboxField(
+            key="LIBRARY_CHECK_CALIBRE_ENABLED",
+            label="Mark books already in your Calibre library",
+            description=(
+                "Read the Calibre metadata.db and mark search results you already own, so you "
+                "do not download a second copy. Read only, nothing is written to the library."
+            ),
+            default=False,
+        ),
+        TextField(
+            key="CALIBRE_LIBRARY_DB_PATH",
+            label="Calibre metadata.db path",
+            description=(
+                "Path to metadata.db as seen from inside the Shelfmark container. Mount the "
+                "Calibre library folder read-only, e.g. /path/to/calibre-library:/calibre-library:ro."
+            ),
+            default="/calibre-library/metadata.db",
+            placeholder="/calibre-library/metadata.db",
+        ),
+        ActionButton(
+            key="test_calibre_library",
+            label="Test Calibre library",
+            description="Check that Shelfmark can read the Calibre database and count the books.",
+            callback=_test_calibre_library,
         ),
         HeadingField(
             key="search_defaults_heading",
@@ -477,6 +509,20 @@ def search_mode_settings() -> list[SettingsField]:
             ),
             options=_LANGUAGE_OPTIONS,
             default=["en"],
+            user_overridable=True,
+        ),
+        SelectField(
+            key="DEFAULT_CONTENT_TYPE",
+            label="Default Content Type",
+            description=(
+                "Which tab the search page opens on. Users can override this for their "
+                "own account, and a browser that has already picked a tab keeps its choice."
+            ),
+            options=[
+                {"value": "ebook", "label": "Ebook"},
+                {"value": "audiobook", "label": "Audiobook"},
+            ],
+            default="ebook",
             user_overridable=True,
         ),
         SelectField(
@@ -563,6 +609,51 @@ def search_mode_settings() -> list[SettingsField]:
             description="The release source tab to open by default in the release modal for audiobooks. Uses the book release source if not set.",
             options=_get_audiobook_release_source_options,  # Callable - evaluated lazily to avoid circular imports
             default="",
+            show_when={"field": "SEARCH_MODE", "value": "universal"},
+            user_overridable=True,
+        ),
+        HeadingField(
+            key="release_columns_heading",
+            title="Release List Columns",
+            description=(
+                "Optional columns in the release list. Rows stay blank where a source "
+                "doesn't provide the detail."
+            ),
+            show_when={"field": "SEARCH_MODE", "value": "universal"},
+        ),
+        CheckboxField(
+            key="SHOW_SERIES_COLUMN",
+            label="Show Series Column",
+            description=(
+                "Series name and number, for books and audiobooks. Filled in for "
+                "MyAnonamouse results from Prowlarr when a MAM session ID is set in the "
+                "Prowlarr settings."
+            ),
+            default=True,
+            show_when={"field": "SEARCH_MODE", "value": "universal"},
+            user_overridable=True,
+        ),
+        CheckboxField(
+            key="SHOW_NARRATOR_COLUMN",
+            label="Show Narrator Column",
+            description=(
+                "Audiobooks only. Filled in for MyAnonamouse results from Prowlarr when a "
+                "MAM session ID is set in the Prowlarr settings."
+            ),
+            default=True,
+            show_when={"field": "SEARCH_MODE", "value": "universal"},
+            user_overridable=True,
+        ),
+        CheckboxField(
+            key="SHOW_BITRATE_COLUMN",
+            label="Show Bitrate Column",
+            description=(
+                "Audiobooks only. AudiobookBay lists it for most releases. In Prowlarr "
+                "results it needs a MAM session ID and is read from the MyAnonamouse "
+                "uploader's tags, so some releases won't have one. Other Prowlarr indexers "
+                "fill it only if they report a bitrate attribute, which most don't."
+            ),
+            default=True,
             show_when={"field": "SEARCH_MODE", "value": "universal"},
             user_overridable=True,
         ),

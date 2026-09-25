@@ -206,6 +206,30 @@ except (sqlite3.OperationalError, OSError) as e:
     download_history_service = None
     activity_view_state_service = None
 
+
+def _warn_if_local_admin_missing() -> None:
+    """Log a recovery hint when builtin/OIDC auth is active without a local admin."""
+    if user_db is None or DISABLE_LOCAL_AUTH:
+        return
+    auth_mode = load_active_auth_mode()
+    if auth_mode not in ("builtin", "oidc"):
+        return
+    try:
+        if user_db.has_admin_with_password():
+            return
+    except sqlite3.Error:
+        return
+    logger.warning(
+        "AUTH_METHOD=%s is active but no local admin account with a password exists. If no "
+        "admin can sign in, start once with AUTH_METHOD=none (keep Shelfmark off the public "
+        "internet meanwhile), create a local admin under Settings > Users, then remove the "
+        "override.",
+        auth_mode,
+    )
+
+
+_warn_if_local_admin_missing()
+
 # Start download coordinator
 backend.start()
 
@@ -325,10 +349,10 @@ def get_client_ip() -> str:
 def get_auth_mode() -> str:
     """Determine which authentication mode is active.
 
-    Uses configured AUTH_METHOD plus runtime prerequisites.
-    Returns "none" when config is invalid or unavailable.
+    Returns "none" only when AUTH_METHOD is explicitly "none"; an unreadable or
+    unrecognized AUTH_METHOD fails closed.
     """
-    return load_active_auth_mode(CWA_DB_PATH, user_db=user_db)
+    return load_active_auth_mode()
 
 
 _AUDIOBOOK_CATEGORY_RANGE = (3030, 3049)
@@ -1248,6 +1272,9 @@ def api_config() -> Response | tuple[Response, int]:
             "release_version": RELEASE_VERSION,
             "book_languages": _SUPPORTED_BOOK_LANGUAGE,
             "default_language": app_config.get("BOOK_LANGUAGE", ["en"], user_id=db_user_id),
+            "default_content_type": app_config.get(
+                "DEFAULT_CONTENT_TYPE", "ebook", user_id=db_user_id
+            ),
             "supported_formats": app_config.SUPPORTED_FORMATS,
             "supported_audiobook_formats": app_config.SUPPORTED_AUDIOBOOK_FORMATS,
             "search_mode": search_mode,
@@ -2697,6 +2724,8 @@ def api_metadata_search() -> Response | tuple[Response, int]:
             if book_dict.get("cover_url"):
                 cache_id = f"{book_dict['provider']}_{book_dict['provider_id']}"
                 book_dict["cover_url"] = transform_cover_url(book_dict["cover_url"], cache_id)
+        for book, book_dict in zip(search_result.books, books_data, strict=True):
+            _attach_library_ownership(book, book_dict)
 
         response_data = {
             "books": books_data,
@@ -2757,6 +2786,15 @@ def api_metadata_field_options() -> Response:
         return jsonify({"options": []})
 
 
+def _attach_library_ownership(book: Any, book_dict: dict[str, Any]) -> None:
+    """Add per-format ownership under ``library`` when a library check is enabled."""
+    from shelfmark.core import library_index
+
+    owned = library_index.ownership(book)
+    if owned is not None:
+        book_dict["library"] = owned
+
+
 def _resolve_metadata_provider(provider_name: str) -> MetadataProvider:
     """Validate, instantiate and return a ready metadata provider.
 
@@ -2805,6 +2843,7 @@ def api_metadata_book(provider: str, book_id: str) -> Response | tuple[Response,
             return jsonify({"error": "Book not found"}), 404
 
         book_dict = asdict(book)
+        _attach_library_ownership(book, book_dict)
 
         # Transform cover_url to local proxy URL when caching is enabled
         from shelfmark.core.utils import transform_cover_url
@@ -2933,6 +2972,7 @@ def api_releases() -> Response | tuple[Response, int]:
             is_provider_registered,
         )
         from shelfmark.release_sources import (
+            apply_column_visibility,
             browse_record_to_book_metadata,
             get_source,
             list_available_sources,
@@ -3105,12 +3145,21 @@ def api_releases() -> Response | tuple[Response, int]:
         if sources_to_search and sources_to_search[0] in source_instances:
             try:
                 first_source = source_instances[sources_to_search[0]]
-                column_config = serialize_column_config(first_source.get_column_config())
+                column_config = serialize_column_config(
+                    apply_column_visibility(
+                        first_source.get_column_config(),
+                        content_type=normalize_content_type(content_type),
+                        is_setting_enabled=lambda key: bool(
+                            app_config.get(key, True, user_id=db_user_id)
+                        ),
+                    )
+                )
             except _OPERATIONAL_ERRORS as e:
                 logger.warning("Failed to get column config: %s", e)
 
         # Convert book to dict and transform cover_url
         book_dict = asdict(book)
+        _attach_library_ownership(book, book_dict)
         from shelfmark.core.utils import transform_cover_url
 
         if book_dict.get("cover_url"):

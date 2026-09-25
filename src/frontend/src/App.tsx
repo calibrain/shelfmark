@@ -308,9 +308,13 @@ function App() {
     showToast,
   });
 
+  // Declared here because the content type default below reads from it
+  const [config, setConfig] = useState<AppConfig | null>(null);
+
   // Content type state (ebook vs audiobook) - defined before useSearch since it's passed to it
-  const { contentType, setContentType, combinedMode, setCombinedMode } =
-    useContentTypePreferences();
+  const { contentType, setContentType, combinedMode, setCombinedMode } = useContentTypePreferences(
+    config?.default_content_type,
+  );
 
   const {
     policy: requestPolicy,
@@ -612,7 +616,6 @@ function App() {
   // Combined mode state (ebook + audiobook in one transaction)
   const [combinedState, setCombinedState] = useState<CombinedSelectionState | null>(null);
 
-  const [config, setConfig] = useState<AppConfig | null>(null);
   const [metadataProviders, setMetadataProviders] = useState<MetadataProviderSummary[]>([]);
   const [configuredMetadataProvider, setConfiguredMetadataProvider] = useState<string | null>(null);
   const [configuredAudiobookMetadataProvider, setConfiguredAudiobookMetadataProvider] = useState<
