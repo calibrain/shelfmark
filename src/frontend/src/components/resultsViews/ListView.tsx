@@ -167,8 +167,8 @@ export const ListView = ({
               <div
                 className={`grid w-full items-center gap-2 sm:gap-x-0.5 sm:gap-y-1 ${
                   searchMode === 'universal'
-                    ? 'grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:grid-cols-[auto_minmax(0,2fr)_minmax(50px,0.25fr)_minmax(90px,0.5fr)_minmax(90px,0.5fr)_minmax(120px,0.7fr)_auto]'
-                    : 'grid-cols-[auto_minmax(0,1fr)_auto_auto] sm:grid-cols-[auto_minmax(0,2fr)_minmax(50px,0.25fr)_minmax(60px,0.3fr)_minmax(60px,0.3fr)_minmax(60px,0.3fr)_minmax(70px,0.35fr)_auto]'
+                    ? 'grid-cols-[auto_28px_auto_auto] sm:grid-cols-[auto_28px_minmax(0,2fr)_minmax(50px,0.25fr)_minmax(90px,0.5fr)_minmax(90px,0.5fr)_minmax(120px,0.7fr)_auto]'
+                    : 'grid-cols-[auto_28px_auto_auto] sm:grid-cols-[auto_28px_minmax(0,2fr)_minmax(50px,0.25fr)_minmax(60px,0.3fr)_minmax(60px,0.3fr)_minmax(60px,0.3fr)_minmax(70px,0.35fr)_auto]'
                 }`}
               >
                 {/* Thumbnail */}
@@ -179,6 +179,11 @@ export const ListView = ({
                     coverAspect={book.cover_aspect}
                   />
                 </div>
+
+                {/* Release number */}
+                <span className="w-7 shrink-0 text-center text-xs font-medium text-zinc-400 dark:text-zinc-500">
+                  {index + 1}
+                </span>
 
                 {/* Title and Author */}
                 <div className="flex min-w-0 flex-col justify-center sm:pl-3">

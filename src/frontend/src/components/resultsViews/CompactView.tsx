@@ -21,6 +21,7 @@ interface CompactViewProps {
   showDetailsButton?: boolean;
   animationDelay?: number;
   showSeriesPosition?: boolean;
+  index?: number;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
 }
 

@@ -136,7 +136,7 @@ export const ResultsSection = ({
                 </span>
               );
             }
-            const shownEnd = Math.min(totalCount, 50);
+            const shownEnd = Math.min(totalCount, books.length);
             const totalStr = isCapped ? '500+' : String(totalCount);
             return (
               <span className="mx-2 mt-4 px-2 text-xs whitespace-nowrap text-gray-500 dark:text-gray-400">

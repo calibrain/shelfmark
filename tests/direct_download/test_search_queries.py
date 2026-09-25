@@ -31,7 +31,8 @@ class TestDirectDownloadSearchQueries:
     def test_uses_search_title_for_english_queries(self, monkeypatch):
         captured: list[str] = []
 
-        def fake_search_books(query: str, filters):
+        def fake_search_books(query: str, filters, **kwargs):
+            del kwargs
             captured.append(query)
             return ([], None)
 
@@ -73,7 +74,8 @@ class TestDirectDownloadSearchQueries:
             ],
         }
 
-        def fake_search_books(query: str, filters):
+        def fake_search_books(query: str, filters, **kwargs):
+            del kwargs
             captured.append((query, filters.lang))
             return (records_by_query[query], None)
 
@@ -115,7 +117,8 @@ class TestDirectDownloadSearchQueries:
             ],
         }
 
-        def fake_search_books(query: str, filters):
+        def fake_search_books(query: str, filters, **kwargs):
+            del kwargs
             captured.append((query, filters.lang))
             if filters.lang:
                 return ([], None)
@@ -153,7 +156,8 @@ class TestDirectDownloadSearchQueries:
     def test_manual_query_fallback_preserves_other_filters(self, monkeypatch):
         captured: list[tuple[str, list[str] | None, list[str] | None]] = []
 
-        def fake_search_books(query: str, filters):
+        def fake_search_books(query: str, filters, **kwargs):
+            del kwargs
             captured.append((query, filters.lang, filters.format))
             if filters.lang:
                 return ([], None)
@@ -179,11 +183,17 @@ class TestDirectDownloadSearchQueries:
         )
         results = source.search(book, plan)
 
+        # Manual search paginates: first call with lang=en returns empty,
+        # retry without lang returns the result, then pagination fetches
+        # remaining pages (which also return the same result, deduplicated).
         assert [release.source_id for release in results] == ["manual-1"]
-        assert captured == [
-            ("mistborn custom query", ["en"], ["epub"]),
-            ("mistborn custom query", None, ["epub"]),
-        ]
+        # First call: with language filter
+        assert captured[0] == ("mistborn custom query", ["en"], ["epub"])
+        # Second call: retry without language filter
+        assert captured[1] == ("mistborn custom query", None, ["epub"])
+        # Remaining calls: pagination (same query, no lang filter)
+        for i in range(2, len(captured)):
+            assert captured[i] == ("mistborn custom query", None, ["epub"])
 
 
 # --- Distant-path language detection tests ---

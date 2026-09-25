@@ -438,10 +438,10 @@ const ReleaseRow = ({
 
   // Build grid template based on whether leading cell is shown
   const desktopGridTemplate = showLeadingCell
-    ? `auto ${gridTemplate} auto`
-    : `${gridTemplate} auto`;
+    ? `auto 28px ${gridTemplate} auto`
+    : `28px ${gridTemplate} auto`;
 
-  const mobileGridTemplate = showLeadingCell ? 'auto 1fr auto' : '1fr auto';
+  const mobileGridTemplate = showLeadingCell ? 'auto 28px 1fr auto' : '28px 1fr auto';
 
   const handleRowClick = selectionMode && onSelect ? onSelect : undefined;
   const handleRowKeyDown: KeyboardEventHandler<HTMLDivElement> | undefined =
@@ -482,6 +482,11 @@ const ReleaseRow = ({
       >
         {/* Leading cell: Thumbnail, Badge, or nothing */}
         {showLeadingCell && <LeadingCell config={leadingCell} release={release} />}
+
+        {/* Release number */}
+        <span className="w-7 shrink-0 text-center text-xs font-medium text-zinc-400 dark:text-zinc-500">
+          {index + 1}
+        </span>
 
         {/* Fixed: Title and author */}
         <div className="min-w-0">
@@ -529,6 +534,11 @@ const ReleaseRow = ({
       >
         {/* Leading cell: Thumbnail, Badge, or nothing */}
         {showLeadingCell && <LeadingCell config={leadingCell} release={release} />}
+
+        {/* Release number */}
+        <span className="shrink-0 text-center text-xs font-medium text-zinc-400 dark:text-zinc-500">
+          {index + 1}
+        </span>
 
         <div className="min-w-0">
           {/* Title and author on same line */}
@@ -1818,7 +1828,7 @@ const ReleaseModalSession = ({
                           </span>
                         );
                       }
-                      const shownEnd = Math.min(totalCountNum, 50);
+                      const shownEnd = Math.min(totalCountNum, filteredReleases.length);
                       const totalStr = isCapped ? '500+' : String(totalCountNum);
                       return (
                         <span className="mx-2 shrink-0 text-xs whitespace-nowrap text-gray-500 dark:text-gray-400">
