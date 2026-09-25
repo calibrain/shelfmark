@@ -1,10 +1,9 @@
 """Tests for auth mode and admin policy helpers used by OIDC integration."""
 
-import sqlite3
-
 import pytest
 
 from shelfmark.core.auth_modes import (
+    AUTH_MODE_UNAVAILABLE,
     determine_auth_mode,
     get_auth_check_admin_status,
     get_settings_tab_from_path,
@@ -16,95 +15,59 @@ from shelfmark.core.auth_modes import (
 
 
 class TestDetermineAuthMode:
-    def test_returns_oidc_when_fully_configured(self):
-        config = {
-            "AUTH_METHOD": "oidc",
-            "OIDC_DISCOVERY_URL": "https://auth.example.com/.well-known/openid-configuration",
-            "OIDC_CLIENT_ID": "shelfmark",
-        }
-        assert determine_auth_mode(config, cwa_db_path=None) == "oidc"
-
-    def test_returns_none_when_oidc_missing_client_id(self):
-        config = {
-            "AUTH_METHOD": "oidc",
-            "OIDC_DISCOVERY_URL": "https://auth.example.com/.well-known/openid-configuration",
-        }
-        assert determine_auth_mode(config, cwa_db_path=None) == "none"
-
-    def test_returns_none_when_oidc_missing_discovery_url(self):
-        config = {
-            "AUTH_METHOD": "oidc",
-            "OIDC_CLIENT_ID": "shelfmark",
-        }
-        assert determine_auth_mode(config, cwa_db_path=None) == "none"
-
-    def test_builtin_still_works(self):
-        config = {
-            "AUTH_METHOD": "builtin",
-        }
-        assert determine_auth_mode(config, cwa_db_path=None) == "builtin"
-
-    def test_builtin_requires_local_admin(self):
-        config = {
-            "AUTH_METHOD": "builtin",
-        }
-        assert determine_auth_mode(config, cwa_db_path=None, has_local_admin=False) == "none"
-
-    def test_proxy_still_works(self):
-        config = {
-            "AUTH_METHOD": "proxy",
-            "PROXY_AUTH_USER_HEADER": "X-Auth-User",
-        }
-        assert determine_auth_mode(config, cwa_db_path=None) == "proxy"
-
-    def test_oidc_requires_local_admin(self):
-        config = {
-            "AUTH_METHOD": "oidc",
-            "OIDC_DISCOVERY_URL": "https://auth.example.com/.well-known/openid-configuration",
-            "OIDC_CLIENT_ID": "shelfmark",
-        }
-        assert determine_auth_mode(config, cwa_db_path=None, has_local_admin=False) == "none"
+    @pytest.mark.parametrize("auth_method", ["builtin", "oidc", "proxy", "cwa", "none"])
+    def test_returns_configured_method(self, auth_method):
+        assert determine_auth_mode(auth_method) == auth_method
 
     @pytest.mark.parametrize(
-        ("auth_mode", "config"),
-        [
-            ("builtin", {"AUTH_METHOD": "builtin"}),
-            (
-                "oidc",
-                {
-                    "AUTH_METHOD": "oidc",
-                    "OIDC_DISCOVERY_URL": "https://auth.example.com/.well-known/openid-configuration",
-                    "OIDC_CLIENT_ID": "shelfmark",
-                },
-            ),
-        ],
+        ("auth_method", "expected"), [("OIDC", "oidc"), (" Builtin ", "builtin")]
     )
-    def test_disable_local_auth_keeps_configured_mode_without_admin(self, auth_mode, config):
-        assert (
-            determine_auth_mode(
-                config,
-                cwa_db_path=None,
-                has_local_admin=False,
-                disable_local_auth=True,
-            )
-            == auth_mode
-        )
+    def test_normalizes_case_and_whitespace(self, auth_method, expected):
+        assert determine_auth_mode(auth_method) == expected
 
-    def test_load_active_auth_mode_reads_env_backed_cwa_setting(self, monkeypatch, tmp_path):
+    @pytest.mark.parametrize("auth_method", [None, "", "  "])
+    def test_unset_method_means_none(self, auth_method):
+        assert determine_auth_mode(auth_method) == "none"
+
+    @pytest.mark.parametrize("auth_method", ["local", "ldap", "openid", "no"])
+    def test_unrecognized_method_fails_closed(self, auth_method):
+        assert determine_auth_mode(auth_method) == AUTH_MODE_UNAVAILABLE
+
+    def test_load_active_auth_mode_fails_closed_when_config_unreadable(self, monkeypatch):
+        from shelfmark.core.config import config as app_config
+
+        def _boom(*_args, **_kwargs):
+            raise RuntimeError("boom")
+
+        monkeypatch.setattr(app_config, "get", _boom)
+        assert load_active_auth_mode() == AUTH_MODE_UNAVAILABLE
+
+    @pytest.mark.parametrize("auth_method", ["builtin", "oidc"])
+    def test_load_active_auth_mode_keeps_local_modes_without_local_admin(
+        self, monkeypatch, tmp_path, auth_method
+    ):
+        """Regression for #1387: no local admin must not turn authentication off."""
+        from shelfmark.core.config import config as app_config
+
+        monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
+        monkeypatch.setenv("AUTH_METHOD", auth_method)
+        app_config.refresh(force=True)
+
+        try:
+            assert load_active_auth_mode() == auth_method
+        finally:
+            monkeypatch.delenv("AUTH_METHOD", raising=False)
+            app_config.refresh(force=True)
+
+    def test_load_active_auth_mode_keeps_cwa_without_database(self, monkeypatch, tmp_path):
         from shelfmark.core.config import config as app_config
 
         monkeypatch.setenv("CONFIG_DIR", str(tmp_path))
         monkeypatch.setenv("AUTH_METHOD", "cwa")
         app_config.refresh(force=True)
 
-        cwa_db_path = tmp_path / "app.db"
-        conn = sqlite3.connect(cwa_db_path)
-        conn.execute("create table user (name text)")
-        conn.commit()
-        conn.close()
-
         try:
-            assert load_active_auth_mode(cwa_db_path) == "cwa"
+            assert load_active_auth_mode() == "cwa"
         finally:
             monkeypatch.delenv("AUTH_METHOD", raising=False)
             app_config.refresh(force=True)
@@ -118,7 +81,7 @@ class TestDetermineAuthMode:
         app_config.refresh(force=True)
 
         try:
-            assert load_active_auth_mode(cwa_db_path=None) == "proxy"
+            assert load_active_auth_mode() == "proxy"
         finally:
             monkeypatch.delenv("AUTH_METHOD", raising=False)
             monkeypatch.delenv("PROXY_AUTH_USER_HEADER", raising=False)

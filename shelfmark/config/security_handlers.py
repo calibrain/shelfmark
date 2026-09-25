@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 _OIDC_LOCKOUT_MESSAGE = "A local admin account with a password is required before enabling OIDC. Use the 'Go to Users' button above to create one. This ensures you can still sign in if your identity provider is unavailable."
+_BUILTIN_LOCKOUT_MESSAGE = "A local admin account with a password is required before enabling Local authentication. Use the 'Go to Users' button above to create one, otherwise nobody could sign in as an admin."
 _OIDC_REQUIRED_FIELDS = (
     ("OIDC_DISCOVERY_URL", "Discovery URL"),
     ("OIDC_CLIENT_ID", "Client ID"),
@@ -77,6 +78,9 @@ def on_save_security(
 
     effective_values = _load_effective_security_values(normalized_values)
     auth_method = str(effective_values.get("AUTH_METHOD", "") or "").strip().lower()
+
+    if auth_method == "builtin" and not DISABLE_LOCAL_AUTH and not _has_local_password_admin():
+        return {"error": True, "message": _BUILTIN_LOCKOUT_MESSAGE, "values": normalized_values}
 
     if auth_method == "oidc":
         if not DISABLE_LOCAL_AUTH and not _has_local_password_admin():

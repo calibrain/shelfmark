@@ -102,10 +102,7 @@ def security_settings() -> list[SettingsField]:
         CustomComponentField(
             key="builtin_admin_requirement",
             component="oidc_admin_hint",
-            label=(
-                "Local authentication is inactive until a local admin account with a "
-                "password is created."
-            ),
+            label="A local admin account is required before Local authentication can be enabled.",
             show_when=_auth_condition("builtin"),
         ),
         *(
@@ -129,8 +126,8 @@ def security_settings() -> list[SettingsField]:
                     component="oidc_admin_hint",
                     label=(
                         "Calibre-Web database not detected. Mount your app.db to "
-                        "/auth/app.db to enable this method. Authentication will fall "
-                        "back to none until the database is available."
+                        "/auth/app.db to enable this method. Sign-in fails until the "
+                        "database is available."
                     ),
                     show_when=_auth_condition("cwa"),
                 ),

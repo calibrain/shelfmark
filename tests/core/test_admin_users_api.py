@@ -437,22 +437,42 @@ class TestAdminUserUpdateEndpoint:
         updated = user_db.get_user(user_id=user["id"])
         assert updated["role"] == "admin"
 
-    def test_demote_last_admin_allowed(self, admin_client, user_db):
+    def test_demote_last_admin_allowed_without_auth(self, admin_client, user_db):
         user = user_db.create_user(
             username="onlyadmin",
             role="admin",
             password_hash="hashed_pw",
         )
 
-        resp = admin_client.put(
-            f"/api/admin/users/{user['id']}",
-            json={"role": "user"},
-        )
+        with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="none"):
+            resp = admin_client.put(
+                f"/api/admin/users/{user['id']}",
+                json={"role": "user"},
+            )
 
         assert resp.status_code == 200
         updated = user_db.get_user(user_id=user["id"])
         assert updated is not None
         assert updated["role"] == "user"
+
+    @pytest.mark.parametrize("auth_mode", ["builtin", "oidc"])
+    def test_demote_last_local_admin_rejected(self, admin_client, user_db, auth_mode):
+        """Regression for #1387: demoting the last local admin used to disable auth."""
+        user = user_db.create_user(
+            username="onlyadmin",
+            role="admin",
+            password_hash="hashed_pw",
+        )
+
+        with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value=auth_mode):
+            resp = admin_client.put(
+                f"/api/admin/users/{user['id']}",
+                json={"role": "user"},
+            )
+
+        assert resp.status_code == 400
+        assert resp.json["error"] == "Cannot remove admin role from the last local admin account"
+        assert user_db.get_user(user_id=user["id"])["role"] == "admin"
 
     def test_update_user_email(self, admin_client, user_db):
         user = user_db.create_user(username="alice")
@@ -1798,18 +1818,54 @@ class TestAdminUserDeleteEndpoint:
         assert resp.status_code == 200
         assert resp.json["success"] is True
 
-    def test_delete_last_local_admin_allowed(self, admin_client, user_db):
+    @pytest.mark.parametrize("auth_mode", ["builtin", "oidc"])
+    def test_delete_last_local_admin_rejected(self, admin_client, user_db, auth_mode):
+        """Regression for #1387: removing the last local admin used to disable auth."""
         user = user_db.create_user(
             username="onlyadmin",
             password_hash="hashed_pw",
             role="admin",
         )
 
+        with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value=auth_mode):
+            resp = admin_client.delete(f"/api/admin/users/{user['id']}")
+
+        assert resp.status_code == 400
+        assert resp.json["error"] == "Cannot delete the last local admin account"
+        assert user_db.get_user(user_id=user["id"]) is not None
+
+    def test_delete_local_admin_allowed_when_another_remains(self, admin_client, user_db):
+        user = user_db.create_user(username="admin1", password_hash="hashed_pw", role="admin")
+        user_db.create_user(username="admin2", password_hash="hashed_pw", role="admin")
+
         with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="builtin"):
             resp = admin_client.delete(f"/api/admin/users/{user['id']}")
 
         assert resp.status_code == 200
-        assert resp.json["success"] is True
+        assert user_db.get_user(user_id=user["id"]) is None
+
+    @pytest.mark.parametrize("auth_mode", ["none", "proxy"])
+    def test_delete_last_local_admin_allowed_without_local_auth(
+        self, admin_client, user_db, auth_mode
+    ):
+        user = user_db.create_user(username="onlyadmin", password_hash="hashed_pw", role="admin")
+
+        with patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value=auth_mode):
+            resp = admin_client.delete(f"/api/admin/users/{user['id']}")
+
+        assert resp.status_code == 200
+        assert user_db.get_user(user_id=user["id"]) is None
+
+    def test_delete_last_local_admin_allowed_when_local_auth_disabled(self, admin_client, user_db):
+        user = user_db.create_user(username="onlyadmin", password_hash="hashed_pw", role="admin")
+
+        with (
+            patch("shelfmark.core.admin_routes.load_active_auth_mode", return_value="oidc"),
+            patch("shelfmark.core.admin_routes.DISABLE_LOCAL_AUTH", True),
+        ):
+            resp = admin_client.delete(f"/api/admin/users/{user['id']}")
+
+        assert resp.status_code == 200
         assert user_db.get_user(user_id=user["id"]) is None
 
     def test_delete_own_account_rejected(self, admin_client, user_db):
@@ -1897,11 +1953,17 @@ class TestOIDCLockoutPrevention:
         )
         assert result["error"] is False
 
-    def test_non_oidc_methods_not_blocked(self):
-        """Other auth methods should not trigger the OIDC check."""
-        for method in ("none", "builtin", "proxy", "cwa"):
+    def test_external_methods_not_blocked(self):
+        """Methods that do not rely on a local admin should not trigger the check."""
+        for method in ("none", "proxy", "cwa"):
             result = self._call_on_save({"AUTH_METHOD": method})
             assert result["error"] is False, f"AUTH_METHOD={method} should not be blocked"
+
+    def test_builtin_blocked_without_local_admin(self):
+        """Local auth without a local admin would lock every admin out."""
+        result = self._call_on_save({"AUTH_METHOD": "builtin"})
+        assert result["error"] is True
+        assert "local admin" in result["message"].lower()
 
     def test_oidc_check_preserves_values(self):
         """When OIDC is blocked, the original values should be returned."""

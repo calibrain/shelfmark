@@ -206,6 +206,30 @@ except (sqlite3.OperationalError, OSError) as e:
     download_history_service = None
     activity_view_state_service = None
 
+
+def _warn_if_local_admin_missing() -> None:
+    """Log a recovery hint when builtin/OIDC auth is active without a local admin."""
+    if user_db is None or DISABLE_LOCAL_AUTH:
+        return
+    auth_mode = load_active_auth_mode()
+    if auth_mode not in ("builtin", "oidc"):
+        return
+    try:
+        if user_db.has_admin_with_password():
+            return
+    except sqlite3.Error:
+        return
+    logger.warning(
+        "AUTH_METHOD=%s is active but no local admin account with a password exists. If no "
+        "admin can sign in, start once with AUTH_METHOD=none (keep Shelfmark off the public "
+        "internet meanwhile), create a local admin under Settings > Users, then remove the "
+        "override.",
+        auth_mode,
+    )
+
+
+_warn_if_local_admin_missing()
+
 # Start download coordinator
 backend.start()
 
@@ -325,10 +349,10 @@ def get_client_ip() -> str:
 def get_auth_mode() -> str:
     """Determine which authentication mode is active.
 
-    Uses configured AUTH_METHOD plus runtime prerequisites.
-    Returns "none" when config is invalid or unavailable.
+    Returns "none" only when AUTH_METHOD is explicitly "none"; an unreadable or
+    unrecognized AUTH_METHOD fails closed.
     """
-    return load_active_auth_mode(CWA_DB_PATH, user_db=user_db)
+    return load_active_auth_mode()
 
 
 _AUDIOBOOK_CATEGORY_RANGE = (3030, 3049)
