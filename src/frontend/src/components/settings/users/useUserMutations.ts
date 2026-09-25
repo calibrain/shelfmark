@@ -41,9 +41,6 @@ const getPasswordError = (password: string, passwordConfirm: string) => {
   return password === passwordConfirm ? null : 'Passwords do not match';
 };
 
-const countLocalPasswordAdmins = (users: AdminUser[]): number =>
-  users.filter((user) => user.auth_source === 'builtin' && user.role === 'admin').length;
-
 const authSourceLabel: Record<AdminUser['auth_source'], string> = {
   builtin: 'Local',
   oidc: 'OIDC',
@@ -109,7 +106,6 @@ export const useUserMutations = ({
       ? getPasswordError(editPassword, editPasswordConfirm)
       : null;
     if (passwordError) return fail(passwordError);
-    const localAdminsBeforeSave = includeProfile ? countLocalPasswordAdmins(users) : 0;
 
     const caps = editingUser.edit_capabilities;
     const settingsPayload = includeSettings
@@ -152,17 +148,7 @@ export const useUserMutations = ({
           : 'User updated',
         'success',
       );
-      const refreshedUsers = await fetchUsers({ force: true });
-      if (
-        includeProfile &&
-        localAdminsBeforeSave > 0 &&
-        countLocalPasswordAdmins(refreshedUsers) === 0
-      ) {
-        onShowToast?.(
-          "No local admin accounts remain. Authentication will fall back to 'No Authentication' until a local admin is created.",
-          'info',
-        );
-      }
+      await fetchUsers({ force: true });
       return true;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Failed to update user';
@@ -174,21 +160,14 @@ export const useUserMutations = ({
 
   const deleteUser = async (userId: number) => {
     const deletedUser = users.find((user) => user.id === userId) || null;
-    const localAdminsBeforeDelete = countLocalPasswordAdmins(users);
     setDeletingUserId(userId);
     try {
       await deleteAdminUser(userId);
       onShowToast?.('User deleted', 'success');
-      const refreshedUsers = await fetchUsers({ force: true });
+      await fetchUsers({ force: true });
       if (deletedUser && deletedUser.auth_source !== 'builtin') {
         onShowToast?.(
           `${authSourceLabel[deletedUser.auth_source]} users may be re-provisioned by your authentication source on a future login or sync.`,
-          'info',
-        );
-      }
-      if (localAdminsBeforeDelete > 0 && countLocalPasswordAdmins(refreshedUsers) === 0) {
-        onShowToast?.(
-          "No local admin accounts remain. Authentication will fall back to 'No Authentication' until a local admin is created.",
           'info',
         );
       }

@@ -107,6 +107,10 @@ _USERS_HEADING_DESCRIPTION_BY_AUTH_MODE = {
         "accounts are created here when new CWA users are found."
     ),
     "none": "Authentication is disabled. Anyone can access Shelfmark without signing in.",
+    "unavailable": (
+        "AUTH_METHOD is not a recognized authentication method, so sign-in is refused until it "
+        "is fixed."
+    ),
     "default": "Authentication is disabled. Anyone can access Shelfmark without signing in.",
 }
 

@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-import os
-import sqlite3
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Protocol, TypeGuard
+from typing import TYPE_CHECKING, Any
+
+from shelfmark.core.logger import setup_logger
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+logger = setup_logger(__name__)
 
 AUTH_SOURCE_BUILTIN = "builtin"
 AUTH_SOURCE_OIDC = "oidc"
@@ -21,36 +22,11 @@ AUTH_SOURCES = (
     AUTH_SOURCE_CWA,
 )
 AUTH_SOURCE_SET = frozenset(AUTH_SOURCES)
+AUTH_MODE_NONE = "none"
+# Resolved when AUTH_METHOD is unrecognized or unreadable. It is not "none", so
+# every guard still requires a session, and no login flow accepts it.
+AUTH_MODE_UNAVAILABLE = "unavailable"
 _ALWAYS_ADMIN_SETTINGS_TABS = frozenset({"security", "users"})
-
-
-class _UserDBWithAdminPassword(Protocol):
-    """Minimal user DB surface needed for local-admin checks."""
-
-    def has_admin_with_password(self) -> bool: ...
-
-
-def _has_admin_password_api(candidate: object) -> TypeGuard[_UserDBWithAdminPassword]:
-    """Return True when *candidate* exposes the admin-password lookup we need."""
-    return callable(getattr(candidate, "has_admin_with_password", None))
-
-
-def has_local_password_admin(user_db: object | None = None) -> bool:
-    """Return True when at least one local admin with a password exists."""
-    try:
-        db = user_db
-        if db is None:
-            from shelfmark.core.user_db import UserDB
-
-            config_root = os.environ.get("CONFIG_DIR", "/config")
-            db = UserDB(str(Path(config_root) / "users.db"))
-            db.initialize()
-
-        if not _has_admin_password_api(db):
-            return False
-        return db.has_admin_with_password()
-    except AttributeError, ImportError, OSError, RuntimeError, TypeError, ValueError, sqlite3.Error:
-        return False
 
 
 def normalize_auth_source(
@@ -66,61 +42,38 @@ def normalize_auth_source(
     return AUTH_SOURCE_BUILTIN
 
 
-def determine_auth_mode(
-    security_config: Mapping[str, Any],
-    cwa_db_path: object | None,
-    *,
-    has_local_admin: bool = True,
-    disable_local_auth: bool = False,
-) -> str:
-    """Determine active auth mode from security config and runtime prerequisites."""
-    auth_mode = security_config.get("AUTH_METHOD", "none")
-    local_admin_available = has_local_admin or disable_local_auth
+def determine_auth_mode(auth_method: object) -> str:
+    """Resolve the active auth mode from the configured AUTH_METHOD.
 
-    if auth_mode == AUTH_SOURCE_CWA and cwa_db_path:
-        return AUTH_SOURCE_CWA
-
-    if auth_mode == AUTH_SOURCE_BUILTIN and local_admin_available:
-        return AUTH_SOURCE_BUILTIN
-
-    if auth_mode == AUTH_SOURCE_PROXY and security_config.get("PROXY_AUTH_USER_HEADER"):
-        return AUTH_SOURCE_PROXY
-
-    if (
-        auth_mode == AUTH_SOURCE_OIDC
-        and local_admin_available
-        and security_config.get("OIDC_DISCOVERY_URL")
-        and security_config.get("OIDC_CLIENT_ID")
-    ):
-        return AUTH_SOURCE_OIDC
-
-    return "none"
+    Only an explicit "none" disables authentication. A configured method stays
+    active even when its prerequisites (a local admin, OIDC settings, the CWA
+    database, a proxy header) are missing, so sign-in fails instead of the
+    instance silently opening up to anonymous admin access.
+    """
+    normalized = str(auth_method or "").strip().lower() or AUTH_MODE_NONE
+    if normalized == AUTH_MODE_NONE or normalized in AUTH_SOURCE_SET:
+        return normalized
+    return AUTH_MODE_UNAVAILABLE
 
 
-def load_active_auth_mode(
-    cwa_db_path: object | None,
-    *,
-    user_db: object | None = None,
-) -> str:
-    """Resolve active auth mode using current security config and runtime prerequisites."""
+def load_active_auth_mode() -> str:
+    """Resolve the active auth mode from the current security config."""
     try:
-        from shelfmark.config.env import DISABLE_LOCAL_AUTH
         from shelfmark.core.config import config as app_config
 
-        security_config = {
-            "AUTH_METHOD": app_config.get("AUTH_METHOD", "none"),
-            "PROXY_AUTH_USER_HEADER": app_config.get("PROXY_AUTH_USER_HEADER", ""),
-            "OIDC_DISCOVERY_URL": app_config.get("OIDC_DISCOVERY_URL", ""),
-            "OIDC_CLIENT_ID": app_config.get("OIDC_CLIENT_ID", ""),
-        }
-        return determine_auth_mode(
-            security_config,
-            cwa_db_path,
-            has_local_admin=has_local_password_admin(user_db),
-            disable_local_auth=DISABLE_LOCAL_AUTH,
+        auth_method = app_config.get("AUTH_METHOD", AUTH_MODE_NONE)
+    except ImportError, OSError, RuntimeError, TypeError, ValueError:
+        logger.exception("Could not read AUTH_METHOD; denying access until it can be read")
+        return AUTH_MODE_UNAVAILABLE
+
+    auth_mode = determine_auth_mode(auth_method)
+    if auth_mode == AUTH_MODE_UNAVAILABLE:
+        logger.error(
+            "Unrecognized AUTH_METHOD %r; denying access. Use one of: none, %s",
+            auth_method,
+            ", ".join(AUTH_SOURCES),
         )
-    except ImportError, OSError, RuntimeError, TypeError, ValueError, sqlite3.Error:
-        return "none"
+    return auth_mode
 
 
 def is_user_active_for_auth_mode(user: Mapping[str, Any], auth_mode: str) -> bool:

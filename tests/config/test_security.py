@@ -378,7 +378,7 @@ class TestSecuritySettings:
         assert hint is not None
         assert hint.component == "oidc_admin_hint"
         assert hint.show_when == {"field": "AUTH_METHOD", "value": "builtin"}
-        assert "inactive" in hint.label.lower()
+        assert "required" in hint.label.lower()
         assert "local admin" in hint.label.lower()
 
     def test_oidc_admin_requirement_hint_absent_when_local_auth_is_disabled(self):
@@ -417,16 +417,39 @@ class TestSecuritySettings:
 class TestSecurityOnSave:
     """Tests for current security on-save guard behavior."""
 
-    def test_on_save_passthrough_for_non_oidc(self, tmp_path, monkeypatch):
+    def test_on_save_passthrough_for_proxy(self, tmp_path, monkeypatch):
         from shelfmark.config.security import _on_save_security
 
         _set_config_dir(monkeypatch, tmp_path)
-        values = {"AUTH_METHOD": "builtin", "PROXY_AUTH_USER_HEADER": "X-Auth-User"}
+        values = {"AUTH_METHOD": "proxy", "PROXY_AUTH_USER_HEADER": "X-Auth-User"}
 
         result = _on_save_security(values.copy())
 
         assert result["error"] is False
         assert result["values"] == values
+
+    def test_on_save_blocks_builtin_without_local_admin(self, tmp_path, monkeypatch):
+        from shelfmark.config.security import _on_save_security
+
+        _set_config_dir(monkeypatch, tmp_path)
+        UserDB(str(tmp_path / "users.db")).initialize()
+
+        result = _on_save_security({"AUTH_METHOD": "builtin"})
+
+        assert result["error"] is True
+        assert "local admin" in result["message"].lower()
+
+    def test_on_save_allows_builtin_with_local_admin(self, tmp_path, monkeypatch):
+        from shelfmark.config.security import _on_save_security
+
+        _set_config_dir(monkeypatch, tmp_path)
+        user_db = UserDB(str(tmp_path / "users.db"))
+        user_db.initialize()
+        user_db.create_user(username="admin", password_hash="hash", role="admin")
+
+        result = _on_save_security({"AUTH_METHOD": "builtin"})
+
+        assert result["error"] is False
 
     def test_on_save_blocks_oidc_without_local_admin(self, tmp_path, monkeypatch):
         from shelfmark.config.security import _on_save_security
