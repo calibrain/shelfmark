@@ -1395,6 +1395,9 @@ class TestAdminSearchPreferences:
             "METADATA_PROVIDER_COMBINED",
             "DEFAULT_RELEASE_SOURCE",
             "DEFAULT_RELEASE_SOURCE_AUDIOBOOK",
+            "SHOW_SERIES_COLUMN",
+            "SHOW_NARRATOR_COLUMN",
+            "SHOW_BITRATE_COLUMN",
         ]
 
         field_keys = [field["key"] for field in data["fields"]]

@@ -1,7 +1,7 @@
 """Release source plugin system - base classes and registry."""
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import StrEnum
 from importlib import import_module
 from typing import TYPE_CHECKING, Any, ClassVar, Literal
@@ -139,6 +139,9 @@ class ColumnSchema:
     uppercase: bool = False  # Force uppercase display
     sortable: bool = False  # Show in sort dropdown (opt-in)
     sort_key: str | None = None  # Field to sort by (defaults to `key` if None)
+    # Optional visibility gates, applied by apply_column_visibility() before serialization.
+    setting_key: str | None = None  # Boolean setting that shows/hides this column
+    content_types: tuple[str, ...] | None = None  # Only show for these ("ebook", "audiobook")
 
 
 class LeadingCellType(StrEnum):
@@ -198,6 +201,60 @@ class ReleaseColumnConfig:
     action_button: SourceActionButton | None = (
         None  # Custom action button (replaces default expand search)
     )
+
+
+def _split_grid_template(template: str) -> list[str]:
+    """Split a grid-template-columns string into tracks, keeping minmax(a, b) whole."""
+    tracks: list[str] = []
+    current = ""
+    depth = 0
+    for char in template:
+        if char == "(":
+            depth += 1
+        elif char == ")":
+            depth -= 1
+        if char.isspace() and depth == 0:
+            if current:
+                tracks.append(current)
+            current = ""
+            continue
+        current += char
+    if current:
+        tracks.append(current)
+    return tracks
+
+
+def apply_column_visibility(
+    config: ReleaseColumnConfig,
+    *,
+    content_type: str,
+    is_setting_enabled: Callable[[str], bool],
+) -> ReleaseColumnConfig:
+    """Drop columns gated off by content type or a disabled setting.
+
+    The grid template's first track is the title; the rest line up with columns, so
+    removing a column removes its track too. A template that doesn't line up is
+    rebuilt from the remaining columns' widths.
+    """
+    keep = [
+        (column.content_types is None or content_type in column.content_types)
+        and (column.setting_key is None or is_setting_enabled(column.setting_key))
+        for column in config.columns
+    ]
+
+    if all(keep):
+        return config
+
+    columns = [column for column, visible in zip(config.columns, keep, strict=True) if visible]
+    tracks = _split_grid_template(config.grid_template)
+    if len(tracks) == len(config.columns) + 1:
+        grid_tracks = [tracks[0]] + [
+            track for track, visible in zip(tracks[1:], keep, strict=True) if visible
+        ]
+    else:
+        grid_tracks = [tracks[0] if tracks else "minmax(0,2fr)"] + [c.width for c in columns]
+
+    return replace(config, columns=columns, grid_template=" ".join(grid_tracks))
 
 
 def serialize_column_config(config: ReleaseColumnConfig) -> dict[str, Any]:

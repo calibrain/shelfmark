@@ -255,6 +255,8 @@ export const ReleaseCell = ({
         ];
 
         for (const attr of displayAttrs) {
+          // Already listed above from extra.bitrate (Prowlarr copies the attribute there).
+          if (attr.key === 'bitrate' && bitrate) continue;
           const val = toStringValue(torznabAttrs[attr.key]);
           if (val && val.trim()) {
             rows.push({ label: attr.label, value: val.trim() });
@@ -626,7 +628,9 @@ export const ReleaseCell = ({
               title={isOnline ? 'Online' : 'Offline'}
             />
           )}
-          {displayValue}
+          <span className="truncate" title={displayValue || undefined}>
+            {displayValue}
+          </span>
         </div>
       );
     }

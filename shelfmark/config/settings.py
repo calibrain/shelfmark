@@ -612,6 +612,51 @@ def search_mode_settings() -> list[SettingsField]:
             show_when={"field": "SEARCH_MODE", "value": "universal"},
             user_overridable=True,
         ),
+        HeadingField(
+            key="release_columns_heading",
+            title="Release List Columns",
+            description=(
+                "Optional columns in the release list. Rows stay blank where a source "
+                "doesn't provide the detail."
+            ),
+            show_when={"field": "SEARCH_MODE", "value": "universal"},
+        ),
+        CheckboxField(
+            key="SHOW_SERIES_COLUMN",
+            label="Show Series Column",
+            description=(
+                "Series name and number, for books and audiobooks. Filled in for "
+                "MyAnonamouse results from Prowlarr when a MAM session ID is set in the "
+                "Prowlarr settings."
+            ),
+            default=True,
+            show_when={"field": "SEARCH_MODE", "value": "universal"},
+            user_overridable=True,
+        ),
+        CheckboxField(
+            key="SHOW_NARRATOR_COLUMN",
+            label="Show Narrator Column",
+            description=(
+                "Audiobooks only. Filled in for MyAnonamouse results from Prowlarr when a "
+                "MAM session ID is set in the Prowlarr settings."
+            ),
+            default=True,
+            show_when={"field": "SEARCH_MODE", "value": "universal"},
+            user_overridable=True,
+        ),
+        CheckboxField(
+            key="SHOW_BITRATE_COLUMN",
+            label="Show Bitrate Column",
+            description=(
+                "Audiobooks only. AudiobookBay lists it for most releases. In Prowlarr "
+                "results it needs a MAM session ID and is read from the MyAnonamouse "
+                "uploader's tags, so some releases won't have one. Other Prowlarr indexers "
+                "fill it only if they report a bitrate attribute, which most don't."
+            ),
+            default=True,
+            show_when={"field": "SEARCH_MODE", "value": "universal"},
+            user_overridable=True,
+        ),
     ]
 
 

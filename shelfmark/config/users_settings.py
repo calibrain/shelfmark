@@ -78,13 +78,19 @@ _SEARCH_PREFERENCE_PROVIDER_KEYS = {
     "METADATA_PROVIDER_AUDIOBOOK",
     "METADATA_PROVIDER_COMBINED",
 }
+_SEARCH_PREFERENCE_BOOLEAN_KEYS = {
+    "SHOW_COMBINED_SELECTOR",
+    "FORCE_COMBINED_SEARCH",
+    "SHOW_SERIES_COLUMN",
+    "SHOW_NARRATOR_COLUMN",
+    "SHOW_BITRATE_COLUMN",
+}
 SEARCH_PREFERENCE_VALIDATABLE_KEYS = {
     "SEARCH_MODE",
     "BOOK_LANGUAGE",
     "DEFAULT_RELEASE_SOURCE",
     "DEFAULT_RELEASE_SOURCE_AUDIOBOOK",
-    "SHOW_COMBINED_SELECTOR",
-    "FORCE_COMBINED_SEARCH",
+    *_SEARCH_PREFERENCE_BOOLEAN_KEYS,
     *_SEARCH_PREFERENCE_PROVIDER_KEYS,
 }
 
@@ -254,12 +260,7 @@ def validate_search_preference_value(key: str, value: Any) -> tuple[Any, str | N
             )
         return normalized_value, None
 
-    if key == "SHOW_COMBINED_SELECTOR":
-        if isinstance(value, bool):
-            return value, None
-        return bool(value), None
-
-    if key == "FORCE_COMBINED_SEARCH":
+    if key in _SEARCH_PREFERENCE_BOOLEAN_KEYS:
         if isinstance(value, bool):
             return value, None
         return bool(value), None

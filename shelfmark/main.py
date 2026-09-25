@@ -2972,6 +2972,7 @@ def api_releases() -> Response | tuple[Response, int]:
             is_provider_registered,
         )
         from shelfmark.release_sources import (
+            apply_column_visibility,
             browse_record_to_book_metadata,
             get_source,
             list_available_sources,
@@ -3144,7 +3145,15 @@ def api_releases() -> Response | tuple[Response, int]:
         if sources_to_search and sources_to_search[0] in source_instances:
             try:
                 first_source = source_instances[sources_to_search[0]]
-                column_config = serialize_column_config(first_source.get_column_config())
+                column_config = serialize_column_config(
+                    apply_column_visibility(
+                        first_source.get_column_config(),
+                        content_type=normalize_content_type(content_type),
+                        is_setting_enabled=lambda key: bool(
+                            app_config.get(key, True, user_id=db_user_id)
+                        ),
+                    )
+                )
             except _OPERATIONAL_ERRORS as e:
                 logger.warning("Failed to get column config: %s", e)
 

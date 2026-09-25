@@ -17,6 +17,7 @@ This document lists all configuration options that can be set via environment va
 - [Prowlarr](#prowlarr)
 - [Newznab](#newznab)
 - [AudiobookBay](#audiobookbay)
+- [Libgen Search](#libgen-search)
 - [IRC](#irc)
 - [Download Clients](#download-clients)
 - [Metadata Providers](#metadata-providers)
@@ -256,7 +257,6 @@ Seconds since the last WireGuard handshake before the healthcheck bounces the tu
 | `AUDIOBOOK_LIBRARY_URL` | Adds a separate navigation button for your audiobook library (Audiobookshelf, Plex, etc). When both URLs are set, icons are shown instead of text. | string | _none_ |
 | `SUPPORTED_FORMATS` | Book formats to include in search results. ZIP/RAR archives are extracted automatically and book files are used if found. | string (comma-separated) | `epub,mobi,azw3,fb2,djvu,cbz,cbr` |
 | `SUPPORTED_AUDIOBOOK_FORMATS` | Audiobook formats to include in search results. ZIP/RAR archives are extracted automatically and audiobook files are used if found. | string (comma-separated) | `m4b,mp3,m4a,mp4,flac,ogg,wma,aac,wav,opus,zip,rar` |
-| `BOOK_LANGUAGE` | Default language filter for searches. | string (comma-separated) | `en` |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -324,6 +324,9 @@ Audiobook formats to include in search results. ZIP/RAR archives are extracted a
 | `METADATA_PROVIDER_COMBINED` | Metadata provider for combined mode searches. Uses the book provider if not set. | string (choice) | _empty string_ |
 | `DEFAULT_RELEASE_SOURCE` | The release source tab to open by default in the release modal for books. Leave unset to use the first available source. | string (choice) | _empty string_ |
 | `DEFAULT_RELEASE_SOURCE_AUDIOBOOK` | The release source tab to open by default in the release modal for audiobooks. Uses the book release source if not set. | string (choice) | _empty string_ |
+| `SHOW_SERIES_COLUMN` | Series name and number, for books and audiobooks. Filled in for MyAnonamouse results from Prowlarr when a MAM session ID is set in the Prowlarr settings. | boolean | `true` |
+| `SHOW_NARRATOR_COLUMN` | Audiobooks only. Filled in for MyAnonamouse results from Prowlarr when a MAM session ID is set in the Prowlarr settings. | boolean | `true` |
+| `SHOW_BITRATE_COLUMN` | Audiobooks only. AudiobookBay lists it for most releases. In Prowlarr results it needs a MAM session ID and is read from the MyAnonamouse uploader's tags, so some releases won't have one. Other Prowlarr indexers fill it only if they report a bitrate attribute, which most don't. | boolean | `true` |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -364,8 +367,8 @@ Which tab the search page opens on. Users can override this for their own accoun
 Default sort order for search results.
 
 - **Type:** string (choice)
-- **Default:** `relevance`
-- **Options:** `relevance` (Most relevant), `newest` (Newest (publication year)), `oldest` (Oldest (publication year)), `largest` (Largest (filesize)), `smallest` (Smallest (filesize)), `newest_added` (Newest (open sourced)), `oldest_added` (Oldest (open sourced))
+- **Default:** _empty string_
+- **Options:** `""` (Most downloads), `relevance` (Most relevant), `newest` (Newest (publication year)), `oldest` (Oldest (publication year)), `largest` (Largest (filesize)), `smallest` (Smallest (filesize)), `newest_added` (Newest (open sourced)), `oldest_added` (Oldest (open sourced))
 
 #### `SHOW_RELEASE_SOURCE_LINKS`
 
@@ -443,6 +446,33 @@ The release source tab to open by default in the release modal for audiobooks. U
 - **Type:** string (choice)
 - **Default:** _empty string_
 - **Options:** `""` (Use book release source)
+
+#### `SHOW_SERIES_COLUMN`
+
+**Show Series Column**
+
+Series name and number, for books and audiobooks. Filled in for MyAnonamouse results from Prowlarr when a MAM session ID is set in the Prowlarr settings.
+
+- **Type:** boolean
+- **Default:** `true`
+
+#### `SHOW_NARRATOR_COLUMN`
+
+**Show Narrator Column**
+
+Audiobooks only. Filled in for MyAnonamouse results from Prowlarr when a MAM session ID is set in the Prowlarr settings.
+
+- **Type:** boolean
+- **Default:** `true`
+
+#### `SHOW_BITRATE_COLUMN`
+
+**Show Bitrate Column**
+
+Audiobooks only. AudiobookBay lists it for most releases. In Prowlarr results it needs a MAM session ID and is read from the MyAnonamouse uploader's tags, so some releases won't have one. Other Prowlarr indexers fill it only if they report a bitrate attribute, which most don't.
+
+- **Type:** boolean
+- **Default:** `true`
 
 </details>
 
@@ -779,7 +809,6 @@ Automatically open the downloads sidebar when a new download is queued.
 Automatically download completed files to your browser for the selected content types.
 
 - **Type:** string (comma-separated)
-  
 - **Default:** _empty list_
 
 #### `MAX_CONCURRENT_DOWNLOADS`
@@ -813,8 +842,8 @@ How long to keep completed/failed downloads in the queue display.
 | `PROXY_AUTH_USER_HEADER` | The HTTP header your proxy uses to pass the authenticated username. | string | `X-Auth-User` |
 | `PROXY_AUTH_LOGOUT_URL` | The URL to redirect users to for logging out. Leave empty to disable logout functionality. | string | _empty string_ |
 | `PROXY_AUTH_ADMIN_GROUP_HEADER` | Optional: header your proxy uses to pass user groups/roles. | string | `X-Auth-Groups` |
-| `PROXY_AUTH_DEFAULT_ROLE` | Role for users the proxy authenticates for the first time when no admin group is configured. The first account is always an admin so the instance is never left without one. | string (choice) | `user` |
 | `PROXY_AUTH_ADMIN_GROUP_NAME` | Optional: users in this group are treated as admins. Leave blank to skip group-based admin detection. | string | _empty string_ |
+| `PROXY_AUTH_DEFAULT_ROLE` | Role for users the proxy authenticates for the first time when no admin group is configured. The first account is always an admin so the instance is never left without one. | string (choice) | `user` |
 | `OIDC_DISCOVERY_URL` | OpenID Connect discovery endpoint URL. Usually ends with /.well-known/openid-configuration. | string | _none_ |
 | `OIDC_CLIENT_ID` | OAuth2 client ID from your identity provider. | string | _none_ |
 | `OIDC_CLIENT_SECRET` | OAuth2 client secret from your identity provider. | string (secret) | _none_ |
@@ -873,6 +902,7 @@ Optional: users in this group are treated as admins. Leave blank to skip group-b
 
 - **Type:** string
 - **Default:** _empty string_
+
 #### `PROXY_AUTH_DEFAULT_ROLE`
 
 **Proxy Auth Default Role**
@@ -882,7 +912,6 @@ Role for users the proxy authenticates for the first time when no admin group is
 - **Type:** string (choice)
 - **Default:** `user`
 - **Options:** `user` (User), `admin` (Admin)
-
 
 #### `OIDC_DISCOVERY_URL`
 
@@ -1269,6 +1298,7 @@ How long to cache individual book details. Default: 600 (10 minutes). Max: 60480
 | `PROWLARR_AUTO_EXPAND` | Automatically retry search without category filtering if no results are found | boolean | `false` |
 | `PROWLARR_COLLAPSE_DUPLICATES` | Collapse a release that several indexer entries returned down to a single row, keeping the entry with the best Prowlarr priority. Turn this off to see every entry that carried it, which is what makes results from filter-specific entries (freeleech and the like) visible. | boolean | `true` |
 | `PROWLARR_USE_SEED_PREFERENCES` | Apply per-indexer seed time and ratio preferences from Prowlarr when sending torrents to the download client | boolean | `false` |
+| `PROWLARR_MAM_ID` | The mam_id value MyAnonamouse shows when you create a session. MAM locks each session to one IP or ASN, so reusing Prowlarr's or another client's session often fails with a 403: you will likely need a separate session for Shelfmark if it reaches MAM from another IP (different host, VPN or proxy) or the existing session is ASN-locked to another network. Leave empty to turn enrichment off. | string (secret) | _none_ |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -1348,6 +1378,15 @@ Apply per-indexer seed time and ratio preferences from Prowlarr when sending tor
 - **Type:** boolean
 - **Default:** `false`
 
+#### `PROWLARR_MAM_ID`
+
+**MAM Session ID**
+
+The mam_id value MyAnonamouse shows when you create a session. MAM locks each session to one IP or ASN, so reusing Prowlarr's or another client's session often fails with a 403: you will likely need a separate session for Shelfmark if it reaches MAM from another IP (different host, VPN or proxy) or the existing session is ASN-locked to another network. Leave empty to turn enrichment off.
+
+- **Type:** string (secret)
+- **Default:** _none_
+
 </details>
 
 ## Newznab
@@ -1355,9 +1394,9 @@ Apply per-indexer seed time and ratio preferences from Prowlarr when sending tor
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
 | `NEWZNAB_ENABLED` | Enable searching for books via a Newznab-compatible indexer | boolean | `false` |
-| `NEWZNAB_INDEXERS` | Named Newznab connections. Each row accepts `name`, `url`, and `api_key`. | JSON array | `[]` |
-| `NEWZNAB_URL` | Legacy single-indexer URL, used when `NEWZNAB_INDEXERS` is empty | string | _none_ |
-| `NEWZNAB_API_KEY` | Legacy single-indexer API key | string (secret) | _none_ |
+| `NEWZNAB_INDEXERS` | Add each Newznab-compatible indexer separately. The configured name is shown beside every result from that indexer. | string | _empty list_ |
+| `NEWZNAB_URL` | Used only when the named indexer list is empty | string | _none_ |
+| `NEWZNAB_API_KEY` | Used only with the legacy Newznab URL | string (secret) | _none_ |
 | `NEWZNAB_EBOOK_CATEGORIES` | Newznab category IDs searched for ebooks. Most indexers use the standard 7000, but some use custom IDs. Leave empty to use 7000. | string (comma-separated) | `7000` |
 | `NEWZNAB_AUDIOBOOK_CATEGORIES` | Newznab category IDs searched for audiobooks. Most indexers use the standard 3030, but some use custom IDs. Leave empty to use 3030. | string (comma-separated) | `3030` |
 | `NEWZNAB_AUTO_EXPAND` | Automatically retry search without category filtering if no results are found | boolean | `false` |
@@ -1378,23 +1417,16 @@ Enable searching for books via a Newznab-compatible indexer
 
 **Named Indexers**
 
-Configure multiple named Newznab-compatible indexers. The name is shown beside each search result. For environment-based configuration, provide a JSON array:
+Add each Newznab-compatible indexer separately. The configured name is shown beside every result from that indexer.
 
-```json
-[
-  {"name":"NZBGeek","url":"https://api.nzbgeek.info","api_key":"..."},
-  {"name":"DrunkenSlug","url":"https://drunkenslug.com","api_key":"..."}
-]
-```
-
-- **Type:** JSON array
-- **Default:** `[]`
+- **Type:** string
+- **Default:** _empty list_
 
 #### `NEWZNAB_URL`
 
 **Legacy Newznab URL**
 
-Single-indexer fallback used only when `NEWZNAB_INDEXERS` is empty.
+Used only when the named indexer list is empty
 
 - **Type:** string
 - **Default:** _none_
@@ -1403,7 +1435,7 @@ Single-indexer fallback used only when `NEWZNAB_INDEXERS` is empty.
 
 **Legacy API Key**
 
-API key for the legacy Newznab URL.
+Used only with the legacy Newznab URL
 
 - **Type:** string (secret)
 - **Default:** _none_
@@ -1497,6 +1529,37 @@ Delay between requests in seconds to avoid rate limiting (0-10).
 - **Type:** number
 - **Default:** `1.0`
 - **Constraints:** min: 0.0, max: 10.0
+
+</details>
+
+## Libgen Search
+
+| Variable | Description | Type | Default |
+|----------|-------------|------|---------|
+| `LIBGEN_SEARCH_ENABLED` | Search the Libgen catalogue directly, including CBZ/CBR comics and manga that Anna's Archive does not index. Uses the Libgen mirrors configured under Mirrors for both search and download. | boolean | `false` |
+| `LIBGEN_SEARCH_MAX_RESULTS` | Maximum number of results to request per search (1-100). | number | `25` |
+
+<details>
+<summary>Detailed descriptions</summary>
+
+#### `LIBGEN_SEARCH_ENABLED`
+
+**Enable Libgen Search**
+
+Search the Libgen catalogue directly, including CBZ/CBR comics and manga that Anna's Archive does not index. Uses the Libgen mirrors configured under Mirrors for both search and download.
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `LIBGEN_SEARCH_MAX_RESULTS`
+
+**Max Results**
+
+Maximum number of results to request per search (1-100).
+
+- **Type:** number
+- **Default:** `25`
+- **Constraints:** min: 1, max: 100
 
 </details>
 
@@ -1610,6 +1673,7 @@ How long to keep cached search results before they expire.
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
 | `PROWLARR_TORRENT_CLIENT` | Choose which torrent client to use | string (choice) | _empty string_ |
+| `BLACKHOLE_DIRECTORY` | Directory where Shelfmark saves .torrent files for another downloader | string | _none_ |
 | `ALLDEBRID_API_KEY` | AllDebrid API Key (apiv4) from your AllDebrid account settings | string (secret) | _none_ |
 | `REALDEBRID_API_KEY` | Real-Debrid API Key (Secret Token) from your Real-Debrid account settings | string (secret) | _none_ |
 | `TORBOX_API_KEY` | TorBox API Key from your TorBox account settings | string (secret) | _none_ |
@@ -1664,7 +1728,16 @@ Choose which torrent client to use
 
 - **Type:** string (choice)
 - **Default:** _empty string_
-- **Options:** `""` (None), `alldebrid` (AllDebrid), `qbittorrent` (qBittorrent), `realdebrid` (Real-Debrid), `torbox` (TorBox), `transmission` (Transmission), `deluge` (Deluge), `rtorrent` (rTorrent)
+- **Options:** `""` (None), `alldebrid` (AllDebrid), `blackhole` (Blackhole), `qbittorrent` (qBittorrent), `realdebrid` (Real-Debrid), `torbox` (TorBox), `transmission` (Transmission), `deluge` (Deluge), `rtorrent` (rTorrent)
+
+#### `BLACKHOLE_DIRECTORY`
+
+**Blackhole Directory**
+
+Directory where Shelfmark saves .torrent files for another downloader
+
+- **Type:** string
+- **Default:** _none_
 
 #### `ALLDEBRID_API_KEY`
 

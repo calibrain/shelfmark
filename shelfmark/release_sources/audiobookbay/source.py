@@ -350,6 +350,7 @@ class AudiobookBaySource(ReleaseSource):
                     fallback="",
                     sortable=True,
                     sort_key="extra.bitrate_value",
+                    setting_key="SHOW_BITRATE_COLUMN",
                 ),
                 ColumnSchema(
                     key="size",
