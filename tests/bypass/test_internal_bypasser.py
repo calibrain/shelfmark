@@ -6,6 +6,27 @@ from pathlib import Path
 import pytest
 
 
+def test_diamwall_is_detected_until_the_challenge_clears():
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    class DiamWallPage:
+        async def get_title(self):
+            return "DiamWall"
+
+        async def evaluate(self, _expression):
+            return "Please wait while DiamWall checks your browser"
+
+        async def get_current_url(self):
+            return "https://example.com"
+
+    assert asyncio.run(internal_bypasser._detect_challenge_type(DiamWallPage())) == "other"
+    assert not internal_bypasser._is_bypassed_content(
+        "DiamWall",
+        "Please wait while DiamWall checks your browser",
+        "https://example.com",
+    )
+
+
 def test_bypass_tries_all_methods_before_abort(monkeypatch):
     """Regression test for issue #524: don't abort before cycling through bypass methods."""
     import shelfmark.bypass.internal_bypasser as internal_bypasser
