@@ -107,7 +107,8 @@ def _normalize_json_object_list(payload: object, *, context: str) -> list[dict[s
     return [_normalize_json_object(item, context=context) for item in payload]
 
 
-def _get_field_value(fields: object, name: str) -> object | None:
+def get_indexer_field(fields: object, name: str) -> object | None:
+    """Return a setting's value from a Prowlarr indexer's "fields" list."""
     if not isinstance(fields, list):
         return None
 
@@ -118,6 +119,17 @@ def _get_field_value(fields: object, name: str) -> object | None:
             return field.get("value")
 
     return None
+
+
+def is_myanonamouse_indexer(indexer: Mapping[str, Any]) -> bool:
+    """Whether a Prowlarr indexer record is the MyAnonamouse implementation."""
+    implementation = str(
+        indexer.get("implementation")
+        or indexer.get("implementationName")
+        or indexer.get("definitionName")
+        or ""
+    )
+    return implementation.strip().lower() == "myanonamouse"
 
 
 class ProwlarrClient:
@@ -300,14 +312,8 @@ class ProwlarrClient:
             if restrict_to is not None and idx_id_int not in restrict_to:
                 continue
 
-            impl = str(
-                idx.get("implementation")
-                or idx.get("implementationName")
-                or idx.get("definitionName")
-                or ""
-            )
             # Currently only MyAnonamouse provides consistently rich Torznab metadata.
-            if impl.strip().lower() == "myanonamouse":
+            if is_myanonamouse_indexer(idx):
                 enriched_ids.append(idx_id_int)
 
         return enriched_ids
@@ -339,9 +345,9 @@ class ProwlarrClient:
                 continue
 
             fields = idx.get("fields")
-            ratio_limit = coerce_float_like(_get_field_value(fields, _INDEXER_FIELD_SEED_RATIO))
+            ratio_limit = coerce_float_like(get_indexer_field(fields, _INDEXER_FIELD_SEED_RATIO))
             seeding_time_limit = coerce_int_like(
-                _get_field_value(fields, _INDEXER_FIELD_SEED_TIME_MINUTES)
+                get_indexer_field(fields, _INDEXER_FIELD_SEED_TIME_MINUTES)
             )
 
             settings: IndexerSeedSettings = {}

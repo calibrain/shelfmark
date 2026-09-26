@@ -11,6 +11,7 @@ import requests
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
     from shelfmark.metadata_providers import BookMetadata
+    from shelfmark.release_sources.prowlarr.mam import MamSearchOptions
 
 from shelfmark.core.author_match import AUTHOR_UNKNOWN, author_affinity
 from shelfmark.core.config import config
@@ -39,11 +40,12 @@ from shelfmark.release_sources.prowlarr.api import (
     IndexerSeedSettings,
     ProwlarrClient,
     ProwlarrSearchError,
+    is_myanonamouse_indexer,
 )
 from shelfmark.release_sources.prowlarr.cache import cache_release
 from shelfmark.release_sources.prowlarr.mam import (
     lookup_torrent_details,
-    mam_base_url,
+    mam_search_options,
     mam_torrent_id,
 )
 from shelfmark.release_sources.prowlarr.utils import (
@@ -89,26 +91,23 @@ def _enrich_mam_releases(
     releases: list[Release],
     mam_id: str,
     queries: list[str],
+    options: MamSearchOptions,
     deadline: float | None,
 ) -> None:
     """Fill narrator/series/bitrate on MyAnonamouse releases from MAM's own API."""
-    ids_by_source_id: dict[str, int] = {}
-    base_url: str | None = None
-    for release in releases:
-        torrent_id = mam_torrent_id(release.info_url)
-        if torrent_id is None:
-            continue
-        ids_by_source_id[release.source_id] = torrent_id
-        base_url = base_url or mam_base_url(release.info_url)
-
-    if not ids_by_source_id or base_url is None:
+    ids_by_source_id = {
+        release.source_id: torrent_id
+        for release in releases
+        if (torrent_id := mam_torrent_id(release.info_url)) is not None
+    }
+    if not ids_by_source_id:
         return
 
     details_by_id = lookup_torrent_details(
         mam_id,
         set(ids_by_source_id.values()),
         queries,
-        base_url=base_url,
+        options=options,
         deadline=deadline,
     )
     for release in releases:
@@ -1126,6 +1125,12 @@ class ProwlarrSource(ReleaseSource):
                 restrict_to=indexer_ids, indexers=enabled_indexers
             )
             enriched_indexer_ids_set = set(enriched_indexer_ids)
+            mam_indexers = {
+                indexer_id: indexer
+                for indexer in enabled_indexers
+                if is_myanonamouse_indexer(indexer)
+                and (indexer_id := _coerce_indexer_id(indexer.get("id"))) is not None
+            }
             indexer_seed_settings = (
                 _fetch_indexer_seed_settings(client, indexer_ids)
                 if config.get("PROWLARR_USE_SEED_PREFERENCES", False)
@@ -1266,6 +1271,8 @@ class ProwlarrSource(ReleaseSource):
             results: list[Release] = []
             enriched_source_ids: set[str] = set()
             affinity_by_source_id: dict[str, int] = {}
+            mam_releases: list[Release] = []
+            mam_indexer: dict | None = None
             # A manual query is the user's own words; ranking it against the
             # metadata author would second-guess what they typed.
             wanted_author = "" if plan.manual_query else plan.author
@@ -1294,14 +1301,21 @@ class ProwlarrSource(ReleaseSource):
 
                 if is_enriched:
                     enriched_source_ids.add(release.source_id)
+                if idx_id_int in mam_indexers:
+                    mam_releases.append(release)
+                    mam_indexer = mam_indexer or mam_indexers[idx_id_int]
 
             mam_session_id = _get_mam_session_id()
-            if mam_session_id:
+            if mam_session_id and mam_releases:
+                # Rerun the search Prowlarr sent to MAM, so it returns the same torrents:
+                # the indexer's own options, and every category once the search expanded.
+                mam_categories = None if self.last_search_type == "expanded" else categories
                 try:
                     _enrich_mam_releases(
-                        results,
+                        mam_releases,
                         mam_session_id,
                         [variant.title for variant in variants],
+                        mam_search_options(mam_indexer, mam_categories),
                         deadline,
                     )
                 except _PROWLARR_REQUEST_ERRORS:

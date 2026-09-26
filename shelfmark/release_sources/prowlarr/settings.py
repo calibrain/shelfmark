@@ -135,7 +135,7 @@ def _test_prowlarr_connection(current_values: dict[str, Any] | None = None) -> d
 
 def _test_mam_connection(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
     """Check the MAM session ID by asking MAM which account it belongs to."""
-    from shelfmark.release_sources.prowlarr.mam import MamAuthError, MamClient
+    from shelfmark.release_sources.prowlarr.mam import MamClient, MamError, reset_failures
 
     current_values = current_values or {}
     mam_id = _resolve_setting_text(current_values, "PROWLARR_MAM_ID")
@@ -144,13 +144,15 @@ def _test_mam_connection(current_values: dict[str, Any] | None = None) -> dict[s
 
     try:
         username = MamClient(mam_id).get_username()
-    except MamAuthError as e:
+    except MamError as e:
         return {"success": False, "message": str(e)}
     except _PROWLARR_SETTINGS_ERRORS as e:
         return {"success": False, "message": f"Connection failed: {e!s}"}
 
     if not username:
         return {"success": False, "message": "MyAnonamouse did not return an account for this ID"}
+    # A working session ends any back-off from earlier failed lookups.
+    reset_failures()
     return {"success": True, "message": f"Connected to MyAnonamouse as {username}"}
 
 
@@ -280,7 +282,10 @@ def prowlarr_config_settings() -> list[SettingsField]:
         ActionButton(
             key="test_prowlarr_mam",
             label="Test MAM Session",
-            description="Check that MyAnonamouse accepts the session ID",
+            description=(
+                "Check that MyAnonamouse accepts the session ID. A passing test also resumes "
+                "enrichment after it stopped on repeated failures."
+            ),
             style="primary",
             callback=_test_mam_connection,
             show_when={"field": "PROWLARR_ENABLED", "value": True},
