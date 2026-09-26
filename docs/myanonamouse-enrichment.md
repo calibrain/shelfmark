@@ -35,4 +35,8 @@ Compare it with the IP listed next to the session on MAM's security page.
 
 ## How it works
 
-After a Prowlarr search, Shelfmark sends the same query text to MAM's JSON search API (normally one request) and matches torrents back to Prowlarr's results by their MAM torrent ID. Lookups are cached for an hour, stay inside the Prowlarr search time budget, and never fail the search: if MAM errors or rejects the session, the release list simply shows without the extra columns filled in.
+After a Prowlarr search, Shelfmark reruns the search Prowlarr sent to MyAnonamouse's JSON search API: the same cleaned-up query text, the same categories (audiobooks, or e-books), and your MyAnonamouse indexer's own options from Prowlarr (search type, search in description/series/filenames, languages). That normally returns the same torrents in one request per title. Shelfmark then matches them back to Prowlarr's results by their MAM torrent ID. Only results from the MyAnonamouse indexer are looked up, and the session ID is only ever sent to `https://www.myanonamouse.net`.
+
+If some torrents are missing from the first page, Shelfmark reads further pages, up to 4 requests per search. Lookups are cached for an hour, stay inside the Prowlarr search time budget, and never fail the search: if MAM errors or rejects the session, the release list simply shows without the extra columns filled in.
+
+After a failed request (a 403, a timeout, an unexpected reply), Shelfmark waits before trying MAM again: 1 minute, then 2, 4 and so on, up to 30 minutes. After 10 failures in a row it stops using MAM. **Test MAM Session** (once it succeeds), a new session ID, or a restart turns it back on. Each failure is logged with the reason.
