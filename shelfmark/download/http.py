@@ -42,6 +42,8 @@ _HTTP_STATUS_FORBIDDEN = HTTPStatus.FORBIDDEN
 _HTTP_STATUS_NOT_FOUND = HTTPStatus.NOT_FOUND
 _HTTP_STATUS_RATE_LIMITED = HTTPStatus.TOO_MANY_REQUESTS
 _HTTP_STATUS_SERVICE_UNAVAILABLE = HTTPStatus.SERVICE_UNAVAILABLE
+# DiamWall uses this non-standard status for its browser-verification page.
+_HTTP_STATUS_CHALLENGE = 513
 _HTTP_STATUS_OK = HTTPStatus.OK
 _HTTP_STATUS_RANGE_NOT_SATISFIABLE = HTTPStatus.REQUESTED_RANGE_NOT_SATISFIABLE
 _HTTP_STATUS_PARTIAL_CONTENT = HTTPStatus.PARTIAL_CONTENT
@@ -615,6 +617,27 @@ def html_get_page(
                     if marker:
                         logger.debug(
                             "503 challenge (%s) but no bypasser handoff available: %s",
+                            marker,
+                            current_url,
+                        )
+
+                if response.status_code == _HTTP_STATUS_CHALLENGE:
+                    marker = _response_challenge_marker(response)
+                    if marker and _bypass_handoff_allowed():
+                        if cookies:
+                            logger.debug(
+                                "513 challenge with cookies presented; purging: %s", current_url
+                            )
+                            _purge_clearance(current_url)
+                        logger.info(
+                            "513 challenge detected (%s); switching to bypasser: %s",
+                            marker,
+                            current_url,
+                        )
+                        return _run_bypasser(current_url)
+                    if marker:
+                        logger.debug(
+                            "513 challenge (%s) but no bypasser handoff available: %s",
                             marker,
                             current_url,
                         )
