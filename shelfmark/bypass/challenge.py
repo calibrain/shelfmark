@@ -21,6 +21,10 @@ DDOS_GUARD_INDICATORS = [
     "could not verify your browser automatically",
 ]
 
+OTHER_CHALLENGE_INDICATORS = [
+    "diamwall",
+]
+
 # Markers that exist only in raw markup: the bypassers scan rendered innerText, where
 # a script src or a <title> never appears. The title match is scoped to the tag on
 # purpose - hosts word the rest of that sentence differently, and matching "checking
@@ -46,7 +50,12 @@ def challenge_marker(html: str) -> str | None:
     if not html or len(html) > MAX_CHALLENGE_HTML_CHARS:
         return None
     lowered = html.lower()
-    for marker in (*_RAW_HTML_MARKERS, *DDOS_GUARD_INDICATORS, *CLOUDFLARE_INDICATORS):
+    for marker in (
+        *_RAW_HTML_MARKERS,
+        *DDOS_GUARD_INDICATORS,
+        *CLOUDFLARE_INDICATORS,
+        *OTHER_CHALLENGE_INDICATORS,
+    ):
         if marker in lowered:
             return marker
     return None

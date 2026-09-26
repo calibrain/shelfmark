@@ -27,7 +27,11 @@ from seleniumbase import cdp_driver
 from seleniumbase.undetected.cdp_driver.connection import ProtocolException
 
 from shelfmark.bypass import BypassCancelledError
-from shelfmark.bypass.challenge import CLOUDFLARE_INDICATORS, DDOS_GUARD_INDICATORS
+from shelfmark.bypass.challenge import (
+    CLOUDFLARE_INDICATORS,
+    DDOS_GUARD_INDICATORS,
+    OTHER_CHALLENGE_INDICATORS,
+)
 from shelfmark.bypass.cookie_store import (
     clear_cf_cookies,
     export_store,
@@ -443,7 +447,7 @@ def _has_cloudflare_patterns(body: str, url: str) -> bool:
 
 
 async def _detect_challenge_type(page: Any) -> str:
-    """Detect challenge type: 'cloudflare', 'ddos_guard', or 'none'."""
+    """Detect challenge type: 'cloudflare', 'ddos_guard', 'other', or 'none'."""
     title, body, current_url = await _get_page_info(page)
 
     # DDOS-Guard indicators
@@ -455,6 +459,10 @@ async def _detect_challenge_type(page: Any) -> str:
     if found := _check_indicators(title, body, CLOUDFLARE_INDICATORS):
         logger.debug("Cloudflare indicator found: '%s'", found)
         return "cloudflare"
+
+    if found := _check_indicators(title, body, OTHER_CHALLENGE_INDICATORS):
+        logger.debug("Other challenge indicator found: '%s'", found)
+        return "other"
 
     # Check URL patterns
     if _has_cloudflare_patterns(body, current_url):
@@ -490,7 +498,11 @@ def _is_bypassed_content(
             return True
 
     # Check for protection indicators (means NOT bypassed)
-    if _check_indicators(title, body, CLOUDFLARE_INDICATORS + DDOS_GUARD_INDICATORS):
+    if _check_indicators(
+        title,
+        body,
+        CLOUDFLARE_INDICATORS + DDOS_GUARD_INDICATORS + OTHER_CHALLENGE_INDICATORS,
+    ):
         return False
 
     # Cloudflare URL patterns
