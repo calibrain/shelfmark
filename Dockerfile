@@ -57,11 +57,11 @@ ENV FLASK_PORT=8084
 # Configure locale, timezone, and perform initial cleanup in a single layer
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    # For building C-extensions (cffi, gevent, etc.)
-    gcc \
-    g++ \
-    libffi-dev \
-    python3-dev \
+    # No C toolchain: every compiled dependency (cffi, gevent, greenlet,
+    # zope-interface) ships a cp314 manylinux wheel for amd64 and arm64, and
+    # the sdist-only ones are pure Python. The toolchain was 290MB of the
+    # runtime image, and python3-dev pulled Debian's libpython3.13 into a 3.14
+    # image. If a dependency ever needs compiling, build it in a separate stage.
     # For locale
     locales tzdata \
     # For healthcheck
