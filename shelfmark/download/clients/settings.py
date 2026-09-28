@@ -895,10 +895,11 @@ def prowlarr_clients_settings() -> list[SettingsField]:
         SelectField(
             key="PROWLARR_TORRENT_ACTION",
             label="Torrent Completion Action",
-            description="Choose whether to keep, remove, or move the torrent to another category or label after import",
+            description="What to do with the torrent in your client after a successful import. Remove stops seeding but keeps the downloaded files; Remove & Delete Files also deletes them from the client's download location.",
             options=[
                 {"value": "keep", "label": "Keep"},
                 {"value": "remove", "label": "Remove"},
+                {"value": "remove_and_delete", "label": "Remove & Delete Files"},
                 {"value": "change_category", "label": "Change Category"},
             ],
             default="keep",

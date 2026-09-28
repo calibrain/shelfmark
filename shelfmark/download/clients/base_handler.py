@@ -285,9 +285,15 @@ class ExternalClientHandler(DownloadHandler, ABC):
 
         elif protocol == "torrent":
             torrent_action = config.get("PROWLARR_TORRENT_ACTION", "keep")
-            if torrent_action == "remove":
+            if torrent_action in ("remove", "remove_and_delete"):
+                # Only reached after a successful import, so the library already holds its
+                # own copy or hardlink of every file. The client deletes its own data, so
+                # remote path mappings don't matter here.
                 try:
-                    client.remove(download_id, delete_files=False)
+                    client.remove(
+                        download_id,
+                        delete_files=torrent_action == "remove_and_delete",
+                    )
                 except _CLIENT_CLEANUP_ERRORS as e:
                     logger.warning(
                         "Failed to remove torrent %s from %s: %s",
