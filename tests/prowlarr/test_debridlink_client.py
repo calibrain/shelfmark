@@ -8,12 +8,15 @@ step to mock.
 """
 
 import hashlib
+import io
 from unittest.mock import MagicMock
 
 import pytest
+import requests
 
-from shelfmark.download.clients import DownloadState
+from shelfmark.download.clients import DownloadState, debridlink
 from shelfmark.download.clients.debridlink import (
+    DebridLinkAPIError,
     DebridLinkClient,
     _as_float,
     _DownloadState,
@@ -59,6 +62,24 @@ def _mock_request(monkeypatch, payload, *, status_code=200):
     return request
 
 
+@pytest.fixture(autouse=True)
+def _reset_shared_state():
+    """The flood back-off and the download table are shared across instances."""
+    DebridLinkClient._flood_until = 0.0
+    DebridLinkClient._downloads.clear()
+    yield
+    DebridLinkClient._flood_until = 0.0
+    DebridLinkClient._downloads.clear()
+
+
+def _state(tmp_path, phase="waiting_dl"):
+    return _DownloadState(torrent_id="DL1", name="Dune", target_dir=tmp_path, phase=phase)
+
+
+def _buffer(data=b"data"):
+    return io.BytesIO(data)
+
+
 def _client(monkeypatch, api_key="dl-key"):
     monkeypatch.setattr(
         "shelfmark.download.clients.debridlink.config.get",
@@ -68,37 +89,71 @@ def _client(monkeypatch, api_key="dl-key"):
 
 
 class TestEnvelope:
-    """A failed call can still be an HTTP 200, so the body decides."""
+    """The body decides the outcome, and error codes survive a 4xx or 5xx."""
 
     def test_success_false_raises_even_on_http_200(self, monkeypatch):
-        _mock_request(
-            monkeypatch,
-            {"success": False, "error": "badToken", "error_description": "Invalid token"},
+        _mock_request(monkeypatch, {"success": False, "error": "badToken"})
+        client = _client(monkeypatch)
+
+        with pytest.raises(DebridLinkAPIError, match="failed: badToken") as err:
+            client._request_value("GET", "/account/infos", operation="account check")
+        assert err.value.code == "badToken"
+
+    def test_the_error_code_is_read_from_a_4xx_body(self, monkeypatch):
+        _mock_request(monkeypatch, {"success": False, "error": "badToken"}, status_code=401)
+        client = _client(monkeypatch)
+
+        with pytest.raises(DebridLinkAPIError, match="badToken") as err:
+            client._request_value("GET", "/account/infos", operation="account check")
+        assert err.value.code == "badToken"
+
+    def test_a_5xx_without_a_body_keeps_the_status(self, monkeypatch):
+        response = MagicMock(status_code=503)
+        response.json = MagicMock(side_effect=ValueError("no json"))
+        monkeypatch.setattr(
+            "shelfmark.download.clients.debridlink.requests.request",
+            MagicMock(return_value=response),
         )
         client = _client(monkeypatch)
 
-        with pytest.raises(RuntimeError, match="Invalid token"):
-            client._request_value("GET", "/account/infos")
-
-    def test_error_code_is_used_when_no_description_is_given(self, monkeypatch):
-        _mock_request(monkeypatch, {"success": False, "error": "floodDetected"})
-        client = _client(monkeypatch)
-
-        with pytest.raises(RuntimeError, match="floodDetected"):
-            client._request_value("GET", "/account/infos")
+        with pytest.raises(DebridLinkAPIError, match="HTTP 503") as err:
+            client._request_value("GET", "/seedbox/list", operation="status check")
+        assert err.value.code == "http503"
 
     def test_success_unwraps_the_value(self, monkeypatch):
         _mock_request(monkeypatch, {"success": True, "value": {"id": "DL1"}})
         client = _client(monkeypatch)
 
-        assert client._request_value("GET", "/seedbox/list") == {"id": "DL1"}
+        assert client._request_value("GET", "/seedbox/list", operation="status check") == {
+            "id": "DL1"
+        }
 
     def test_a_non_object_body_is_rejected(self, monkeypatch):
         _mock_request(monkeypatch, ["unexpected"])
         client = _client(monkeypatch)
 
-        with pytest.raises(RuntimeError, match="Unexpected Debrid-Link response"):
-            client._request_value("GET", "/account/infos")
+        with pytest.raises(RuntimeError, match="invalid response"):
+            client._request_value("GET", "/account/infos", operation="account check")
+
+    def test_a_network_failure_does_not_leak_the_url(self, monkeypatch):
+        monkeypatch.setattr(
+            "shelfmark.download.clients.debridlink.requests.request",
+            MagicMock(side_effect=requests.ConnectionError("https://debrid-link.com/secret")),
+        )
+        client = _client(monkeypatch)
+
+        with pytest.raises(RuntimeError) as err:
+            client._request_value("GET", "/seedbox/list", operation="status check")
+        assert "debrid-link.com" not in str(err.value)
+        assert "ConnectionError" in str(err.value)
+
+    def test_flood_detected_starts_the_shared_back_off(self, monkeypatch):
+        _mock_request(monkeypatch, {"success": False, "error": "floodDetected"}, status_code=429)
+        client = _client(monkeypatch)
+
+        with pytest.raises(DebridLinkAPIError):
+            client._request_value("GET", "/seedbox/list", operation="status check")
+        assert DebridLinkClient._flood_until > 0
 
 
 class TestAdd:
@@ -162,18 +217,9 @@ class TestStatus:
     def _bare_client():
         return DebridLinkClient.__new__(DebridLinkClient)
 
-    @staticmethod
-    def _state(tmp_path):
-        return _DownloadState(
-            torrent_id="DL1",
-            name="Dune",
-            target_dir=tmp_path,
-            phase="waiting_dl",
-        )
-
     def test_partial_progress_is_halved_and_stays_downloading(self, tmp_path):
         client = self._bare_client()
-        state = self._state(tmp_path)
+        state = _state(tmp_path)
 
         status = client._handle_torrent_info(
             {"downloadPercent": 40, "name": "Dune.epub", "downloadSpeed": 1234},
@@ -186,47 +232,125 @@ class TestStatus:
         assert status.complete is False
         assert status.download_speed == 1234
         assert state.phase == "waiting_dl"
-        assert state.error_message is None
 
-    def test_torrent_error_is_terminal_and_cached(self, tmp_path):
+    def test_completion_hands_off_only_when_every_file_is_ready(self, tmp_path, monkeypatch):
         client = self._bare_client()
-        state = self._state(tmp_path)
-
-        status = client._handle_torrent_info(
-            {"error": 9, "errorString": "tracker rejected"},
-            state,
-        )
-
-        assert status.state == DownloadState.ERROR
-        assert state.phase == "error"
-        assert state.error_message == "Debrid-Link torrent error: tracker rejected"
-
-    def test_completion_hands_the_files_off_for_download(self, tmp_path, monkeypatch):
-        client = self._bare_client()
-        state = self._state(tmp_path)
+        state = _state(tmp_path)
         started = MagicMock()
         monkeypatch.setattr(client, "_maybe_start_download_thread", started)
 
-        files = [{"name": "Dune.epub", "downloadUrl": "https://dl.example/Dune.epub"}]
-        status = client._handle_torrent_info(
-            {"downloadPercent": 100, "downloaded": True, "files": files},
-            state,
-        )
+        partial = {
+            "downloadPercent": 100,
+            "files": [
+                {"name": "a.mp3", "downloadPercent": 100},
+                {"name": "b.mp3", "downloadPercent": 80},
+            ],
+        }
+        client._handle_torrent_info(partial, state)
+        started.assert_not_called()
+
+        partial["files"][1]["downloadPercent"] = 100
+        status = client._handle_torrent_info(partial, state)
 
         assert status.progress == 50.0
-        assert status.state == DownloadState.DOWNLOADING
-        assert status.complete is False
-        started.assert_called_once_with(state, files)
+        started.assert_called_once_with(state)
 
-    def test_downloaded_flag_alone_is_enough(self, tmp_path, monkeypatch):
+    def test_an_empty_file_list_is_not_treated_as_ready(self, tmp_path, monkeypatch):
         client = self._bare_client()
-        state = self._state(tmp_path)
         started = MagicMock()
         monkeypatch.setattr(client, "_maybe_start_download_thread", started)
 
-        client._handle_torrent_info({"downloaded": True, "files": []}, state)
+        client._handle_torrent_info({"downloadPercent": 100, "files": []}, _state(tmp_path))
+
+        started.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("info", "expected"),
+        [
+            ({"status": 0}, "Paused on Debrid-Link"),
+            ({"status": 1}, "Queued on Debrid-Link"),
+            ({"status": 2}, "verifying"),
+            ({"status": 4}, "downloading torrent"),
+            ({"status": 6}, "downloading torrent"),  # the docs' own example value
+            ({"srvMaint": True}, "server maintenance"),
+        ],
+    )
+    def test_documented_states_are_reported(self, tmp_path, info, expected):
+        status = self._bare_client()._handle_torrent_info(
+            {"downloadPercent": 10, **info}, _state(tmp_path)
+        )
+
+        assert status.state == DownloadState.DOWNLOADING
+        assert expected in (status.message or "")
+
+    @pytest.mark.parametrize("done_status", [8, 100])
+    def test_seeding_or_finished_counts_as_done(self, tmp_path, monkeypatch, done_status):
+        client = self._bare_client()
+        started = MagicMock()
+        monkeypatch.setattr(client, "_maybe_start_download_thread", started)
+
+        client._handle_torrent_info(
+            {
+                "status": done_status,
+                "downloadPercent": 99,
+                "files": [{"name": "a.epub", "downloadPercent": 100}],
+            },
+            _state(tmp_path),
+        )
 
         started.assert_called_once()
+
+    def test_a_torrent_held_for_file_selection_is_started_once(self, tmp_path, monkeypatch):
+        # ``wait`` means "hold for file selection", not "queued": without a config
+        # call the torrent never starts.
+        client = _client(monkeypatch)
+        request = _mock_request(monkeypatch, {"success": True, "value": []})
+        state = _state(tmp_path)
+
+        first = client._handle_torrent_info({"wait": True, "downloadPercent": 0}, state)
+        client._handle_torrent_info({"wait": True, "downloadPercent": 0}, state)
+
+        assert "Starting on Debrid-Link" in (first.message or "")
+        assert request.call_count == 1
+        args, kwargs = request.call_args
+        assert args[0] == "POST"
+        assert args[1].endswith("/seedbox/DL1/config")
+        assert kwargs["json"] == {"files-unwanted": []}
+
+    def test_a_torrent_that_stops_moving_fails_after_the_stall_timeout(self, tmp_path, monkeypatch):
+        client = self._bare_client()
+        state = _state(tmp_path)
+        clock = [1000.0]
+        monkeypatch.setattr(debridlink.time, "monotonic", lambda: clock[0])
+        state.progress_moved_at = clock[0]
+
+        client._handle_torrent_info({"downloadPercent": 12, "peersConnected": 0}, state)
+        clock[0] += debridlink._STALL_TIMEOUT_SECONDS - 1
+        assert client._handle_torrent_info({"downloadPercent": 12}, state).state == (
+            DownloadState.DOWNLOADING
+        )
+
+        clock[0] += 2
+        status = client._handle_torrent_info({"downloadPercent": 12, "peersConnected": 0}, state)
+
+        assert status.state == DownloadState.ERROR
+        assert "no progress" in (status.message or "")
+
+    def test_progress_resets_the_stall_clock(self, tmp_path, monkeypatch):
+        client = self._bare_client()
+        state = _state(tmp_path)
+        clock = [1000.0]
+        monkeypatch.setattr(debridlink.time, "monotonic", lambda: clock[0])
+        state.progress_moved_at = clock[0]
+
+        client._handle_torrent_info({"downloadPercent": 12}, state)
+        clock[0] += debridlink._STALL_TIMEOUT_SECONDS - 1
+        client._handle_torrent_info({"downloadPercent": 13}, state)
+        clock[0] += debridlink._STALL_TIMEOUT_SECONDS - 1
+
+        assert client._handle_torrent_info({"downloadPercent": 13}, state).state == (
+            DownloadState.DOWNLOADING
+        )
 
     def test_a_vanished_torrent_becomes_an_error_rather_than_a_stall(self, monkeypatch, tmp_path):
         monkeypatch.setattr("shelfmark.download.clients.debridlink.TMP_DIR", tmp_path)
@@ -237,6 +361,63 @@ class TestStatus:
 
         assert status.state == DownloadState.ERROR
         assert "no longer on Debrid-Link" in (status.message or "")
+
+
+class TestPolling:
+    """The handler polls every couple of seconds; Debrid-Link must not see that."""
+
+    def test_status_is_served_from_cache_between_refreshes(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("shelfmark.download.clients.debridlink.TMP_DIR", tmp_path)
+        request = _mock_request(
+            monkeypatch, {"success": True, "value": [{"id": "DL1", "downloadPercent": 30}]}
+        )
+        client = _client(monkeypatch)
+
+        for _ in range(5):
+            status = client.get_status("DL1")
+
+        assert request.call_count == 1
+        assert status.progress == 15.0
+
+    def test_a_rate_limit_pauses_checks_instead_of_failing(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("shelfmark.download.clients.debridlink.TMP_DIR", tmp_path)
+        request = _mock_request(
+            monkeypatch, {"success": False, "error": "floodDetected"}, status_code=429
+        )
+        client = _client(monkeypatch)
+
+        first = client.get_status("DL1")
+        second = client.get_status("DL1")
+
+        assert first.state == DownloadState.DOWNLOADING
+        assert "rate limit" in (first.message or "")
+        assert second.state == DownloadState.DOWNLOADING
+        assert request.call_count == 1
+
+    def test_a_temporary_error_is_ridden_out_then_fails(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("shelfmark.download.clients.debridlink.TMP_DIR", tmp_path)
+        _mock_request(monkeypatch, {"success": False, "error": "internalError"}, status_code=500)
+        clock = [1000.0]
+        monkeypatch.setattr(debridlink.time, "monotonic", lambda: clock[0])
+        client = _client(monkeypatch)
+
+        assert client.get_status("DL1").state == DownloadState.DOWNLOADING
+        clock[0] += debridlink._TRANSIENT_GRACE_SECONDS + debridlink._MIN_REFRESH_SECONDS
+
+        status = client.get_status("DL1")
+
+        assert status.state == DownloadState.ERROR
+        assert "internalError" in (status.message or "")
+
+    def test_a_permanent_error_fails_at_once(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("shelfmark.download.clients.debridlink.TMP_DIR", tmp_path)
+        _mock_request(monkeypatch, {"success": False, "error": "badToken"}, status_code=401)
+        client = _client(monkeypatch)
+
+        status = client.get_status("DL1")
+
+        assert status.state == DownloadState.ERROR
+        assert "badToken" in (status.message or "")
 
 
 class TestFetchTorrent:
@@ -258,13 +439,36 @@ class TestFetchTorrent:
 
         assert client._fetch_torrent("DL1") is None
 
-    def test_the_request_asks_for_just_that_torrent(self, monkeypatch):
+    def test_a_bad_id_error_means_the_torrent_is_gone(self, monkeypatch):
+        _mock_request(monkeypatch, {"success": False, "error": "badId"}, status_code=400)
+        client = _client(monkeypatch)
+
+        assert client._fetch_torrent("DL1") is None
+
+    def test_the_status_check_asks_for_just_that_torrent(self, monkeypatch):
         request = _mock_request(monkeypatch, {"success": True, "value": []})
         client = _client(monkeypatch)
 
         client._fetch_torrent("DL1")
 
         assert request.call_args.kwargs["params"] == {"ids": "DL1"}
+
+    def test_the_file_list_uses_the_singular_id_so_zips_are_expanded(self, monkeypatch):
+        # Debrid-Link lists a many-file torrent as one ZIP under ``ids``; ``?id=``
+        # returns the individual files.
+        request = _mock_request(
+            monkeypatch,
+            {
+                "success": True,
+                "value": [{"id": "DL1", "files": [{"name": "a.mp3"}, {"name": "b.mp3"}]}],
+            },
+        )
+        client = _client(monkeypatch)
+
+        files = client._fetch_file_list("DL1")
+
+        assert request.call_args.kwargs["params"] == {"id": "DL1"}
+        assert [f["name"] for f in files] == ["a.mp3", "b.mp3"]
 
 
 class TestConnection:
@@ -340,26 +544,24 @@ class TestIsConfigured:
 
 
 class TestDownloadPipeline:
-    def test_book_files_are_preferred_over_the_rest(self, tmp_path, monkeypatch):
+    @staticmethod
+    def _run(tmp_path, monkeypatch, files, payload=b"data"):
         client = DebridLinkClient.__new__(DebridLinkClient)
-        state = _DownloadState(
-            torrent_id="DL1",
-            name="Dune",
-            target_dir=tmp_path,
-            phase="downloading_http",
-        )
+        state = _state(tmp_path, phase="downloading_http")
         fetched: list[str] = []
 
-        def fake_download(url, referer=None):
+        def fake_download(url, referer=None, cancel_flag=None):
             fetched.append(url)
-            buf = MagicMock()
-            buf.getvalue = MagicMock(return_value=b"data")
-            return buf
+            return _buffer(payload)
 
         monkeypatch.setattr("shelfmark.download.clients.debridlink.download_url", fake_download)
+        client._process_and_download(state, files)
+        return state, fetched
 
-        client._process_and_download(
-            state,
+    def test_book_files_are_preferred_over_the_rest(self, tmp_path, monkeypatch):
+        state, fetched = self._run(
+            tmp_path,
+            monkeypatch,
             [
                 {"name": "cover.jpg", "downloadUrl": "https://dl.example/cover.jpg"},
                 {"name": "Dune.epub", "downloadUrl": "https://dl.example/Dune.epub"},
@@ -372,35 +574,141 @@ class TestDownloadPipeline:
         assert state.progress == 100.0
 
     def test_everything_is_taken_when_nothing_looks_like_a_book(self, tmp_path, monkeypatch):
-        client = DebridLinkClient.__new__(DebridLinkClient)
-        state = _DownloadState(
-            torrent_id="DL1", name="Dune", target_dir=tmp_path, phase="downloading_http"
-        )
-
-        def fake_download(url, referer=None):
-            buf = MagicMock()
-            buf.getvalue = MagicMock(return_value=b"data")
-            return buf
-
-        monkeypatch.setattr("shelfmark.download.clients.debridlink.download_url", fake_download)
-
-        client._process_and_download(
-            state, [{"name": "readme.nfo", "downloadUrl": "https://dl.example/readme.nfo"}]
+        state, _ = self._run(
+            tmp_path, monkeypatch, [{"name": "readme.nfo", "downloadUrl": "https://dl.example/x"}]
         )
 
         assert (tmp_path / "readme.nfo").exists()
         assert state.phase == "complete"
 
+    def test_a_zip_bundle_is_downloaded_as_a_book_file(self, tmp_path, monkeypatch):
+        state, fetched = self._run(
+            tmp_path,
+            monkeypatch,
+            [
+                {"name": "notes.nfo", "downloadUrl": "https://dl.example/n"},
+                {"name": "Dune.zip", "downloadUrl": "https://dl.example/z"},
+            ],
+        )
+
+        assert fetched == ["https://dl.example/z"]
+        assert state.phase == "complete"
+
     def test_no_links_is_an_error(self, tmp_path):
         client = DebridLinkClient.__new__(DebridLinkClient)
-        state = _DownloadState(
-            torrent_id="DL1", name="Dune", target_dir=tmp_path, phase="downloading_http"
-        )
+        state = _state(tmp_path, phase="downloading_http")
 
         client._process_and_download(state, [{"name": "Dune.epub"}])
 
         assert state.phase == "error"
         assert "No download links" in (state.error_message or "")
+
+    @pytest.mark.parametrize("name", ["../escape.epub", "/etc/escape.epub", "a/../../x.epub"])
+    def test_a_file_name_cannot_escape_the_download_folder(self, tmp_path, monkeypatch, name):
+        target = tmp_path / "dl"
+        target.mkdir()
+        client = DebridLinkClient.__new__(DebridLinkClient)
+        state = _state(target, phase="downloading_http")
+        monkeypatch.setattr(
+            "shelfmark.download.clients.debridlink.download_url",
+            lambda url, referer=None, cancel_flag=None: _buffer(),
+        )
+
+        client._process_and_download(state, [{"name": name, "downloadUrl": "https://dl.example/x"}])
+
+        assert state.phase == "error"
+        assert "unsafe file path" in (state.error_message or "")
+        assert not (tmp_path / "escape.epub").exists()
+
+    def test_two_files_with_the_same_name_are_both_kept(self, tmp_path, monkeypatch):
+        payloads = iter([b"one", b"two"])
+        client = DebridLinkClient.__new__(DebridLinkClient)
+        state = _state(tmp_path, phase="downloading_http")
+        monkeypatch.setattr(
+            "shelfmark.download.clients.debridlink.download_url",
+            lambda url, referer=None, cancel_flag=None: _buffer(next(payloads)),
+        )
+
+        client._process_and_download(
+            state,
+            [
+                {"name": "chapter.mp3", "downloadUrl": "https://dl.example/1"},
+                {"name": "chapter.mp3", "downloadUrl": "https://dl.example/2"},
+            ],
+        )
+
+        assert (tmp_path / "chapter.mp3").read_bytes() == b"one"
+        assert (tmp_path / "chapter (2).mp3").read_bytes() == b"two"
+
+    def test_a_failed_file_is_reported_without_its_signed_url(self, tmp_path, monkeypatch):
+        client = DebridLinkClient.__new__(DebridLinkClient)
+        state = _state(tmp_path, phase="downloading_http")
+        monkeypatch.setattr(
+            "shelfmark.download.clients.debridlink.download_url",
+            lambda url, referer=None, cancel_flag=None: None,
+        )
+
+        client._process_and_download(
+            state, [{"name": "Dune.epub", "downloadUrl": "https://seed1.debrid.link/dl/SIGNED"}]
+        )
+
+        assert state.phase == "error"
+        assert "Dune.epub" in (state.error_message or "")
+        assert "SIGNED" not in (state.error_message or "")
+
+    def test_the_file_list_is_fetched_fresh_when_none_is_given(self, tmp_path, monkeypatch):
+        client = DebridLinkClient.__new__(DebridLinkClient)
+        state = _state(tmp_path, phase="downloading_http")
+        listing = MagicMock(return_value=[{"name": "Dune.epub", "downloadUrl": "https://x/y"}])
+        monkeypatch.setattr(client, "_fetch_file_list", listing)
+        monkeypatch.setattr(
+            "shelfmark.download.clients.debridlink.download_url",
+            lambda url, referer=None, cancel_flag=None: _buffer(),
+        )
+
+        client._process_and_download(state)
+
+        listing.assert_called_once_with("DL1")
+        assert state.phase == "complete"
+
+    def test_cancelling_stops_before_the_next_file(self, tmp_path, monkeypatch):
+        client = DebridLinkClient.__new__(DebridLinkClient)
+        state = _state(tmp_path, phase="downloading_http")
+        fetched: list[str] = []
+
+        def fake_download(url, referer=None, cancel_flag=None):
+            fetched.append(url)
+            state.cancel_event.set()
+            return _buffer()
+
+        monkeypatch.setattr("shelfmark.download.clients.debridlink.download_url", fake_download)
+
+        client._process_and_download(
+            state,
+            [
+                {"name": "a.mp3", "downloadUrl": "https://dl.example/a"},
+                {"name": "b.mp3", "downloadUrl": "https://dl.example/b"},
+            ],
+        )
+
+        assert fetched == ["https://dl.example/a"]
+        assert state.phase != "complete"
+
+
+class TestRemove:
+    def test_remove_cancels_the_retrieval_and_cleans_up(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("shelfmark.download.clients.debridlink.TMP_DIR", tmp_path)
+        _mock_request(monkeypatch, {"success": True, "value": None})
+        client = _client(monkeypatch)
+        state = _state(tmp_path / "debridlink_DL1", phase="downloading_http")
+        state.target_dir.mkdir()
+        DebridLinkClient._downloads["DL1"] = state
+
+        assert client.remove("DL1") is True
+
+        assert state.cancel_event.is_set()
+        assert not state.target_dir.exists()
+        assert "DL1" not in DebridLinkClient._downloads
 
 
 class TestAsFloat:

@@ -6,15 +6,20 @@ content via Debrid-Link's seedbox infrastructure.
 Unlike the other debrid services, a completed Debrid-Link torrent already
 carries a direct ``downloadUrl`` on every file, so there is no per-file
 unrestrict or link-request round trip.
+
+Everything here follows the documented v2 fields only: ``status``,
+``downloadPercent``, ``wait``, ``isZip``, ``srvMaint`` and the per-file
+``downloadPercent``. Values of ``status`` outside the documented set (the docs'
+own example shows 6) are tolerated and fall back to ``downloadPercent``.
 """
 
 from __future__ import annotations
 
 import shutil
 import threading
+import time
 from dataclasses import dataclass, field
-from pathlib import Path
-from typing import Any, ClassVar, NoReturn
+from typing import TYPE_CHECKING, Any, ClassVar, NoReturn
 
 import requests
 
@@ -32,9 +37,13 @@ from shelfmark.download.clients.torrent_utils import (
     DebridMagnet,
     DebridUpload,
     resolve_debrid_upload,
+    safe_relative_path,
 )
 from shelfmark.download.http import download_url
 from shelfmark.download.network import get_ssl_verify
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 logger = setup_logger(__name__)
 
@@ -53,8 +62,36 @@ _DEBRIDLINK_CLIENT_ERRORS = (
 _API_TIMEOUT = 30
 _STATUS_TIMEOUT = 15
 
-# A torrent reports 0-100 in downloadPercent; 100 means Debrid-Link holds every file.
+# A torrent or file reports 0-100 in downloadPercent; 100 means it is ready.
 _COMPLETE_PERCENT = 100
+
+# Documented torrent status values (seedbox-list): 0 paused, 1 queued,
+# 2 verification, 4 downloading, 8 seeding, 100 finished.
+_STATUS_PAUSED = 0
+_STATUS_QUEUED = 1
+_STATUS_VERIFYING = 2
+_STATUS_SEEDING = 8
+_STATUS_FINISHED = 100
+_DONE_STATUSES = frozenset({_STATUS_SEEDING, _STATUS_FINISHED})
+
+# The download handler polls every couple of seconds. Debrid-Link rate-limits per
+# endpoint and answers a breach with floodDetected, which blocks the API for an hour,
+# so the seedbox is asked at most this often per torrent and cached status is served
+# in between.
+_MIN_REFRESH_SECONDS = 15.0
+_FLOOD_BACKOFF_SECONDS = 3600.0
+
+# Errors Debrid-Link documents as temporary. They, network failures and 5xx
+# responses are retried until the torrent has been failing for this long.
+_TRANSIENT_ERROR_CODES = frozenset({"internalError", "server_error", "freeServerOverload"})
+_TRANSIENT_GRACE_SECONDS = 600.0
+
+# A torrent whose progress has not moved for this long is treated as dead (no seeds,
+# or left paused), because the API documents no error status for a torrent.
+_STALL_TIMEOUT_SECONDS = 3600.0
+
+# How long remove() waits for the retrieval thread to notice a cancel.
+_WORKER_JOIN_TIMEOUT = 10.0
 
 # File extensions recognised as book or audiobook content.
 _BOOK_EXTENSIONS = (
@@ -81,7 +118,18 @@ _BOOK_EXTENSIONS = (
     ".rtf",
     ".txt",
     ".wma",
+    # A torrent with many files can come back as a single ZIP of all of them; the
+    # post-processing step extracts it.
+    ".zip",
 )
+
+
+class DebridLinkAPIError(RuntimeError):
+    """An error Debrid-Link reported, carrying its documented error code."""
+
+    def __init__(self, message: str, code: str | None = None) -> None:
+        super().__init__(message)
+        self.code = code
 
 
 def _raise_runtime_error(message: str) -> NoReturn:
@@ -100,6 +148,17 @@ class _DownloadState:
     progress: float = 0.0
     download_thread: threading.Thread | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
+    cancel_event: threading.Event = field(default_factory=threading.Event)
+    # Throttling: the last seedbox record and when it was fetched.
+    last_info: dict[str, Any] | None = None
+    last_fetch_at: float = 0.0
+    # Transient-failure tracking: when the current run of failures started.
+    failing_since: float | None = None
+    # Stall tracking: the highest progress seen and when it last moved.
+    best_percent: float = -1.0
+    # Set once a torrent held for file selection (``wait``) has been told to start.
+    start_requested: bool = False
+    progress_moved_at: float = field(default_factory=time.monotonic)
 
 
 @register_client("torrent")
@@ -118,6 +177,8 @@ class DebridLinkClient(DownloadClient):
 
     _downloads: ClassVar[dict[str, _DownloadState]] = {}
     _downloads_lock = threading.Lock()
+    # floodDetected blocks the whole account's API use, so the back-off is shared.
+    _flood_until: ClassVar[float] = 0.0
 
     def __init__(self) -> None:
         self._api_key = config_text(config.get("DEBRIDLINK_API_KEY", ""))
@@ -142,7 +203,9 @@ class DebridLinkClient(DownloadClient):
         if not self._api_key:
             return False, "Debrid-Link API Key is required"
         try:
-            account = self._request_value("GET", "/account/infos", timeout=_STATUS_TIMEOUT)
+            account = self._request_value(
+                "GET", "/account/infos", operation="account check", timeout=_STATUS_TIMEOUT
+            )
             if not isinstance(account, dict):
                 return False, "Unexpected response from Debrid-Link account endpoint"
             username = str(account.get("username") or account.get("email") or "Unknown")
@@ -216,6 +279,7 @@ class DebridLinkClient(DownloadClient):
             data = self._request_value(
                 "POST",
                 "/seedbox/add",
+                operation="torrent upload",
                 json={"url": upload.magnet_url},
                 timeout=_API_TIMEOUT,
             )
@@ -225,6 +289,7 @@ class DebridLinkClient(DownloadClient):
             data = self._request_value(
                 "POST",
                 "/seedbox/add",
+                operation="torrent upload",
                 files={"file": ("upload.torrent", upload.torrent_data, "application/x-bittorrent")},
                 timeout=_API_TIMEOUT,
             )
@@ -241,9 +306,7 @@ class DebridLinkClient(DownloadClient):
         # Return cached terminal / in-flight states immediately.
         with state.lock:
             if state.phase == "error":
-                return DownloadStatus.error(
-                    state.error_message or "Debrid-Link error",
-                )
+                return DownloadStatus.error(state.error_message or "Debrid-Link error")
             if state.phase == "complete":
                 return DownloadStatus(
                     progress=100.0,
@@ -260,23 +323,31 @@ class DebridLinkClient(DownloadClient):
                     complete=False,
                     file_path=None,
                 )
+            cached = state.last_info
+            fresh = time.monotonic() - state.last_fetch_at < _MIN_REFRESH_SECONDS
+
+        now = time.time()
+        if now < type(self)._flood_until:
+            resume = time.strftime("%H:%M", time.localtime(type(self)._flood_until))
+            return self._waiting_status(
+                cached, f"Debrid-Link rate limit reached, retrying at {resume}"
+            )
+        if fresh and cached is not None:
+            return self._handle_torrent_info(cached, state, observed=False)
 
         try:
             torrent = self._fetch_torrent(download_id)
-            if torrent is None:
-                error_txt = f"Torrent {download_id} is no longer on Debrid-Link"
-                with state.lock:
-                    state.phase = "error"
-                    state.error_message = error_txt
-                return DownloadStatus.error(error_txt)
-            return self._handle_torrent_info(torrent, state)
+        except _DEBRIDLINK_CLIENT_ERRORS as e:
+            return self._handle_fetch_failure(e, state)
 
-        except Exception as e:
-            logger.exception(
-                "Error checking Debrid-Link status for %s",
-                download_id,
-            )
-            return DownloadStatus.error(str(e))
+        with state.lock:
+            state.failing_since = None
+            state.last_fetch_at = time.monotonic()
+            state.last_info = torrent
+
+        if torrent is None:
+            return self._set_error(state, f"Torrent {download_id} is no longer on Debrid-Link")
+        return self._handle_torrent_info(torrent, state)
 
     def remove(
         self,
@@ -284,22 +355,45 @@ class DebridLinkClient(DownloadClient):
         *,
         delete_files: bool = False,
     ) -> bool:
-        """Delete the torrent from Debrid-Link and clean up local files."""
+        """Stop any retrieval, delete the torrent from Debrid-Link and clean up locally."""
+        remote_removed = True
         try:
             self._request_value(
                 "DELETE",
                 f"/seedbox/{download_id}/remove",
+                operation="torrent deletion",
                 timeout=_STATUS_TIMEOUT,
             )
         except _DEBRIDLINK_CLIENT_ERRORS as e:
+            remote_removed = False
             logger.warning("Failed to delete torrent from Debrid-Link: %s", e)
 
         with self._downloads_lock:
-            state = self._downloads.pop(download_id, None)
+            state = self._downloads.get(download_id)
+        if state:
+            with state.lock:
+                state.cancel_event.set()
+            thread = state.download_thread
+            if thread and thread is not threading.current_thread():
+                thread.join(_WORKER_JOIN_TIMEOUT)
+                if thread.is_alive():
+                    logger.warning(
+                        "Debrid-Link retrieval thread did not stop; deferring cleanup of %s",
+                        download_id,
+                    )
+                    return False
+            with self._downloads_lock:
+                self._downloads.pop(download_id, None)
+        target_dir = state.target_dir if state else TMP_DIR / f"debridlink_{download_id}"
 
-        if state and state.target_dir.exists():
-            shutil.rmtree(state.target_dir, ignore_errors=True)
-        return True
+        local_removed = True
+        if target_dir.exists():
+            try:
+                shutil.rmtree(target_dir)
+            except OSError:
+                local_removed = False
+                logger.warning("Failed to remove Debrid-Link temporary files for %s", download_id)
+        return remote_removed and local_removed
 
     def get_download_path(self, download_id: str) -> str | None:
         """Return the local directory containing downloaded files."""
@@ -321,52 +415,147 @@ class DebridLinkClient(DownloadClient):
         method: str,
         path: str,
         *,
+        operation: str,
         timeout: int = _API_TIMEOUT,
         **kwargs: Any,
     ) -> Any:
         """Call the API and unwrap Debrid-Link's ``{success, value}`` envelope.
 
-        Every v2 endpoint answers with that envelope, and a failure can arrive
-        with an HTTP 200, so the body decides the outcome rather than the status
-        code alone.
+        Errors arrive as a 4xx or 5xx with ``{success: false, error: <code>}``, so
+        the body is read before the status code: raising on the status alone would
+        turn ``badToken`` into a bare "401 Client Error". Messages never include the
+        request URL or its parameters.
         """
         url = f"{_API_BASE}{path}"
-        resp = requests.request(
-            method,
-            url,
-            headers=self._auth_headers(),
-            timeout=timeout,
-            verify=get_ssl_verify(url),
-            **kwargs,
-        )
-        resp.raise_for_status()
-        payload = resp.json()
+        try:
+            resp = requests.request(
+                method,
+                url,
+                headers=self._auth_headers(),
+                timeout=timeout,
+                verify=get_ssl_verify(url),
+                **kwargs,
+            )
+        except requests.exceptions.RequestException as e:
+            msg = f"Debrid-Link {operation} failed: {type(e).__name__}"
+            raise RuntimeError(msg) from None
+
+        status_code = getattr(resp, "status_code", 200)
+        ok_status = isinstance(status_code, int) and 200 <= status_code < 300
+        try:
+            payload = resp.json()
+        except TypeError, ValueError:
+            payload = None
 
         if not isinstance(payload, dict):
-            msg = f"Unexpected Debrid-Link response for {path}"
-            _raise_runtime_error(msg)
+            detail = "an invalid response" if ok_status else f"HTTP {status_code}"
+            msg = f"Debrid-Link {operation} failed: {detail}"
+            raise DebridLinkAPIError(msg, None if ok_status else f"http{status_code}")
 
-        if not payload.get("success", False):
-            detail = payload.get("error_description") or payload.get("error") or "unknown error"
-            msg = f"Debrid-Link API error: {detail}"
-            _raise_runtime_error(msg)
+        if not ok_status or payload.get("success") is not True:
+            # The documented error body is just {success: false, error: <code>}.
+            code = payload.get("error")
+            code = code if isinstance(code, str) and code else None
+            if code == "floodDetected":
+                type(self)._flood_until = time.time() + _FLOOD_BACKOFF_SECONDS
+            detail = code or ("an unsuccessful response" if ok_status else f"HTTP {status_code}")
+            msg = f"Debrid-Link {operation} failed: {detail}"
+            raise DebridLinkAPIError(msg, code or (None if ok_status else f"http{status_code}"))
 
         return payload.get("value")
 
     def _fetch_torrent(self, download_id: str) -> dict[str, Any] | None:
         """Return the seedbox record for one torrent, or None when it is gone."""
+        try:
+            value = self._request_value(
+                "GET",
+                "/seedbox/list",
+                operation="status check",
+                params={"ids": download_id},
+                timeout=_STATUS_TIMEOUT,
+            )
+        except DebridLinkAPIError as e:
+            if e.code == "badId":
+                return None
+            raise
+        return self._pick_torrent(value, download_id)
+
+    def _fetch_file_list(self, download_id: str) -> list[dict[str, Any]]:
+        """Return the torrent's individual files.
+
+        A torrent with many files is listed as one ZIP (``isZip``) under ``ids``;
+        Debrid-Link documents ``?id=TORRENT_ID`` as the way to see the files
+        themselves. Fetched once, after the torrent is complete, so the list is
+        final rather than the partial one an early status check can return.
+        """
         value = self._request_value(
             "GET",
             "/seedbox/list",
-            params={"ids": download_id},
+            operation="file listing",
+            params={"id": download_id},
             timeout=_STATUS_TIMEOUT,
         )
-        if not isinstance(value, list):
-            return None
-        for entry in value:
+        torrent = self._pick_torrent(value, download_id)
+        if torrent is None:
+            msg = f"Torrent {download_id} is no longer on Debrid-Link"
+            _raise_runtime_error(msg)
+        return [f for f in torrent.get("files", []) if isinstance(f, dict)]
+
+    @staticmethod
+    def _pick_torrent(value: object, download_id: str) -> dict[str, Any] | None:
+        entries = value if isinstance(value, list) else [value]
+        for entry in entries:
             if isinstance(entry, dict) and str(entry.get("id", "")) == download_id:
                 return entry
         return None
+
+    def _handle_fetch_failure(self, error: Exception, state: _DownloadState) -> DownloadStatus:
+        """Fail on a permanent error; ride out a temporary one for a grace period."""
+        code = getattr(error, "code", None)
+        if code == "floodDetected":
+            resume = time.strftime("%H:%M", time.localtime(type(self)._flood_until))
+            logger.warning("Debrid-Link rate limit reached; pausing status checks until %s", resume)
+            return self._waiting_status(
+                state.last_info, f"Debrid-Link rate limit reached, retrying at {resume}"
+            )
+
+        transient = (
+            not isinstance(error, DebridLinkAPIError)
+            or code in _TRANSIENT_ERROR_CODES
+            or (isinstance(code, str) and code.startswith("http5"))
+        )
+        if not transient:
+            return self._set_error(state, str(error))
+
+        now = time.monotonic()
+        with state.lock:
+            if state.failing_since is None:
+                state.failing_since = now
+            failing_for = now - state.failing_since
+            state.last_fetch_at = now
+        if failing_for >= _TRANSIENT_GRACE_SECONDS:
+            minutes = int(_TRANSIENT_GRACE_SECONDS // 60)
+            return self._set_error(state, f"{error} (still failing after {minutes} minutes)")
+        logger.warning("Debrid-Link status check failed, will retry: %s", error)
+        return self._waiting_status(state.last_info, "Debrid-Link unreachable, retrying")
+
+    @staticmethod
+    def _waiting_status(info: dict[str, Any] | None, message: str) -> DownloadStatus:
+        percent = _as_float(info.get("downloadPercent")) if info else 0.0
+        return DownloadStatus(
+            progress=min(percent, _COMPLETE_PERCENT) * 0.5,
+            state=DownloadState.DOWNLOADING,
+            message=message,
+            complete=False,
+            file_path=None,
+        )
+
+    @staticmethod
+    def _set_error(state: _DownloadState, message: str) -> DownloadStatus:
+        with state.lock:
+            state.phase = "error"
+            state.error_message = message
+        return DownloadStatus.error(message)
 
     def _ensure_state(self, download_id: str) -> _DownloadState:
         """Get or create download state for the given torrent ID."""
@@ -390,23 +579,26 @@ class DebridLinkClient(DownloadClient):
         self,
         info: dict[str, Any],
         state: _DownloadState,
+        *,
+        observed: bool = True,
     ) -> DownloadStatus:
-        """Map a Debrid-Link seedbox torrent to a DownloadStatus."""
-        if info.get("error"):
-            error_txt = "Debrid-Link torrent error: " + str(
-                info.get("errorString") or info.get("error"),
-            )
-            with state.lock:
-                state.phase = "error"
-                state.error_message = error_txt
-            return DownloadStatus.error(error_txt)
+        """Map a Debrid-Link seedbox torrent to a DownloadStatus.
 
+        ``observed`` is False when ``info`` is a cached record being re-served
+        between throttled fetches, so it doesn't count toward stall detection.
+        """
         percent = _as_float(info.get("downloadPercent"))
         name = str(info.get("name") or state.name)
+        files = [f for f in info.get("files", []) if isinstance(f, dict)]
+        status = _as_status(info.get("status"))
 
-        if info.get("downloaded") or percent >= _COMPLETE_PERCENT:
-            files = [f for f in info.get("files", []) if isinstance(f, dict)]
-            self._maybe_start_download_thread(state, files)
+        ready = (
+            (status in _DONE_STATUSES or percent >= _COMPLETE_PERCENT)
+            and bool(files)
+            and all(_as_float(f.get("downloadPercent", 100)) >= _COMPLETE_PERCENT for f in files)
+        )
+        if ready:
+            self._maybe_start_download_thread(state)
             return DownloadStatus(
                 progress=50.0,
                 state=DownloadState.DOWNLOADING,
@@ -415,34 +607,81 @@ class DebridLinkClient(DownloadClient):
                 file_path=None,
             )
 
+        now = time.monotonic()
+        with state.lock:
+            if percent > state.best_percent:
+                state.best_percent = percent
+                state.progress_moved_at = now
+            stalled_for = now - state.progress_moved_at
+        if observed and stalled_for >= _STALL_TIMEOUT_SECONDS:
+            minutes = int(_STALL_TIMEOUT_SECONDS // 60)
+            return self._set_error(
+                state,
+                f"Debrid-Link made no progress on {name} for {minutes} minutes "
+                f"({int(_as_float(info.get('peersConnected')))} peers connected)",
+            )
+
+        if info.get("wait"):
+            # Held for file selection. Shelfmark wants every file, so start it.
+            self._start_waiting_torrent(state)
+            message = f"Starting on Debrid-Link ({name})"
+        elif info.get("srvMaint"):
+            message = "Debrid-Link server maintenance, waiting"
+        elif status == _STATUS_PAUSED:
+            message = f"Paused on Debrid-Link ({name})"
+        elif status == _STATUS_QUEUED:
+            message = f"Queued on Debrid-Link ({name})"
+        elif status == _STATUS_VERIFYING:
+            message = f"Debrid-Link verifying torrent ({name})"
+        else:
+            message = f"Debrid-Link downloading torrent ({name})"
+
         # Still being fetched by the seedbox: the first half of the progress bar.
         return DownloadStatus(
-            progress=percent * 0.5,
+            progress=min(percent, _COMPLETE_PERCENT) * 0.5,
             state=DownloadState.DOWNLOADING,
-            message=f"Debrid-Link downloading torrent ({name})",
+            message=message,
             complete=False,
             file_path=None,
             download_speed=int(_as_float(info.get("downloadSpeed"))),
         )
 
-    def _maybe_start_download_thread(
-        self,
-        state: _DownloadState,
-        files: list[dict[str, Any]],
-    ) -> None:
+    def _start_waiting_torrent(self, state: _DownloadState) -> None:
+        """Release a torrent held for file selection, keeping every file.
+
+        Shelfmark never asks for ``wait``, but a torrent reported that way would
+        otherwise never start. The config endpoint with no unwanted files starts it.
+        """
+        with state.lock:
+            if state.start_requested:
+                return
+            state.start_requested = True
+        try:
+            self._request_value(
+                "POST",
+                f"/seedbox/{state.torrent_id}/config",
+                operation="torrent start",
+                json={"files-unwanted": []},
+                timeout=_STATUS_TIMEOUT,
+            )
+        except _DEBRIDLINK_CLIENT_ERRORS as e:
+            logger.warning(
+                "Could not start waiting Debrid-Link torrent %s: %s", state.torrent_id, e
+            )
+            with state.lock:
+                state.start_requested = False
+
+    def _maybe_start_download_thread(self, state: _DownloadState) -> None:
         """Spawn a background thread to download the seedbox's files."""
         with state.lock:
-            already_running = state.phase in (
-                "downloading_http",
-                "complete",
-            )
+            already_running = state.phase in ("downloading_http", "complete")
             thread_alive = state.download_thread is not None and state.download_thread.is_alive()
-            if already_running or thread_alive:
+            if already_running or thread_alive or state.cancel_event.is_set():
                 return
             state.phase = "downloading_http"
             t = threading.Thread(
                 target=self._process_and_download,
-                args=(state, files),
+                args=(state,),
                 daemon=True,
             )
             state.download_thread = t
@@ -455,15 +694,21 @@ class DebridLinkClient(DownloadClient):
     def _process_and_download(
         self,
         state: _DownloadState,
-        files: list[dict[str, Any]],
+        files: list[dict[str, Any]] | None = None,
     ) -> None:
         """Download each file over HTTP.
 
         Runs in a background thread spawned by ``_maybe_start_download_thread``.
         Debrid-Link puts a ready-to-use ``downloadUrl`` on every file, so unlike
-        the other debrid clients there is nothing to unrestrict here.
+        the other debrid clients there is nothing to unrestrict here. ``files`` is
+        fetched fresh when not given.
         """
         try:
+            if files is None:
+                files = self._fetch_file_list(state.torrent_id)
+            if state.cancel_event.is_set():
+                return
+
             downloadable = [f for f in files if f.get("downloadUrl")]
             if not downloadable:
                 msg = "No download links returned by Debrid-Link"
@@ -475,36 +720,45 @@ class DebridLinkClient(DownloadClient):
             if not relevant:
                 relevant = downloadable
 
+            state.target_dir.mkdir(parents=True, exist_ok=True)
+            used: set[Path] = set()
             total = len(relevant)
             for idx, file_info in enumerate(relevant):
-                direct_url = str(file_info.get("downloadUrl", ""))
-                rel_path = Path(str(file_info.get("name") or f"file_{idx + 1}").lstrip("/"))
+                if state.cancel_event.is_set():
+                    return
+                name = str(file_info.get("name") or f"file_{idx + 1}")
+                rel_path = _unique_path(
+                    safe_relative_path(name, state.target_dir, "Debrid-Link"), used
+                )
 
                 dest = state.target_dir / rel_path
                 dest.parent.mkdir(parents=True, exist_ok=True)
 
-                logger.info(
-                    "Downloading Debrid-Link file %d/%d: %s",
-                    idx + 1,
-                    total,
-                    rel_path,
-                )
+                logger.info("Downloading Debrid-Link file %d/%d: %s", idx + 1, total, rel_path)
 
                 buf = download_url(
-                    direct_url,
+                    str(file_info.get("downloadUrl", "")),
                     referer="https://debrid-link.com/",
+                    cancel_flag=state.cancel_event,
                 )
+                if state.cancel_event.is_set():
+                    return
                 if not buf:
-                    msg = f"Failed to download from {direct_url}"
+                    # The URL is signed and stays out of the message, which ends up
+                    # in logs and the UI.
+                    msg = f"Failed to download {rel_path} from Debrid-Link"
                     _raise_runtime_error(msg)
 
                 with dest.open("wb") as fh:
-                    fh.write(buf.getvalue())
+                    buf.seek(0)
+                    shutil.copyfileobj(buf, fh)
 
                 with state.lock:
                     state.progress = 50.0 + (idx + 1) / total * 50.0
 
             with state.lock:
+                if state.cancel_event.is_set():
+                    return
                 state.phase = "complete"
                 state.progress = 100.0
 
@@ -515,13 +769,32 @@ class DebridLinkClient(DownloadClient):
             )
 
         except Exception as e:
-            logger.exception(
-                "Error in Debrid-Link download for ID %s",
-                state.torrent_id,
-            )
+            logger.exception("Error in Debrid-Link download for ID %s", state.torrent_id)
             with state.lock:
                 state.phase = "error"
                 state.error_message = str(e) or "Download failed"
+
+
+def _unique_path(path: Path, used: set[Path]) -> Path:
+    """Keep two files with the same name from overwriting each other."""
+    candidate = path
+    counter = 2
+    while candidate in used:
+        candidate = path.with_name(f"{path.stem} ({counter}){path.suffix}")
+        counter += 1
+    used.add(candidate)
+    return candidate
+
+
+def _as_status(value: object) -> int | None:
+    """The torrent's numeric status, or None when it is missing or not a number."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, str) and value.strip().isdigit():
+        return int(value)
+    return None
 
 
 def _as_float(value: object) -> float:
