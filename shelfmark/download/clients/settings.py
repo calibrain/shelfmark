@@ -895,7 +895,7 @@ def prowlarr_clients_settings() -> list[SettingsField]:
         SelectField(
             key="PROWLARR_TORRENT_ACTION",
             label="Torrent Completion Action",
-            description="What to do with the torrent in your client after a successful import. Remove stops seeding but keeps the downloaded files; Remove & Delete Files also deletes them from the client's download location.",
+            description="After a successful import, Remove keeps downloaded files in qBittorrent, Transmission, and Deluge; Remove & Delete Files also deletes them. rTorrent cannot delete download data, so this action leaves its torrent untouched. Blackhole does not support removal. Debrid clients delete temporary local files for either Remove action.",
             options=[
                 {"value": "keep", "label": "Keep"},
                 {"value": "remove", "label": "Remove"},

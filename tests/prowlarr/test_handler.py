@@ -1689,6 +1689,31 @@ class TestProwlarrHandlerPostProcessCleanup:
         assert args[2] == "qbittorrent"
         assert str(args[3]) == "offline"
 
+    @pytest.mark.parametrize("torrent_action", ["remove", "remove_and_delete"])
+    def test_torrent_remove_logs_false_result(self, torrent_action):
+        handler = ProwlarrHandler()
+        task = DownloadTask(task_id="torrent-remove-false", source="prowlarr", title="Test")
+        mock_client = MagicMock()
+        mock_client.name = "rtorrent"
+        mock_client.remove.return_value = False
+        handler._cleanup_refs[task.task_id] = (mock_client, "abc123", "torrent")
+
+        with (
+            patch(
+                "shelfmark.download.clients.base_handler.config.get",
+                return_value=torrent_action,
+            ),
+            patch("shelfmark.download.clients.base_handler.logger.warning") as mock_warning,
+        ):
+            handler.post_process_cleanup(task, success=True)
+
+        mock_client.remove.assert_called_once_with(
+            "abc123", delete_files=torrent_action == "remove_and_delete"
+        )
+        mock_warning.assert_called_once_with(
+            "Failed to remove torrent %s from %s", "abc123", "rtorrent"
+        )
+
     def test_delete_local_download_data_ignores_path_lookup_failure(self):
         handler = ProwlarrHandler()
         mock_client = MagicMock()
