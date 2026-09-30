@@ -407,6 +407,22 @@ class DownloadHistoryService:
         finally:
             conn.close()
 
+    def list_active(self) -> list[dict[str, Any]]:
+        """Return every row still marked active, oldest first."""
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT * FROM download_history WHERE final_status = 'active' ORDER BY id"
+            ).fetchall()
+            result: list[dict[str, Any]] = []
+            for row in rows:
+                normalized = self._normalize_row_dict(dict(row))
+                if normalized is not None:
+                    result.append(normalized)
+            return result
+        finally:
+            conn.close()
+
     def list_recent(
         self,
         *,

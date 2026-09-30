@@ -230,6 +230,23 @@ def _warn_if_local_admin_missing() -> None:
 
 _warn_if_local_admin_missing()
 
+# Nothing is downloading yet, so anything the last process left "active" or "queued" was
+# interrupted. Close those rows out and put the recently interrupted requests back in the
+# queue, before the coordinator starts. Assumes one worker process (entrypoint.sh).
+if user_db is not None and download_history_service is not None:
+    try:
+        from shelfmark.core.startup_reconcile import reconcile_interrupted_downloads
+
+        _reconciled = reconcile_interrupted_downloads(user_db, download_history_service)
+        if _reconciled["marked"] or _reconciled["reopened"]:
+            logger.info(
+                "Startup: closed out %d interrupted download(s), reopened %d request(s)",
+                _reconciled["marked"],
+                _reconciled["reopened"],
+            )
+    except (ImportError, OSError, RuntimeError, ValueError, sqlite3.Error) as exc:
+        logger.warning("Could not reconcile interrupted downloads at startup: %s", exc)
+
 # Start download coordinator
 backend.start()
 
