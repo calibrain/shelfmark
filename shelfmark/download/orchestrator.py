@@ -1094,11 +1094,13 @@ def _cancel_stalled_task(task_id: str) -> None:
     the progress lock across that blocks the hub and every other download worker.
     """
     logger.warning("Download stalled for %s, cancelling", task_id)
-    book_queue.cancel_download(task_id)
+    # The message goes first: the terminal hook copies it into the history row, and a cancel
+    # that records the last poll's message ("Queued") hides that the timer ended the download.
     book_queue.update_status_message(
         task_id,
         f"Download stalled (no activity for {STALL_TIMEOUT}s)",
     )
+    book_queue.cancel_download(task_id)
 
 
 def concurrent_download_loop() -> None:
