@@ -696,6 +696,7 @@ def _proxy_default_is_admin(db: UserDB) -> bool:
 
 _API_KEY_EXEMPT_PREFIXES = ("/api/auth/",)
 _API_KEY_EXEMPT_PATHS = frozenset({"/api/health"})
+_READ_ONLY_KEY_PATHS = frozenset({"/api/stats"})
 
 
 @app.before_request
@@ -714,7 +715,7 @@ def api_key_auth_middleware() -> Response | tuple[Response, int] | None:
         return None
     if request.path in _API_KEY_EXEMPT_PATHS or request.path.startswith(_API_KEY_EXEMPT_PREFIXES):
         return None
-    if not api_key_module.SHELFMARK_API_KEY:
+    if not api_key_module.SHELFMARK_API_KEY and not api_key_module.SHELFMARK_API_KEY_READONLY:
         return None
 
     candidates = api_key_module.extract_api_key_candidates(
@@ -723,7 +724,9 @@ def api_key_auth_middleware() -> Response | tuple[Response, int] | None:
     if not candidates:
         return None
 
-    if not any(api_key_module.matches_api_key(candidate) for candidate in candidates):
+    scopes = {api_key_module.key_scope(candidate) for candidate in candidates}
+    scope = "admin" if "admin" in scopes else "readonly" if "readonly" in scopes else None
+    if scope is None:
         return None
     if get_auth_mode() == "none":
         return None
@@ -731,6 +734,14 @@ def api_key_auth_middleware() -> Response | tuple[Response, int] | None:
     # Mark the request as keyed before the lookup so the after-request cookie
     # reset also covers the error path below.
     g.api_key_auth = True
+
+    if scope == "readonly":
+        # A read-only key is a dashboard credential: one GET endpoint, no session.
+        g.api_key_scope = "readonly"
+        if request.method != "GET" or request.path not in _READ_ONLY_KEY_PATHS:
+            return jsonify({"error": "This API key is read-only"}), 403
+        return None
+    g.api_key_scope = "admin"
 
     try:
         admin = user_db.get_first_admin() if user_db is not None else None
@@ -1319,6 +1330,28 @@ def api_config() -> Response | tuple[Response, int]:
     except _IMPORT_OPERATIONAL_ERRORS as e:
         logger.error_trace(f"Config error: {e}")
         return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/stats", methods=["GET"])
+def api_stats() -> Response | tuple[Response, int]:
+    """Counters for dashboards. Reachable with the read-only API key, an admin key or an admin session."""
+    from shelfmark.core import stats
+
+    scope = g.get("api_key_scope")
+    if get_auth_mode() != "none" and scope is None:
+        if "user_id" not in session:
+            return jsonify({"error": "Unauthorized"}), 401
+        if not session.get("is_admin", False):
+            return jsonify({"error": "Admin access required"}), 403
+
+    if user_db is None:
+        return jsonify({"error": "User database unavailable"}), 503
+    try:
+        payload = stats.collect(user_db.db_path)
+    except sqlite3.Error:
+        logger.exception("stats: could not read the database")
+        return jsonify({"error": "Internal Server Error"}), 500
+    return jsonify(payload)
 
 
 @app.route("/api/health", methods=["GET"])
