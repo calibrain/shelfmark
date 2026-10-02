@@ -451,6 +451,8 @@ class ExternalClientHandler(DownloadHandler, ABC):
         download_id: str,
         protocol: str,
         status_callback: Callable[[str, str | None], None],
+        *,
+        remove_if_unstarted: bool = False,
     ) -> None:
         if protocol == "usenet":
             logger.info("Download cancelled, removing from %s: %s", client.name, download_id)
@@ -464,6 +466,12 @@ class ExternalClientHandler(DownloadHandler, ABC):
                     client.name,
                     e,
                 )
+        elif remove_if_unstarted and self._remove_unstarted_torrent(client, download_id):
+            logger.info(
+                "Download cancelled before it started, removed from %s: %s",
+                client.name,
+                download_id,
+            )
         else:
             logger.info(
                 "Download cancelled for protocol=%s; leaving in %s: %s",
@@ -472,6 +480,24 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 download_id,
             )
         status_callback("cancelled", "Cancelled")
+
+    def _remove_unstarted_torrent(self, client: DownloadClient, download_id: str) -> bool:
+        """Remove a torrent that downloaded nothing; True if it was removed.
+
+        Torrents are normally left in the client after a cancel so an already-downloaded one
+        can keep seeding. One at 0% has nothing to seed and nothing to resume, and leaving it
+        queued only holds a download slot and piles up dead entries.
+        """
+        try:
+            status = client.get_status(download_id)
+            if status.progress > 0:  # it has data, so it may be seeding or resumable
+                return False
+            return bool(client.remove(download_id, delete_files=True))
+        except _CLIENT_CLEANUP_ERRORS as e:
+            logger.warning(
+                "Could not remove unstarted torrent %s from %s: %s", download_id, client.name, e
+            )
+            return False
 
     def _resolve_download_path_once(
         self,
@@ -908,6 +934,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 cancel_flag=cancel_flag,
                 progress_callback=progress_callback,
                 status_callback=status_callback,
+                added_by_shelfmark=existing is None,
             )
 
         except Exception as e:
@@ -924,8 +951,14 @@ class ExternalClientHandler(DownloadHandler, ABC):
         cancel_flag: Event,
         progress_callback: Callable[[float], None],
         status_callback: Callable[[str, str | None], None],
+        *,
+        added_by_shelfmark: bool = False,
     ) -> str | None:
-        """Poll the download client for progress and handle completion."""
+        """Poll the download client for progress and handle completion.
+
+        ``added_by_shelfmark`` is False when the task joined a torrent the client already had;
+        such a torrent is never removed on cancel.
+        """
         poll_interval = self._poll_interval()
         # Track consecutive "not found" errors - torrents may take time to appear in client
         not_found_count = 0
@@ -1026,7 +1059,13 @@ class ExternalClientHandler(DownloadHandler, ABC):
 
             # Handle cancellation
             if cancel_flag.is_set():
-                self._handle_cancelled_download(client, download_id, protocol, status_callback)
+                self._handle_cancelled_download(
+                    client,
+                    download_id,
+                    protocol,
+                    status_callback,
+                    remove_if_unstarted=added_by_shelfmark,
+                )
                 return None
 
             # Handle completed file (wait briefly for files to appear)
@@ -1038,7 +1077,13 @@ class ExternalClientHandler(DownloadHandler, ABC):
             )
             if not source_path_obj:
                 if cancel_flag.is_set():
-                    self._handle_cancelled_download(client, download_id, protocol, status_callback)
+                    self._handle_cancelled_download(
+                        client,
+                        download_id,
+                        protocol,
+                        status_callback,
+                        remove_if_unstarted=added_by_shelfmark,
+                    )
                     return None
                 status_callback(
                     "error",
