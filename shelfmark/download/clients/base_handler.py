@@ -945,6 +945,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         queued_since: float | None = None
         grace_requested_at = 0.0
         last_progress = 0.0
+        start_window_given = False
         # Track consecutive "not found" errors - torrents may take time to appear in client
         not_found_count = 0
         max_not_found_retries = 15  # 15 retries * poll interval ~= 30s grace period
@@ -1047,6 +1048,12 @@ class ExternalClientHandler(DownloadHandler, ABC):
 
                 if status.progress > last_progress:
                     request_activity_grace(status_callback, MOVING_STALL_SECONDS)
+                    start_window_given = True
+                elif not start_window_given and status.state != DownloadState.QUEUED:
+                    # Metadata and the first peer can take longer than the orchestrator's
+                    # stall timeout, so a torrent gets one full window to get going.
+                    request_activity_grace(status_callback, MOVING_STALL_SECONDS)
+                    start_window_given = True
                 last_progress = status.progress
 
                 # Build status message - use client message if provided, else build progress

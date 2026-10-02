@@ -116,8 +116,26 @@ def test_a_torrent_that_stops_moving_stops_getting_more_time() -> None:
     assert rec.graces == [bh.MOVING_STALL_SECONDS]  # only the first reading moved
 
 
-def test_a_torrent_stuck_at_zero_never_gets_the_longer_window() -> None:
-    assert _poll([_status(D, 0.0)] * 4).graces == []
+def test_a_torrent_gets_a_full_window_to_start_even_before_any_data_arrives() -> None:
+    # Metadata and the first peer can take longer than the orchestrator's 5 minutes.
+    assert _poll([_status(D, 0.0)] * 4).graces == [bh.MOVING_STALL_SECONDS]
+
+
+def test_the_start_window_is_given_once_not_renewed_while_stuck_at_zero() -> None:
+    graces = _poll([_status(D, 0.0)] * 20).graces
+
+    assert graces.count(bh.MOVING_STALL_SECONDS) == 1
+
+
+def test_a_torrent_leaving_the_queue_at_zero_gets_a_fresh_start_window() -> None:
+    rec = _poll([_status(Q), _status(Q), _status(D, 0.0), _status(D, 0.0)])
+
+    # queue grace, its release, then the start window
+    assert rec.graces == [bh.QUEUE_GRACE_SECONDS, 0.0, bh.MOVING_STALL_SECONDS]
+
+
+def test_a_queued_torrent_is_not_given_the_start_window_yet() -> None:
+    assert _poll([_status(Q)] * 4).graces == [bh.QUEUE_GRACE_SECONDS]  # the queue grace only
 
 
 def test_going_backwards_is_not_movement() -> None:
