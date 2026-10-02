@@ -59,6 +59,12 @@ POLL_INTERVAL = 2
 QUEUE_GRACE_SECONDS = 900.0
 QUEUE_GRACE_RENEW_SECONDS = 600.0
 QUEUE_MAX_WAIT_SECONDS = 7200.0
+# Torrents are jerky: a swarm with one seed can sit still for several minutes and then carry
+# on. The orchestrator's default window (STALL_TIMEOUT) is five minutes of no change. A torrent
+# that has already moved gets this longer window, restarted every time its progress goes up,
+# so a dead one still ends 15 minutes after its last movement. One that never moved (a magnet
+# that cannot fetch metadata) keeps the short window and is cleaned up quickly.
+MOVING_STALL_SECONDS = 900.0
 WINDOWS_DRIVE_PREFIX_LENGTH = 2
 SECONDS_PER_MINUTE = 60
 SECONDS_PER_HOUR = 3600
@@ -938,6 +944,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         poll_interval = self._poll_interval()
         queued_since: float | None = None
         grace_requested_at = 0.0
+        last_progress = 0.0
         # Track consecutive "not found" errors - torrents may take time to appear in client
         not_found_count = 0
         max_not_found_retries = 15  # 15 retries * poll interval ~= 30s grace period
@@ -1037,6 +1044,10 @@ class ExternalClientHandler(DownloadHandler, ABC):
                     release_activity_grace(status_callback)
                     queued_since = None
                     grace_requested_at = 0.0
+
+                if status.progress > last_progress:
+                    request_activity_grace(status_callback, MOVING_STALL_SECONDS)
+                last_progress = status.progress
 
                 # Build status message - use client message if provided, else build progress
                 msg = status.message or self._build_progress_message(status)
