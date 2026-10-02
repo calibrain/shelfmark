@@ -15,6 +15,7 @@ from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import normalize_optional_text
 from shelfmark.core.utils import is_audiobook
+from shelfmark.download.activity import release_activity_grace, request_activity_grace
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadState,
@@ -50,6 +51,14 @@ def _is_sabnzbd_like_client(candidate: DownloadClient) -> TypeGuard[_SabnzbdLike
 
 # How often to poll the download client for status (seconds)
 POLL_INTERVAL = 2
+# A torrent the client has queued is waiting for a free slot, not stalled. Its status never
+# changes while it waits, so the orchestrator's stall timer would cancel it after
+# STALL_TIMEOUT. Ask for a grace instead (the orchestrator caps one grace at 16 minutes),
+# renew it while the torrent is still queued, and stop at a hard ceiling so a queue that
+# never moves still ends.
+QUEUE_GRACE_SECONDS = 900.0
+QUEUE_GRACE_RENEW_SECONDS = 600.0
+QUEUE_MAX_WAIT_SECONDS = 7200.0
 WINDOWS_DRIVE_PREFIX_LENGTH = 2
 SECONDS_PER_MINUTE = 60
 SECONDS_PER_HOUR = 3600
@@ -927,6 +936,8 @@ class ExternalClientHandler(DownloadHandler, ABC):
     ) -> str | None:
         """Poll the download client for progress and handle completion."""
         poll_interval = self._poll_interval()
+        queued_since: float | None = None
+        grace_requested_at = 0.0
         # Track consecutive "not found" errors - torrents may take time to appear in client
         not_found_count = 0
         max_not_found_retries = 15  # 15 retries * poll interval ~= 30s grace period
@@ -1011,6 +1022,21 @@ class ExternalClientHandler(DownloadHandler, ABC):
 
                 # Reset not-found counter on successful status check
                 not_found_count = 0
+
+                if status.state == DownloadState.QUEUED:
+                    now = time.monotonic()
+                    if queued_since is None:
+                        queued_since = now
+                    if (
+                        now - queued_since < QUEUE_MAX_WAIT_SECONDS
+                        and now - grace_requested_at >= QUEUE_GRACE_RENEW_SECONDS
+                    ):
+                        request_activity_grace(status_callback, QUEUE_GRACE_SECONDS)
+                        grace_requested_at = now
+                elif queued_since is not None:
+                    release_activity_grace(status_callback)
+                    queued_since = None
+                    grace_requested_at = 0.0
 
                 # Build status message - use client message if provided, else build progress
                 msg = status.message or self._build_progress_message(status)
