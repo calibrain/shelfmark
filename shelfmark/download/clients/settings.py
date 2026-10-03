@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any, NoReturn, Protocol, TypeGuard
 from shelfmark.core.settings_registry import (
     ActionButton,
     HeadingField,
+    NumberField,
     PasswordField,
     SelectField,
     SettingsField,
@@ -604,6 +605,13 @@ def _test_torbox_connection(current_values: dict[str, Any] | None = None) -> dic
 # ==================== Download Clients Tab ====================
 
 
+# Torrent stall window (see ExternalClientHandler._stall_window_seconds).
+STALL_TIMEOUT_SETTING = "TORRENT_STALL_TIMEOUT_MINUTES"
+STALL_TIMEOUT_DEFAULT_MINUTES = 15
+STALL_TIMEOUT_MIN_MINUTES = 5  # the orchestrator's STALL_TIMEOUT; a shorter window cannot apply
+STALL_TIMEOUT_MAX_MINUTES = 60
+
+
 @register_settings(
     name="prowlarr_clients",
     display_name="Download Clients",
@@ -947,6 +955,20 @@ def prowlarr_clients_settings() -> list[SettingsField]:
             placeholder="imported",
             default="",
             show_when={"field": "PROWLARR_TORRENT_ACTION", "value": "change_category"},
+        ),
+        NumberField(
+            key=STALL_TIMEOUT_SETTING,
+            label="Stall Timeout (minutes)",
+            description=(
+                "How long a torrent can go without any progress before Shelfmark cancels it. "
+                "Applies from when the torrent starts and restarts each time it moves. "
+                "Raise it for slow swarms or magnets that take a while to find peers, or lower it "
+                "to give up on dead torrents sooner."
+            ),
+            default=STALL_TIMEOUT_DEFAULT_MINUTES,
+            min_value=STALL_TIMEOUT_MIN_MINUTES,
+            max_value=STALL_TIMEOUT_MAX_MINUTES,
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "notEmpty": True},
         ),
         # --- Usenet Client Selection ---
         HeadingField(

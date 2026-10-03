@@ -23,6 +23,12 @@ from shelfmark.download.clients import (
     get_client,
     list_configured_clients,
 )
+from shelfmark.download.clients.settings import (
+    STALL_TIMEOUT_DEFAULT_MINUTES,
+    STALL_TIMEOUT_MAX_MINUTES,
+    STALL_TIMEOUT_MIN_MINUTES,
+    STALL_TIMEOUT_SETTING,
+)
 from shelfmark.download.fs import run_blocking_io
 from shelfmark.download.permissions_debug import log_path_permission_context
 from shelfmark.release_sources import DownloadHandler, HandoffResult
@@ -53,18 +59,18 @@ def _is_sabnzbd_like_client(candidate: DownloadClient) -> TypeGuard[_SabnzbdLike
 POLL_INTERVAL = 2
 # A torrent the client has queued is waiting for a free slot, not stalled. Its status never
 # changes while it waits, so the orchestrator's stall timer would cancel it after
-# STALL_TIMEOUT. Ask for a grace instead (the orchestrator caps one grace at 16 minutes),
+# STALL_TIMEOUT. Ask for a grace instead (the orchestrator caps one grace at an hour),
 # renew it while the torrent is still queued, and stop at a hard ceiling so a queue that
 # never moves still ends.
 QUEUE_GRACE_SECONDS = 900.0
 QUEUE_GRACE_RENEW_SECONDS = 600.0
 QUEUE_MAX_WAIT_SECONDS = 7200.0
 # Torrents are jerky: a swarm with one seed can sit still for several minutes and then carry
-# on. The orchestrator's default window (STALL_TIMEOUT) is five minutes of no change. A torrent
-# that has already moved gets this longer window, restarted every time its progress goes up,
-# so a dead one still ends 15 minutes after its last movement. One that never moved (a magnet
-# that cannot fetch metadata) keeps the short window and is cleaned up quickly.
-MOVING_STALL_SECONDS = 900.0
+# on, and a magnet can take a while to fetch metadata or find a first peer. The orchestrator
+# ends a download after STALL_TIMEOUT (five minutes) without a change. This setting is the
+# time a torrent may sit without progress before it is cancelled, given once when the
+# torrent starts and restarted every time its progress goes up. The default is 15 minutes;
+# five is the shortest, which is the orchestrator's own timeout and so adds nothing.
 WINDOWS_DRIVE_PREFIX_LENGTH = 2
 SECONDS_PER_MINUTE = 60
 SECONDS_PER_HOUR = 3600
@@ -216,6 +222,19 @@ class ExternalClientHandler(DownloadHandler, ABC):
     def _list_configured_clients(self) -> list[str]:
         """List protocols with configured clients."""
         return list_configured_clients()
+
+    @staticmethod
+    def _stall_window_seconds() -> float:
+        """How long a torrent may go without progress, from the user's setting (seconds)."""
+        raw = config.get(STALL_TIMEOUT_SETTING, STALL_TIMEOUT_DEFAULT_MINUTES)
+        try:
+            minutes = float(raw)  # pyright: ignore[reportArgumentType]
+        except TypeError, ValueError:
+            minutes = float(STALL_TIMEOUT_DEFAULT_MINUTES)
+        if not math.isfinite(minutes):
+            minutes = float(STALL_TIMEOUT_DEFAULT_MINUTES)
+        minutes = min(max(minutes, STALL_TIMEOUT_MIN_MINUTES), STALL_TIMEOUT_MAX_MINUTES)
+        return minutes * SECONDS_PER_MINUTE
 
     def _poll_interval(self) -> float:
         """Return the polling interval for status checks."""
@@ -989,6 +1008,7 @@ class ExternalClientHandler(DownloadHandler, ABC):
         grace_requested_at = 0.0
         last_progress = 0.0
         start_window_given = False
+        stall_window = self._stall_window_seconds()
         # Track consecutive "not found" errors - torrents may take time to appear in client
         not_found_count = 0
         max_not_found_retries = 15  # 15 retries * poll interval ~= 30s grace period
@@ -1090,12 +1110,14 @@ class ExternalClientHandler(DownloadHandler, ABC):
                     grace_requested_at = 0.0
 
                 if status.progress > last_progress:
-                    request_activity_grace(status_callback, MOVING_STALL_SECONDS)
+                    if stall_window > STALL_TIMEOUT_MIN_MINUTES * SECONDS_PER_MINUTE:
+                        request_activity_grace(status_callback, stall_window)
                     start_window_given = True
                 elif not start_window_given and status.state != DownloadState.QUEUED:
                     # Metadata and the first peer can take longer than the orchestrator's
                     # stall timeout, so a torrent gets one full window to get going.
-                    request_activity_grace(status_callback, MOVING_STALL_SECONDS)
+                    if stall_window > STALL_TIMEOUT_MIN_MINUTES * SECONDS_PER_MINUTE:
+                        request_activity_grace(status_callback, stall_window)
                     start_window_given = True
                 last_progress = status.progress
 
