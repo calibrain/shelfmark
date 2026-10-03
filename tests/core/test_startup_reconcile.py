@@ -12,7 +12,9 @@ from datetime import UTC, datetime, timedelta
 import pytest
 
 from shelfmark.core import startup_reconcile
+from shelfmark.core.activity_routes import _build_download_status_from_db
 from shelfmark.core.download_history_service import DownloadHistoryService
+from shelfmark.core.requests_service import sync_delivery_states_from_queue_status
 from shelfmark.core.user_db import UserDB
 
 NOW = datetime(2026, 9, 30, 12, 0, tzinfo=UTC)
@@ -90,6 +92,14 @@ def _run(user_db, history, **kwargs):
     return startup_reconcile.reconcile_interrupted_downloads(user_db, history, now=NOW, **kwargs)
 
 
+def _read_activity(user_db, history):
+    """Sync request delivery states the way an admin's activity snapshot does."""
+    status = _build_download_status_from_db(
+        db_rows=history.list_recent(user_id=None), queue_status={}
+    )
+    sync_delivery_states_from_queue_status(user_db, queue_status=status)
+
+
 def test_a_recently_interrupted_download_is_closed_out_and_its_request_reopened(db):
     user_db, history, path = db
     user = user_db.create_user(username="reader", role="user")
@@ -108,19 +118,30 @@ def test_a_recently_interrupted_download_is_closed_out_and_its_request_reopened(
     assert "restart" in stored["last_failure_reason"]
 
 
-def test_an_older_orphan_is_closed_out_but_its_request_is_left_for_a_slower_retry(db):
+def test_an_older_request_linked_orphan_is_left_active_and_keeps_its_retry(db):
     user_db, history, path = db
     user = user_db.create_user(username="reader", role="user")
     request = _request(user_db, user["id"], hours_ago=72)
     _download(
-        history, path, task_id="t1", user_id=user["id"], request_id=request["id"], hours_ago=72
+        history,
+        path,
+        task_id="t1",
+        user_id=user["id"],
+        request_id=request["id"],
+        hours_ago=72,
+        retry_payload={"source": "audiobookbay", "source_id": "rel-1"},
     )
 
-    assert _run(user_db, history) == {"marked": 1, "reopened": 0}
+    assert _run(user_db, history) == {"marked": 0, "reopened": 0}
 
-    assert history.get_by_task_id("t1")["final_status"] == "error"
-    stored = user_db.get_request(request["id"])
-    assert (stored["status"], stored["delivery_state"]) == ("fulfilled", "queued")
+    row = history.get_by_task_id("t1")
+    assert row["final_status"] == "active"
+    assert history.is_retry_available(row) is True
+
+    # Closing the row out as an error would end its retry, and the activity read would then
+    # reopen the request regardless of the window.
+    _read_activity(user_db, history)
+    assert user_db.get_request(request["id"])["status"] == "fulfilled"
 
 
 def test_a_download_with_no_request_is_closed_out_and_keeps_its_manual_retry(db):
@@ -174,14 +195,37 @@ def test_a_recent_request_stuck_queued_with_no_history_is_reopened(db):
     assert user_db.get_request(old["id"])["status"] == "fulfilled"
 
 
+def test_a_request_whose_download_finished_is_not_reopened(db):
+    """delivery_state only moves while the queue is polled, so it can still say "queued"."""
+    user_db, history, path = db
+    user = user_db.create_user(username="reader", role="user")
+    request = _request(user_db, user["id"], hours_ago=2)
+    _download(
+        history,
+        path,
+        task_id="t1",
+        user_id=user["id"],
+        request_id=request["id"],
+        hours_ago=2,
+        final_status="complete",
+    )
+
+    assert _run(user_db, history) == {"marked": 0, "reopened": 0}
+
+    stored = user_db.get_request(request["id"])
+    assert (stored["status"], stored["delivery_state"]) == ("fulfilled", "queued")
+    assert stored["release_data"] is not None
+
+
 def test_a_request_that_is_not_fulfilled_keeps_its_status(db):
     user_db, history, path = db
     user = user_db.create_user(username="reader", role="user")
     request = _request(user_db, user["id"], status="pending", state="none")
     _download(history, path, task_id="t1", user_id=user["id"], request_id=request["id"])
 
-    assert _run(user_db, history) == {"marked": 1, "reopened": 0}
+    assert _run(user_db, history) == {"marked": 0, "reopened": 0}
 
+    assert history.get_by_task_id("t1")["final_status"] == "active"
     assert user_db.get_request(request["id"])["status"] == "pending"
 
 

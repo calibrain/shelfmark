@@ -406,7 +406,7 @@ class DownloadHistoryService:
             return self._row_to_dict(row)
         finally:
             conn.close()
-            
+
     def list_active(self) -> list[dict[str, Any]]:
         """Return every row still marked active, oldest first."""
         conn = self._connect()
@@ -420,6 +420,17 @@ class DownloadHistoryService:
                 if normalized is not None:
                     result.append(normalized)
             return result
+        finally:
+            conn.close()
+
+    def list_request_ids(self) -> set[int]:
+        """Return the id of every request that has at least one download row."""
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT DISTINCT request_id FROM download_history WHERE request_id IS NOT NULL"
+            ).fetchall()
+            return {int(row["request_id"]) for row in rows}
         finally:
             conn.close()
 
