@@ -9,6 +9,7 @@ step to mock.
 
 import hashlib
 import io
+import threading
 from unittest.mock import MagicMock
 
 import pytest
@@ -66,9 +67,11 @@ def _mock_request(monkeypatch, payload, *, status_code=200):
 def _reset_shared_state():
     """The flood back-off and the download table are shared across instances."""
     DebridLinkClient._flood_until = 0.0
+    DebridLinkClient._flood_backoff = 0.0
     DebridLinkClient._downloads.clear()
     yield
     DebridLinkClient._flood_until = 0.0
+    DebridLinkClient._flood_backoff = 0.0
     DebridLinkClient._downloads.clear()
 
 
@@ -147,13 +150,13 @@ class TestEnvelope:
         assert "debrid-link.com" not in str(err.value)
         assert "ConnectionError" in str(err.value)
 
-    def test_flood_detected_starts_the_shared_back_off(self, monkeypatch):
+    def test_flood_detected_is_raised_with_its_code(self, monkeypatch):
         _mock_request(monkeypatch, {"success": False, "error": "floodDetected"}, status_code=429)
         client = _client(monkeypatch)
 
-        with pytest.raises(DebridLinkAPIError):
+        with pytest.raises(DebridLinkAPIError) as err:
             client._request_value("GET", "/seedbox/list", operation="status check")
-        assert DebridLinkClient._flood_until > 0
+        assert err.value.code == "floodDetected"
 
 
 class TestAdd:
@@ -265,23 +268,24 @@ class TestStatus:
         started.assert_not_called()
 
     @pytest.mark.parametrize(
-        ("info", "expected"),
+        ("info", "expected_state", "expected_message"),
         [
-            ({"status": 0}, "Paused on Debrid-Link"),
-            ({"status": 1}, "Queued on Debrid-Link"),
-            ({"status": 2}, "verifying"),
-            ({"status": 4}, "downloading torrent"),
-            ({"status": 6}, "downloading torrent"),  # the docs' own example value
-            ({"srvMaint": True}, "server maintenance"),
+            ({"status": 0}, DownloadState.PAUSED, "Paused on Debrid-Link"),
+            ({"status": 1}, DownloadState.QUEUED, "Queued on Debrid-Link"),
+            ({"status": 2}, DownloadState.CHECKING, "verifying"),
+            ({"status": 4}, DownloadState.DOWNLOADING, "downloading torrent"),
+            # The docs' own example value.
+            ({"status": 6}, DownloadState.DOWNLOADING, "downloading torrent"),
+            ({"status": 1, "srvMaint": True}, DownloadState.DOWNLOADING, "server maintenance"),
         ],
     )
-    def test_documented_states_are_reported(self, tmp_path, info, expected):
+    def test_documented_states_are_reported(self, tmp_path, info, expected_state, expected_message):
         status = self._bare_client()._handle_torrent_info(
             {"downloadPercent": 10, **info}, _state(tmp_path)
         )
 
-        assert status.state == DownloadState.DOWNLOADING
-        assert expected in (status.message or "")
+        assert status.state == expected_state
+        assert expected_message in (status.message or "")
 
     @pytest.mark.parametrize("done_status", [8, 100])
     def test_seeding_or_finished_counts_as_done(self, tmp_path, monkeypatch, done_status):
@@ -317,40 +321,23 @@ class TestStatus:
         assert args[1].endswith("/seedbox/DL1/config")
         assert kwargs["json"] == {"files-unwanted": []}
 
-    def test_a_torrent_that_stops_moving_fails_after_the_stall_timeout(self, tmp_path, monkeypatch):
+    def test_retrieval_starts_at_half_progress_rather_than_zero(self, tmp_path, monkeypatch):
         client = self._bare_client()
         state = _state(tmp_path)
-        clock = [1000.0]
-        monkeypatch.setattr(debridlink.time, "monotonic", lambda: clock[0])
-        state.progress_moved_at = clock[0]
+        DebridLinkClient._downloads["DL1"] = state
+        release = threading.Event()
+        monkeypatch.setattr(client, "_process_and_download", lambda _state: release.wait(5))
 
-        client._handle_torrent_info({"downloadPercent": 12, "peersConnected": 0}, state)
-        clock[0] += debridlink._STALL_TIMEOUT_SECONDS - 1
-        assert client._handle_torrent_info({"downloadPercent": 12}, state).state == (
-            DownloadState.DOWNLOADING
-        )
+        client._maybe_start_download_thread(state)
+        try:
+            status = client.get_status("DL1")
+        finally:
+            release.set()
+            assert state.download_thread is not None
+            state.download_thread.join(5)
 
-        clock[0] += 2
-        status = client._handle_torrent_info({"downloadPercent": 12, "peersConnected": 0}, state)
-
-        assert status.state == DownloadState.ERROR
-        assert "no progress" in (status.message or "")
-
-    def test_progress_resets_the_stall_clock(self, tmp_path, monkeypatch):
-        client = self._bare_client()
-        state = _state(tmp_path)
-        clock = [1000.0]
-        monkeypatch.setattr(debridlink.time, "monotonic", lambda: clock[0])
-        state.progress_moved_at = clock[0]
-
-        client._handle_torrent_info({"downloadPercent": 12}, state)
-        clock[0] += debridlink._STALL_TIMEOUT_SECONDS - 1
-        client._handle_torrent_info({"downloadPercent": 13}, state)
-        clock[0] += debridlink._STALL_TIMEOUT_SECONDS - 1
-
-        assert client._handle_torrent_info({"downloadPercent": 13}, state).state == (
-            DownloadState.DOWNLOADING
-        )
+        assert status.message == "Downloading files via HTTP..."
+        assert status.progress == 50.0
 
     def test_a_vanished_torrent_becomes_an_error_rather_than_a_stall(self, monkeypatch, tmp_path):
         monkeypatch.setattr("shelfmark.download.clients.debridlink.TMP_DIR", tmp_path)
@@ -393,6 +380,57 @@ class TestPolling:
         assert "rate limit" in (first.message or "")
         assert second.state == DownloadState.DOWNLOADING
         assert request.call_count == 1
+
+    def test_the_rate_limit_back_off_doubles_and_stays_under_the_stall_window(
+        self, monkeypatch, tmp_path
+    ):
+        # The orchestrator cancels a download after five minutes without a change,
+        # so no single back-off may outlast that.
+        monkeypatch.setattr("shelfmark.download.clients.debridlink.TMP_DIR", tmp_path)
+        _mock_request(monkeypatch, {"success": False, "error": "floodDetected"}, status_code=429)
+        clock = [1_000_000.0]
+        monkeypatch.setattr(debridlink.time, "time", lambda: clock[0])
+        client = _client(monkeypatch)
+
+        waits = []
+        for _ in range(4):
+            client.get_status("DL1")
+            waits.append(DebridLinkClient._flood_until - clock[0])
+            clock[0] = DebridLinkClient._flood_until + 1
+
+        assert waits == [60.0, 120.0, 240.0, 240.0]
+        assert max(waits) < 300
+
+    def test_a_successful_check_resets_the_back_off(self, monkeypatch, tmp_path):
+        monkeypatch.setattr("shelfmark.download.clients.debridlink.TMP_DIR", tmp_path)
+        clock = [1_000_000.0]
+        monkeypatch.setattr(debridlink.time, "time", lambda: clock[0])
+        client = _client(monkeypatch)
+
+        _mock_request(monkeypatch, {"success": False, "error": "floodDetected"}, status_code=429)
+        client.get_status("DL1")
+        clock[0] = DebridLinkClient._flood_until + 1
+        _mock_request(
+            monkeypatch, {"success": True, "value": [{"id": "DL1", "downloadPercent": 30}]}
+        )
+        client.get_status("DL1")
+
+        assert DebridLinkClient._flood_backoff == 0.0
+
+    def test_a_flood_on_another_endpoint_does_not_pause_status_checks(self, monkeypatch, tmp_path):
+        # floodDetected is per endpoint: hammering Test Connection must not stop polling.
+        monkeypatch.setattr("shelfmark.download.clients.debridlink.TMP_DIR", tmp_path)
+        _mock_request(monkeypatch, {"success": False, "error": "floodDetected"}, status_code=429)
+        client = _client(monkeypatch)
+        assert client.test_connection()[0] is False
+
+        request = _mock_request(
+            monkeypatch, {"success": True, "value": [{"id": "DL1", "downloadPercent": 30}]}
+        )
+        status = client.get_status("DL1")
+
+        assert request.call_count == 1
+        assert status.progress == 15.0
 
     def test_a_temporary_error_is_ridden_out_then_fails(self, monkeypatch, tmp_path):
         monkeypatch.setattr("shelfmark.download.clients.debridlink.TMP_DIR", tmp_path)
@@ -453,9 +491,9 @@ class TestFetchTorrent:
 
         assert request.call_args.kwargs["params"] == {"ids": "DL1"}
 
-    def test_the_file_list_uses_the_singular_id_so_zips_are_expanded(self, monkeypatch):
-        # Debrid-Link lists a many-file torrent as one ZIP under ``ids``; ``?id=``
-        # returns the individual files.
+    def test_the_file_list_asks_by_ids_so_zips_are_expanded(self, monkeypatch):
+        # The plain list shows a many-file torrent as one ZIP; the docs say
+        # ``/seedbox/list?ids=TORRENT_ID`` lists every file. There is no ``id``.
         request = _mock_request(
             monkeypatch,
             {
@@ -467,8 +505,15 @@ class TestFetchTorrent:
 
         files = client._fetch_file_list("DL1")
 
-        assert request.call_args.kwargs["params"] == {"id": "DL1"}
+        assert request.call_args.kwargs["params"] == {"ids": "DL1"}
         assert [f["name"] for f in files] == ["a.mp3", "b.mp3"]
+
+    def test_the_file_list_of_a_vanished_torrent_is_an_error(self, monkeypatch):
+        _mock_request(monkeypatch, {"success": False, "error": "badId"}, status_code=400)
+        client = _client(monkeypatch)
+
+        with pytest.raises(RuntimeError, match="no longer on Debrid-Link"):
+            client._fetch_file_list("DL1")
 
 
 class TestConnection:

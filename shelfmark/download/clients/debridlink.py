@@ -75,20 +75,21 @@ _STATUS_FINISHED = 100
 _DONE_STATUSES = frozenset({_STATUS_SEEDING, _STATUS_FINISHED})
 
 # The download handler polls every couple of seconds. Debrid-Link rate-limits per
-# endpoint and answers a breach with floodDetected, which blocks the API for an hour,
-# so the seedbox is asked at most this often per torrent and cached status is served
-# in between.
+# endpoint and answers a breach with floodDetected, so the seedbox is asked at most
+# this often per torrent and cached status is served in between.
 _MIN_REFRESH_SECONDS = 15.0
-_FLOOD_BACKOFF_SECONDS = 3600.0
+
+# floodDetected only says to retry later; the docs give no duration. Status checks
+# back off for a minute, doubling while the flood lasts. Each new back-off changes the
+# status message, and the cap keeps the next check inside the orchestrator's
+# five-minute stall window, so waiting out a flood doesn't get a download cancelled.
+_FLOOD_BACKOFF_SECONDS = 60.0
+_FLOOD_BACKOFF_MAX_SECONDS = 240.0
 
 # Errors Debrid-Link documents as temporary. They, network failures and 5xx
 # responses are retried until the torrent has been failing for this long.
 _TRANSIENT_ERROR_CODES = frozenset({"internalError", "server_error", "freeServerOverload"})
 _TRANSIENT_GRACE_SECONDS = 600.0
-
-# A torrent whose progress has not moved for this long is treated as dead (no seeds,
-# or left paused), because the API documents no error status for a torrent.
-_STALL_TIMEOUT_SECONDS = 3600.0
 
 # How long remove() waits for the retrieval thread to notice a cancel.
 _WORKER_JOIN_TIMEOUT = 10.0
@@ -118,8 +119,7 @@ _BOOK_EXTENSIONS = (
     ".rtf",
     ".txt",
     ".wma",
-    # A torrent with many files can come back as a single ZIP of all of them; the
-    # post-processing step extracts it.
+    # A zipped book or audiobook; the post-processing step extracts it.
     ".zip",
 )
 
@@ -154,11 +154,8 @@ class _DownloadState:
     last_fetch_at: float = 0.0
     # Transient-failure tracking: when the current run of failures started.
     failing_since: float | None = None
-    # Stall tracking: the highest progress seen and when it last moved.
-    best_percent: float = -1.0
     # Set once a torrent held for file selection (``wait``) has been told to start.
     start_requested: bool = False
-    progress_moved_at: float = field(default_factory=time.monotonic)
 
 
 @register_client("torrent")
@@ -177,8 +174,10 @@ class DebridLinkClient(DownloadClient):
 
     _downloads: ClassVar[dict[str, _DownloadState]] = {}
     _downloads_lock = threading.Lock()
-    # floodDetected blocks the whole account's API use, so the back-off is shared.
+    # A flood on the status endpoint applies to every torrent on the account, so the
+    # status back-off is shared.
     _flood_until: ClassVar[float] = 0.0
+    _flood_backoff: ClassVar[float] = 0.0
 
     def __init__(self) -> None:
         self._api_key = config_text(config.get("DEBRIDLINK_API_KEY", ""))
@@ -333,13 +332,14 @@ class DebridLinkClient(DownloadClient):
                 cached, f"Debrid-Link rate limit reached, retrying at {resume}"
             )
         if fresh and cached is not None:
-            return self._handle_torrent_info(cached, state, observed=False)
+            return self._handle_torrent_info(cached, state)
 
         try:
             torrent = self._fetch_torrent(download_id)
         except _DEBRIDLINK_CLIENT_ERRORS as e:
             return self._handle_fetch_failure(e, state)
 
+        type(self)._flood_backoff = 0.0
         with state.lock:
             state.failing_since = None
             state.last_fetch_at = time.monotonic()
@@ -456,8 +456,6 @@ class DebridLinkClient(DownloadClient):
             # The documented error body is just {success: false, error: <code>}.
             code = payload.get("error")
             code = code if isinstance(code, str) and code else None
-            if code == "floodDetected":
-                type(self)._flood_until = time.time() + _FLOOD_BACKOFF_SECONDS
             detail = code or ("an unsuccessful response" if ok_status else f"HTTP {status_code}")
             msg = f"Debrid-Link {operation} failed: {detail}"
             raise DebridLinkAPIError(msg, code or (None if ok_status else f"http{status_code}"))
@@ -483,19 +481,12 @@ class DebridLinkClient(DownloadClient):
     def _fetch_file_list(self, download_id: str) -> list[dict[str, Any]]:
         """Return the torrent's individual files.
 
-        A torrent with many files is listed as one ZIP (``isZip``) under ``ids``;
-        Debrid-Link documents ``?id=TORRENT_ID`` as the way to see the files
-        themselves. Fetched once, after the torrent is complete, so the list is
-        final rather than the partial one an early status check can return.
+        The plain list shows a torrent with many files as one ZIP (``isZip``);
+        asking for it by ``ids``, as ``_fetch_torrent`` does, lists every file.
+        Fetched once, after the torrent is complete, so the list is final rather
+        than the partial one an early status check can return.
         """
-        value = self._request_value(
-            "GET",
-            "/seedbox/list",
-            operation="file listing",
-            params={"id": download_id},
-            timeout=_STATUS_TIMEOUT,
-        )
-        torrent = self._pick_torrent(value, download_id)
+        torrent = self._fetch_torrent(download_id)
         if torrent is None:
             msg = f"Torrent {download_id} is no longer on Debrid-Link"
             _raise_runtime_error(msg)
@@ -513,7 +504,7 @@ class DebridLinkClient(DownloadClient):
         """Fail on a permanent error; ride out a temporary one for a grace period."""
         code = getattr(error, "code", None)
         if code == "floodDetected":
-            resume = time.strftime("%H:%M", time.localtime(type(self)._flood_until))
+            resume = self._start_flood_backoff()
             logger.warning("Debrid-Link rate limit reached; pausing status checks until %s", resume)
             return self._waiting_status(
                 state.last_info, f"Debrid-Link rate limit reached, retrying at {resume}"
@@ -538,6 +529,15 @@ class DebridLinkClient(DownloadClient):
             return self._set_error(state, f"{error} (still failing after {minutes} minutes)")
         logger.warning("Debrid-Link status check failed, will retry: %s", error)
         return self._waiting_status(state.last_info, "Debrid-Link unreachable, retrying")
+
+    @classmethod
+    def _start_flood_backoff(cls) -> str:
+        """Pause status checks after floodDetected and return the resume time as HH:MM."""
+        cls._flood_backoff = min(
+            max(cls._flood_backoff * 2, _FLOOD_BACKOFF_SECONDS), _FLOOD_BACKOFF_MAX_SECONDS
+        )
+        cls._flood_until = time.time() + cls._flood_backoff
+        return time.strftime("%H:%M", time.localtime(cls._flood_until))
 
     @staticmethod
     def _waiting_status(info: dict[str, Any] | None, message: str) -> DownloadStatus:
@@ -575,17 +575,11 @@ class DebridLinkClient(DownloadClient):
             self._downloads[download_id] = state
         return state
 
-    def _handle_torrent_info(
-        self,
-        info: dict[str, Any],
-        state: _DownloadState,
-        *,
-        observed: bool = True,
-    ) -> DownloadStatus:
+    def _handle_torrent_info(self, info: dict[str, Any], state: _DownloadState) -> DownloadStatus:
         """Map a Debrid-Link seedbox torrent to a DownloadStatus.
 
-        ``observed`` is False when ``info`` is a cached record being re-served
-        between throttled fetches, so it doesn't count toward stall detection.
+        The API documents no error status for a torrent, so a dead one is left to the
+        orchestrator's stall timer, as with the other torrent clients.
         """
         percent = _as_float(info.get("downloadPercent"))
         name = str(info.get("name") or state.name)
@@ -607,20 +601,7 @@ class DebridLinkClient(DownloadClient):
                 file_path=None,
             )
 
-        now = time.monotonic()
-        with state.lock:
-            if percent > state.best_percent:
-                state.best_percent = percent
-                state.progress_moved_at = now
-            stalled_for = now - state.progress_moved_at
-        if observed and stalled_for >= _STALL_TIMEOUT_SECONDS:
-            minutes = int(_STALL_TIMEOUT_SECONDS // 60)
-            return self._set_error(
-                state,
-                f"Debrid-Link made no progress on {name} for {minutes} minutes "
-                f"({int(_as_float(info.get('peersConnected')))} peers connected)",
-            )
-
+        download_state = DownloadState.DOWNLOADING
         if info.get("wait"):
             # Held for file selection. Shelfmark wants every file, so start it.
             self._start_waiting_torrent(state)
@@ -628,10 +609,15 @@ class DebridLinkClient(DownloadClient):
         elif info.get("srvMaint"):
             message = "Debrid-Link server maintenance, waiting"
         elif status == _STATUS_PAUSED:
+            download_state = DownloadState.PAUSED
             message = f"Paused on Debrid-Link ({name})"
         elif status == _STATUS_QUEUED:
+            # Reported as queued so the handler gives it the queue grace, not the
+            # stall window for a torrent that should be moving.
+            download_state = DownloadState.QUEUED
             message = f"Queued on Debrid-Link ({name})"
         elif status == _STATUS_VERIFYING:
+            download_state = DownloadState.CHECKING
             message = f"Debrid-Link verifying torrent ({name})"
         else:
             message = f"Debrid-Link downloading torrent ({name})"
@@ -639,7 +625,7 @@ class DebridLinkClient(DownloadClient):
         # Still being fetched by the seedbox: the first half of the progress bar.
         return DownloadStatus(
             progress=min(percent, _COMPLETE_PERCENT) * 0.5,
-            state=DownloadState.DOWNLOADING,
+            state=download_state,
             message=message,
             complete=False,
             file_path=None,
@@ -679,6 +665,9 @@ class DebridLinkClient(DownloadClient):
             if already_running or thread_alive or state.cancel_event.is_set():
                 return
             state.phase = "downloading_http"
+            # The seedbox half is done; without this the bar drops to 0% until the
+            # first file arrives.
+            state.progress = 50.0
             t = threading.Thread(
                 target=self._process_and_download,
                 args=(state,),
