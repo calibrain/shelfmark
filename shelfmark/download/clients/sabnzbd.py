@@ -5,7 +5,7 @@ Uses SABnzbd's REST API directly via requests (no external dependency).
 
 import ipaddress
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import urljoin, urlparse
 
 import requests
 from publicsuffixlist import PublicSuffixList
@@ -34,6 +34,7 @@ _SABNZBD_CLIENT_ERRORS = (
 )
 _SabnzbdRequestParam = str | int | float | bool
 _PUBLIC_SUFFIXES = PublicSuffixList()
+_NZB_FETCH_MAX_REDIRECTS = 5
 
 
 def _url_origin(value: str) -> tuple[str, str, int] | None:
@@ -266,10 +267,34 @@ class SABnzbdClient(DownloadClient):
 
     def _fetch_nzb_content(self, url: str) -> bytes:
         """Fetch NZB content, including Prowlarr auth headers when appropriate."""
-        headers = self._get_prowlarr_headers(url)
-        response = requests.get(url, timeout=30, headers=headers, verify=get_ssl_verify(url))
-        response.raise_for_status()
-        return response.content
+        # Follow redirects manually so the Prowlarr API key is re-evaluated
+        # per hop. requests forwards custom headers such as X-Api-Key to the
+        # redirect target even when it is a different host, so letting it
+        # follow a Prowlarr 302 to the indexer's own download link would leak
+        # the key to a third party. This mirrors the torrent fetch path.
+        current_url = url
+        redirects_remaining = _NZB_FETCH_MAX_REDIRECTS
+        while True:
+            headers = self._get_prowlarr_headers(current_url)
+            response = requests.get(
+                current_url,
+                timeout=30,
+                headers=headers,
+                verify=get_ssl_verify(current_url),
+                allow_redirects=False,
+            )
+            if response.status_code not in (301, 302, 303, 307, 308):
+                response.raise_for_status()
+                return response.content
+            location = response.headers.get("Location", "")
+            if not location:
+                response.raise_for_status()
+                return response.content
+            if redirects_remaining <= 0:
+                msg = f"Too many redirects fetching NZB from {urlparse(url).hostname or 'url'}"
+                raise requests.exceptions.TooManyRedirects(msg)
+            redirects_remaining -= 1
+            current_url = urljoin(current_url, location)
 
     def _can_prefetch_nzb_url(self, url: str) -> bool:
         target_origin = _url_origin(url)

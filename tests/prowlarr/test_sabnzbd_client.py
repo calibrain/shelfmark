@@ -730,6 +730,58 @@ class TestSABnzbdClientAddDownload:
         assert SABnzbdClient()._can_prefetch_nzb_url(nzb_url) is expected
 
 
+class TestFetchNzbContentRedirects:
+    """_fetch_nzb_content must not leak the Prowlarr API key across hosts."""
+
+    @staticmethod
+    def _client(monkeypatch):
+        config_values = {
+            "SABNZBD_URL": "http://localhost:8080",
+            "SABNZBD_API_KEY": "abc123",
+            "PROWLARR_URL": "https://prowlarr.example",
+            "PROWLARR_API_KEY": "secret",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.sabnzbd.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+        from shelfmark.download.clients.sabnzbd import SABnzbdClient
+
+        with patch.object(SABnzbdClient, "__init__", lambda x: None):
+            client = SABnzbdClient()
+        return client
+
+    def test_strips_api_key_on_cross_host_redirect(self, monkeypatch):
+        """Prowlarr often 302s to the indexer's own download link."""
+        client = self._client(monkeypatch)
+        redirect = MagicMock(
+            status_code=302, headers={"Location": "https://indexer.example/get.nzb"}
+        )
+        final = MagicMock(status_code=200, content=b"nzbdata")
+        with patch(
+            "shelfmark.download.clients.sabnzbd.requests.get",
+            MagicMock(side_effect=[redirect, final]),
+        ) as mock_get:
+            assert client._fetch_nzb_content("https://prowlarr.example/download?id=1") == b"nzbdata"
+        assert mock_get.call_count == 2
+        assert mock_get.call_args_list[0].kwargs["headers"].get("X-Api-Key") == "secret"
+        assert "X-Api-Key" not in mock_get.call_args_list[1].kwargs["headers"]
+        assert mock_get.call_args_list[0].kwargs.get("allow_redirects") is False
+
+    def test_keeps_api_key_on_same_host_redirect(self, monkeypatch):
+        client = self._client(monkeypatch)
+        redirect = MagicMock(status_code=302, headers={"Location": "/download2?id=1"})
+        final = MagicMock(status_code=200, content=b"nzbdata")
+        with patch(
+            "shelfmark.download.clients.sabnzbd.requests.get",
+            MagicMock(side_effect=[redirect, final]),
+        ) as mock_get:
+            assert client._fetch_nzb_content("https://prowlarr.example/download?id=1") == b"nzbdata"
+        assert mock_get.call_count == 2
+        assert mock_get.call_args_list[1].args[0] == "https://prowlarr.example/download2?id=1"
+        assert mock_get.call_args_list[1].kwargs["headers"].get("X-Api-Key") == "secret"
+
+
 class TestSABnzbdClientRemove:
     """Tests for SABnzbdClient.remove()."""
 
