@@ -76,7 +76,8 @@ STALL_TIMEOUT = 300  # 5 minutes without progress/status update = stalled
 _activity_grace: dict[str, float] = {}
 # A caller cannot buy immortality: the largest grace any operation may request. Must stay
 # above the largest budget any caller can declare (see http._bypass_grace_seconds).
-_MAX_ACTIVITY_GRACE_SECONDS = 960.0
+# The torrent stall setting (base_handler.STALL_TIMEOUT_MAX_MINUTES) can ask for up to an hour.
+_MAX_ACTIVITY_GRACE_SECONDS = 3600.0
 COORDINATOR_LOOP_ERROR_RETRY_DELAY = 1.0
 # Ceiling for the exponential backoff applied to repeated coordinator loop failures.
 _COORDINATOR_LOOP_ERROR_MAX_DELAY = 30.0
