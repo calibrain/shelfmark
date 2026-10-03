@@ -177,6 +177,8 @@ def _test_qbittorrent_connection(current_values: dict[str, Any] | None = None) -
             password=password,
             api_key=api_key or None,
             VERIFY_WEBUI_CERTIFICATE=get_ssl_verify(url),
+            # Same scheme rule as QBittorrentClient (#1417).
+            FORCE_SCHEME_FROM_HOST=url.lower().startswith("https://"),
         )
         client.auth_log_in()
         api_version = client.app.web_api_version
@@ -895,10 +897,11 @@ def prowlarr_clients_settings() -> list[SettingsField]:
         SelectField(
             key="PROWLARR_TORRENT_ACTION",
             label="Torrent Completion Action",
-            description="Choose whether to keep, remove, or move the torrent to another category or label after import",
+            description="After a successful import, Remove keeps downloaded files in qBittorrent, Transmission, and Deluge; Remove & Delete Files also deletes them. rTorrent cannot delete download data, so this action leaves its torrent untouched. Blackhole does not support removal. Debrid clients delete temporary local files for either Remove action.",
             options=[
                 {"value": "keep", "label": "Keep"},
                 {"value": "remove", "label": "Remove"},
+                {"value": "remove_and_delete", "label": "Remove & Delete Files"},
                 {"value": "change_category", "label": "Change Category"},
             ],
             default="keep",

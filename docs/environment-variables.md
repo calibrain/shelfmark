@@ -1703,7 +1703,7 @@ How long to keep cached search results before they expire.
 | `RTORRENT_LABEL` | Label to assign to ebook downloads in rTorrent | string | `cwabd` |
 | `RTORRENT_AUDIOBOOK_LABEL` | Label to assign to audiobook downloads in rTorrent (falls back to Book Label if not set) | string | _none_ |
 | `RTORRENT_DOWNLOAD_DIR` | Server-side directory where torrents are downloaded (optional, uses rTorrent default if not specified) | string | _none_ |
-| `PROWLARR_TORRENT_ACTION` | Choose whether to keep, remove, or move the torrent to another category or label after import | string (choice) | `keep` |
+| `PROWLARR_TORRENT_ACTION` | After a successful import, Remove keeps downloaded files in qBittorrent, Transmission, and Deluge; Remove & Delete Files also deletes them. rTorrent cannot delete download data, so this action leaves its torrent untouched. Blackhole does not support removal. Debrid clients delete temporary local files for either Remove action. | string (choice) | `keep` |
 | `PROWLARR_TORRENT_POST_IMPORT_CATEGORY` | Category or label to assign after a successful import | string | _empty string_ |
 | `PROWLARR_USENET_CLIENT` | Choose which usenet client to use | string (choice) | _empty string_ |
 | `NZBGET_URL` | URL of your NZBGet instance | string | _none_ |
@@ -2004,11 +2004,11 @@ Server-side directory where torrents are downloaded (optional, uses rTorrent def
 
 **Torrent Completion Action**
 
-Choose whether to keep, remove, or move the torrent to another category or label after import
+After a successful import, Remove keeps downloaded files in qBittorrent, Transmission, and Deluge; Remove & Delete Files also deletes them. rTorrent cannot delete download data, so this action leaves its torrent untouched. Blackhole does not support removal. Debrid clients delete temporary local files for either Remove action.
 
 - **Type:** string (choice)
 - **Default:** `keep`
-- **Options:** `keep` (Keep), `remove` (Remove), `change_category` (Change Category)
+- **Options:** `keep` (Keep), `remove` (Remove), `remove_and_delete` (Remove & Delete Files), `change_category` (Change Category)
 
 #### `PROWLARR_TORRENT_POST_IMPORT_CATEGORY`
 

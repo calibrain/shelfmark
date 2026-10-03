@@ -406,7 +406,7 @@ class DownloadHistoryService:
             return self._row_to_dict(row)
         finally:
             conn.close()
-
+            
     def list_active(self) -> list[dict[str, Any]]:
         """Return every row still marked active, oldest first."""
         conn = self._connect()
@@ -420,6 +420,23 @@ class DownloadHistoryService:
                 if normalized is not None:
                     result.append(normalized)
             return result
+        finally:
+            conn.close()
+
+    def list_request_task_ids(self, *, user_id: int) -> list[str]:
+        """Return the task ids of every request-linked download owned by ``user_id``.
+
+        A non-admin addresses these downloads by an opaque id, so routes resolve it
+        against this set, which also confines the lookup to the user's own downloads.
+        """
+        normalized_user_id = normalize_optional_positive_int(user_id, "user_id")
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT task_id FROM download_history WHERE user_id = ? AND request_id IS NOT NULL",
+                (normalized_user_id,),
+            ).fetchall()
+            return [str(row["task_id"]) for row in rows]
         finally:
             conn.close()
 
