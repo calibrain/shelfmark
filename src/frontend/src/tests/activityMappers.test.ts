@@ -193,13 +193,13 @@ describe('activityMappers.requestToActivityItem', () => {
   });
 });
 
-describe('activityMappers.linkedDownloadIdForRequest', () => {
-  const fulfilled = (releaseData: Record<string, unknown> | null) =>
-    requestToActivityItem(
-      makeRequest({ status: 'fulfilled', request_level: 'book', release_data: releaseData }),
-      'user',
-    );
+const fulfilled = (releaseData: Record<string, unknown> | null) =>
+  requestToActivityItem(
+    makeRequest({ status: 'fulfilled', request_level: 'book', release_data: releaseData }),
+    'user',
+  );
 
+describe('activityMappers.linkedDownloadIdForRequest', () => {
   it("links through the release's source_id when the viewer has it", () => {
     const item = fulfilled({ source_id: '21:https://tracker.example/t/1', format: 'epub' });
 
