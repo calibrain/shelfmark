@@ -177,6 +177,8 @@ def _test_qbittorrent_connection(current_values: dict[str, Any] | None = None) -
             password=password,
             api_key=api_key or None,
             VERIFY_WEBUI_CERTIFICATE=get_ssl_verify(url),
+            # Same scheme rule as QBittorrentClient (#1417).
+            FORCE_SCHEME_FROM_HOST=url.lower().startswith("https://"),
         )
         client.auth_log_in()
         api_version = client.app.web_api_version

@@ -889,9 +889,12 @@ def update_download_progress(book_id: str, progress: float) -> None:
 
         if should_broadcast:
             task = book_queue.get_task(book_id)
-            task_user_id = task.user_id if task else None
             ws_manager.broadcast_download_progress(
-                book_id, progress, "downloading", user_id=task_user_id
+                book_id,
+                progress,
+                "downloading",
+                user_id=task.user_id if task else None,
+                request_id=task.request_id if task else None,
             )
 
 

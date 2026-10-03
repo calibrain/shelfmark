@@ -5,6 +5,7 @@ from __future__ import annotations
 import math
 import shutil
 import threading
+import time
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Any, ClassVar, NoReturn
@@ -36,6 +37,8 @@ _API_BASE = "https://api.torbox.app/v1/api"
 _API_TIMEOUT = 30
 _STATUS_TIMEOUT = 15
 _WORKER_JOIN_TIMEOUT = 5.0
+# TorBox can report a torrent finished shortly before its files are present.
+_UNAVAILABLE_GRACE_SECONDS = 120.0
 
 _BOOK_EXTENSIONS = (
     ".aac",
@@ -81,6 +84,7 @@ class _DownloadState:
     phase: str = "waiting_torbox"
     error_message: str | None = None
     progress: float = 0.0
+    unavailable_since: float | None = None
     download_thread: threading.Thread | None = None
     cancel_event: threading.Event = field(default_factory=threading.Event)
     lock: threading.Lock = field(default_factory=threading.Lock)
@@ -397,10 +401,11 @@ class TorBoxClient(DownloadClient):
         finished = torrent.get("download_finished") is True
         present = torrent.get("download_present") is True
         if finished and not present:
-            message = "TorBox finished processing but the download is unavailable"
-            self._set_error(state, message)
-            return DownloadStatus.error(message)
-        if finished and present:
+            if self._unavailable_grace_expired(state):
+                message = "TorBox finished processing but the download is unavailable"
+                self._set_error(state, message)
+                return DownloadStatus.error(message)
+        elif finished and present:
             files = torrent.get("files")
             if not isinstance(files, list):
                 message = "TorBox returned no file list for a completed torrent"
@@ -428,6 +433,20 @@ class TorBoxClient(DownloadClient):
             download_speed=speed,
             eta=eta,
         )
+
+    @staticmethod
+    def _unavailable_grace_expired(state: _DownloadState) -> bool:
+        """Return True once finished TorBox files have stayed absent past the grace period."""
+        now = time.monotonic()
+        with state.lock:
+            if state.unavailable_since is None:
+                state.unavailable_since = now
+                logger.info(
+                    "TorBox finished torrent %s but its files are not present yet; waiting",
+                    state.torrent_id,
+                    extra={"torrent_id": state.torrent_id},
+                )
+            return now - state.unavailable_since >= _UNAVAILABLE_GRACE_SECONDS
 
     @staticmethod
     def _normalize_remote_progress(value: object) -> float:
