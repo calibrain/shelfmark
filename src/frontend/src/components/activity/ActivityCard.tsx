@@ -549,12 +549,7 @@ export const ActivityCard = ({
 }: ActivityCardProps) => {
   const model = useMemo(() => buildActivityCardModel(item, isAdmin), [item, isAdmin]);
   const noteLine = model.noteLine;
-  const requestContentType = item.requestRecord?.content_type;
-  const requestFormat =
-    item.kind === 'request' &&
-    (requestContentType === 'audiobook' || requestContentType === 'ebook')
-      ? requestContentType
-      : null;
+  const formatPill = item.formatPill;
   const badgeRefs = useRef<Record<string, HTMLSpanElement | null>>({});
   const titleLineRef = useRef<HTMLParagraphElement | null>(null);
   const [badgeOverflow, setBadgeOverflow] = useState<Record<string, boolean>>({});
@@ -860,12 +855,12 @@ export const ActivityCard = ({
             </div>
           </div>
 
-          {requestFormat ? (
+          {formatPill ? (
             <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-tight">
               <span
-                className={`shrink-0 rounded px-1.5 py-px font-medium ${FORMAT_PILL_CLASSES[requestFormat]}`}
+                className={`shrink-0 rounded px-1.5 py-px font-medium ${FORMAT_PILL_CLASSES[formatPill.kind]}`}
               >
-                {requestFormat === 'audiobook' ? 'Audiobook' : 'Ebook'}
+                {formatPill.label}
               </span>
               {item.metaLine && (
                 <span className="truncate opacity-60" title={item.metaLine}>

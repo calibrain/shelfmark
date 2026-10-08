@@ -85,7 +85,8 @@ describe('activityMappers.downloadToActivityItem', () => {
     expect(item.kind).toBe('download');
     expect(item.visualStatus).toBe('queued');
     expect(item.statusLabel).toBe('Queued');
-    expect(item.metaLine).toBe('EPUB · 3 MB · Direct Download · alice');
+    expect(item.metaLine).toBe('3 MB · Direct Download · alice');
+    expect(item.formatPill).toEqual({ label: 'EPUB', kind: 'ebook' });
     expect(item.progress).toBe(5);
     expect(item.progressAnimated).toBe(true);
     expect(item.timestamp).toBe(123);
@@ -115,7 +116,8 @@ describe('activityMappers.downloadToActivityItem', () => {
 
   it('omits empty meta parts cleanly', () => {
     const item = downloadToActivityItem(makeBook({ format: 'epub', size: undefined }), 'error');
-    expect(item.metaLine).toBe('EPUB');
+    expect(item.metaLine).toBe('');
+    expect(item.formatPill).toEqual({ label: 'EPUB', kind: 'ebook' });
   });
 });
 
@@ -139,7 +141,8 @@ describe('activityMappers.requestToActivityItem', () => {
 
     expect(item.kind).toBe('request');
     expect(item.visualStatus).toBe('pending');
-    expect(item.metaLine).toBe('EPUB · 2 MB · Prowlarr · alice');
+    expect(item.metaLine).toBe('2 MB · Prowlarr · alice');
+    expect(item.formatPill).toEqual({ label: 'EPUB', kind: 'ebook' });
     expect(item.requestId).toBe(42);
     expect(item.requestLevel).toBe('release');
     expect(item.requestNote).toBe('please add this');
@@ -189,7 +192,7 @@ describe('activityMappers.requestToActivityItem', () => {
 
   it('does not append username to meta line for user viewer role', () => {
     const item = requestToActivityItem(makeRequest(), 'user');
-    expect(item.metaLine).toBe('EPUB · 2 MB · Prowlarr');
+    expect(item.metaLine).toBe('2 MB · Prowlarr');
   });
 });
 
@@ -219,5 +222,37 @@ describe('activityMappers.linkedDownloadIdForRequest', () => {
     const item = requestToActivityItem(makeRequest({ status: 'pending' }), 'user');
 
     expect(linkedDownloadIdForRequest(item, new Map([[42, 'dl_abc']]))).toBeNull();
+  });
+});
+
+describe('activityMappers format pill', () => {
+  it('colours an audio file as an audiobook even without a content type', () => {
+    const item = downloadToActivityItem(
+      { id: 'a1', title: 'Young Zaphod', author: 'Douglas Adams', format: 'm4b' },
+      'complete',
+    );
+    expect(item.formatPill).toEqual({ label: 'M4B', kind: 'audiobook' });
+  });
+
+  it('uses the content type over the file format', () => {
+    const item = downloadToActivityItem(
+      {
+        id: 'a2',
+        title: 'Young Zaphod',
+        author: 'Douglas Adams',
+        format: 'mp3',
+        content_type: 'audiobook',
+      },
+      'complete',
+    );
+    expect(item.formatPill).toEqual({ label: 'MP3', kind: 'audiobook' });
+  });
+
+  it('labels a book-level request by its type', () => {
+    const item = requestToActivityItem(
+      makeRequest({ request_level: 'book', content_type: 'audiobook', release_data: null }),
+      'admin',
+    );
+    expect(item.formatPill).toEqual({ label: 'Audiobook', kind: 'audiobook' });
   });
 });
