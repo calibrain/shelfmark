@@ -70,6 +70,12 @@ const IconButton = ({
   </button>
 );
 
+// Fork: one colour per format, picked from hues the status badges do not use.
+const FORMAT_PILL_CLASSES: Record<'audiobook' | 'ebook', string> = {
+  audiobook: 'bg-violet-100 text-violet-800 dark:bg-violet-900/50 dark:text-violet-200',
+  ebook: 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200',
+};
+
 type ActionIconName = 'cross' | 'check' | 'stop' | 'retry' | 'eye' | 'eye-off';
 
 const actionKey = (action: ActivityCardAction): string => {
@@ -543,6 +549,12 @@ export const ActivityCard = ({
 }: ActivityCardProps) => {
   const model = useMemo(() => buildActivityCardModel(item, isAdmin), [item, isAdmin]);
   const noteLine = model.noteLine;
+  const requestContentType = item.requestRecord?.content_type;
+  const requestFormat =
+    item.kind === 'request' &&
+    (requestContentType === 'audiobook' || requestContentType === 'ebook')
+      ? requestContentType
+      : null;
   const badgeRefs = useRef<Record<string, HTMLSpanElement | null>>({});
   const titleLineRef = useRef<HTMLParagraphElement | null>(null);
   const [badgeOverflow, setBadgeOverflow] = useState<Record<string, boolean>>({});
@@ -848,9 +860,27 @@ export const ActivityCard = ({
             </div>
           </div>
 
-          <p className="mt-0.5 truncate text-[11px] leading-tight opacity-60" title={item.metaLine}>
-            {item.metaLine}
-          </p>
+          {requestFormat ? (
+            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-tight">
+              <span
+                className={`shrink-0 rounded px-1.5 py-px font-medium ${FORMAT_PILL_CLASSES[requestFormat]}`}
+              >
+                {requestFormat === 'audiobook' ? 'Audiobook' : 'Ebook'}
+              </span>
+              {item.metaLine && (
+                <span className="truncate opacity-60" title={item.metaLine}>
+                  {item.metaLine}
+                </span>
+              )}
+            </div>
+          ) : (
+            <p
+              className="mt-0.5 truncate text-[11px] leading-tight opacity-60"
+              title={item.metaLine}
+            >
+              {item.metaLine}
+            </p>
+          )}
 
           {noteLine && (
             <p className="mt-0.5 truncate text-[11px] italic opacity-60" title={noteLine}>
