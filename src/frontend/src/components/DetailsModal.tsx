@@ -8,8 +8,10 @@ import type { Book, ButtonStateInfo } from '../types';
 import { isMetadataBook } from '../types';
 import { bookSupportsTargets } from '../utils/bookTargetLoader';
 import { isUserCancelledError } from '../utils/errors';
+import type { PendingRequestKeys } from '../utils/requestedBooks';
+import { NO_PENDING_REQUESTS, requestedFormats } from '../utils/requestedBooks';
 import { BookTargetDropdown } from './BookTargetDropdown';
-import { LibraryBadges, ownedFormats } from './shared';
+import { LibraryBadges, RequestedBadges, ownedFormats } from './shared';
 
 interface DetailsModalProps {
   book: Book | null;
@@ -20,6 +22,7 @@ interface DetailsModalProps {
   buttonState: ButtonStateInfo;
   showReleaseSourceLinks?: boolean;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+  pendingRequests?: PendingRequestKeys;
 }
 
 interface DetailsModalAutoCloseProps {
@@ -46,6 +49,7 @@ export const DetailsModal = ({
   buttonState,
   showReleaseSourceLinks = true,
   onShowToast,
+  pendingRequests = NO_PENDING_REQUESTS,
 }: DetailsModalProps) => {
   const [isQueuing, setIsQueuing] = useState(false);
   const [isClosing, setIsClosing] = useState(false);
@@ -297,6 +301,13 @@ export const DetailsModal = ({
                   <div className={`${infoCardClass} space-y-1`}>
                     <p className={infoLabelClass}>Library</p>
                     <LibraryBadges library={book.library} />
+                  </div>
+                )}
+
+                {requestedFormats(book, pendingRequests).length > 0 && (
+                  <div className={`${infoCardClass} space-y-1`}>
+                    <p className={infoLabelClass}>Requests</p>
+                    <RequestedBadges book={book} pendingRequests={pendingRequests} />
                   </div>
                 )}
 

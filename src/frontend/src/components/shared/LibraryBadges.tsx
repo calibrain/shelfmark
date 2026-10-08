@@ -30,7 +30,7 @@ export function isCollectionHolding(
   return library?.[format] === 'collection';
 }
 
-function FormatIcon({ format, className }: { format: OwnedFormat; className: string }) {
+export function FormatIcon({ format, className }: { format: OwnedFormat; className: string }) {
   if (format === 'ebook') {
     return (
       <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">

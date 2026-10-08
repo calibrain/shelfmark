@@ -5,9 +5,11 @@ import type { Book, ButtonStateInfo, DisplayField } from '../../types';
 import { getDownloadsCount } from '../../types';
 import { bookSupportsTargets } from '../../utils/bookTargetLoader';
 import { getFormatColor, getLanguageColor } from '../../utils/colorMaps';
+import type { PendingRequestKeys } from '../../utils/requestedBooks';
+import { NO_PENDING_REQUESTS } from '../../utils/requestedBooks';
 import { BookActionButton } from '../BookActionButton';
 import { BookTargetDropdown } from '../BookTargetDropdown';
-import { DisplayFieldIcon, DisplayFieldBadge, LibraryBadges } from '../shared';
+import { DisplayFieldIcon, DisplayFieldBadge, LibraryBadges, RequestedBadges } from '../shared';
 
 interface ListViewProps {
   books: Book[];
@@ -18,6 +20,7 @@ interface ListViewProps {
   getUniversalButtonState: (bookId: string) => ButtonStateInfo;
   showSeriesPosition?: boolean;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+  pendingRequests?: PendingRequestKeys;
 }
 
 const getKeyedDisplayFields = (fields: DisplayField[]) => {
@@ -89,6 +92,7 @@ export const ListView = ({
   getUniversalButtonState,
   showSeriesPosition = false,
   onShowToast,
+  pendingRequests = NO_PENDING_REQUESTS,
 }: ListViewProps) => {
   const { searchMode } = useSearchMode();
   const [detailsLoadingId, setDetailsLoadingId] = useState<string | null>(null);
@@ -203,7 +207,10 @@ export const ListView = ({
                     {book.author || 'Unknown author'}
                     {book.year && <span className="sm:hidden"> • {book.year}</span>}
                   </p>
-                  <LibraryBadges library={book.library} className="mt-0.5" />
+                  <div className="mt-0.5 flex flex-wrap gap-1 empty:hidden">
+                    <LibraryBadges library={book.library} />
+                    <RequestedBadges book={book} pendingRequests={pendingRequests} />
+                  </div>
                 </div>
 
                 {/* Mobile universal mode info */}
