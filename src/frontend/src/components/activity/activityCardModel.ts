@@ -132,8 +132,37 @@ const buildBadges = (item: ActivityItem, isAdmin: boolean): ActivityCardBadge[] 
   return [getDownloadBadge(item)];
 };
 
-const buildRequestNoteLine = (item: ActivityItem): string | undefined => {
+const formatReviewDate = (value: string | null | undefined): string | undefined => {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(parsed);
+};
+
+// Who declined it and when, for admins. The reviewer is only sent to admin views.
+const buildDeclinedLine = (item: ActivityItem): string | undefined => {
+  const record = item.requestRecord;
+  if (!record || record.status !== 'rejected') {
+    return undefined;
+  }
+  const parts = [record.reviewer_username ? `Declined by ${record.reviewer_username}` : 'Declined'];
+  const date = formatReviewDate(record.reviewed_at);
+  if (date) {
+    parts.push(date);
+  }
+  const line = parts.join(' · ');
+  return item.adminNote ? `${line}: "${item.adminNote}"` : line;
+};
+
+const buildRequestNoteLine = (item: ActivityItem, isAdmin: boolean): string | undefined => {
   const requestStatus = item.requestRecord?.status;
+  if (isAdmin && requestStatus === 'rejected') {
+    return buildDeclinedLine(item);
+  }
   if (item.requestNote && (requestStatus === 'pending' || item.visualStatus === 'pending')) {
     return `"${item.requestNote}"`;
   }
@@ -236,7 +265,7 @@ const buildActions = (item: ActivityItem, isAdmin: boolean): ActivityCardAction[
 export const buildActivityCardModel = (item: ActivityItem, isAdmin: boolean): ActivityCardModel => {
   return {
     badges: buildBadges(item, isAdmin),
-    noteLine: buildRequestNoteLine(item),
+    noteLine: buildRequestNoteLine(item, isAdmin),
     actions: buildActions(item, isAdmin),
   };
 };

@@ -21,6 +21,7 @@ from shelfmark.core.request_helpers import (
     load_users_request_policy_settings,
     normalize_optional_text,
     normalize_positive_int,
+    populate_request_reviewers,
     populate_request_usernames,
 )
 from shelfmark.core.request_policy import (
@@ -931,6 +932,7 @@ def register_request_routes(
             return jsonify({"error": str(exc)}), 400
 
         populate_request_usernames(rows, user_db)
+        populate_request_reviewers(rows, user_db)
 
         return jsonify(rows)
 

@@ -273,4 +273,42 @@ describe('activityCardModel', () => {
 
     expect(model.actions.map((action) => action.kind)).toEqual(['request-dismiss']);
   });
+
+  it('tells an admin who declined a request and when', () => {
+    const record = {
+      id: 45,
+      user_id: 7,
+      status: 'rejected' as const,
+      source_hint: null,
+      content_type: 'ebook' as const,
+      request_level: 'book' as const,
+      policy_mode: 'request_book' as const,
+      book_data: { title: 'My Dog Thinks It Is a Cat' },
+      release_data: null,
+      note: null,
+      admin_note: '[auto] already in the library',
+      reviewed_by: 1,
+      reviewed_at: '2026-09-22T05:31:12Z',
+      created_at: '2026-09-20T03:37:29Z',
+      updated_at: '2026-09-22T05:31:12Z',
+      username: 'reader',
+      reviewer_username: 'admin@example.com',
+    };
+    const item = makeItem({
+      kind: 'request',
+      visualStatus: 'rejected',
+      requestId: 45,
+      downloadBookId: undefined,
+      adminNote: record.admin_note,
+      requestRecord: record,
+    });
+
+    const adminLine = buildActivityCardModel(item, true).noteLine;
+    expect(adminLine).toMatch(
+      /^Declined by admin@example\.com · .+: "\[auto\] already in the library"$/,
+    );
+
+    const requesterLine = buildActivityCardModel(item, false).noteLine;
+    expect(requesterLine).toBe('"[auto] already in the library"');
+  });
 });

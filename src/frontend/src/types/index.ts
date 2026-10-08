@@ -264,6 +264,7 @@ export interface RequestRecord {
   created_at: string;
   updated_at: string;
   username?: string;
+  reviewer_username?: string;
 }
 
 export interface QueuedDownloadResult {
