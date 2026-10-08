@@ -138,15 +138,14 @@ const requestStatusToVisualStatus = (status: RequestRecord['status']): ActivityV
 
 const buildRequestMetaLine = (
   record: RequestRecord,
-  bookData: Record<string, unknown>,
+  _bookData: Record<string, unknown>,
   releaseData: Record<string, unknown>,
   viewerRole: 'user' | 'admin',
 ): string => {
   if (record.request_level === 'book') {
-    const contentType = toOptionalText(record.content_type || bookData.content_type)?.toLowerCase();
-    const requestTypeLabel = contentType === 'audiobook' ? 'Audiobook request' : 'Book request';
+    // Fork: the card shows the format as a coloured pill, so the line only names the requester.
     const username = viewerRole === 'admin' ? toOptionalText(record.username) : undefined;
-    return joinMetaParts([requestTypeLabel, username]);
+    return joinMetaParts([username]);
   }
 
   const format = toOptionalText(releaseData.format)?.toUpperCase();

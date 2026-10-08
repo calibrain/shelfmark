@@ -57,12 +57,9 @@ const toRequestVisualStatus = (status: RequestRecord['status']): ActivityVisualS
   return 'cancelled';
 };
 
-const getPendingRequestText = (item: ActivityItem, isAdmin: boolean): string => {
-  if (!isAdmin) {
-    return 'Awaiting review';
-  }
-  const username = item.username?.trim() || item.requestRecord?.username?.trim();
-  return username ? `Needs review · ${username}` : 'Needs review';
+const getPendingRequestText = (_item: ActivityItem, isAdmin: boolean): string => {
+  // Fork: the requester is named once, on the card's meta line, not again in the badge.
+  return isAdmin ? 'Needs review' : 'Awaiting review';
 };
 
 const getRequestBadge = (item: ActivityItem, isAdmin: boolean): ActivityCardBadge => {

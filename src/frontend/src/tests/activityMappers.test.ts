@@ -157,7 +157,7 @@ describe('activityMappers.requestToActivityItem', () => {
       'user',
     );
 
-    expect(item.metaLine).toBe('Book request');
+    expect(item.metaLine).toBe('');
   });
 
   it('maps audiobook book-level request with audiobook label', () => {
@@ -171,7 +171,7 @@ describe('activityMappers.requestToActivityItem', () => {
       'admin',
     );
 
-    expect(item.metaLine).toBe('Audiobook request · alice');
+    expect(item.metaLine).toBe('alice');
   });
 
   it('maps rejected requests with admin note', () => {

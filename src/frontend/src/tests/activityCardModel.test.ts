@@ -42,7 +42,7 @@ describe('activityCardModel', () => {
     );
 
     expect(model.badges.length).toBe(1);
-    expect(model.badges[0]?.text).toBe('Needs review · testuser');
+    expect(model.badges[0]?.text).toBe('Needs review');
   });
 
   it('keeps pending label for requester-side pending requests', () => {
