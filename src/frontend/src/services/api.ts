@@ -713,6 +713,20 @@ export const listRejectedAdminRequests = async (): Promise<RequestRecord[]> => {
   return fetchJSON<RequestRecord[]>(`${API.adminRequests}?status=rejected`);
 };
 
+export const listHiddenRejectedRequestIds = async (): Promise<number[]> => {
+  const response = await fetchJSON<{ request_ids: number[] }>(
+    `${API.adminRequests}/rejected-hidden`,
+  );
+  return Array.isArray(response.request_ids) ? response.request_ids : [];
+};
+
+export const setRejectedRequestHidden = async (id: number, hidden: boolean): Promise<void> => {
+  await fetchJSON(`${API.adminRequests}/${encodeURIComponent(String(id))}/rejected-hidden`, {
+    method: 'POST',
+    body: JSON.stringify({ hidden }),
+  });
+};
+
 export const reopenAdminRequest = async (
   id: number,
   body: RejectAdminRequestBody = {},

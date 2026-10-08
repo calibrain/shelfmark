@@ -16,6 +16,18 @@ const makeItem = (overrides: Partial<ActivityItem> = {}): ActivityItem => ({
   ...overrides,
 });
 
+const rejectedActionKinds = (hiddenInRejected?: boolean) =>
+  buildActivityCardModel(
+    makeItem({
+      kind: 'request',
+      visualStatus: 'rejected',
+      requestId: 47,
+      downloadBookId: undefined,
+      hiddenInRejected,
+    }),
+    true,
+  ).actions.map((action) => action.kind);
+
 describe('activityCardModel', () => {
   it('shows ownership in badge text for admin pending requests', () => {
     const model = buildActivityCardModel(
@@ -310,5 +322,19 @@ describe('activityCardModel', () => {
 
     const requesterLine = buildActivityCardModel(item, false).noteLine;
     expect(requesterLine).toBe('"[auto] already in the library"');
+  });
+
+  it('offers hide or unhide on rejected cards only in the Rejected view', () => {
+    expect(rejectedActionKinds()).toEqual(['request-reopen', 'request-dismiss']);
+    expect(rejectedActionKinds(false)).toEqual([
+      'request-reopen',
+      'request-hide',
+      'request-dismiss',
+    ]);
+    expect(rejectedActionKinds(true)).toEqual([
+      'request-reopen',
+      'request-unhide',
+      'request-dismiss',
+    ]);
   });
 });

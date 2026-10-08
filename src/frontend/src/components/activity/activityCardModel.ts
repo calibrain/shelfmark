@@ -14,7 +14,13 @@ export type ActivityCardAction =
       record: RequestRecord;
     }
   | {
-      kind: 'request-reject' | 'request-reopen' | 'request-cancel' | 'request-dismiss';
+      kind:
+        | 'request-reject'
+        | 'request-reopen'
+        | 'request-hide'
+        | 'request-unhide'
+        | 'request-cancel'
+        | 'request-dismiss';
       requestId: number;
     };
 
@@ -244,10 +250,14 @@ const buildActions = (item: ActivityItem, isAdmin: boolean): ActivityCardAction[
     }
 
     if (item.visualStatus === 'rejected' && isAdmin) {
-      return [
-        { kind: 'request-reopen', requestId: item.requestId },
-        { kind: 'request-dismiss', requestId: item.requestId },
-      ];
+      const actions: ActivityCardAction[] = [{ kind: 'request-reopen', requestId: item.requestId }];
+      if (item.hiddenInRejected === true) {
+        actions.push({ kind: 'request-unhide', requestId: item.requestId });
+      } else if (item.hiddenInRejected === false) {
+        actions.push({ kind: 'request-hide', requestId: item.requestId });
+      }
+      actions.push({ kind: 'request-dismiss', requestId: item.requestId });
+      return actions;
     }
 
     if (

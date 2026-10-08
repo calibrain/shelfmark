@@ -1912,3 +1912,40 @@ def test_reopen_rejected_request_returns_none_for_unknown_or_other_states(user_d
         book_data=_book_data(),
     )
     assert user_db.reopen_rejected_request(created["id"]) is None
+
+
+def test_rejected_request_can_be_hidden_and_shown_again(user_db):
+    _alice, _admin, created = _rejected_request(user_db)
+
+    assert user_db.set_rejected_request_hidden(created["id"], hidden=True) is True
+    assert user_db.set_rejected_request_hidden(created["id"], hidden=True) is True
+    assert user_db.list_hidden_rejected_request_ids() == [created["id"]]
+
+    assert user_db.set_rejected_request_hidden(created["id"], hidden=False) is True
+    assert user_db.list_hidden_rejected_request_ids() == []
+
+
+def test_only_a_rejected_request_can_be_hidden(user_db):
+    alice = user_db.create_user(username="alice")
+    created = create_request(
+        user_db,
+        user_id=alice["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="book",
+        policy_mode="request_book",
+        book_data=_book_data(),
+    )
+
+    assert user_db.set_rejected_request_hidden(created["id"], hidden=True) is False
+    assert user_db.list_hidden_rejected_request_ids() == []
+
+
+def test_reopen_clears_hidden_so_a_later_rejection_starts_visible(user_db):
+    _alice, admin, created = _rejected_request(user_db)
+    user_db.set_rejected_request_hidden(created["id"], hidden=True)
+
+    reopen_request(user_db, request_id=created["id"], admin_user_id=admin["id"])
+    reject_request(user_db, request_id=created["id"], admin_user_id=admin["id"])
+
+    assert user_db.list_hidden_rejected_request_ids() == []
