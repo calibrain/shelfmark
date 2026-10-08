@@ -4,9 +4,11 @@ import { useSearchMode } from '../../contexts/SearchModeContext';
 import type { Book, ButtonStateInfo } from '../../types';
 import { getDownloadsCount } from '../../types';
 import { bookSupportsTargets } from '../../utils/bookTargetLoader';
+import type { PendingRequestKeys } from '../../utils/requestedBooks';
+import { NO_PENDING_REQUESTS } from '../../utils/requestedBooks';
 import { BookActionButton } from '../BookActionButton';
 import { BookTargetDropdown } from '../BookTargetDropdown';
-import { DisplayFieldBadges, DisplayFieldIcon, LibraryBadges } from '../shared';
+import { DisplayFieldBadges, DisplayFieldIcon, LibraryBadges, RequestedBadges } from '../shared';
 
 const SkeletonLoader = () => (
   <div className="h-full w-full animate-pulse bg-linear-to-r from-gray-300 via-gray-200 to-gray-300 dark:from-gray-700 dark:via-gray-600 dark:to-gray-700" />
@@ -22,6 +24,7 @@ interface CompactViewProps {
   animationDelay?: number;
   showSeriesPosition?: boolean;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
+  pendingRequests?: PendingRequestKeys;
 }
 
 export const CompactView = ({
@@ -34,6 +37,7 @@ export const CompactView = ({
   animationDelay = 0,
   showSeriesPosition = false,
   onShowToast,
+  pendingRequests = NO_PENDING_REQUESTS,
 }: CompactViewProps) => {
   const { searchMode } = useSearchMode();
   const [isLoadingDetails, setIsLoadingDetails] = useState(false);
@@ -99,11 +103,15 @@ export const CompactView = ({
               #{book.series_position}
             </div>
           )}
-          <LibraryBadges
-            library={book.library}
-            overlay
-            className="absolute top-2 right-2 z-10 flex-col items-end"
-          />
+          <div className="absolute top-2 right-2 z-10 flex flex-col items-end gap-1">
+            <LibraryBadges library={book.library} overlay className="flex-col items-end" />
+            <RequestedBadges
+              book={book}
+              pendingRequests={pendingRequests}
+              overlay
+              className="flex-col items-end"
+            />
+          </div>
           {book.preview && !imageError ? (
             <>
               {!imageLoaded && (
