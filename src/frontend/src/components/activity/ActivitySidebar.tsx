@@ -250,7 +250,9 @@ export const ActivitySidebar = ({
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   const dismissedKeySet = useMemo(() => new Set(dismissedItemKeys), [dismissedItemKeys]);
-  const { rejectedItems, rejectedLoading, loadRejected } = useRejectedRequests();
+  const { rejectedItems, rejectedLoading, loadRejected, setRejectedHidden } = useRejectedRequests();
+  const [showHiddenRejected, setShowHiddenRejected] = useState(false);
+  const hiddenRejectedCount = rejectedItems.filter((item) => item.hiddenInRejected).length;
   const handleTabChange = useCallback(
     (nextTab: ActivityTabKey) => {
       if (nextTab === 'downloads') {
@@ -420,7 +422,9 @@ export const ActivitySidebar = ({
   } else if (effectiveActiveTab === 'history') {
     baseVisibleItems = historyItems;
   } else if (effectiveActiveTab === 'rejected') {
-    baseVisibleItems = rejectedItems;
+    baseVisibleItems = showHiddenRejected
+      ? rejectedItems
+      : rejectedItems.filter((item) => !item.hiddenInRejected);
   }
   const isHistoryInitialLoad = effectiveActiveTab === 'history' && !historyLoaded;
   let emptyStateMessage = 'No activity';
@@ -432,7 +436,13 @@ export const ActivitySidebar = ({
   } else if (effectiveActiveTab === 'downloads') {
     emptyStateMessage = 'No downloads';
   } else if (effectiveActiveTab === 'rejected') {
-    emptyStateMessage = rejectedLoading ? 'Loading rejected requests...' : 'No rejected requests';
+    if (rejectedLoading) {
+      emptyStateMessage = 'Loading rejected requests...';
+    } else if (hiddenRejectedCount > 0 && !showHiddenRejected) {
+      emptyStateMessage = `No rejected requests shown (${hiddenRejectedCount} hidden)`;
+    } else {
+      emptyStateMessage = 'No rejected requests';
+    }
   }
 
   const availableUsers = useMemo(() => {
@@ -757,6 +767,19 @@ export const ActivitySidebar = ({
           </div>
         </div>
 
+        {effectiveActiveTab === 'rejected' && (
+          <div className="mt-2 flex items-center justify-end text-sm">
+            <label className="inline-flex cursor-pointer items-center gap-2 opacity-80">
+              <input
+                type="checkbox"
+                checked={showHiddenRejected}
+                onChange={(event) => setShowHiddenRejected(event.target.checked)}
+              />
+              Show hidden ({hiddenRejectedCount})
+            </label>
+          </div>
+        )}
+
         {effectiveActiveTab !== 'history' && effectiveActiveTab !== 'rejected' && (
           <div className="-mx-4 mt-2 border-b border-(--border-muted) px-4">
             <div className="relative flex gap-1">
@@ -849,6 +872,7 @@ export const ActivitySidebar = ({
                     item={item}
                     isAdmin={isAdmin}
                     onRequestReopen={onRequestReopen ? handleRejectedReopen : undefined}
+                    onRequestSetHidden={setRejectedHidden}
                   />
                 ))}
               </div>

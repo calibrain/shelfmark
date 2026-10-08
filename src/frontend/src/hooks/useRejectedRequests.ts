@@ -2,17 +2,23 @@ import { useCallback, useRef, useState } from 'react';
 
 import { requestToActivityItem } from '../components/activity/activityMappers';
 import type { ActivityItem } from '../components/activity/activityTypes';
-import { listRejectedAdminRequests } from '../services/api';
+import {
+  listHiddenRejectedRequestIds,
+  listRejectedAdminRequests,
+  setRejectedRequestHidden,
+} from '../services/api';
 
 interface UseRejectedRequestsResult {
   rejectedItems: ActivityItem[];
   rejectedLoading: boolean;
   loadRejected: () => Promise<void>;
+  setRejectedHidden: (requestId: number, hidden: boolean) => Promise<void>;
 }
 
 // Rejected requests for the admin Rejected view. Unlike the activity snapshot this
 // includes requests that were cleared from the list, which is where most of them are.
-// Loaded from the events that change it (opening the view, a reopen), like History.
+// Each item says whether the admin hid it from this view (its own state, not the
+// activity list's clear). Loaded from the events that change it, like History.
 export const useRejectedRequests = (): UseRejectedRequestsResult => {
   const [rejectedItems, setRejectedItems] = useState<ActivityItem[]>([]);
   const [rejectedLoading, setRejectedLoading] = useState(false);
@@ -23,11 +29,19 @@ export const useRejectedRequests = (): UseRejectedRequestsResult => {
     const loadId = latestLoad.current;
     setRejectedLoading(true);
     try {
-      const records = await listRejectedAdminRequests();
+      const [records, hiddenIds] = await Promise.all([
+        listRejectedAdminRequests(),
+        listHiddenRejectedRequestIds(),
+      ]);
       if (loadId !== latestLoad.current) {
         return;
       }
-      const items = records.map((record) => requestToActivityItem(record, 'admin'));
+      const hidden = new Set(hiddenIds);
+      const items = records.map((record) => {
+        const item = requestToActivityItem(record, 'admin');
+        item.hiddenInRejected = hidden.has(record.id);
+        return item;
+      });
       items.sort((a, b) => b.timestamp - a.timestamp);
       setRejectedItems(items);
     } catch (error) {
@@ -42,5 +56,19 @@ export const useRejectedRequests = (): UseRejectedRequestsResult => {
     }
   }, []);
 
-  return { rejectedItems, rejectedLoading, loadRejected };
+  const setRejectedHidden = useCallback(async (requestId: number, hidden: boolean) => {
+    try {
+      await setRejectedRequestHidden(requestId, hidden);
+    } catch (error) {
+      console.error('Changing hidden state failed:', error);
+      return;
+    }
+    setRejectedItems((current) =>
+      current.map((item) =>
+        item.requestId === requestId ? Object.assign({}, item, { hiddenInRejected: hidden }) : item,
+      ),
+    );
+  }, []);
+
+  return { rejectedItems, rejectedLoading, loadRejected, setRejectedHidden };
 };

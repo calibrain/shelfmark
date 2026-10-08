@@ -32,6 +32,7 @@ interface ActivityCardProps {
   onRequestReject?: (requestId: number, adminNote?: string) => Promise<void> | void;
   onRequestRejectConfirm?: (requestId: number, adminNote?: string) => Promise<void> | void;
   onRequestReopen?: (requestId: number) => Promise<void> | void;
+  onRequestSetHidden?: (requestId: number, hidden: boolean) => Promise<void> | void;
   onRequestDismiss?: (requestId: number) => void;
   showRequestDetailsToggle?: boolean;
   isRequestDetailsOpen?: boolean;
@@ -69,6 +70,8 @@ const IconButton = ({
   </button>
 );
 
+type ActionIconName = 'cross' | 'check' | 'stop' | 'retry' | 'eye' | 'eye-off';
+
 const actionKey = (action: ActivityCardAction): string => {
   switch (action.kind) {
     case 'download-remove':
@@ -80,6 +83,8 @@ const actionKey = (action: ActivityCardAction): string => {
       return `${action.kind}-${action.requestId}-${action.record.id}`;
     case 'request-reject':
     case 'request-reopen':
+    case 'request-hide':
+    case 'request-unhide':
     case 'request-cancel':
     case 'request-dismiss':
       return `${action.kind}-${action.requestId}`;
@@ -90,7 +95,7 @@ const actionKey = (action: ActivityCardAction): string => {
 
 const actionUiConfig = (
   action: ActivityCardAction,
-): { title: string; className: string; icon: 'cross' | 'check' | 'stop' | 'retry' } => {
+): { title: string; className: string; icon: ActionIconName } => {
   switch (action.kind) {
     case 'download-remove':
       return {
@@ -135,6 +140,18 @@ const actionUiConfig = (
         className: 'text-sky-600 dark:text-sky-400 hover:bg-sky-100 dark:hover:bg-sky-900/30',
         icon: 'retry',
       };
+    case 'request-hide':
+      return {
+        title: 'Hide from Rejected',
+        className: 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700',
+        icon: 'eye-off',
+      };
+    case 'request-unhide':
+      return {
+        title: 'Show in Rejected again',
+        className: 'text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700',
+        icon: 'eye',
+      };
     case 'request-cancel':
       return {
         title: 'Cancel request',
@@ -156,7 +173,27 @@ const actionUiConfig = (
   }
 };
 
-const ActionIcon = ({ icon }: { icon: 'cross' | 'check' | 'stop' | 'retry' }) => {
+const ActionIcon = ({ icon }: { icon: ActionIconName }) => {
+  if (icon === 'eye' || icon === 'eye-off') {
+    return (
+      <svg
+        className="h-4 w-4"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        aria-hidden="true"
+      >
+        <path
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          d="M2.25 12s3.75-6.75 9.75-6.75S21.75 12 21.75 12 18 18.75 12 18.75 2.25 12 2.25 12Z"
+        />
+        <circle cx="12" cy="12" r="2.75" />
+        {icon === 'eye-off' && <path strokeLinecap="round" d="M4 4l16 16" />}
+      </svg>
+    );
+  }
   if (icon === 'stop') {
     return (
       <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
@@ -494,6 +531,7 @@ export const ActivityCard = ({
   onRequestReject,
   onRequestRejectConfirm,
   onRequestReopen,
+  onRequestSetHidden,
   onRequestDismiss,
   showRequestDetailsToggle = false,
   isRequestDetailsOpen = false,
@@ -612,6 +650,12 @@ export const ActivityCard = ({
       case 'request-reopen':
         void onRequestReopen?.(action.requestId);
         break;
+      case 'request-hide':
+        void onRequestSetHidden?.(action.requestId, true);
+        break;
+      case 'request-unhide':
+        void onRequestSetHidden?.(action.requestId, false);
+        break;
       case 'request-cancel':
         onRequestCancel?.(action.requestId);
         break;
@@ -638,6 +682,9 @@ export const ActivityCard = ({
         return Boolean(onRequestReject);
       case 'request-reopen':
         return Boolean(onRequestReopen);
+      case 'request-hide':
+      case 'request-unhide':
+        return Boolean(onRequestSetHidden);
       case 'request-cancel':
         return Boolean(onRequestCancel);
       case 'request-dismiss':

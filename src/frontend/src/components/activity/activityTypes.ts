@@ -44,4 +44,6 @@ export interface ActivityItem {
   requestLevel?: 'book' | 'release';
   requestNote?: string;
   requestRecord?: RequestRecord;
+  // Fork Rejected view only: whether the admin hid this rejected request there.
+  hiddenInRejected?: boolean;
 }
