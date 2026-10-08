@@ -28,6 +28,7 @@ from shelfmark.core.request_helpers import (
     emit_ws_event,
     extract_release_source_id,
     normalize_positive_int,
+    populate_request_reviewers,
     populate_request_usernames,
 )
 from shelfmark.core.request_validation import RequestStatus
@@ -339,6 +340,7 @@ def _list_visible_requests(
     if is_admin:
         request_rows = user_db.list_requests()
         populate_request_usernames(request_rows, user_db)
+        populate_request_reviewers(request_rows, user_db)
         return request_rows
 
     if db_user_id is None:
