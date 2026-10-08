@@ -3,6 +3,7 @@ import { useCallback, useMemo, useRef, useState, type WheelEvent } from 'react';
 import { useTabIndicator } from '../../hooks/ui/useTabIndicator';
 import { useEscapeKey } from '../../hooks/useEscapeKey';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { useRejectedRequests } from '../../hooks/useRejectedRequests';
 import type { RequestRecord, StatusData } from '../../types';
 import { Dropdown } from '../Dropdown';
 import { ActivityCard } from './ActivityCard';
@@ -67,7 +68,7 @@ const DOWNLOAD_STATUS_KEYS: DownloadStatusKey[] = [
 
 type ActivityCategoryKey = 'needs_review' | 'in_progress' | 'complete' | 'failed';
 
-type ActivityTabKey = 'all' | 'downloads' | 'requests' | 'history';
+type ActivityTabKey = 'all' | 'downloads' | 'requests' | 'history' | 'rejected';
 const ALL_USERS_FILTER = '__all_users__';
 
 const getCategoryLabel = (key: ActivityCategoryKey, isAdmin: boolean): string => {
@@ -90,7 +91,7 @@ const getVisibleCategoryOrder = (tab: ActivityTabKey): ActivityCategoryKey[] => 
   if (tab === 'requests') {
     return ['needs_review', 'in_progress', 'complete', 'failed'];
   }
-  if (tab === 'history') {
+  if (tab === 'history' || tab === 'rejected') {
     return [];
   }
   return ['needs_review', 'in_progress', 'complete', 'failed'];
@@ -249,25 +250,42 @@ export const ActivitySidebar = ({
   const [collapsedGroups, setCollapsedGroups] = useState<Record<string, boolean>>({});
   const scrollViewportRef = useRef<HTMLDivElement | null>(null);
   const dismissedKeySet = useMemo(() => new Set(dismissedItemKeys), [dismissedItemKeys]);
+  const { rejectedItems, rejectedLoading, loadRejected } = useRejectedRequests();
   const handleTabChange = useCallback(
     (nextTab: ActivityTabKey) => {
       if (nextTab === 'downloads') {
         setRejectingRequest(null);
         setReviewingRequestId(null);
       }
+      if (nextTab === 'rejected') {
+        void loadRejected();
+      }
       setActiveTab(nextTab);
       onActiveTabChange?.(nextTab);
     },
-    [onActiveTabChange],
+    [loadRejected, onActiveTabChange],
   );
 
   const isPinnedOpen = isOpen && isDesktop && isPinned;
-  const effectiveActiveTab = !showRequestsTab && activeTab === 'requests' ? 'all' : activeTab;
+  let effectiveActiveTab = activeTab;
+  if (!showRequestsTab && activeTab === 'requests') {
+    effectiveActiveTab = 'all';
+  } else if (!isAdmin && activeTab === 'rejected') {
+    effectiveActiveTab = 'all';
+  }
   if (effectiveActiveTab !== activeTab) {
     setActiveTab(effectiveActiveTab);
   }
 
   useEscapeKey(isOpen && !isPinnedOpen, onClose);
+
+  const handleRejectedReopen = useCallback(
+    async (requestId: number) => {
+      await onRequestReopen?.(requestId);
+      void loadRejected();
+    },
+    [loadRejected, onRequestReopen],
+  );
 
   const downloadItems = useMemo(() => {
     const items: ActivityItem[] = [];
@@ -401,6 +419,8 @@ export const ActivitySidebar = ({
     });
   } else if (effectiveActiveTab === 'history') {
     baseVisibleItems = historyItems;
+  } else if (effectiveActiveTab === 'rejected') {
+    baseVisibleItems = rejectedItems;
   }
   const isHistoryInitialLoad = effectiveActiveTab === 'history' && !historyLoaded;
   let emptyStateMessage = 'No activity';
@@ -411,6 +431,8 @@ export const ActivitySidebar = ({
       historyLoading || isHistoryInitialLoad ? 'Loading history...' : 'No history';
   } else if (effectiveActiveTab === 'downloads') {
     emptyStateMessage = 'No downloads';
+  } else if (effectiveActiveTab === 'rejected') {
+    emptyStateMessage = rejectedLoading ? 'Loading rejected requests...' : 'No rejected requests';
   }
 
   const availableUsers = useMemo(() => {
@@ -486,7 +508,7 @@ export const ActivitySidebar = ({
   );
 
   const groupedVisibleItems = useMemo(() => {
-    if (effectiveActiveTab === 'history') {
+    if (effectiveActiveTab === 'history' || effectiveActiveTab === 'rejected') {
       return [];
     }
 
@@ -540,7 +562,9 @@ export const ActivitySidebar = ({
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <h2 className="text-lg font-semibold">
-              {effectiveActiveTab === 'history' ? 'History' : 'Activity'}
+              {effectiveActiveTab === 'history' && 'History'}
+              {effectiveActiveTab === 'rejected' && 'Rejected'}
+              {effectiveActiveTab !== 'history' && effectiveActiveTab !== 'rejected' && 'Activity'}
             </h2>
             <button
               type="button"
@@ -656,6 +680,36 @@ export const ActivitySidebar = ({
                 )}
               </Dropdown>
             )}
+            {isAdmin && (
+              <button
+                type="button"
+                onClick={() =>
+                  handleTabChange(effectiveActiveTab === 'rejected' ? 'all' : 'rejected')
+                }
+                className={`hover-action relative inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors ${
+                  effectiveActiveTab === 'rejected' ? 'text-sky-600 dark:text-sky-400' : ''
+                }`}
+                title={
+                  effectiveActiveTab === 'rejected' ? 'Back to activity' : 'Open rejected requests'
+                }
+                aria-label={
+                  effectiveActiveTab === 'rejected' ? 'Back to activity' : 'Open rejected requests'
+                }
+                aria-pressed={effectiveActiveTab === 'rejected'}
+              >
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  aria-hidden="true"
+                >
+                  <circle cx="12" cy="12" r="8.25" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M6.2 6.2l11.6 11.6" />
+                </svg>
+              </button>
+            )}
             <button
               type="button"
               onClick={() => handleTabChange(effectiveActiveTab === 'history' ? 'all' : 'history')}
@@ -703,7 +757,7 @@ export const ActivitySidebar = ({
           </div>
         </div>
 
-        {effectiveActiveTab !== 'history' && (
+        {effectiveActiveTab !== 'history' && effectiveActiveTab !== 'rejected' && (
           <div className="-mx-4 mt-2 border-b border-(--border-muted) px-4">
             <div className="relative flex gap-1">
               {/* Sliding indicator */}
@@ -784,6 +838,21 @@ export const ActivitySidebar = ({
         {(() => {
           if (visibleItems.length === 0) {
             return <p className="mt-8 text-center text-sm opacity-70">{emptyStateMessage}</p>;
+          }
+
+          if (effectiveActiveTab === 'rejected') {
+            return (
+              <div className="divide-y divide-[color-mix(in_srgb,var(--border-muted)_60%,transparent)]">
+                {visibleItems.map((item) => (
+                  <ActivityCard
+                    key={item.id}
+                    item={item}
+                    isAdmin={isAdmin}
+                    onRequestReopen={onRequestReopen ? handleRejectedReopen : undefined}
+                  />
+                ))}
+              </div>
+            );
           }
 
           if (effectiveActiveTab === 'history') {
