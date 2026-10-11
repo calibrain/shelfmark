@@ -31,16 +31,23 @@ class LibraryEntry:
     # Series and author words. Shelf titles often bake these in ("Alex Cross 25:
     # Cross Kill"), so the matcher must not read them as naming a different work.
     context_tokens: frozenset[str] = frozenset()
-    # The item's id in its own library (a Calibre book id, an Audiobookshelf item id),
-    # with the title and first author as the library shows them. The ownership check
-    # never reads these; the cross-format markers use them to name each copy of a
-    # work held in both libraries and to address the write back.
+    # The item's id in its own library (a Calibre book id, an Audiobookshelf item id)
+    # and the title as the library shows it. The ownership check never reads these;
+    # the cross-format markers use them to name each copy of a work held in both
+    # libraries and to address the write back.
     item_id: str = ""
     title: str = ""
-    author: str = ""
+    # The first author as the library shows it, None when it shows none. The
+    # cross-format markers name each copy by it; the series-gap report uses it to
+    # find the series on Hardcover.
+    author: str | None = None
     # Free-form tags the library keeps on the item. Audiobookshelf fills these; the
     # cross-format markers read them to tell their own tag from everyone else's.
     tags: frozenset[str] = frozenset()
+    # The library's own series name and position, as entered there, for the series-gap
+    # report. None when the item is not filed under a series or has no position.
+    series_name: str | None = None
+    series_index: float | None = None
 
 
 class LibraryProvider(Protocol):

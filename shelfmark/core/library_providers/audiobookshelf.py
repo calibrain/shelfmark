@@ -48,11 +48,26 @@ def _session(url: str, token: str) -> requests.Session:
     return session
 
 
-def _first_series_name(value: object) -> str | None:
-    """The first series in Audiobookshelf's ``seriesName`` ("Name #1, Other Name #3")."""
-    first = str(value or "").split(", ", 1)[0].strip()
-    name = re.sub(r"\s+#\S+$", "", first).strip()
-    return name or None
+# The minified item metadata carries the series as one string, "Name #sequence" per
+# series joined with ", " (Audiobookshelf's Book.seriesName). The sequence is free text.
+_SERIES_WITH_SEQUENCE = re.compile(r"^(?P<name>.+?)\s+#(?P<sequence>\S+)$")
+
+
+def _parse_series_name(value: object) -> tuple[str | None, float | None]:
+    """The first series in a ``seriesName`` string, and its position when numeric."""
+    text = str(value or "").strip()
+    if not text:
+        return None, None
+    first = text.split(", ", 1)[0].strip()
+    match = _SERIES_WITH_SEQUENCE.match(first)
+    if not match:
+        return first or None, None
+    name = match["name"].strip()
+    try:
+        position: float | None = float(match["sequence"])
+    except ValueError:
+        position = None
+    return name or None, position
 
 
 def _item_to_entry(item: dict[str, Any]) -> LibraryEntry:
@@ -67,13 +82,17 @@ def _item_to_entry(item: dict[str, Any]) -> LibraryEntry:
     )
 
     context_tok = set(tokens(author))
+    series_name, series_index = _parse_series_name(meta.get("seriesName"))
     # A book in a series is often titled "Alex Cross 02: Kiss the Girls" so players that
     # ignore the series number still show the order. Those leading words name the series,
     # not another work, so they go with the author as context.
-    prefix = _SERIES_PREFIX.match(title) if _first_series_name(meta.get("seriesName")) else None
+    prefix = _SERIES_PREFIX.match(title) if series_name else None
     if prefix:
         context_tok |= set(tokens(f"{prefix['label']} {prefix['number']}"))
         title = title[prefix.end() :]
+        if series_index is None:
+            # No sequence in the series field; the label's number is the next best thing.
+            series_index = float(prefix["number"])
     title_tok = set(tokens(title))
     tok = title_tok | context_tok | set(tokens(rel_path))
 
@@ -87,8 +106,10 @@ def _item_to_entry(item: dict[str, Any]) -> LibraryEntry:
         frozenset(context_tok),
         item_id=str(item.get("id") or ""),
         title=shown_title,
-        author=author,
+        author=str(author).strip() or None,
         tags=item_tags,
+        series_name=series_name,
+        series_index=series_index,
     )
 
 
