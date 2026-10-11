@@ -33,6 +33,10 @@ from shelfmark.core.user_settings_overrides import (
 from shelfmark.core.user_settings_overrides import (
     get_settings_registry as _get_settings_registry,
 )
+from shelfmark.core.user_settings_overrides import (
+    is_masked_secret,
+    mask_secret_value,
+)
 from shelfmark.core.utils import get_global_destination, resolve_user_destination_override
 
 if TYPE_CHECKING:
@@ -136,6 +140,12 @@ def validate_user_settings(
                 continue
 
             value = raw_value
+
+            # The masked placeholder came back from a listing untouched: the stored
+            # secret stays as it is rather than being replaced by the placeholder.
+            if is_masked_secret(field_map[key][0], value):
+                continue
+
             if self_service_user is not None:
                 value, self_service_error = _validate_self_service_value(
                     key, raw_value, overridable_map[key][0], self_service_user
@@ -349,7 +359,7 @@ def register_admin_settings_routes(
         if not settings_registry.get_settings_tab(tab_name):
             return jsonify({"error": f"Unknown settings tab: {tab_name}"}), 404
 
-        overridable_keys = list(settings_registry.get_user_overridable_fields(tab_name=tab_name))
+        overridable_fields = settings_registry.get_user_overridable_fields(tab_name=tab_name)
         keys_payload: dict[str, dict[str, Any]] = {}
 
         for user_record in user_db.list_users():
@@ -357,7 +367,7 @@ def register_admin_settings_routes(
             if not isinstance(user_settings, dict):
                 continue
 
-            for key in overridable_keys:
+            for key, (field, _tab) in overridable_fields.items():
                 if key not in user_settings or user_settings[key] is None:
                     continue
                 entry = keys_payload.setdefault(key, {"count": 0, "users": []})
@@ -365,7 +375,7 @@ def register_admin_settings_routes(
                     {
                         "userId": user_record["id"],
                         "username": user_record["username"],
-                        "value": user_settings[key],
+                        "value": mask_secret_value(field, user_settings[key]),
                     }
                 )
 
@@ -403,6 +413,6 @@ def register_admin_settings_routes(
                 if key in tab_config:
                     source = "global_config"
 
-            effective[key] = {"value": value, "source": source}
+            effective[key] = {"value": mask_secret_value(field, value), "source": source}
 
         return jsonify(effective)

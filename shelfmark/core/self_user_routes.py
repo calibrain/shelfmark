@@ -29,6 +29,10 @@ from shelfmark.core.user_settings_overrides import (
 from shelfmark.core.user_settings_overrides import (
     get_ordered_user_overridable_fields as _get_ordered_user_overridable_fields,
 )
+from shelfmark.core.user_settings_overrides import (
+    is_secret_setting,
+    mask_secret_settings,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -293,7 +297,7 @@ def register_self_user_routes(
             return jsonify({"error": "User not found"}), 404
 
         serialized_user = _serialize_self_user(user, g.auth_mode)
-        serialized_user["settings"] = user_db.get_user_settings(user_id)
+        serialized_user["settings"] = mask_secret_settings(user_db.get_user_settings(user_id))
         visible_self_settings_sections = _get_visible_self_settings_sections()
 
         delivery_preferences = None
@@ -364,6 +368,29 @@ def register_self_user_routes(
                 "visibleUserSettingsSections": visible_self_settings_sections,
             }
         )
+
+    @app.route("/api/users/me/secrets/<key>", methods=["GET"])
+    @_require_authenticated_user
+    def users_me_reveal_secret(key: str) -> Response | tuple[Response, int]:
+        """Return the caller's own stored value for one PasswordField setting.
+
+        Listing payloads carry only a placeholder for secrets. This is the one
+        place a user can read the secret back, and it is strictly their own
+        override: the global value is never returned here, whatever the role.
+        """
+        user_id, _user, user_error = _get_current_user(user_db)
+        if user_error:
+            return user_error
+        if user_id is None:
+            return jsonify({"error": "User not found"}), 404
+
+        allowed_keys = _get_allowed_self_settings_keys(_get_visible_self_settings_sections())
+        if key not in allowed_keys or not is_secret_setting(key):
+            return jsonify({"error": "Not a user secret setting"}), 404
+
+        value = user_db.get_user_settings(user_id).get(key)
+        logger.info("User %s revealed their own %s", user_id, key)
+        return jsonify({"key": key, "value": "" if value is None else str(value)})
 
     @app.route("/api/users/me/notification-preferences/test", methods=["POST"])
     @_require_authenticated_user
@@ -525,6 +552,6 @@ def register_self_user_routes(
             return jsonify({"error": "User not found"}), 404
 
         result = _serialize_self_user(updated, g.auth_mode)
-        result["settings"] = user_db.get_user_settings(user_id)
+        result["settings"] = mask_secret_settings(user_db.get_user_settings(user_id))
         logger.info("User %s updated their own account", user_id)
         return jsonify(result)
