@@ -61,6 +61,7 @@ def test_interval_seconds_defaults_to_six_hours(monkeypatch):
         ({"HARDCOVER_SYNC_ENABLED": True}, True),
         ({"AUTO_DOWNLOAD_ENABLED": True}, True),
         ({"HARDCOVER_SYNC_ENABLED": False, "AUTO_DOWNLOAD_ENABLED": False}, False),
+        ({"CROSS_FORMAT_ABS_TAGGING_ENABLED": True}, True),
     ],
 )
 def test_enabled(monkeypatch, values, expected):
@@ -114,7 +115,12 @@ class TestRunOnce:
 
         result = scheduler.run_once()
 
-        assert result == {"status": "ok", "sync": None, "auto_download": {"queued": 1}}
+        assert result == {
+            "status": "ok",
+            "sync": None,
+            "auto_download": {"queued": 1},
+            "cross_format": None,
+        }
         assert calls["sync"] == []
         assert calls["auto"] == [
             (
@@ -198,6 +204,42 @@ class TestRunOnce:
         scheduler.run_once()
 
         assert scheduler._run_lock.locked() is False
+
+    def test_cross_format_tagging_runs_after_the_passes_when_enabled(self, monkeypatch, calls):
+        _configure(monkeypatch, CROSS_FORMAT_ABS_TAGGING_ENABLED=True)
+        seen = []
+
+        def _sync(*, dry_run, should_stop=None, **_kwargs):
+            seen.append((dry_run, should_stop))
+            return {"pairs": 2, "added": [], "removed": [], "errors": 0, "forbidden": False}
+
+        monkeypatch.setattr("shelfmark.core.cross_format.sync_audiobookshelf_tags", _sync)
+        monkeypatch.setattr("shelfmark.core.cross_format.describe_summary", lambda s: "ok")
+        scheduler.configure(_FakeUserDB(), object(), None)
+
+        result = scheduler.run_once()
+
+        assert seen == [(False, scheduler.cycle_expired)]
+        assert result["cross_format"]["pairs"] == 2
+        assert scheduler.status()["last_cycle_errors"] == 0
+
+    def test_cross_format_tagging_failure_is_counted_but_does_not_fail_the_cycle(
+        self, monkeypatch, calls
+    ):
+        _configure(monkeypatch, CROSS_FORMAT_ABS_TAGGING_ENABLED=True)
+
+        def _boom(**_kwargs):
+            raise RuntimeError("Audiobookshelf is down")
+
+        monkeypatch.setattr("shelfmark.core.cross_format.sync_audiobookshelf_tags", _boom)
+        scheduler.configure(_FakeUserDB(), object(), None)
+
+        result = scheduler.run_once()
+
+        assert result["status"] == "ok"
+        assert result["auto_download"] == {"queued": 1}
+        assert result["cross_format"] == {"errors": 1, "error": "Audiobookshelf is down"}
+        assert scheduler.status()["last_cycle_errors"] == 1
 
 
 class TestTriggerAsync:

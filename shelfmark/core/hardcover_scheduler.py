@@ -110,9 +110,9 @@ _state: dict[str, Any] = _new_state()
 
 
 def _cycle_errors(result: dict[str, Any]) -> int:
-    """Errors a finished cycle reported, across the sync and the auto-download pass."""
+    """Errors a finished cycle reported, across the sync, auto-download and tagging passes."""
     total = 0
-    for key, field in (("sync", "errors"), ("auto_download", "error")):
+    for key, field in (("sync", "errors"), ("auto_download", "error"), ("cross_format", "errors")):
         part = result.get(key)
         if isinstance(part, dict):
             total += int(part.get(field, 0) or 0)
@@ -185,9 +185,32 @@ def _interval_seconds() -> float:
 
 
 def _enabled() -> bool:
-    return bool(app_config.get("HARDCOVER_SYNC_ENABLED", False)) or bool(
-        app_config.get("AUTO_DOWNLOAD_ENABLED", False)
+    return any(
+        bool(app_config.get(key, False))
+        for key in (
+            "HARDCOVER_SYNC_ENABLED",
+            "AUTO_DOWNLOAD_ENABLED",
+            "CROSS_FORMAT_ABS_TAGGING_ENABLED",
+        )
     )
+
+
+def _tag_audiobookshelf() -> dict[str, Any] | None:
+    """The cross-format tagging pass, when it is on. Never fails the cycle."""
+    if not bool(app_config.get("CROSS_FORMAT_ABS_TAGGING_ENABLED", False)):
+        return None
+    if cycle_expired():
+        logger.warning("cross-format: cycle out of time; Audiobookshelf tagging skipped")
+        return {"errors": 1, "error": "cycle out of time"}
+    from shelfmark.core.cross_format import describe_summary, sync_audiobookshelf_tags
+
+    try:
+        summary = sync_audiobookshelf_tags(dry_run=False, should_stop=cycle_expired)
+    except Exception as exc:  # noqa: BLE001 - the pass is reported, not fatal to the cycle
+        logger.warning("cross-format: Audiobookshelf tagging skipped: %s", exc)
+        return {"errors": 1, "error": str(exc)}
+    logger.info("cross-format: %s", describe_summary(summary))
+    return summary
 
 
 def _sync_all_accounts(user_db: UserDB, *, db_path: str | None) -> dict[str, Any]:
@@ -252,7 +275,12 @@ def _cycle_body(
     auto_summary = auto_download_pending(
         user_db, queue_release=queue_release, db_path=db_path, ignore_backoff=force
     )
-    return {"status": "ok", "sync": sync_summary, "auto_download": auto_summary}
+    return {
+        "status": "ok",
+        "sync": sync_summary,
+        "auto_download": auto_summary,
+        "cross_format": _tag_audiobookshelf(),
+    }
 
 
 def _run_cycle(deadline: SearchDeadline, box: dict[str, Any], **kwargs: Any) -> None:

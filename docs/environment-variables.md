@@ -307,6 +307,8 @@ Consecutive failed Tor watchdog probes before the container is reset. 2 tolerate
 | `AUDIOBOOKSHELF_URL` | Base URL reachable from the Shelfmark container (not the public URL). Often the host LAN IP, e.g. http://10.0.0.91:13378. | string | _none_ |
 | `AUDIOBOOKSHELF_TOKEN` | API token from Audiobookshelf (Settings > Users > your user > API Token). | string (secret) | _none_ |
 | `AUDIOBOOKSHELF_LIBRARY_IDS` | Comma-separated library IDs to check. Leave blank for all book libraries. | string | _none_ |
+| `CROSS_FORMAT_ABS_TAGGING_ENABLED` | Write the tag to Audiobookshelf on every sync cycle. The API token's user needs the 'Can update' permission. Off, the preview button still works. | boolean | `false` |
+| `CROSS_FORMAT_ABS_TAG` | The tag to put on audiobooks whose ebook is in Calibre. | string | `ebook-in-library` |
 | `SUPPORTED_FORMATS` | Book formats to include in search results. ZIP/RAR archives are extracted automatically and book files are used if found. | string (comma-separated) | `epub,mobi,azw3,fb2,djvu,cbz,cbr` |
 | `SUPPORTED_AUDIOBOOK_FORMATS` | Audiobook formats to include in search results. ZIP/RAR archives are extracted automatically and audiobook files are used if found. | string (comma-separated) | `m4b,mp3,m4a,mp4,flac,ogg,wma,aac,wav,opus,zip,rar` |
 
@@ -393,6 +395,24 @@ Comma-separated library IDs to check. Leave blank for all book libraries.
 
 - **Type:** string
 - **Default:** _none_
+
+#### `CROSS_FORMAT_ABS_TAGGING_ENABLED`
+
+**Tag audiobooks whose ebook is in Calibre**
+
+Write the tag to Audiobookshelf on every sync cycle. The API token's user needs the 'Can update' permission. Off, the preview button still works.
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `CROSS_FORMAT_ABS_TAG`
+
+**Audiobookshelf tag**
+
+The tag to put on audiobooks whose ebook is in Calibre.
+
+- **Type:** string
+- **Default:** `ebook-in-library`
 
 #### `SUPPORTED_FORMATS`
 
@@ -1122,7 +1142,7 @@ Custom label for the OIDC sign-in button on the login page.
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
 | `HARDCOVER_SYNC_ENABLED` | Periodically sync the selected Hardcover shelves into requests. | boolean | `false` |
-| `HARDCOVER_SYNC_TOKEN` | Bearer token for your Hardcover account. Leave blank to reuse the token from the Hardcover metadata provider. | string (secret) | _none_ |
+| `HARDCOVER_SYNC_TOKEN` | Bearer token for your Hardcover account. Leave blank to reuse the token from the Hardcover metadata provider. Each user can connect their own account instead, in which case their shelf syncs to requests they own and this token is the fallback for everyone else. | string (secret) | _none_ |
 | `HARDCOVER_SYNC_STATUSES` | Which Hardcover reading shelf to pull from. | string (choice) | `1` |
 | `HARDCOVER_SYNC_CONTENT_TYPE` | Content type for synced requests. "Ebooks and audiobooks" creates one request of each per shelf book; every request is checked against its own library and downloaded with its own format guard and source priority. | string (choice) | `audiobook` |
 | `HARDCOVER_SYNC_INTERVAL` | How often the scheduled sync runs (minimum 1 minute). | number | `6` |
@@ -1155,7 +1175,7 @@ Periodically sync the selected Hardcover shelves into requests.
 
 **Hardcover API Token**
 
-Bearer token for your Hardcover account. Leave blank to reuse the token from the Hardcover metadata provider.
+Bearer token for your Hardcover account. Leave blank to reuse the token from the Hardcover metadata provider. Each user can connect their own account instead, in which case their shelf syncs to requests they own and this token is the fallback for everyone else.
 
 - **Type:** string (secret)
 - **Default:** _none_
