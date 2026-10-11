@@ -129,7 +129,8 @@ def _read_entries(conn: sqlite3.Connection) -> list[LibraryEntry]:
         # label, not words naming another work. Without one it is left to the matcher.
         if book_id in series and (label := _SERIES_LABEL.match(title)):
             context_tok |= set(tokens(label.group("label")))
-        for name in authors.get(book_id, ()):
+        names = authors.get(book_id, [])
+        for name in names:
             context_tok |= set(tokens(name))
         tok = title_tok | context_tok
         entries.append(
@@ -140,6 +141,9 @@ def _read_entries(conn: sqlite3.Connection) -> list[LibraryEntry]:
                 frozenset(external_ids.get(book_id, ())),
                 frozenset(title_tok),
                 frozenset(context_tok),
+                item_id=str(book_id),
+                title=title,
+                author=names[0] if names else "",
             )
         )
     return entries
