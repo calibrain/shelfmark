@@ -2,7 +2,7 @@ import type { CSSProperties } from 'react';
 import { useState, useCallback, useRef, useMemo } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 
-import { ActivitySidebar } from './components/activity';
+import { ActivitySidebar, SeriesGapModal } from './components/activity';
 import { AdvancedFilters } from './components/AdvancedFilters';
 import { ConfigSetupBanner } from './components/ConfigSetupBanner';
 import { DetailsModal } from './components/DetailsModal';
@@ -666,6 +666,7 @@ function App() {
   }, []);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [selfSettingsOpen, setSelfSettingsOpen] = useState(false);
+  const [seriesGapsOpen, setSeriesGapsOpen] = useState(false);
   const [configBannerOpen, setConfigBannerOpen] = useState(false);
 
   // Wire up logout callback to clear search state
@@ -2783,6 +2784,7 @@ function App() {
         onRequestDismiss={showRequestsTab ? handleRequestDismiss : undefined}
         onPinnedOpenChange={setSidebarPinnedOpen}
         pinnedTopOffset={headerHeight}
+        onOpenSeriesGaps={requestRoleIsAdmin ? () => setSeriesGapsOpen(true) : undefined}
       />
 
       <ToastContainer toasts={toasts} />
@@ -2801,6 +2803,15 @@ function App() {
         onClose={() => setSelfSettingsOpen(false)}
         onShowToast={showToast}
         onSettingsSaved={handleSettingsSaved}
+      />
+
+      <SeriesGapModal
+        isOpen={seriesGapsOpen}
+        onClose={() => setSeriesGapsOpen(false)}
+        onShowToast={showToast}
+        onRequested={() => {
+          void refreshActivitySnapshot();
+        }}
       />
 
       {/* Auto-show banner on startup for users without config */}
