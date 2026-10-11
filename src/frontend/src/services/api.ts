@@ -924,6 +924,11 @@ interface SelfUserEditContext {
   visibleUserSettingsSections?: string[];
 }
 
+interface SelfUserSecret {
+  key: string;
+  value: string;
+}
+
 export const getAdminUsers = async (): Promise<AdminUser[]> => {
   return fetchJSON<AdminUser[]>(`${API_BASE}/admin/users`);
 };
@@ -1093,6 +1098,11 @@ export const getAdminSettingsOverridesSummary = async (
 
 export const getSelfUserEditContext = async (): Promise<SelfUserEditContext> => {
   return fetchJSON<SelfUserEditContext>(`${API_BASE}/users/me/edit-context`);
+};
+
+/** The caller's own stored value for one secret setting; listings only carry a mask. */
+export const getSelfUserSecret = async (key: string): Promise<SelfUserSecret> => {
+  return fetchJSON<SelfUserSecret>(`${API_BASE}/users/me/secrets/${encodeURIComponent(key)}`);
 };
 
 export const updateSelfUser = async (

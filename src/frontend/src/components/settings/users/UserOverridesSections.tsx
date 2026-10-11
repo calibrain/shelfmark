@@ -32,6 +32,7 @@ interface UserOverridesSectionsProps {
   usersTab?: SettingsTab;
   globalUsersSettingsValues?: Record<string, unknown>;
   onTestNotificationRoutes?: (routes: Array<Record<string, unknown>>) => Promise<ActionResult>;
+  onRevealSecret?: (key: string) => Promise<string>;
 }
 
 interface UserOverrideSectionDefinition {
@@ -125,6 +126,7 @@ export const UserOverridesSections = ({
   usersTab,
   globalUsersSettingsValues,
   onTestNotificationRoutes,
+  onRevealSecret,
 }: UserOverridesSectionsProps) => {
   const activeSections = normalizeUserOverrideSections(sections, scope);
 
@@ -199,6 +201,7 @@ export const UserOverridesSections = ({
             isUserOverridable={isUserOverridable}
             userSettings={userSettings}
             setUserSettings={setUserSettings}
+            onRevealSecret={onRevealSecret}
           />
         ),
       });

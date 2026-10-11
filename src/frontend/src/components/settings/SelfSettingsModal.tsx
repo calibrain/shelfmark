@@ -6,6 +6,7 @@ import { useMountEffect } from '../../hooks/useMountEffect';
 import type { AdminUser, DeliveryPreferencesResponse } from '../../services/api';
 import {
   getSelfUserEditContext,
+  getSelfUserSecret,
   testSelfNotificationPreferences,
   updateSelfUser,
 } from '../../services/api';
@@ -204,6 +205,11 @@ const SelfSettingsModalSession = ({
     return testSelfNotificationPreferences(routes);
   }, []);
 
+  const handleRevealSecret = useCallback(async (key: string) => {
+    const secret = await getSelfUserSecret(key);
+    return secret.value;
+  }, []);
+
   const handleSave = useCallback(async () => {
     if (!editingUser || !originalUser) {
       return;
@@ -391,6 +397,7 @@ const SelfSettingsModalSession = ({
                           userSettings={userSettings}
                           setUserSettings={setUserSettings}
                           onTestNotificationRoutes={handleTestNotificationRoutes}
+                          onRevealSecret={handleRevealSecret}
                         />
                       ),
                     }}

@@ -710,3 +710,151 @@ def test_the_right_current_password_clears_the_failures(limited_app, user_db):
 
     assert resp.status_code == 200
     assert attempts.cleared == ["alice"]
+
+
+def _hardcover_config_get(global_token: str = "global-token-value"):
+    def _get(key: str, default: object = None, user_id: int | None = None) -> object:
+        del user_id
+        if key == "VISIBLE_SELF_SETTINGS_SECTIONS":
+            return ["delivery", "hardcover"]
+        if key == "HARDCOVER_SYNC_TOKEN":
+            return global_token
+        return default
+
+    return _get
+
+
+def test_users_me_edit_context_masks_secret_settings(app, user_db, monkeypatch):
+    from shelfmark.core.user_settings_overrides import SECRET_PLACEHOLDER
+
+    monkeypatch.delenv("HARDCOVER_SYNC_TOKEN", raising=False)
+    user = user_db.create_user(username="alice")
+    user_db.set_user_settings(user["id"], {"HARDCOVER_SYNC_TOKEN": "alice-token-value"})
+    client = _authed_client_for_user(app, user)
+
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
+        with patch(
+            "shelfmark.core.self_user_routes.app_config.get",
+            side_effect=_hardcover_config_get(),
+        ):
+            resp = client.get("/api/users/me/edit-context")
+
+    assert resp.status_code == 200
+    assert resp.json["user"]["settings"]["HARDCOVER_SYNC_TOKEN"] == SECRET_PLACEHOLDER
+    hardcover = resp.json["hardcoverPreferences"]
+    assert hardcover["userOverrides"]["HARDCOVER_SYNC_TOKEN"] == SECRET_PLACEHOLDER
+    assert hardcover["globalValues"]["HARDCOVER_SYNC_TOKEN"] is None
+    assert hardcover["effective"]["HARDCOVER_SYNC_TOKEN"] == {
+        "value": SECRET_PLACEHOLDER,
+        "source": "user_override",
+    }
+    body = resp.get_data(as_text=True)
+    assert "alice-token-value" not in body
+    assert "global-token-value" not in body
+
+
+def test_users_me_update_keeps_the_stored_secret_when_the_placeholder_comes_back(app, user_db):
+    from shelfmark.core.user_settings_overrides import SECRET_PLACEHOLDER
+
+    user = user_db.create_user(username="alice")
+    user_db.set_user_settings(user["id"], {"HARDCOVER_SYNC_TOKEN": "alice-token-value"})
+    client = _authed_client_for_user(app, user)
+
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
+        with patch(
+            "shelfmark.core.self_user_routes.app_config.get",
+            side_effect=_hardcover_config_get(),
+        ):
+            resp = client.put(
+                "/api/users/me",
+                json={
+                    "settings": {
+                        "HARDCOVER_SYNC_TOKEN": SECRET_PLACEHOLDER,
+                        "DESTINATION": "/books/alice",
+                    }
+                },
+            )
+
+    assert resp.status_code == 200
+    stored = user_db.get_user_settings(user["id"])
+    assert stored["HARDCOVER_SYNC_TOKEN"] == "alice-token-value"
+    assert stored["DESTINATION"] == "/books/alice"
+    assert resp.json["settings"]["HARDCOVER_SYNC_TOKEN"] == SECRET_PLACEHOLDER
+    assert "alice-token-value" not in resp.get_data(as_text=True)
+
+
+def test_users_me_update_stores_a_new_secret_and_clears_it_on_null(app, user_db):
+    user = user_db.create_user(username="alice")
+    client = _authed_client_for_user(app, user)
+
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
+        with patch(
+            "shelfmark.core.self_user_routes.app_config.get",
+            side_effect=_hardcover_config_get(),
+        ):
+            saved = client.put(
+                "/api/users/me", json={"settings": {"HARDCOVER_SYNC_TOKEN": "new-token-value"}}
+            )
+            assert saved.status_code == 200
+            assert user_db.get_user_settings(user["id"])["HARDCOVER_SYNC_TOKEN"] == (
+                "new-token-value"
+            )
+            assert "new-token-value" not in saved.get_data(as_text=True)
+
+            cleared = client.put("/api/users/me", json={"settings": {"HARDCOVER_SYNC_TOKEN": None}})
+
+    assert cleared.status_code == 200
+    assert "HARDCOVER_SYNC_TOKEN" not in user_db.get_user_settings(user["id"])
+
+
+def test_users_me_secret_returns_only_the_callers_own_override(app, user_db):
+    alice = user_db.create_user(username="alice")
+    user_db.set_user_settings(alice["id"], {"HARDCOVER_SYNC_TOKEN": "alice-token-value"})
+    bob = user_db.create_user(username="bob")
+
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
+        with patch(
+            "shelfmark.core.self_user_routes.app_config.get",
+            side_effect=_hardcover_config_get(),
+        ):
+            alice_resp = _authed_client_for_user(app, alice).get(
+                "/api/users/me/secrets/HARDCOVER_SYNC_TOKEN"
+            )
+            bob_resp = _authed_client_for_user(app, bob).get(
+                "/api/users/me/secrets/HARDCOVER_SYNC_TOKEN"
+            )
+
+    assert alice_resp.status_code == 200
+    assert alice_resp.json == {"key": "HARDCOVER_SYNC_TOKEN", "value": "alice-token-value"}
+    assert bob_resp.status_code == 200
+    assert bob_resp.json == {"key": "HARDCOVER_SYNC_TOKEN", "value": ""}
+
+
+def test_users_me_secret_rejects_anything_but_a_visible_password_field(app, user_db):
+    user = user_db.create_user(username="alice")
+    user_db.set_user_settings(
+        user["id"], {"HARDCOVER_SYNC_TOKEN": "alice-token-value", "DESTINATION": "/books/alice"}
+    )
+    client = _authed_client_for_user(app, user)
+
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
+        with patch(
+            "shelfmark.core.self_user_routes.app_config.get",
+            side_effect=_hardcover_config_get(),
+        ):
+            plain_field = client.get("/api/users/me/secrets/DESTINATION")
+            unknown = client.get("/api/users/me/secrets/NO_SUCH_SETTING")
+        with patch(
+            "shelfmark.core.self_user_routes.app_config.get",
+            side_effect=_visible_sections_config_get(["delivery"]),
+        ):
+            hidden_section = client.get("/api/users/me/secrets/HARDCOVER_SYNC_TOKEN")
+        anonymous = app.test_client().get("/api/users/me/secrets/HARDCOVER_SYNC_TOKEN")
+
+    assert plain_field.status_code == 404
+    assert unknown.status_code == 404
+    assert hidden_section.status_code == 404
+    assert anonymous.status_code == 401
+    for resp in (plain_field, unknown, hidden_section, anonymous):
+        assert "alice-token-value" not in resp.get_data(as_text=True)
+        assert "/books/alice" not in resp.get_data(as_text=True)
