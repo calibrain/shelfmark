@@ -204,7 +204,7 @@ def _identity_match(query: MatchQuery, entry: LibraryEntry) -> bool:
     )
 
 
-def _text_match(query: MatchQuery, entry: LibraryEntry, title_toks: frozenset[str]) -> str | None:
+def _text_match(query: MatchQuery, entry: LibraryEntry, title_toks: list[str]) -> str | None:
     """Fuzzy title-token overlap plus the author surname: "owned", "collection" or None."""
     title = query.title
     if not significant_tokens_match(title_toks, entry.tokens):
@@ -281,13 +281,14 @@ def matching_entries(entry: LibraryEntry, entries: list[LibraryEntry]) -> list[L
     """
     query = entry_query(entry)
     found = [other for other in entries if _identity_match(query, other)]
+    title_toks = significant_tokens(query.title)
     for other in entries:
         if other in found:
             continue
         surname = author_surname(other.author)
         if surname is not None and surname not in entry.tokens:
             continue
-        if _text_match(query, other) == "owned":
+        if _text_match(query, other, title_toks) == "owned":
             found.append(other)
     return found
 
