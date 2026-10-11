@@ -111,7 +111,7 @@ def _libraries(
 
 
 def _describe(entry: LibraryEntry) -> dict[str, str]:
-    return {"id": entry.item_id, "title": entry.title, "author": entry.author}
+    return {"id": entry.item_id, "title": entry.title, "author": entry.author or ""}
 
 
 def pairs_report(overrides: Mapping[str, Any] | None = None) -> dict[str, Any]:

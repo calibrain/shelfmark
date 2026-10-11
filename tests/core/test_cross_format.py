@@ -43,7 +43,8 @@ class _CalibreRows:
     """A stand-in for the metadata.db cursor ``calibre._read_entries`` reads from."""
 
     def __init__(self) -> None:
-        self.books: list[tuple[int, str]] = []
+        # (id, title, series_index): Calibre keeps a position for every book, 1.0 by default.
+        self.books: list[tuple[int, str, float]] = []
         self.authors: list[tuple[int, str]] = []
         self.series: list[tuple[int, str]] = []
         self.identifiers: list[tuple[int, str, str]] = []
@@ -56,7 +57,7 @@ class _CalibreRows:
         series: str | None = None,
         identifiers: dict[str, str] | None = None,
     ) -> None:
-        self.books.append((book_id, title))
+        self.books.append((book_id, title, 1.0))
         self.authors.extend((book_id, name) for name in authors)
         if series:
             self.series.append((book_id, series))

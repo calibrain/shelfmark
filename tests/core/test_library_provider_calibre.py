@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
 _SCHEMA = """
-CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT NOT NULL, uuid TEXT);
+CREATE TABLE books (id INTEGER PRIMARY KEY, title TEXT NOT NULL, uuid TEXT, series_index REAL NOT NULL DEFAULT 1.0);
 CREATE TABLE authors (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
 CREATE TABLE books_authors_link (id INTEGER PRIMARY KEY, book INTEGER NOT NULL, author INTEGER NOT NULL);
 CREATE TABLE series (id INTEGER PRIMARY KEY, name TEXT NOT NULL);
@@ -155,7 +155,7 @@ def test_entries_carry_the_book_id_title_and_first_author(
     omens = _by_token(entries, "omens")
     assert (omens.item_id, omens.title, omens.author) == ("2", "Good Omens", "Terry Pratchett")
     draft = _by_token(entries, "draft")
-    assert (draft.item_id, draft.title, draft.author) == ("3", "Untitled Draft", "")
+    assert (draft.item_id, draft.title, draft.author) == ("3", "Untitled Draft", None)
     assert all(entry.tags == frozenset() for entry in entries)
 
 
@@ -472,3 +472,27 @@ def test_series_metadata_and_printing_words_in_the_title_do_not_hide_the_book(
     entries = calibre.CalibreLibrary().fetch_entries()
 
     assert _owned(entries, "Kiss the Girls", "James Patterson") == "owned"
+
+
+def test_entries_carry_the_series_its_position_and_the_first_author(
+    tmp_path: Path, calibre_library: Callable[..., Path]
+) -> None:
+    path = calibre_library(path=tmp_path / "metadata.db")
+    conn = sqlite3.connect(path)
+    conn.execute("UPDATE books SET series_index = 2.5 WHERE id = 1")
+    conn.commit()
+    conn.close()
+
+    entries = calibre.CalibreLibrary().fetch_entries()
+
+    dcc = _by_token(entries, "dinniman")
+    assert (dcc.series_name, dcc.series_index, dcc.author) == (
+        "Dungeon Crawler Carl",
+        2.5,
+        "Matt Dinniman",
+    )
+    # Calibre keeps a position for every book; without a series it means nothing.
+    omens = _by_token(entries, "omens")
+    assert (omens.series_name, omens.series_index, omens.author) == (None, None, "Terry Pratchett")
+    untitled = _by_token(entries, "untitled")
+    assert untitled.author is None

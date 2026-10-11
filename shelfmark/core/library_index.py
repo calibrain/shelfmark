@@ -151,6 +151,25 @@ def entries_for_provider(provider: LibraryProvider, *, strict: bool = False) -> 
     return _entries_for(provider, strict=strict)
 
 
+def enabled_content_types() -> list[str]:
+    """The content types at least one enabled library holds, in a fixed order."""
+    return [
+        content_type for content_type in ("ebook", "audiobook") if _enabled_providers(content_type)
+    ]
+
+
+def entries_for_content_type(content_type: str, *, strict: bool = False) -> list[LibraryEntry]:
+    """Every enabled library's entries for ``content_type``, concatenated.
+
+    Same caching and fail-open rules as ``is_in_library``; ``strict`` raises
+    LibraryUnavailableError instead of answering from nothing.
+    """
+    entries: list[LibraryEntry] = []
+    for provider in _enabled_providers(content_type):
+        entries.extend(_entries_for(provider, strict=strict))
+    return entries
+
+
 @dataclass(frozen=True)
 class MatchQuery:
     """What the matcher needs to know about the book it is looking for.
