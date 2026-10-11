@@ -50,7 +50,7 @@ _EXTERNAL_ID_TYPES = {
     "olid": "openlibrary",
 }
 
-_BOOKS_SQL = "SELECT id, title FROM books"
+_BOOKS_SQL = "SELECT id, title, series_index FROM books"
 _AUTHORS_SQL = "SELECT l.book, a.name FROM books_authors_link l JOIN authors a ON a.id = l.author"
 _SERIES_SQL = "SELECT l.book, s.name FROM books_series_link l JOIN series s ON s.id = l.series"
 _IDENTIFIERS_SQL = "SELECT book, type, val FROM identifiers"
@@ -90,8 +90,21 @@ def _connect(path: Path) -> sqlite3.Connection:
     return conn
 
 
+def _series_index(value: float | str | None) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        return None
+
+
 def _read_entries(conn: sqlite3.Connection) -> list[LibraryEntry]:
-    titles: dict[int, str] = dict(conn.execute(_BOOKS_SQL).fetchall())
+    titles: dict[int, str] = {}
+    series_indexes: dict[int, float | None] = {}
+    for book_id, title, series_index in conn.execute(_BOOKS_SQL):
+        titles[book_id] = title
+        series_indexes[book_id] = _series_index(series_index)
     series: dict[int, str] = dict(conn.execute(_SERIES_SQL).fetchall())
 
     authors: dict[int, list[str]] = {}
@@ -129,10 +142,11 @@ def _read_entries(conn: sqlite3.Connection) -> list[LibraryEntry]:
         # label, not words naming another work. Without one it is left to the matcher.
         if book_id in series and (label := _SERIES_LABEL.match(title)):
             context_tok |= set(tokens(label.group("label")))
-        names = authors.get(book_id, [])
-        for name in names:
+        book_authors = authors.get(book_id, [])
+        for name in book_authors:
             context_tok |= set(tokens(name))
         tok = title_tok | context_tok
+        series_name = series.get(book_id)
         entries.append(
             LibraryEntry(
                 frozenset(tok),
@@ -143,7 +157,11 @@ def _read_entries(conn: sqlite3.Connection) -> list[LibraryEntry]:
                 frozenset(context_tok),
                 item_id=str(book_id),
                 title=title,
-                author=names[0] if names else "",
+                author=book_authors[0] if book_authors else None,
+                series_name=series_name,
+                # Calibre stores a position for every book (1.0 by default); it only
+                # means something for a book that is in a series.
+                series_index=series_indexes.get(book_id) if series_name else None,
             )
         )
     return entries
