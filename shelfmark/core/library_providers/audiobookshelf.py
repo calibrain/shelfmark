@@ -61,6 +61,10 @@ def _item_to_entry(item: dict[str, Any]) -> LibraryEntry:
     title = meta.get("title") or ""
     author = meta.get("authorName") or ""
     rel_path = item.get("relPath") or ""
+    shown_title = title
+    item_tags = frozenset(
+        str(tag) for tag in (media.get("tags") or []) if isinstance(tag, str) and tag
+    )
 
     context_tok = set(tokens(author))
     # A book in a series is often titled "Alex Cross 02: Kiss the Girls" so players that
@@ -81,6 +85,10 @@ def _item_to_entry(item: dict[str, Any]) -> LibraryEntry:
         frozenset(),
         frozenset(title_tok),
         frozenset(context_tok),
+        item_id=str(item.get("id") or ""),
+        title=shown_title,
+        author=author,
+        tags=item_tags,
     )
 
 
@@ -160,6 +168,51 @@ def search_books(
         msg = "Audiobookshelf answered the book search with something other than a list"
         raise ValueError(msg)  # noqa: TRY004 - a bad answer from the server, not a bad argument
     return [item for item in payload if isinstance(item, dict)]
+
+
+class AudiobookshelfForbiddenError(PermissionError):
+    """Audiobookshelf answered 403: the token's user may not update library items."""
+
+
+def _item_tags(payload: dict[str, Any]) -> list[str]:
+    media = payload.get("media") or {}
+    return [tag for tag in (media.get("tags") or []) if isinstance(tag, str) and tag]
+
+
+class AudiobookshelfTagClient:
+    """Read and replace one item's tag list over the REST API.
+
+    ``PATCH /api/items/<id>/media`` takes a Book payload whose ``tags`` is the whole
+    list, so a write always starts from a fresh ``GET /api/items/<id>`` rather than
+    the cached index: a tag someone added in Audiobookshelf a minute ago survives.
+    Audiobookshelf refuses the PATCH with 403 when the token's user lacks the update
+    permission; that surfaces as :class:`AudiobookshelfForbiddenError`.
+    """
+
+    def __init__(self, overrides: Mapping[str, Any] | None = None) -> None:
+        _enabled, url, token, _lib_ids = _config(overrides)
+        if not url or not token:
+            raise ValueError("Set the Audiobookshelf URL and token first.")
+        self._url = url
+        self._session = _session(url, token)
+
+    def tags(self, item_id: str) -> list[str]:
+        resp = self._session.get(f"{self._url}/api/items/{item_id}", timeout=_REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        return _item_tags(resp.json())
+
+    def set_tags(self, item_id: str, tags: list[str]) -> None:
+        resp = self._session.patch(
+            f"{self._url}/api/items/{item_id}/media",
+            json={"tags": list(tags)},
+            timeout=_REQUEST_TIMEOUT,
+        )
+        if resp.status_code == 403:
+            raise AudiobookshelfForbiddenError(
+                "Audiobookshelf refused the update (403): the API token's user needs the "
+                "'Can update' permission to change tags."
+            )
+        resp.raise_for_status()
 
 
 class AudiobookshelfLibrary:
