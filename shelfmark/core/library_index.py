@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.library_providers import all_providers
@@ -146,61 +146,150 @@ def any_provider_enabled() -> bool:
     return any(provider.is_enabled() for provider in all_providers())
 
 
-def match_entries(book: BookMetadata, entries: list[LibraryEntry]) -> str | None:
-    """How ``book`` is held: ``"owned"``, ``"collection"``, or None when it is not.
+def entries_for_provider(provider: LibraryProvider, *, strict: bool = False) -> list[LibraryEntry]:
+    """The cached index of one library; see ``_entries_for`` for the strict/fail-open rule."""
+    return _entries_for(provider, strict=strict)
 
-    ``"collection"`` means a shelf title that bundles several works matched, e.g. an
-    omnibus. The reader has the book, but saying so plainly would misdescribe what is
-    on the shelf.
+
+@dataclass(frozen=True)
+class MatchQuery:
+    """What the matcher needs to know about the book it is looking for.
+
+    Built from a :class:`BookMetadata` (a request or search result) or from another
+    library's :class:`LibraryEntry`, so both go through the same rules.
     """
-    if not entries:
+
+    title: str
+    surname: str | None
+    isbns: frozenset[str] = frozenset()
+    asins: frozenset[str] = frozenset()
+    external_ids: frozenset[tuple[str, str]] = frozenset()
+
+
+def _book_query(book: BookMetadata) -> MatchQuery:
+    external_ids = (
+        frozenset({(book.provider, str(book.provider_id))}) if book.provider_id else frozenset()
+    )
+    return MatchQuery(
+        title=book.search_title or book.title,
+        surname=author_surname(book.search_author or (book.authors[0] if book.authors else "")),
+        isbns=isbn_variants(book.isbn_13) | isbn_variants(book.isbn_10),
+        external_ids=external_ids,
+    )
+
+
+def entry_query(entry: LibraryEntry) -> MatchQuery:
+    """The query one library's entry makes against another library.
+
+    The title is rebuilt from the entry's title tokens, which already have the series
+    label and numbered parenthetical stripped, so a shelf renamed "Alex Cross 02: Kiss
+    the Girls" asks the other library for "Kiss the Girls". The matcher's text rules
+    only ever look at token sets, so word order is irrelevant.
+    """
+    return MatchQuery(
+        title=" ".join(sorted(entry.title_tokens)),
+        surname=author_surname(entry.author),
+        isbns=entry.isbns,
+        asins=entry.asins,
+        external_ids=entry.external_ids,
+    )
+
+
+def _identity_match(query: MatchQuery, entry: LibraryEntry) -> bool:
+    """The same metadata-provider id, an ISBN in either form, or an ASIN."""
+    return bool(
+        query.external_ids & entry.external_ids
+        or query.isbns & entry.isbns
+        or query.asins & entry.asins
+    )
+
+
+def _text_match(query: MatchQuery, entry: LibraryEntry, title_toks: frozenset[str]) -> str | None:
+    """Fuzzy title-token overlap plus the author surname: "owned", "collection" or None."""
+    title = query.title
+    if not significant_tokens_match(title_toks, entry.tokens):
         return None
+    if query.surname is not None and query.surname not in entry.tokens:
+        return None
+    # A shorter search title is a subset of every longer shelf title sharing its
+    # words, so "Dune" matched "Dune Messiah". Words the shelf adds that name
+    # another work disqualify it; packaging words do not.
+    if extra_work_tokens(set(entry.title_tokens), title, set(entry.context_tokens)):
+        return None
+    if bundle_markers(entry.title_tokens, title):
+        return "collection"
+    return "owned"
 
-    external_id = (book.provider, str(book.provider_id)) if book.provider_id else None
-    book_isbns = isbn_variants(book.isbn_13) | isbn_variants(book.isbn_10)
+
+def find_match(query: MatchQuery, entries: list[LibraryEntry]) -> tuple[str, LibraryEntry] | None:
+    """The entry holding ``query`` and how: ``("owned", entry)``, ``("collection", entry)``.
+
+    Identifiers decide first, then the text rules. ``"collection"`` means a shelf title
+    that bundles several works matched, e.g. an omnibus. The reader has the book, but
+    saying so plainly would misdescribe what is on the shelf.
+    """
     for entry in entries:
-        if external_id in entry.external_ids or entry.isbns & book_isbns:
-            return "owned"
+        if _identity_match(query, entry):
+            return "owned", entry
 
-    surname = author_surname(book.search_author or (book.authors[0] if book.authors else ""))
+    collection: tuple[str, LibraryEntry] | None = None
+    title_toks = significant_tokens(query.title)
+    for entry in entries:
+        kind = _text_match(query, entry, title_toks)
+        if kind == "owned":
+            return "owned", entry
+        if kind == "collection":
+            collection = collection or ("collection", entry)
+
+    return collection
+
+
+def match_entries(book: BookMetadata, entries: list[LibraryEntry]) -> str | None:
+    """How ``book`` is held: ``"owned"``, ``"collection"``, or None when it is not."""
     # The search title is the looser of the two, so it goes first. Hardcover cuts "Series:
     # Book Title" down to the series name when it cannot tell that prefix from a title, and a
     # shelf title with the book's own words then reads as a longer, different work. The full
     # title is the more specific of the two and names the book as the shelf does.
-    titles = [book.search_title or book.title]
-    if book.title and book.title not in titles:
-        titles.append(book.title)
+    query = _book_query(book)
+    queries = [query]
+    if book.title and book.title != query.title:
+        queries.append(replace(query, title=book.title))
 
     collection: str | None = None
-    for title in titles:
-        held = _held_as(title, surname, entries)
-        if held == "owned":
+    for candidate in queries:
+        found = find_match(candidate, entries)
+        if found is None:
+            continue
+        if found[0] == "owned":
             return "owned"
-        collection = collection or held
-
+        collection = collection or found[0]
     return collection
 
 
-def _held_as(title: str, surname: str | None, entries: list[LibraryEntry]) -> str | None:
-    """How the shelf holds a book of this ``title``: ``"owned"``, ``"collection"`` or None."""
-    collection: str | None = None
-    title_toks = significant_tokens(title)
-    for entry in entries:
-        if not significant_tokens_match(title_toks, entry.tokens):
+def matching_entries(entry: LibraryEntry, entries: list[LibraryEntry]) -> list[LibraryEntry]:
+    """Every entry in ``entries`` that is the same work as ``entry``, held on its own.
+
+    Two libraries' copies of one work, which is what a cross-format marker names, so
+    all of them count: two editions of an ebook both have the one audiobook. A
+    collection is not a copy: the omnibus contains the work, but marking it as "the
+    ebook is in the library" would overstate what the other side has.
+
+    Both authors are known here, so the text rule checks the surname both ways. The
+    one-way check reads any token as the surname, which lets Ethan Cross's "Cross"
+    claim James Patterson's "Cross" through the title word; the other author's surname
+    missing from this entry's tokens rules that out.
+    """
+    query = entry_query(entry)
+    found = [other for other in entries if _identity_match(query, other)]
+    for other in entries:
+        if other in found:
             continue
+        surname = author_surname(other.author)
         if surname is not None and surname not in entry.tokens:
             continue
-        # A shorter search title is a subset of every longer shelf title sharing its
-        # words, so "Dune" matched "Dune Messiah". Words the shelf adds that name
-        # another work disqualify it; packaging words do not.
-        if extra_work_tokens(set(entry.title_tokens), title, set(entry.context_tokens)):
-            continue
-        if bundle_markers(entry.title_tokens, title):
-            collection = "collection"
-            continue
-        return "owned"
-
-    return collection
+        if _text_match(query, other) == "owned":
+            found.append(other)
+    return found
 
 
 def book_matches_entries(book: BookMetadata, entries: list[LibraryEntry]) -> bool:
