@@ -46,6 +46,8 @@ interface ActivitySidebarProps {
   onRequestDismiss?: (requestId: number) => void;
   onPinnedOpenChange?: (pinnedOpen: boolean) => void;
   pinnedTopOffset?: number;
+  // Admin only: opens the series-gap report.
+  onOpenSeriesGaps?: () => void;
 }
 
 export interface ActivityDismissTarget {
@@ -239,6 +241,7 @@ export const ActivitySidebar = ({
   onRequestDismiss,
   onPinnedOpenChange,
   pinnedTopOffset = 0,
+  onOpenSeriesGaps,
 }: ActivitySidebarProps) => {
   const [isPinned, setIsPinned] = useState<boolean>(() => getInitialPinnedPreference());
   const isDesktop = useMediaQuery('(min-width: 1024px)');
@@ -584,6 +587,30 @@ export const ActivitySidebar = ({
           </div>
 
           <div className="flex items-center gap-1">
+            {isAdmin && onOpenSeriesGaps && (
+              <button
+                type="button"
+                onClick={onOpenSeriesGaps}
+                className="hover-action inline-flex h-9 w-9 items-center justify-center rounded-full transition-colors"
+                title="Series gaps"
+                aria-label="Open the series gaps report"
+              >
+                <svg
+                  className="h-5 w-5"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  strokeWidth="1.75"
+                  stroke="currentColor"
+                  aria-hidden="true"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M6 6.878V6a2.25 2.25 0 0 1 2.25-2.25h7.5A2.25 2.25 0 0 1 18 6v.878m-12 0c.235-.083.487-.128.75-.128h10.5c.263 0 .515.045.75.128m-12 0A2.25 2.25 0 0 0 4.5 9v.878m13.5-3A2.25 2.25 0 0 1 19.5 9v.878m0 0a2.246 2.246 0 0 0-.75-.128H5.25c-.263 0-.515.045-.75.128m15 0A2.25 2.25 0 0 1 21 12v6a2.25 2.25 0 0 1-2.25 2.25H5.25A2.25 2.25 0 0 1 3 18v-6c0-.98.626-1.813 1.5-2.122"
+                  />
+                </svg>
+              </button>
+            )}
             {hasUserFilter && (
               <Dropdown
                 align="right"

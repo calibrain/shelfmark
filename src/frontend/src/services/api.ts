@@ -910,6 +910,82 @@ interface SelfUserSecret {
   value: string;
 }
 
+export type SeriesGapFormat = 'ebook' | 'audiobook';
+export type SeriesGapStatus = 'owned' | 'collection' | 'requested' | 'missing';
+
+export interface SeriesGapVolume {
+  position: number | null;
+  title: string;
+  provider_id: string;
+  year: number | null;
+  // null: the library does not collect this series in that format.
+  statuses: Partial<Record<SeriesGapFormat, SeriesGapStatus | null>>;
+}
+
+export interface SeriesGapFormatSummary {
+  collected: boolean;
+  owned: number;
+  requested: number;
+  missing: number;
+}
+
+export interface SeriesGapSeries {
+  key: string;
+  name: string;
+  author: string | null;
+  status: 'ok' | 'pending' | 'unresolved';
+  message: string | null;
+  hardcover: { id: number; name: string; author: string | null } | null;
+  formats: Partial<Record<SeriesGapFormat, SeriesGapFormatSummary>>;
+  volumes: SeriesGapVolume[];
+}
+
+export interface SeriesGapReport {
+  formats: SeriesGapFormat[];
+  series: SeriesGapSeries[];
+  // Series whose Hardcover answer was not fetched within this call's time budget.
+  pending: number;
+  generated_at: string;
+}
+
+export interface SeriesGapRequestItem {
+  series_id: number;
+  provider_id: string;
+  content_type: SeriesGapFormat;
+}
+
+export interface SeriesGapRequestOutcome extends SeriesGapRequestItem {
+  title: string | null;
+  result: 'created' | 'owned' | 'requested' | 'unknown_volume' | 'error' | null;
+  request_id?: number;
+  message?: string;
+}
+
+export interface SeriesGapRequestResult {
+  created: number;
+  skipped: number;
+  errors: number;
+  items: SeriesGapRequestOutcome[];
+}
+
+// The server spends up to 20s asking Hardcover per call, after indexing the libraries.
+const SERIES_GAP_TIMEOUT_MS = 120000;
+
+export const getSeriesGapReport = async (refresh = false): Promise<SeriesGapReport> => {
+  const url = `${API_BASE}/admin/series-gaps${refresh ? '?refresh=1' : ''}`;
+  return fetchJSON<SeriesGapReport>(url, {}, SERIES_GAP_TIMEOUT_MS);
+};
+
+export const requestSeriesGapVolumes = async (
+  items: SeriesGapRequestItem[],
+): Promise<SeriesGapRequestResult> => {
+  return fetchJSON<SeriesGapRequestResult>(
+    `${API_BASE}/admin/series-gaps/requests`,
+    { method: 'POST', body: JSON.stringify({ items }) },
+    SERIES_GAP_TIMEOUT_MS,
+  );
+};
+
 export const getAdminUsers = async (): Promise<AdminUser[]> => {
   return fetchJSON<AdminUser[]>(`${API_BASE}/admin/users`);
 };
