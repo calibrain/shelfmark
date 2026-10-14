@@ -588,15 +588,18 @@ def reopen_request(
     admin_user_id: int,
     admin_note: object = None,
 ) -> dict[str, Any]:
-    """Move a rejected request back to pending as admin, so the rejection can be undone."""
+    """Move a rejected request, or a fulfilled one whose delivery failed or was cancelled, back to pending."""
     request_row = ensure_request_access(
         user_db,
         request_id=request_id,
         actor_user_id=admin_user_id,
         is_admin=True,
     )
-    if request_row["status"] != RequestStatus.REJECTED:
-        msg = "Only a rejected request can be reopened"
+    delivery_failed = request_row["status"] == RequestStatus.FULFILLED and request_row.get(
+        "delivery_state"
+    ) in {QueueStatus.ERROR, QueueStatus.CANCELLED}
+    if request_row["status"] != RequestStatus.REJECTED and not delivery_failed:
+        msg = "Only a rejected request, or one whose download failed or was cancelled, can be reopened"
         raise RequestServiceError(msg, status_code=409, code="stale_transition")
 
     normalized_admin_note = _normalize_admin_note(admin_note)
@@ -618,7 +621,17 @@ def reopen_request(
             msg = "Duplicate pending request exists for this title/author/content_type"
             raise RequestServiceError(msg, status_code=409, code="duplicate_pending_request")
 
-    reopened = user_db.reopen_rejected_request(request_id, admin_note=normalized_admin_note)
+    if delivery_failed:
+        # The chosen release is cleared, so the next pass searches again; the failure
+        # reason says who asked for it.
+        reopened = user_db.reopen_failed_request(
+            request_id,
+            failure_reason=normalized_admin_note or "Reopened by an admin after a failed download",
+        )
+        if reopened is not None and normalized_admin_note is not None:
+            reopened = user_db.update_request(request_id, admin_note=normalized_admin_note)
+    else:
+        reopened = user_db.reopen_rejected_request(request_id, admin_note=normalized_admin_note)
     if reopened is None:
         msg = "Request state changed before update"
         raise RequestServiceError(msg, status_code=409, code="stale_transition")

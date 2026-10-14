@@ -2091,3 +2091,54 @@ def test_reopen_clears_hidden_so_a_later_rejection_starts_visible(user_db):
     reject_request(user_db, request_id=created["id"], admin_user_id=admin["id"])
 
     assert user_db.list_hidden_rejected_request_ids() == []
+
+
+def _fulfilled_request(user_db, *, delivery_state):
+    alice = user_db.create_user(username="alice")
+    admin = user_db.create_user(username="admin", role="admin")
+    created = create_request(
+        user_db,
+        user_id=alice["id"],
+        source_hint="prowlarr",
+        content_type="audiobook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data=_release_data(),
+    )
+    fulfil_request(
+        user_db,
+        request_id=created["id"],
+        admin_user_id=admin["id"],
+        queue_release=lambda *a, **kw: (True, None),
+    )
+    user_db.update_request(created["id"], delivery_state=delivery_state)
+    return created["id"], admin
+
+
+@pytest.mark.parametrize("delivery_state", ["cancelled", "error"])
+def test_reopen_request_reopens_a_fulfilled_request_whose_download_failed(user_db, delivery_state):
+    request_id, admin = _fulfilled_request(user_db, delivery_state=delivery_state)
+
+    reopened = reopen_request(
+        user_db, request_id=request_id, admin_user_id=admin["id"], admin_note="[auto] retry"
+    )
+
+    assert reopened["status"] == "pending"
+    assert reopened["delivery_state"] == "none"
+    assert reopened["release_data"] is None
+    assert reopened["admin_note"] == "[auto] retry"
+    assert reopened["last_failure_reason"] == "[auto] retry"
+
+
+@pytest.mark.parametrize("delivery_state", ["complete", "queued"])
+def test_reopen_request_refuses_a_fulfilled_request_that_is_delivered_or_in_flight(
+    user_db, delivery_state
+):
+    request_id, admin = _fulfilled_request(user_db, delivery_state=delivery_state)
+
+    with pytest.raises(RequestServiceError) as exc_info:
+        reopen_request(user_db, request_id=request_id, admin_user_id=admin["id"])
+
+    assert exc_info.value.code == "stale_transition"
+    assert user_db.get_request(request_id)["status"] == "fulfilled"
