@@ -197,6 +197,21 @@ _DELIVERY_PRECEDENCE: dict[str, int] = {
 }
 
 
+# A download that failed because its client could not be reached says nothing about the release:
+# the same one is fine once the client is back, and it may already be downloading there.
+_CLIENT_UNREACHABLE_MARKERS = (
+    "failed to connect",
+    "cannot connect",
+    "connection refused",
+    "connection aborted",
+)
+
+
+def _client_unreachable(message: object) -> bool:
+    text = str(message or "").lower()
+    return any(marker in text for marker in _CLIENT_UNREACHABLE_MARKERS)
+
+
 def _book_data_with_failed_release(request_row: dict[str, Any]) -> dict[str, Any] | None:
     """The request's book data with the release it was fulfilled with added to ``failed_releases``.
 
@@ -298,7 +313,9 @@ def sync_delivery_states_from_queue_status(
             )
             # Reopening clears the release, so note on the request that this one failed:
             # the next search skips it.
-            failed_book_data = _book_data_with_failed_release(row)
+            failed_book_data = (
+                None if _client_unreachable(failure_reason) else _book_data_with_failed_release(row)
+            )
             reopened = user_db.reopen_failed_request(
                 request_id,
                 failure_reason=failure_reason,
