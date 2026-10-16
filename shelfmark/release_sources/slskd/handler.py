@@ -84,6 +84,32 @@ _SECONDS_PER_MINUTE = 60
 
 _SLSKD_ERRORS = (requests.exceptions.RequestException, SlskdError, ValueError, TypeError)
 
+# slskd gives up on a peer that does not answer a queue request after 5 seconds and returns a
+# 500. One more try, a few seconds later, costs little and often works.
+_ENQUEUE_ATTEMPTS = 2
+_ENQUEUE_RETRY_WAIT_SECONDS = 5.0
+_HTTP_SERVER_ERROR = 500
+_ERROR_BODY_CHARS = 160
+
+
+def _is_server_error(exc: BaseException) -> bool:
+    response = getattr(exc, "response", None)
+    return (
+        isinstance(exc, requests.exceptions.HTTPError)
+        and response is not None
+        and response.status_code >= _HTTP_SERVER_ERROR
+    )
+
+
+def _error_text(exc: BaseException) -> str:
+    """The error, with what slskd said when it answered with a body."""
+    response = getattr(exc, "response", None)
+    body = ""
+    if isinstance(exc, requests.exceptions.HTTPError) and response is not None:
+        with suppress(Exception):
+            body = " ".join(str(response.text or "").split())[:_ERROR_BODY_CHARS]
+    return f"{exc} ({body})" if body else str(exc)
+
 
 @dataclass(frozen=True)
 class SlskdDownloadSpec:
@@ -799,13 +825,33 @@ class SlskdHandler(DownloadHandler):
             _remove_files(leftovers)
 
         status_callback("resolving", "Sending to slskd")
-        try:
-            batch = client.enqueue_batch(spec.username, spec.files, destination)
-        except SlskdBatchUnsupportedError:
-            return _USE_ORIGINAL_ENQUEUE
-        except _SLSKD_ERRORS as e:
-            logger.exception("Failed to enqueue slskd batch")
-            status_callback("error", f"Failed to add to slskd: {e}")
+        batch: dict[str, Any] | None = None
+        for attempt in range(_ENQUEUE_ATTEMPTS):
+            try:
+                batch = client.enqueue_batch(spec.username, spec.files, destination)
+                break
+            except SlskdBatchUnsupportedError:
+                return _USE_ORIGINAL_ENQUEUE
+            except _SLSKD_ERRORS as e:
+                if attempt + 1 < _ENQUEUE_ATTEMPTS and _is_server_error(e):
+                    # slskd answers 500 when the peer does not reply to the queue request
+                    # inside its own 5 second wait. A peer that missed it once often answers
+                    # a moment later.
+                    logger.warning(
+                        "slskd could not queue %s from %s (%s), trying again",
+                        task.task_id,
+                        spec.username,
+                        _error_text(e),
+                    )
+                    status_callback("resolving", "The peer did not answer, trying again")
+                    if cancel_flag.wait(timeout=_ENQUEUE_RETRY_WAIT_SECONDS):
+                        status_callback("cancelled", "Cancelled")
+                        return None
+                    continue
+                logger.error("Failed to enqueue slskd batch: %s", _error_text(e), exc_info=True)
+                status_callback("error", f"Failed to add to slskd: {_error_text(e)}")
+                return None
+        if batch is None:
             return None
 
         ids = {
