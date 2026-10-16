@@ -256,3 +256,21 @@ describe('activityMappers format pill', () => {
     expect(item.formatPill).toEqual({ label: 'Audiobook', kind: 'audiobook' });
   });
 });
+
+describe('activityMappers reattached pill', () => {
+  it('carries the flag for a download that picked up work already under way', () => {
+    const item = downloadToActivityItem(
+      { id: 'r1', title: 'Cross Down', author: 'James Patterson', reattached: true },
+      'downloading',
+    );
+    expect(item.reattached).toBe(true);
+  });
+
+  it('leaves it off for an ordinary download', () => {
+    const item = downloadToActivityItem(
+      { id: 'r2', title: 'Cross Down', author: 'James Patterson' },
+      'downloading',
+    );
+    expect(item.reattached).toBeUndefined();
+  });
+});

@@ -76,6 +76,10 @@ const FORMAT_PILL_CLASSES: Record<'audiobook' | 'ebook', string> = {
   ebook: 'bg-orange-100 text-orange-800 dark:bg-orange-900/50 dark:text-orange-200',
 };
 
+// Fork: a download that picked up work already under way (a torrent the client had, files
+// already on disk). Sky blue, a hue neither the status badges nor the format pills use.
+const REATTACHED_PILL_CLASSES = 'bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark:text-sky-200';
+
 type ActionIconName = 'cross' | 'check' | 'stop' | 'retry' | 'eye' | 'eye-off';
 
 const actionKey = (action: ActivityCardAction): string => {
@@ -862,6 +866,14 @@ export const ActivityCard = ({
               >
                 {formatPill.label}
               </span>
+              {item.reattached && (
+                <span
+                  className={`shrink-0 rounded px-1.5 py-px font-medium ${REATTACHED_PILL_CLASSES}`}
+                  title="Picked up where it left off instead of starting again"
+                >
+                  Reattached
+                </span>
+              )}
               {item.metaLine && (
                 <span className="truncate opacity-60" title={item.metaLine}>
                   {item.metaLine}
@@ -869,12 +881,19 @@ export const ActivityCard = ({
               )}
             </div>
           ) : (
-            <p
-              className="mt-0.5 truncate text-[11px] leading-tight opacity-60"
-              title={item.metaLine}
-            >
-              {item.metaLine}
-            </p>
+            <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] leading-tight">
+              {item.reattached && (
+                <span
+                  className={`shrink-0 rounded px-1.5 py-px font-medium ${REATTACHED_PILL_CLASSES}`}
+                  title="Picked up where it left off instead of starting again"
+                >
+                  Reattached
+                </span>
+              )}
+              <p className="truncate opacity-60" title={item.metaLine}>
+                {item.metaLine}
+              </p>
+            </div>
           )}
 
           {noteLine && (

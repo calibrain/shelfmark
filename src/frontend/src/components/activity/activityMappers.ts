@@ -150,6 +150,7 @@ export const downloadToActivityItem = (book: Book, statusKey: DownloadStatusKey)
     preview: toOptionalText(book.preview),
     metaLine,
     formatPill,
+    reattached: book.reattached === true ? true : undefined,
     statusLabel: STATUS_LABELS[visualStatus],
     statusDetail,
     progress,

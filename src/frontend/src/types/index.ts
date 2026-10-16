@@ -57,6 +57,7 @@ export interface Book {
   titles_by_language?: Record<string, string>;
   username?: string;
   retry_available?: boolean;
+  reattached?: boolean; // Picked up work already under way, e.g. a torrent the client had
   downloads?: number;
   extra?: Record<string, unknown>;
 }
