@@ -7,6 +7,14 @@ import { useRejectedRequests } from '../../hooks/useRejectedRequests';
 import type { RequestRecord, StatusData } from '../../types';
 import { Dropdown } from '../Dropdown';
 import { ActivityCard } from './ActivityCard';
+import {
+  getActivityCategory,
+  getCategoryHint,
+  getCategoryLabel,
+  getVisibleCategoryOrder,
+  type ActivityCategoryKey,
+  type ActivityTabKey,
+} from './activityCategories';
 import type { DownloadStatusKey } from './activityMappers';
 import { downloadToActivityItem, linkedDownloadIdForRequest } from './activityMappers';
 import type { ActivityItem } from './activityTypes';
@@ -66,88 +74,7 @@ const DOWNLOAD_STATUS_KEYS: DownloadStatusKey[] = [
   'cancelled',
 ];
 
-type ActivityCategoryKey = 'needs_review' | 'in_progress' | 'complete' | 'failed';
-
-type ActivityTabKey = 'all' | 'downloads' | 'requests' | 'history' | 'rejected';
 const ALL_USERS_FILTER = '__all_users__';
-
-const getCategoryLabel = (key: ActivityCategoryKey, isAdmin: boolean): string => {
-  if (key === 'needs_review') {
-    return isAdmin ? 'Needs Review' : 'Waiting';
-  }
-  if (key === 'in_progress') {
-    return 'In Progress';
-  }
-  if (key === 'complete') {
-    return 'Complete';
-  }
-  return 'Failed';
-};
-
-const getVisibleCategoryOrder = (tab: ActivityTabKey): ActivityCategoryKey[] => {
-  if (tab === 'downloads') {
-    return ['in_progress', 'complete', 'failed'];
-  }
-  if (tab === 'requests') {
-    return ['needs_review', 'in_progress', 'complete', 'failed'];
-  }
-  if (tab === 'history' || tab === 'rejected') {
-    return [];
-  }
-  return ['needs_review', 'in_progress', 'complete', 'failed'];
-};
-
-const getActivityCategory = (item: ActivityItem): ActivityCategoryKey => {
-  if (item.kind === 'download') {
-    if (
-      item.visualStatus === 'queued' ||
-      item.visualStatus === 'resolving' ||
-      item.visualStatus === 'locating' ||
-      item.visualStatus === 'downloading'
-    ) {
-      return 'in_progress';
-    }
-    if (item.visualStatus === 'complete') {
-      return 'complete';
-    }
-    return 'failed';
-  }
-
-  const requestStatus = item.requestRecord?.status;
-  if (requestStatus === 'pending' || item.visualStatus === 'pending') {
-    return 'needs_review';
-  }
-
-  if (requestStatus === 'rejected' || requestStatus === 'cancelled') {
-    return 'failed';
-  }
-
-  const deliveryState = item.requestRecord?.delivery_state;
-  if (requestStatus === 'fulfilled' || item.visualStatus === 'fulfilled') {
-    if (
-      deliveryState === 'queued' ||
-      deliveryState === 'resolving' ||
-      deliveryState === 'locating' ||
-      deliveryState === 'downloading'
-    ) {
-      return 'in_progress';
-    }
-    if (deliveryState === 'error' || deliveryState === 'cancelled') {
-      return 'failed';
-    }
-    // Legacy fulfilled requests often have unknown/none delivery state because the
-    // pre-refactor queue state was ephemeral. Treat as completed approval, not in-progress.
-    return 'complete';
-  }
-
-  if (deliveryState === 'complete') {
-    return 'complete';
-  }
-  if (deliveryState === 'error' || deliveryState === 'cancelled') {
-    return 'failed';
-  }
-  return 'in_progress';
-};
 
 const mergeRequestWithDownload = (
   requestItem: ActivityItem,
@@ -551,6 +478,7 @@ export const ActivitySidebar = ({
       .map((key) => ({
         key,
         label: getCategoryLabel(key, isAdmin),
+        hint: getCategoryHint(key, isAdmin),
         items: (grouped.get(key) ?? []).toSorted((left, right) => right.timestamp - left.timestamp),
       }))
       .filter((group) => group.items.length > 0);
@@ -947,6 +875,9 @@ export const ActivitySidebar = ({
                     {group.items.length}
                   </span>
                 </button>
+              )}
+              {group.hint && !collapsedGroups[group.key] && (
+                <p className="px-0 pb-1.5 text-[11px] leading-snug opacity-60">{group.hint}</p>
               )}
               {!collapsedGroups[group.key] && (
                 <div className="divide-y divide-[color-mix(in_srgb,var(--border-muted)_60%,transparent)]">
