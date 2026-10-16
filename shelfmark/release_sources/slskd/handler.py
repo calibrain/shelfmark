@@ -391,6 +391,23 @@ def _discard_folder(folder: Path) -> None:
         logger.debug("Could not remove slskd folder %s: %s", folder, e)
 
 
+# Public names for the leftovers sweep, which reads the same settings and folder rules.
+def isolation_enabled() -> bool:
+    return _bool_setting("SLSKD_ISOLATE_DOWNLOADS", True)
+
+
+def destination_prefix() -> str:
+    return _clean_prefix(config.get("SLSKD_DESTINATION_PREFIX", DEFAULT_DESTINATION_PREFIX))
+
+
+def bool_setting(key: str, default: bool) -> bool:
+    return _bool_setting(key, default)
+
+
+def folder_complete(folder: Path, expected_sizes: list[int]) -> bool:
+    return _folder_complete(folder, expected_sizes)
+
+
 def _completed_remote_files(events: list[dict[str, Any]]) -> set[str]:
     """Remote filenames slskd's stored events say finished downloading."""
     done: set[str] = set()
