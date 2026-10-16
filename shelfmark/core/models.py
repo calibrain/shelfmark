@@ -155,6 +155,10 @@ class DownloadTask:
     # Hardlinking support
     original_download_path: str | None = None  # Path in download client (for hardlinking)
 
+    # True when the task picked up work that was already under way (a torrent the client had,
+    # files already on disk) instead of starting it. The activity card shows it as a pill.
+    reattached: bool = False
+
     # Search mode - determines post-download processing behavior
     # See SearchMode enum for behavioral differences
     search_mode: SearchMode | None = None
