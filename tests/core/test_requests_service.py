@@ -800,6 +800,40 @@ def test_sync_delivery_states_reopening_remembers_the_release_that_failed(user_d
     ]
 
 
+def test_sync_delivery_states_does_not_blame_the_release_when_the_client_was_unreachable(user_db):
+    user = user_db.create_user(username="alice")
+    fulfilled_request = user_db.create_request(
+        user_id=user["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data={"source": "prowlarr", "source_id": "fine-rel", "title": "Fine"},
+        status="fulfilled",
+        delivery_state="queued",
+    )
+
+    sync_delivery_states_from_queue_status(
+        user_db,
+        queue_status={
+            "error": {
+                "fine-rel": {
+                    "id": "fine-rel",
+                    "request_id": fulfilled_request["id"],
+                    "retry_available": False,
+                    "status_message": "Failed to add to qbittorrent: Failed to connect to qBittorrent",
+                },
+            },
+        },
+        user_id=user["id"],
+    )
+
+    refreshed = user_db.get_request(fulfilled_request["id"])
+    assert refreshed["status"] == "pending"  # still reopened
+    assert "failed_releases" not in refreshed["book_data"]  # but the release is not held against
+
+
 def test_sync_delivery_states_preserves_retryable_error_state(user_db):
     user = user_db.create_user(username="alice")
     fulfilled_request = user_db.create_request(
