@@ -399,6 +399,10 @@ class SlskdClient:
         data = self._json(response)
         return _flatten_transfers(data)
 
+    def list_all_downloads(self) -> list[dict[str, Any]]:
+        """Return every download transfer slskd tracks, for every user, flattened."""
+        return _flatten_transfers(self._json(self._request("GET", "transfers/downloads")))
+
     def get_transfer(self, username: str, transfer_id: str) -> dict[str, Any] | None:
         """Return one transfer record, or None when slskd no longer tracks it."""
         try:
