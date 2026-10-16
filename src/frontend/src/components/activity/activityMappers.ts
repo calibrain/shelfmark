@@ -1,6 +1,7 @@
 import type { Book, RequestRecord, StatusData } from '../../types';
 import { getDownloadsCount } from '../../types';
 import { STATUS_LABELS, isActiveDownloadStatus } from './activityStyles.js';
+import { buildTimingText } from './activityTiming';
 import type { ActivityItem, FormatPill, ActivityVisualStatus } from './activityTypes';
 
 export type DownloadStatusKey = Extract<
@@ -130,12 +131,22 @@ export const downloadToActivityItem = (book: Book, statusKey: DownloadStatusKey)
     toOptionalText(book.content_type),
     toOptionalText(book.format),
   );
+  // Fork: a finished download says how long it took and how long ago it ended.
+  const timingText =
+    statusKey === 'complete' || statusKey === 'error' || statusKey === 'cancelled'
+      ? buildTimingText({
+          startedMs: toEpochMillis(book.added_time),
+          finishedMs: toEpochMillis(book.finished_at),
+          showDuration: statusKey === 'complete',
+        })
+      : undefined;
   const metaLine = joinMetaParts([
     formatPill ? undefined : toOptionalText(book.format)?.toUpperCase(),
     toOptionalText(book.size),
     toOptionalText(book.source_display_name) || toSourceLabel(book.source),
     downloadsText,
     toOptionalText(book.username),
+    timingText,
   ]);
   const progress = getDownloadProgress(visualStatus, book.progress);
   const statusDetail = toOptionalText(book.status_message);
@@ -183,10 +194,17 @@ const buildRequestMetaLine = (
   releaseData: Record<string, unknown>,
   viewerRole: 'user' | 'admin',
 ): string => {
+  // Fork: a request that has been delivered says how long ago.
+  const deliveredMs = Date.parse(record.delivery_updated_at ?? '');
+  const delivered =
+    record.status === 'fulfilled' && record.delivery_state === 'complete' && deliveredMs > 0
+      ? buildTimingText({ finishedMs: deliveredMs, showDuration: false, agoPrefix: 'delivered' })
+      : undefined;
+
   if (record.request_level === 'book') {
     // Fork: the card shows the format as a coloured pill, so the line only names the requester.
     const username = viewerRole === 'admin' ? toOptionalText(record.username) : undefined;
-    return joinMetaParts([username]);
+    return joinMetaParts([username, delivered]);
   }
 
   // Fork: the release format is shown as the card's pill.
@@ -194,8 +212,8 @@ const buildRequestMetaLine = (
   const source = toSourceLabel(releaseData.source || record.source_hint);
   const username = viewerRole === 'admin' ? toOptionalText(record.username) : undefined;
 
-  const line = joinMetaParts([size, source, username]);
-  return line || joinMetaParts(['Release request', username]);
+  const line = joinMetaParts([size, source, username, delivered]);
+  return line || joinMetaParts(['Release request', username, delivered]);
 };
 
 export const requestToActivityItem = (

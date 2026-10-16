@@ -274,3 +274,63 @@ describe('activityMappers reattached pill', () => {
     expect(item.reattached).toBeUndefined();
   });
 });
+
+describe('activityMappers timing', () => {
+  const nowSeconds = Math.floor(Date.now() / 1000);
+
+  it('adds how long a completed download took and how long ago to the meta line', () => {
+    const item = downloadToActivityItem(
+      {
+        id: 't1',
+        title: 'Cross Down',
+        author: 'James Patterson',
+        format: 'm4b',
+        added_time: nowSeconds - 2 * 3600 - 240,
+        finished_at: nowSeconds - 2 * 3600,
+      },
+      'complete',
+    );
+    expect(item.metaLine).toContain('took 4m');
+    expect(item.metaLine).toContain('2h ago');
+  });
+
+  it('only says how long ago for a failed download', () => {
+    const item = downloadToActivityItem(
+      {
+        id: 't2',
+        title: 'X',
+        author: 'Y',
+        added_time: nowSeconds - 600,
+        finished_at: nowSeconds - 300,
+      },
+      'error',
+    );
+    expect(item.metaLine).toContain('5m ago');
+    expect(item.metaLine).not.toContain('took');
+  });
+
+  it('adds nothing for a download that is still running', () => {
+    const item = downloadToActivityItem(
+      { id: 't3', title: 'X', author: 'Y', added_time: nowSeconds - 600, finished_at: null },
+      'downloading',
+    );
+    expect(item.metaLine).not.toContain('ago');
+  });
+
+  it('says a request was delivered how long ago', () => {
+    const item = requestToActivityItem(
+      makeRequest({
+        status: 'fulfilled',
+        delivery_state: 'complete',
+        delivery_updated_at: new Date(Date.now() - 3 * 3600 * 1000).toISOString(),
+      }),
+      'admin',
+    );
+    expect(item.metaLine).toContain('delivered 3h ago');
+  });
+
+  it('says nothing about delivery for a request that is still waiting', () => {
+    const item = requestToActivityItem(makeRequest({ status: 'pending' }), 'admin');
+    expect(item.metaLine).not.toContain('delivered');
+  });
+});
