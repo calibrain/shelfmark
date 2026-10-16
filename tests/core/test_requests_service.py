@@ -764,6 +764,42 @@ def test_sync_delivery_states_reopens_fulfilled_request_when_error_is_not_retrya
     assert refreshed["last_failure_reason"] == "Staged retry source no longer exists"
 
 
+def test_sync_delivery_states_reopening_remembers_the_release_that_failed(user_db):
+    user = user_db.create_user(username="alice")
+    fulfilled_request = user_db.create_request(
+        user_id=user["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data={"source": "prowlarr", "source_id": "dead-rel", "title": "Dead"},
+        status="fulfilled",
+        delivery_state="queued",
+    )
+
+    sync_delivery_states_from_queue_status(
+        user_db,
+        queue_status={
+            "error": {
+                "dead-rel": {
+                    "id": "dead-rel",
+                    "request_id": fulfilled_request["id"],
+                    "retry_available": False,
+                    "status_message": "No seeders: 0 found, 1 needed, nothing downloaded in 5 min",
+                },
+            },
+        },
+        user_id=user["id"],
+    )
+
+    refreshed = user_db.get_request(fulfilled_request["id"])
+    assert refreshed["release_data"] is None
+    assert refreshed["book_data"]["failed_releases"] == [
+        {"source": "prowlarr", "source_id": "dead-rel"}
+    ]
+
+
 def test_sync_delivery_states_preserves_retryable_error_state(user_db):
     user = user_db.create_user(username="alice")
     fulfilled_request = user_db.create_request(

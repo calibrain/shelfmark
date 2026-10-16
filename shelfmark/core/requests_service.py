@@ -197,6 +197,31 @@ _DELIVERY_PRECEDENCE: dict[str, int] = {
 }
 
 
+def _book_data_with_failed_release(request_row: dict[str, Any]) -> dict[str, Any] | None:
+    """The request's book data with the release it was fulfilled with added to ``failed_releases``.
+
+    None when there is nothing to add: no readable release, or it is already listed.
+    """
+    book_data = request_row.get("book_data")
+    release_data = request_row.get("release_data")
+    if not isinstance(book_data, dict) or not isinstance(release_data, dict):
+        return None
+    source = str(release_data.get("source") or "").strip()
+    source_id = str(release_data.get("source_id") or "").strip()
+    if not source or not source_id:
+        return None
+    tried = book_data.get("failed_releases")
+    tried = list(tried) if isinstance(tried, list) else []
+    if any(
+        isinstance(entry, dict)
+        and entry.get("source") == source
+        and entry.get("source_id") == source_id
+        for entry in tried
+    ):
+        return None
+    return {**book_data, "failed_releases": [*tried, {"source": source, "source_id": source_id}]}
+
+
 def sync_delivery_states_from_queue_status(
     user_db: UserDB,
     *,
@@ -271,11 +296,16 @@ def sync_delivery_states_from_queue_status(
                 if isinstance(raw_status_message, str) and raw_status_message.strip()
                 else "Download failed"
             )
+            # Reopening clears the release, so note on the request that this one failed:
+            # the next search skips it.
+            failed_book_data = _book_data_with_failed_release(row)
             reopened = user_db.reopen_failed_request(
                 request_id,
                 failure_reason=failure_reason,
             )
             if reopened is not None:
+                if failed_book_data is not None:
+                    reopened = user_db.update_request(request_id, book_data=failed_book_data)
                 updated.append(reopened)
                 continue
 
