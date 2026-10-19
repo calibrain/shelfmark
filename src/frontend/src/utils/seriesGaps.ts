@@ -61,8 +61,9 @@ export const missingItems = (series: SeriesGapSeries): SeriesGapRequestItem[] =>
   );
 };
 
+/** A volume missing in any format is a gap, collected or not. */
 export const seriesHasGaps = (series: SeriesGapSeries): boolean =>
-  Object.entries(series.formats).some(([, summary]) => summary.collected && summary.missing > 0);
+  Object.values(series.formats).some((summary) => summary.missing > 0);
 
 export const withItems = (
   selection: SeriesGapSelection,

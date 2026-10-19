@@ -97,7 +97,7 @@ describe('seriesHasGaps', () => {
 });
 
 describe('seriesHasGaps with a format that is not collected', () => {
-  it('does not count what the library never started', () => {
+  it('counts what the library has none of as a gap', () => {
     expect(
       seriesHasGaps(
         series({
@@ -107,7 +107,7 @@ describe('seriesHasGaps with a format that is not collected', () => {
           },
         }),
       ),
-    ).toBe(false);
+    ).toBe(true);
   });
 });
 
