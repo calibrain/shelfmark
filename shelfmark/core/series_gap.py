@@ -16,6 +16,7 @@ pacing and 429 back-off apply to every call made here.
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 from dataclasses import dataclass, field
@@ -49,6 +50,12 @@ _MAX_VOLUMES = 500
 _CACHE_PREFIX = "series-gap:"
 # Words naming the packaging rather than the series: "Dune Series" and "Dune" are one.
 _SERIES_NOISE = frozenset({"series", "the", "a", "an"})
+# A bracketed tail on a library series name ("The Vampire Chronicles (Frank Muller)") is the
+# narrator or the edition, which Hardcover's series name does not carry.
+_BRACKETED = re.compile(r"\s*[(\[][^)\]]*[)\]]")
+# Hardcover often lists the same series twice (a stray duplicate with no books, a spelling
+# variant, a wrong credit), so a few candidates are tried before the answer is "not found".
+MAX_CANDIDATES = 4
 
 _build_lock = threading.Lock()
 
@@ -159,12 +166,19 @@ def _int(value: object) -> int:
         return 0
 
 
-def _search_series(provider: Any, series: LibrarySeries) -> dict[str, Any] | None:
-    """Hardcover's series with this name, by this author, as ``{"id", "name"}``.
+def _series_keys(name: str) -> set[str]:
+    """The keys a series name goes by: whole, and without a bracketed narrator or edition."""
+    return {key for key in (series_key(name), series_key(_BRACKETED.sub("", name))) if key}
 
-    An exact name (packaging words aside) wins; otherwise the first candidate whose
-    name holds the library's words, so "Dungeon Crawler Carl" finds "Dungeon Crawler
-    Carl (DCC)". A candidate credited to another author is never taken.
+
+def _search_series(provider: Any, series: LibrarySeries) -> list[dict[str, Any]]:
+    """Hardcover's series that could be this one, best first, as ``{"id", "name"}`` dicts.
+
+    A name that matches exactly (packaging words and a bracketed narrator aside) comes before
+    one that merely holds the library's words ("Dungeon Crawler Carl" finds "Dungeon Crawler
+    Carl (DCC)"), and within each the series with the most primary books first, which puts the
+    real listing ahead of an empty duplicate. A candidate credited to another author is never
+    offered. The caller checks the volumes, so the first candidate that holds up wins.
     """
     from shelfmark.metadata_providers.hardcover import (
         SERIES_SEARCH_FIELDS,
@@ -181,7 +195,10 @@ def _search_series(provider: Any, series: LibrarySeries) -> dict[str, Any] | Non
         weights=SERIES_SEARCH_WEIGHTS,
     )
     surname = author_surname(series.author)
-    fallback: dict[str, Any] | None = None
+    wanted = _series_keys(series.name) | {series.key}
+    bare_words = set(tokens(_BRACKETED.sub("", series.name)))
+    exact: list[tuple[int, dict[str, Any]]] = []
+    partial: list[tuple[int, dict[str, Any]]] = []
     for hit in hits or []:
         document = _hit_document(hit)
         if document is None:
@@ -196,11 +213,16 @@ def _search_series(provider: Any, series: LibrarySeries) -> dict[str, Any] | Non
         if surname and author_name and surname not in tokens(str(author_name)):
             continue
         candidate = {"id": series_id, "name": name}
-        if series_key(name) == series.key:
-            return candidate
-        if fallback is None and title_tokens_match(series.name, set(tokens(name))):
-            fallback = candidate
-    return fallback
+        weight = _int(document.get("primary_books_count")) or _int(document.get("books_count"))
+        if series_key(name) in wanted:
+            exact.append((weight, candidate))
+        elif title_tokens_match(series.name, set(tokens(name))) or title_tokens_match(
+            " ".join(sorted(bare_words)), set(tokens(name))
+        ):
+            partial.append((weight, candidate))
+    # sorted() is stable, so equal weights keep Hardcover's own ranking.
+    ranked = sorted(exact, key=lambda item: -item[0]) + sorted(partial, key=lambda item: -item[0])
+    return [candidate for _weight, candidate in ranked]
 
 
 def _position(value: object) -> float | None:
@@ -265,22 +287,36 @@ def lookup(provider: Any, series: LibrarySeries, *, fetch: bool = True) -> Listi
     if not isinstance(resolution, dict):
         if not fetch:
             return Listing(pending=True)
-        found = _search_series(provider, series)
-        if found is None:
+        candidates = _search_series(provider, series)
+        if not candidates:
             cache.set(_resolution_key(series), {"id": None}, UNRESOLVED_CACHE_TTL)
             return Listing(message="Not found on Hardcover")
-        volumes = _cached_volumes(provider, found["id"], fetch=True) or []
-        if not volumes:
-            return Listing(message=f"Hardcover listed no released volumes for '{found['name']}'")
-        if not _volumes_by_author(volumes, series.author):
-            credited = next((book.authors[0] for book in volumes if book.authors), "another author")
-            message = f"Hardcover's '{found['name']}' is by {credited}, not {series.author}"
+        message: str | None = None
+        refused: str | None = None
+        for found in candidates[:MAX_CANDIDATES]:
+            volumes = _cached_volumes(provider, found["id"], fetch=True) or []
+            if not volumes:
+                message = message or f"Hardcover listed no released volumes for '{found['name']}'"
+                continue
+            if not _volumes_by_author(volumes, series.author):
+                credited = next(
+                    (book.authors[0] for book in volumes if book.authors), "another author"
+                )
+                refused = (
+                    refused
+                    or f"Hardcover's '{found['name']}' is by {credited}, not {series.author}"
+                )
+                continue
+            cache.set(_resolution_key(series), dict(found), VOLUME_CACHE_TTL)
+            return Listing(series=HardcoverSeries(found["id"], found["name"], volumes))
+        # Only a refusal is remembered: an empty answer is more often a failed call than an
+        # empty series, and a stale "no volumes" would hide the series for the cache's life.
+        if refused:
             cache.set(
-                _resolution_key(series), {"id": None, "message": message}, UNRESOLVED_CACHE_TTL
+                _resolution_key(series), {"id": None, "message": refused}, UNRESOLVED_CACHE_TTL
             )
-            return Listing(message=message)
-        cache.set(_resolution_key(series), dict(found), VOLUME_CACHE_TTL)
-        return Listing(series=HardcoverSeries(found["id"], found["name"], volumes))
+            return Listing(message=refused)
+        return Listing(message=message)
 
     series_id = _int(resolution.get("id"))
     if series_id < 1:
@@ -368,10 +404,9 @@ def _volume_row(
 ) -> dict[str, Any]:
     statuses: dict[str, str | None] = {}
     for content_type, entries in entries_by_type.items():
-        positions = series.positions.get(content_type)
-        if positions is None:
-            statuses[content_type] = None  # this format is not collected for the series
-            continue
+        # A format the series is not collected in still gets a status (nothing held, so
+        # missing unless requested), so its volumes can be picked one by one.
+        positions = series.positions.get(content_type, set())
         statuses[content_type] = volume_status(
             book, content_type, entries=entries, positions=positions, requested=requested
         )

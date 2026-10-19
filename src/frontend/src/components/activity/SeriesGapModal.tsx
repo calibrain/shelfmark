@@ -16,6 +16,7 @@ import type { SeriesGapSelection } from '../../utils/seriesGaps';
 import {
   formatPosition,
   missingItems,
+  missingItemsForFormat,
   selectionKey,
   seriesHasGaps,
   summarizeRequestResult,
@@ -65,7 +66,9 @@ const getErrorMessage = (error: unknown, fallback: string): string => {
 const formatSummary = (series: SeriesGapSeries, format: SeriesGapFormat): string => {
   const summary = series.formats[format];
   if (!summary || !summary.collected) {
-    return `${FORMAT_LABELS[format]}: not collected`;
+    return summary && summary.missing > 0
+      ? `${FORMAT_LABELS[format]}: not collected, ${summary.missing} available to request`
+      : `${FORMAT_LABELS[format]}: not collected`;
   }
   const parts = [`${summary.owned} owned`];
   if (summary.requested > 0) {
@@ -144,6 +147,7 @@ interface SeriesSectionProps {
   selection: SeriesGapSelection;
   onToggle: (item: SeriesGapRequestItem) => void;
   onSelectAll: (series: SeriesGapSeries, selected: boolean) => void;
+  onSelectFormat: (series: SeriesGapSeries, format: SeriesGapFormat, selected: boolean) => void;
 }
 
 const SeriesSection = ({
@@ -152,10 +156,16 @@ const SeriesSection = ({
   selection,
   onToggle,
   onSelectAll,
+  onSelectFormat,
 }: SeriesSectionProps) => {
   const missing = missingItems(series);
   const allSelected =
     missing.length > 0 && missing.every((item) => selectionKey(item) in selection);
+  // A format the library holds nothing of for this series is chosen as a whole on its own.
+  const uncollectedFormats = formats
+    .filter((format) => series.formats[format]?.collected !== true)
+    .map((format) => ({ format, items: missingItemsForFormat(series, format) }))
+    .filter(({ items }) => items.length > 0);
 
   return (
     <section className="border-b border-(--border-muted) py-4 last:border-b-0">
@@ -174,6 +184,25 @@ const SeriesSection = ({
           </button>
         )}
       </div>
+      {uncollectedFormats.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1">
+          {uncollectedFormats.map(({ format, items }) => {
+            const formatSelected = items.every((item) => selectionKey(item) in selection);
+            return (
+              <button
+                key={format}
+                type="button"
+                className="text-xs text-sky-600 hover:underline dark:text-sky-400"
+                onClick={() => onSelectFormat(series, format, !formatSelected)}
+              >
+                {formatSelected
+                  ? `Clear ${FORMAT_LABELS[format].toLowerCase()} selection`
+                  : `Select all ${FORMAT_LABELS[format].toLowerCase()} (${items.length})`}
+              </button>
+            );
+          })}
+        </div>
+      )}
       {series.message && (
         <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">{series.message}</p>
       )}
@@ -339,6 +368,15 @@ const SeriesGapModalSession = ({
     setSelection((current) => withItems(current, missingItems(series), selected));
   }, []);
 
+  const handleSelectFormat = useCallback(
+    (series: SeriesGapSeries, format: SeriesGapFormat, selected: boolean) => {
+      setSelection((current) =>
+        withItems(current, missingItemsForFormat(series, format), selected),
+      );
+    },
+    [],
+  );
+
   const handleRequestSelected = useCallback(async () => {
     if (selectedItems.length === 0) {
       return;
@@ -411,6 +449,7 @@ const SeriesGapModalSession = ({
             selection={selection}
             onToggle={handleToggle}
             onSelectAll={handleSelectAll}
+            onSelectFormat={handleSelectFormat}
           />
         ))}
       </>

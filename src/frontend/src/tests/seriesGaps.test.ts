@@ -4,6 +4,7 @@ import type { SeriesGapRequestResult, SeriesGapSeries, SeriesGapVolume } from '.
 import {
   formatPosition,
   missingItems,
+  missingItemsForFormat,
   selectionKey,
   seriesHasGaps,
   summarizeRequestResult,
@@ -56,12 +57,28 @@ describe('missingItems', () => {
     expect(missingItems(series({ hardcover: null }))).toEqual([]);
   });
 
-  it('skips a format the library does not collect', () => {
+  it('leaves a format the library does not collect out of select-all', () => {
     const only = series({
-      volumes: [volume({ statuses: { ebook: 'missing', audiobook: null } })],
+      formats: {
+        ebook: { collected: true, owned: 1, requested: 0, missing: 1 },
+        audiobook: { collected: false, owned: 0, requested: 0, missing: 2 },
+      },
     });
     expect(missingItems(only)).toEqual([
-      { series_id: 77, provider_id: '1', content_type: 'ebook' },
+      { series_id: 77, provider_id: '25', content_type: 'ebook' },
+    ]);
+  });
+
+  it('still lists that format on its own, so it can be requested', () => {
+    const only = series({
+      formats: {
+        ebook: { collected: true, owned: 1, requested: 0, missing: 1 },
+        audiobook: { collected: false, owned: 0, requested: 0, missing: 2 },
+      },
+    });
+    expect(missingItemsForFormat(only, 'audiobook')).toEqual([
+      { series_id: 77, provider_id: '1', content_type: 'audiobook' },
+      { series_id: 77, provider_id: '25', content_type: 'audiobook' },
     ]);
   });
 });
@@ -73,6 +90,21 @@ describe('seriesHasGaps', () => {
       seriesHasGaps(
         series({
           formats: { ebook: { collected: true, owned: 2, requested: 1, missing: 0 } },
+        }),
+      ),
+    ).toBe(false);
+  });
+});
+
+describe('seriesHasGaps with a format that is not collected', () => {
+  it('does not count what the library never started', () => {
+    expect(
+      seriesHasGaps(
+        series({
+          formats: {
+            ebook: { collected: true, owned: 2, requested: 0, missing: 0 },
+            audiobook: { collected: false, owned: 0, requested: 0, missing: 2 },
+          },
         }),
       ),
     ).toBe(false);

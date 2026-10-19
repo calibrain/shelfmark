@@ -24,25 +24,45 @@ export const volumeItem = (
 
 const SERIES_GAP_FORMATS: SeriesGapFormat[] = ['ebook', 'audiobook'];
 
-/** Every (volume, format) pair the report says is missing, in series order. */
-export const missingItems = (series: SeriesGapSeries): SeriesGapRequestItem[] => {
+const isCollected = (series: SeriesGapSeries, format: SeriesGapFormat): boolean =>
+  series.formats[format]?.collected === true;
+
+/** Every missing (volume, format) pair for one format, in series order. */
+export const missingItemsForFormat = (
+  series: SeriesGapSeries,
+  format: SeriesGapFormat,
+): SeriesGapRequestItem[] => {
   const items: SeriesGapRequestItem[] = [];
   series.volumes.forEach((volume) => {
-    SERIES_GAP_FORMATS.forEach((format) => {
-      if (volume.statuses[format] !== 'missing') {
-        return;
-      }
-      const item = volumeItem(series, volume, format);
-      if (item) {
-        items.push(item);
-      }
-    });
+    if (volume.statuses[format] !== 'missing') {
+      return;
+    }
+    const item = volumeItem(series, volume, format);
+    if (item) {
+      items.push(item);
+    }
   });
   return items;
 };
 
+/**
+ * Every missing (volume, format) pair in the formats the series is collected in. A format
+ * the library holds nothing of for the series is picked on its own (see
+ * `missingItemsForFormat`), so "select all" does not queue a whole series by surprise.
+ */
+export const missingItems = (series: SeriesGapSeries): SeriesGapRequestItem[] => {
+  const collected = SERIES_GAP_FORMATS.filter((format) => isCollected(series, format));
+  return series.volumes.flatMap((volume) =>
+    collected.flatMap((format) => {
+      const item =
+        volume.statuses[format] === 'missing' ? volumeItem(series, volume, format) : null;
+      return item ? [item] : [];
+    }),
+  );
+};
+
 export const seriesHasGaps = (series: SeriesGapSeries): boolean =>
-  Object.values(series.formats).some((summary) => summary.missing > 0);
+  Object.entries(series.formats).some(([, summary]) => summary.collected && summary.missing > 0);
 
 export const withItems = (
   selection: SeriesGapSelection,
