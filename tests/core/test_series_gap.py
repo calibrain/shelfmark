@@ -282,7 +282,7 @@ class TestBuildReport:
 
         assert _statuses(report, "ebook")[2.0] == "requested"
 
-    def test_a_format_the_library_does_not_collect_has_no_statuses(
+    def test_a_format_the_library_does_not_collect_can_still_be_requested(
         self, libraries, user_db
     ) -> None:
         libraries.append(_Library("calibre", "ebook", [_entry("Dungeon Crawler Carl", index=1)]))
@@ -297,9 +297,10 @@ class TestBuildReport:
             "collected": False,
             "owned": 0,
             "requested": 0,
-            "missing": 0,
+            "missing": 4,
         }
-        assert {v["statuses"]["audiobook"] for v in dcc["volumes"]} == {None}
+        # Nothing held, so every volume is missing and can be picked one by one.
+        assert {v["statuses"]["audiobook"] for v in dcc["volumes"]} == {"missing"}
         other = next(row for row in report["series"] if row["name"] == "Other")
         assert (other["status"], other["message"]) == ("unresolved", "Not found on Hardcover")
         assert other["volumes"] == []
@@ -390,6 +391,93 @@ class TestBuildReport:
         report = series_gap.build_report(user_db, hardcover)
 
         assert report["series"][0]["hardcover"]["name"] == "Dungeon Crawler Carl (DCC)"
+
+    def test_a_duplicate_listing_with_the_wrong_volumes_is_passed_over(
+        self, libraries, user_db
+    ) -> None:
+        # Hardcover has two "Alex Cross" series credited to Patterson; the first holds one
+        # book by someone else.
+        libraries.append(
+            _Library(
+                "calibre",
+                "ebook",
+                [_entry("Alex Cross", series="Alex Cross", author="James Patterson")],
+            )
+        )
+        hardcover = _Hardcover(
+            hits={
+                "Alex Cross": [
+                    {
+                        "id": 1,
+                        "name": "Alex Cross",
+                        "author_name": "James Patterson",
+                        "primary_books_count": 1,
+                    },
+                    {
+                        "id": 2,
+                        "name": "Alex Cross",
+                        "author_name": "James Patterson",
+                        "primary_books_count": 30,
+                    },
+                ]
+            },
+            volumes={
+                1: [_volume(5, "A Report", 1, author="3M Company", series="Alex Cross")],
+                2: [
+                    _volume(
+                        6, "Along Came a Spider", 1, author="James Patterson", series="Alex Cross"
+                    )
+                ],
+            },
+        )
+
+        report = series_gap.build_report(user_db, hardcover)
+
+        assert report["series"][0]["hardcover"]["id"] == 2
+        assert hardcover.fetches == [2]  # the bigger listing is tried first
+
+    def test_a_series_with_no_books_is_passed_over_for_the_real_one(
+        self, libraries, user_db
+    ) -> None:
+        libraries.append(
+            _Library(
+                "calibre", "ebook", [_entry("Hitchhiker's Guide", series="Hitchhiker's Guide")]
+            )
+        )
+        hardcover = _Hardcover(
+            hits={
+                "Hitchhiker's Guide": [
+                    {"id": 1, "name": "Hitchhiker\u2019s Guide"},
+                    {"id": 2, "name": "The Hitchhiker's Guide", "primary_books_count": 6},
+                ]
+            },
+            volumes={
+                2: [
+                    _volume(
+                        7,
+                        "The Hitchhiker's Guide to the Galaxy",
+                        1,
+                        series="The Hitchhiker's Guide",
+                    )
+                ]
+            },
+        )
+
+        report = series_gap.build_report(user_db, hardcover)
+
+        assert report["series"][0]["hardcover"]["id"] == 2
+
+    def test_a_narrator_in_brackets_does_not_stop_the_match(self, libraries, user_db) -> None:
+        name = "The Vampire Chronicles (Frank Muller)"
+        libraries.append(_Library("calibre", "ebook", [_entry(name, series=name)]))
+        hardcover = _Hardcover(
+            hits={name: [{"id": 5, "name": "The Vampire Chronicles"}]},
+            volumes={5: [_volume(8, "Interview", 1, series="The Vampire Chronicles")]},
+        )
+
+        report = series_gap.build_report(user_db, hardcover)
+
+        assert report["series"][0]["hardcover"]["id"] == 5
 
     def test_an_empty_hardcover_answer_is_reported_and_not_cached(self, libraries, user_db) -> None:
         libraries.append(_Library("calibre", "ebook", [_entry("Dungeon Crawler Carl", index=1)]))
