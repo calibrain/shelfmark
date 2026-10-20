@@ -174,3 +174,110 @@ class TestListField:
 
         (options,) = provider.calls["searched"]
         assert options.fields["hardcover_list"] == "status:1"
+
+
+class TestOwnAccount:
+    """A user who connected their own Hardcover account uses it for lists and shelves."""
+
+    def _own(self, main_module, client, provider, *, is_admin: bool, token="hc_pat_own"):
+        with client.session_transaction() as sess:
+            sess["user_id"] = "someone"
+            sess["is_admin"] = is_admin
+            sess["db_user_id"] = 7
+        created: list[dict] = []
+
+        def _get_provider(name, **kwargs):
+            created.append({"name": name, **kwargs})
+            return provider
+
+        return created, [
+            patch.object(main_module, "get_auth_mode", return_value="builtin"),
+            patch.object(main_module.app_config, "get_user_override", return_value=token),
+            patch("shelfmark.metadata_providers.get_provider", side_effect=_get_provider),
+        ]
+
+    def _enter(self, patches):
+        for item in patches:
+            item.start()
+
+    def _exit(self, patches):
+        for item in patches:
+            item.stop()
+
+    def test_a_user_with_their_own_account_gets_their_targets(
+        self, main_module, client, provider
+    ) -> None:
+        created, patches = self._own(main_module, client, provider, is_admin=False)
+        self._enter(patches)
+        try:
+            resp = client.get("/api/metadata/book/hardcover/42/targets")
+        finally:
+            self._exit(patches)
+
+        assert resp.json == {"options": [{"value": "list:1", "label": "Mine"}]}
+        assert created == [{"name": "hardcover", "api_key": "hc_pat_own", "own_account": True}]
+
+    def test_a_user_with_their_own_account_can_change_their_list(
+        self, main_module, client, provider
+    ) -> None:
+        _created, patches = self._own(main_module, client, provider, is_admin=False)
+        self._enter(patches)
+        try:
+            resp = client.put(
+                "/api/metadata/book/hardcover/42/targets",
+                json={"target": "list:1", "selected": True},
+            )
+        finally:
+            self._exit(patches)
+
+        assert resp.status_code == 200
+        assert provider.calls["set"] == [("42", "list:1", True)]
+
+    def test_a_user_with_their_own_account_gets_their_list_options_and_search(
+        self, main_module, client, provider
+    ) -> None:
+        created, patches = self._own(main_module, client, provider, is_admin=False)
+        self._enter(patches)
+        try:
+            options = client.get(
+                "/api/metadata/field-options?provider=hardcover&field=hardcover_list"
+            )
+            client.get("/api/metadata/search?provider=hardcover&hardcover_list=status:1&query=dune")
+        finally:
+            self._exit(patches)
+
+        assert options.json["options"]
+        (searched,) = provider.calls["searched"]
+        assert searched.fields["hardcover_list"] == "status:1"
+        assert {"name": "hardcover", "api_key": "hc_pat_own", "own_account": True} in created
+
+    def test_a_user_with_no_account_of_their_own_still_gets_nothing(
+        self, main_module, client, provider
+    ) -> None:
+        _created, patches = self._own(main_module, client, provider, is_admin=False, token="")
+        self._enter(patches)
+        try:
+            targets = client.get("/api/metadata/book/hardcover/42/targets")
+            put = client.put(
+                "/api/metadata/book/hardcover/42/targets",
+                json={"target": "list:1", "selected": True},
+            )
+        finally:
+            self._exit(patches)
+
+        assert targets.json == {"options": []}
+        assert put.status_code == 403
+        assert provider.calls["set"] == []
+
+    def test_an_admin_without_an_account_of_their_own_uses_the_instance_account(
+        self, main_module, client, provider
+    ) -> None:
+        created, patches = self._own(main_module, client, provider, is_admin=True, token="")
+        self._enter(patches)
+        try:
+            resp = client.get("/api/metadata/book/hardcover/42/targets")
+        finally:
+            self._exit(patches)
+
+        assert resp.json == {"options": [{"value": "list:1", "label": "Mine"}]}
+        assert all("own_account" not in call for call in created)
