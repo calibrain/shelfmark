@@ -747,8 +747,21 @@ def reopen_failed_request(
     request_id: int,
     failure_reason: str | None = None,
 ) -> dict[str, Any] | None:
-    """Reopen a failed fulfilled request so admins can re-approve with a new release."""
-    return user_db.reopen_failed_request(
+    """Reopen a failed fulfilled request so admins can re-approve with a new release.
+
+    The release that failed is noted on the request, so the next search does not pick it again,
+    unless the failure was the client being unreachable, which says nothing about the release.
+    """
+    row = user_db.get_request(request_id)
+    failed_book_data = (
+        None
+        if row is None or _client_unreachable(failure_reason)
+        else _book_data_with_failed_release(row)
+    )
+    reopened = user_db.reopen_failed_request(
         request_id,
         failure_reason=failure_reason,
     )
+    if reopened is not None and failed_book_data is not None:
+        reopened = user_db.update_request(request_id, book_data=failed_book_data)
+    return reopened
