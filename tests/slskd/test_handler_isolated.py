@@ -117,6 +117,9 @@ class FakeSlskd:
             "placeInQueue": 3 if "Remotely" in state else None,
         }
 
+    def list_conversations(self):
+        return []
+
     def list_downloads(self, username):
         self.list_calls += 1
         return [
