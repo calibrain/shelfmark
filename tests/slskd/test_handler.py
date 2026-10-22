@@ -91,6 +91,9 @@ class FakeSlskd:
             for i, f in enumerate(files)
         ]
 
+    def list_conversations(self):
+        return []
+
     def list_downloads(self, username):
         self.poll_count += 1
         if not self.polls:

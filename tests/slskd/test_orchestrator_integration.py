@@ -96,6 +96,9 @@ def test_handler_round_trip_from_queued_task(monkeypatch, tmp_path):
             assert username == "peer"
             return [{"id": "t1", "filename": files[0]["filename"]}]
 
+        def list_conversations(self):
+            return []
+
         def list_downloads(self, username):
             return [
                 {

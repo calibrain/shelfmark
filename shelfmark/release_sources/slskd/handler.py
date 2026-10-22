@@ -47,6 +47,7 @@ from shelfmark.release_sources.slskd.api import (
     transfer_is_complete,
     transfer_succeeded,
 )
+from shelfmark.release_sources.slskd.chat_autoprove import ChatAutoProver
 from shelfmark.release_sources.slskd.source import (
     SOURCE_NAME,
     build_client_from_config,
@@ -63,6 +64,9 @@ if TYPE_CHECKING:
 logger = setup_logger(__name__)
 
 POLL_INTERVAL = 2.0
+
+# Shared by every download so concurrent polls still scan private messages once a minute.
+_CHAT_AUTOPROVER = ChatAutoProver()
 COMPLETED_PATH_RETRY_INTERVAL = _DEFAULT_COMPLETED_PATH_RETRY_INTERVAL
 COMPLETED_PATH_MAX_ATTEMPTS = _DEFAULT_COMPLETED_PATH_MAX_ATTEMPTS
 # Polls with the transfer missing from slskd before giving up (~30s at POLL_INTERVAL).
@@ -443,6 +447,11 @@ class SlskdHandler(DownloadHandler):
     def _get_client(self) -> SlskdClient | None:
         return build_client_from_config()
 
+    def _answer_chat_challenges(self, client: SlskdClient) -> None:
+        """Reply to anti-leech bots that block downloads until they get a chat message."""
+        if _bool_setting("SLSKD_CHAT_AUTOPROVE", False):
+            _CHAT_AUTOPROVER.maybe_scan(lambda: client, time.monotonic)
+
     # ── download ──────────────────────────────────────────────────────────────
 
     def download(
@@ -563,6 +572,7 @@ class SlskdHandler(DownloadHandler):
 
         try:
             while not cancel_flag.is_set():
+                self._answer_chat_challenges(client)
                 try:
                     transfers = client.list_downloads(spec.username)
                 except _SLSKD_ERRORS as e:
@@ -895,6 +905,7 @@ class SlskdHandler(DownloadHandler):
 
         try:
             while not cancel_flag.is_set():
+                self._answer_chat_challenges(client)
                 now = self._clock()
                 records: dict[str, dict[str, Any] | None] = {}
                 try:
