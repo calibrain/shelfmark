@@ -182,6 +182,18 @@ def slskd_config_settings() -> list[SettingsField]:
             show_when={"field": "SLSKD_ENABLED", "value": True},
         ),
         CheckboxField(
+            key="SLSKD_CHAT_AUTOPROVE",
+            label="Answer anti-leech chat challenges",
+            default=False,
+            description=(
+                "Some uploaders block downloads until you type a word in a private message "
+                "(\"please type 'download' in this chat\"). Shelfmark replies with the word "
+                "the message asks for, at most once per user every 12 hours, and logs each "
+                "reply. Checked while a download is running."
+            ),
+            show_when={"field": "SLSKD_ENABLED", "value": True},
+        ),
+        CheckboxField(
             key="SLSKD_REMOVE_COMPLETED",
             label="Remove completed transfers from slskd",
             default=True,
