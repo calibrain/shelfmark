@@ -21,6 +21,7 @@ from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.request_helpers import coerce_int
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -373,10 +374,7 @@ def _settle_transfers(
 
 
 def _clean_days() -> int:
-    try:
-        return max(int(config.get(CLEAN_DAYS_SETTING, 0) or 0), 0)
-    except TypeError, ValueError:
-        return 0
+    return max(coerce_int(config.get(CLEAN_DAYS_SETTING, 0), 0), 0)
 
 
 def run_with_backend(
