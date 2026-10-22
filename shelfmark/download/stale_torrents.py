@@ -38,10 +38,12 @@ def _normalise(text: object) -> str:
 
 
 def stale_hours() -> float:
+    raw = config.get(STALE_HOURS_SETTING, 0)
     try:
-        return max(float(config.get(STALE_HOURS_SETTING, 0) or 0), 0.0)
-    except TypeError, ValueError:
+        hours = float(raw) if isinstance(raw, (int, float, str)) else 0.0
+    except ValueError:
         return 0.0
+    return max(hours, 0.0)
 
 
 def find_stale(
