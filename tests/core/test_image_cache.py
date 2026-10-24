@@ -112,8 +112,10 @@ def test_cache_hit_flushes_the_index_once_the_window_has_passed(tmp_path, monkey
     monkeypatch.setattr(cache, "_save_index", lambda: (saves.append(1), real_save())[1])
 
     now = cache._last_saved
+    # One second past the window. Exactly on it, (now + 30) - now can come out a hair under 30
+    # for the small monotonic values of a freshly booted runner.
     monkeypatch.setattr(
-        image_cache.time, "monotonic", lambda: now + image_cache.ACCESS_FLUSH_SECONDS
+        image_cache.time, "monotonic", lambda: now + image_cache.ACCESS_FLUSH_SECONDS + 1
     )
     assert cache.get("cover-a") is not None
     assert saves == [1]
