@@ -2343,7 +2343,7 @@ How long to keep cached search results before they expire.
 | `TORRENT_MIN_SEEDERS` | Seeds the client must see for a motionless torrent to keep waiting. 0 also turns the no-seed check off. Only qBittorrent reports seed counts. | number | `1` |
 | `PROWLARR_TORRENT_POST_IMPORT_CATEGORY` | Category or label to assign after a successful import | string | _empty string_ |
 | `TORRENT_STALL_TIMEOUT_MINUTES` | How long a torrent can go without any progress before Shelfmark cancels it. Applies from when the torrent starts and restarts each time it moves. Raise it for slow swarms or magnets that take a while to find peers, or lower it to give up on dead torrents sooner. | number | `15` |
-| `STALE_TORRENT_HOURS` | Remove a torrent Shelfmark added when it is stalled or cannot fetch its metadata, has had no activity for this many hours, and no running download owns it. Its partial data goes with it. Only torrents Shelfmark itself added are ever considered, whatever category they are in; torrents still downloading, queued, or finished are never touched. 3 to 72 hours (a value outside that is held to it); 0 keeps them. Checked at each sync cycle; only qBittorrent is supported. | number | `24` |
+| `STALE_TORRENT_HOURS` | Remove a torrent Shelfmark added when it is stalled or cannot fetch its metadata, has had no activity for this many hours, and no running download owns it. Its partial data goes with it. Only torrents Shelfmark itself added are ever considered, whatever category they are in; torrents still downloading, queued, or finished are never touched. 3 to 72 hours (a value outside that is held to it); 0 keeps them. Checked at each sync cycle; only qBittorrent is supported. | number | `6` |
 | `PROWLARR_USENET_CLIENT` | Choose which usenet client to use | string (choice) | _empty string_ |
 | `NZBGET_URL` | URL of your NZBGet instance | string | _none_ |
 | `NZBGET_USERNAME` | NZBGet control username | string | `nzbget` |
@@ -2812,7 +2812,7 @@ How long a torrent can go without any progress before Shelfmark cancels it. Appl
 Remove a torrent Shelfmark added when it is stalled or cannot fetch its metadata, has had no activity for this many hours, and no running download owns it. Its partial data goes with it. Only torrents Shelfmark itself added are ever considered, whatever category they are in; torrents still downloading, queued, or finished are never touched. 3 to 72 hours (a value outside that is held to it); 0 keeps them. Checked at each sync cycle; only qBittorrent is supported.
 
 - **Type:** number
-- **Default:** `24`
+- **Default:** `6`
 - **Constraints:** min: 0, max: 72
 
 #### `PROWLARR_USENET_CLIENT`

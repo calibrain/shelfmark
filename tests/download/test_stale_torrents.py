@@ -192,14 +192,15 @@ def test_a_row_whose_torrent_is_gone_is_dropped_but_an_empty_listing_drops_nothi
     [
         ("6", 6.0),
         (24, 24.0),
+        (6, 6.0),
         (1, 3.0),
         (2.5, 3.0),
         (500, 72.0),
         (72, 72.0),
         (0, 0.0),
         (-3, 0.0),
-        (None, 24.0),
-        ("junk", 24.0),
+        (None, 6.0),
+        ("junk", 6.0),
     ],
 )
 def test_the_limit_is_held_to_3_through_72_hours_and_zero_means_off(monkeypatch, raw, expected):
@@ -223,3 +224,15 @@ def test_the_qbittorrent_client_lists_a_category_and_returns_nothing_on_failure(
     assert [t.name for t in client.list_torrents("ok")] == ["Book"]
     assert client.list_torrents("down") == []
     assert seen == ["ok", "down"]
+
+
+def test_the_setting_defaults_to_six_hours_in_the_app_and_in_the_settings_form(monkeypatch):
+    from shelfmark.download.clients.settings import prowlarr_clients_settings
+
+    field = next(
+        f for f in prowlarr_clients_settings() if getattr(f, "key", "") == mod.STALE_HOURS_SETTING
+    )
+    monkeypatch.setattr(mod.config, "get", lambda _k, default=None: default)
+
+    assert field.default == 6
+    assert mod.stale_hours() == 6.0
