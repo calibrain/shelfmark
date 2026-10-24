@@ -479,8 +479,9 @@ def test_the_import_goes_ahead_once_the_rest_of_the_files_arrive(monkeypatch, tm
     def sync_more(_seconds: float) -> None:
         nonlocal sleeps
         sleeps += 1
-        number = min(2 + sleeps, 5)
-        (release / f"{number:02d}.epub").write_bytes(b"x" * (100 + number))
+        arriving = release / f"{2 + sleeps:02d}.epub"
+        if 2 + sleeps <= 5:
+            arriving.write_bytes(b"x" * (100 + 2 + sleeps))
 
     resolved_path, error = _wait_for_local_directory(
         monkeypatch, release, timeout=1, expected=expected, on_sleep=sync_more
