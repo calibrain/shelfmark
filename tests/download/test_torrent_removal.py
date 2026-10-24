@@ -217,3 +217,24 @@ def test_remove_still_removes_a_torrent_the_client_already_had() -> None:
     client = _import_then_clean_up(_status(DownloadState.SEEDING, 100.0, complete=True), "remove")
 
     client.remove.assert_called_once_with("dl", delete_files=False)
+
+
+# --- the ledger of torrents this instance added -------------------------------------------
+
+
+def test_a_torrent_this_task_added_is_recorded_in_the_ledger() -> None:
+    with patch("shelfmark.download.torrent_ledger.record") as record:
+        _cancel(_status(D, 0.5), existing=False)
+
+    record.assert_called_once_with("dl", "c")
+
+
+def test_a_torrent_the_client_already_had_is_claimed_but_never_recorded() -> None:
+    with (
+        patch("shelfmark.download.torrent_ledger.record") as record,
+        patch("shelfmark.download.torrent_ledger.claim") as claim,
+    ):
+        _cancel(_status(D, 0.5), existing=True)
+
+    record.assert_not_called()
+    claim.assert_called_once_with("dl", "c")
