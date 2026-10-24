@@ -9,6 +9,8 @@ from pathlib import Path
 from threading import Event
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from shelfmark.core.models import DownloadTask
 from shelfmark.download.clients import DownloadState, DownloadStatus
 from shelfmark.release_sources.prowlarr.handler import ProwlarrHandler
@@ -366,7 +368,13 @@ def test_waits_for_supported_file_to_stop_growing_in_remapped_directory(monkeypa
 
 
 def _wait_for_local_directory(
-    monkeypatch, directory: Path, *, timeout: object, on_sleep=None, expected=None
+    monkeypatch,
+    directory: Path,
+    *,
+    timeout: object,
+    content_type: str | None = None,
+    on_sleep=None,
+    expected=None,
 ):
     import shelfmark.download.clients.base_handler as base_handler
 
@@ -391,6 +399,7 @@ def _wait_for_local_directory(
         "download_id",
         cancel_flag=None,
         status_callback=ProgressRecorder().status_callback,
+        content_type=content_type,
     )
 
 
@@ -547,6 +556,66 @@ def test_a_client_without_a_file_list_keeps_the_old_behaviour(monkeypatch, tmp_p
 
     assert resolved_path == release
     assert error is None
+
+
+@pytest.mark.parametrize(
+    ("content_type", "filename"),
+    [
+        (None, "book.m4b"),
+        ("book (fiction)", "recording.mp3"),
+        ("audiobook", "book.epub"),
+        (None, "book.pdf"),
+    ],
+)
+def test_a_finished_directory_of_the_wrong_kind_is_returned_without_waiting_out_the_timeout(
+    monkeypatch, tmp_path, content_type, filename
+):
+    """Post-processing can name the format problem; polling for 60 s to say it later cannot (F3)."""
+    release = tmp_path / "Release"
+    release.mkdir()
+    (release / filename).write_bytes(b"finished")
+
+    resolved_path, error = _wait_for_local_directory(
+        monkeypatch, release, timeout=1, content_type=content_type
+    )
+
+    assert resolved_path == release
+    assert error is None
+
+
+def test_a_directory_with_only_cover_art_and_notes_keeps_waiting(monkeypatch, tmp_path):
+    """The book may still be syncing: sidecar files alone are not a finished wrong-type result."""
+    release = tmp_path / "Release"
+    release.mkdir()
+    (release / "cover.jpg").write_bytes(b"jpg")
+    (release / "book.nfo").write_text("nfo")
+
+    resolved_path, error = _wait_for_local_directory(monkeypatch, release, timeout=1)
+
+    assert resolved_path is None
+    assert error == "Completed download has no stable supported files yet."
+
+
+def test_a_wrong_kind_file_that_is_still_growing_keeps_waiting(monkeypatch, tmp_path):
+    release = tmp_path / "Release"
+    release.mkdir()
+    growing = release / "book.m4b"
+    growing.write_bytes(b"a")
+    sleeps = 0
+
+    def grow(_seconds: float) -> None:
+        nonlocal sleeps
+        sleeps += 1
+        growing.write_bytes(b"a" * (sleeps + 1))
+
+    resolved_path, error = _wait_for_local_directory(
+        monkeypatch, release, timeout=0.05, on_sleep=grow
+    )
+
+    # The file changes on every poll, so it is never stable and the wait runs out.
+    assert resolved_path is None
+    assert error == "Completed download has no stable supported files yet."
+    assert sleeps >= 2
 
 
 def test_wait_for_completed_path_fails_fast_for_unsafe_mapping(monkeypatch, tmp_path):
