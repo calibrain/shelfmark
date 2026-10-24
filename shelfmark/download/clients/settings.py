@@ -1132,7 +1132,7 @@ def prowlarr_clients_settings() -> list[SettingsField]:
                 "outside that is held to it); 0 keeps them. Checked at each sync cycle; only "
                 "qBittorrent is supported."
             ),
-            default=24,
+            default=6,
             min_value=0,
             max_value=72,
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "notEmpty": True},
