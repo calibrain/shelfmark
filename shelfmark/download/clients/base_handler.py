@@ -260,7 +260,8 @@ def _count_expected_files_present(path: Path, expected: Sequence[ExpectedFile]) 
     with that top-level folder, and the folder is tried with and without it.
     """
     try:
-        if path.is_file():
+        single_file = path.is_file()
+        if single_file:
             local = {path.name: path.stat().st_size}
         elif path.is_dir():
             local = {}
@@ -275,7 +276,6 @@ def _count_expected_files_present(path: Path, expected: Sequence[ExpectedFile]) 
     except OSError:
         return 0
 
-    single_file = path.is_file()
     present = 0
     for item in expected:
         names = [item.name]
