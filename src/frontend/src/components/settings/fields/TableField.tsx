@@ -1,5 +1,5 @@
 import type { CSSProperties } from 'react';
-import { useMemo } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
 import type {
   MultiSelectFieldConfig,
@@ -59,6 +59,12 @@ function normalizeMultiValue(value: unknown): string[] {
     return normalized ? [normalized] : [];
   }
   return [];
+}
+
+export function buildRowEntries(rows: Record<string, unknown>[], rowIds: string[]) {
+  return rows.map((row, index) => {
+    return { row, key: rowIds[index] ?? `untracked-${index}` };
+  });
 }
 
 function normalizeRows(
@@ -149,10 +155,12 @@ function getFilteredSelectOptions(
 
 export const TableField = ({ field, value, onChange, disabled }: TableFieldProps) => {
   const isDisabled = disabled ?? false;
+  const [rowIds, setRowIds] = useState(() => (value ?? []).map((_, index) => `row-${index}`));
+  const nextRowIdRef = useRef(rowIds.length);
 
   const columns = useMemo(() => field.columns ?? [], [field.columns]);
   const rows = useMemo(() => normalizeTableRows(value ?? [], columns), [value, columns]);
-  const rowEntries = useMemo(() => rows.map((row, index) => ({ row, key: index })), [rows]);
+  const rowEntries = useMemo(() => buildRowEntries(rows, rowIds), [rows, rowIds]);
 
   // Use minmax(0, ...) so the grid can shrink inside the settings modal.
   // Use fixed width for delete button column to ensure header/data alignment.
@@ -182,11 +190,14 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
     columns.forEach((col) => {
       newRow[col.key] = defaultCellValue(col);
     });
+    const newRowId = `row-${nextRowIdRef.current++}`;
+    setRowIds((current) => [...current, newRowId]);
     commitRows([...rows, newRow]);
   };
 
   const removeRow = (rowIndex: number) => {
     const next = rows.filter((_, idx) => idx !== rowIndex);
+    setRowIds((current) => current.filter((_, idx) => idx !== rowIndex));
     commitRows(next);
   };
 
