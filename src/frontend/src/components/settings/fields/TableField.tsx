@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
 import { useMemo, useRef, useState } from 'react';
 
+import { useDependencyEffect } from '../../../hooks/useMountEffect';
 import type {
   MultiSelectFieldConfig,
   TableFieldConfig,
@@ -157,10 +158,29 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
   const isDisabled = disabled ?? false;
   const [rowIds, setRowIds] = useState(() => (value ?? []).map((_, index) => `row-${index}`));
   const nextRowIdRef = useRef(rowIds.length);
+  const valueLength = (value ?? []).length;
 
   const columns = useMemo(() => field.columns ?? [], [field.columns]);
   const rows = useMemo(() => normalizeTableRows(value ?? [], columns), [value, columns]);
   const rowEntries = useMemo(() => buildRowEntries(rows, rowIds), [rows, rowIds]);
+
+  useDependencyEffect(() => {
+    setRowIds((currentRowIds) => {
+      if (valueLength > currentRowIds.length) {
+        const newIds = Array.from(
+          { length: valueLength - currentRowIds.length },
+          () => `row-${nextRowIdRef.current++}`,
+        );
+        return [...currentRowIds, ...newIds];
+      }
+
+      if (valueLength < currentRowIds.length) {
+        return currentRowIds.slice(0, valueLength);
+      }
+
+      return currentRowIds;
+    });
+  }, [valueLength]);
 
   // Use minmax(0, ...) so the grid can shrink inside the settings modal.
   // Use fixed width for delete button column to ensure header/data alignment.
