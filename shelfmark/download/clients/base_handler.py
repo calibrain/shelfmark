@@ -293,7 +293,7 @@ def _count_expected_files_present(path: Path, expected: Sequence[ExpectedFile]) 
 # with the default format list) is a wrong-type result, not a sidecar still waiting for the
 # real files to sync.
 _PAYLOAD_SUFFIXES = frozenset(
-    f".{fmt}" for fmt in (*AUDIOBOOK_FORMATS, *DEFAULT_EBOOK_FORMATS, "pdf")
+    f".{fmt.lstrip('.').lower()}" for fmt in (*AUDIOBOOK_FORMATS, *DEFAULT_EBOOK_FORMATS, "pdf")
 )
 
 
