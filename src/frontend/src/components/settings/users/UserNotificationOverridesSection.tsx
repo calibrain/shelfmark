@@ -127,10 +127,6 @@ function normalizeRoutesValue(value: unknown): Array<Record<string, unknown>> {
     }
 
     const events = normalizeRouteEvents(row.event);
-    if (events.length === 0) {
-      return;
-    }
-
     const url = toTrimmedTextValue(row.url);
     const key = `${events.join('|')}::${url}`;
     if (seen.has(key)) {
