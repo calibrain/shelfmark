@@ -140,7 +140,8 @@ def hardcover_sync_settings() -> list[SettingsField]:
             key="auto_download_heading",
             title="Automatic Downloads",
             description=(
-                "When enabled, synced requests are auto-approved and downloaded from the "
+                "When enabled, pending Hardcover requests (synced from a shelf, or made by a "
+                "user with Request Book) are auto-approved and downloaded from the "
                 "first source in the matching list below that yields a strict title/author/"
                 "format match for the request's content type (ebook formats for ebook "
                 "requests, audiobook formats for audiobook requests). If no confident match "
@@ -150,7 +151,7 @@ def hardcover_sync_settings() -> list[SettingsField]:
         CheckboxField(
             key="AUTO_DOWNLOAD_ENABLED",
             label="Enable automatic downloads",
-            description="Auto-approve and auto-download matching releases for synced requests.",
+            description="Auto-approve and auto-download matching releases for Hardcover requests.",
             default=False,
         ),
         OrderableListField(

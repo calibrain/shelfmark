@@ -366,6 +366,38 @@ class TestAutoDownloadPending:
 
         assert summary == {"queued": 0, "no_match": 0, "in_library": 0, "skipped": 0, "error": 0}
 
+    def test_picks_up_a_users_own_hardcover_request_and_queues_it_as_that_user(
+        self, user_db, monkeypatch
+    ):
+        """Automatic downloads cover every pending Hardcover request, not only synced ones."""
+        monkeypatch.setattr(auto_download, "app_config", _Config(AUTO_DOWNLOAD_ENABLED=True))
+        monkeypatch.setattr(auto_download, "_configured_source_priority", lambda _ct: ["first"])
+        monkeypatch.setattr(
+            "shelfmark.core.library_index.is_in_library", lambda *_args, **_kwargs: False
+        )
+        admin = user_db.create_user(username="admin", role="admin")
+        reader = user_db.create_user(username="reader", role="user")
+        row = _pending_request(user_db, reader["id"])
+        _stub_provider(monkeypatch, _book())
+        monkeypatch.setattr(
+            auto_download,
+            "search_source_releases",
+            lambda *_a, **_k: (None, [_release(source="first")], None),
+        )
+        queued = []
+
+        def _queue(release_data, priority, *, user_id, username):
+            queued.append((user_id, username))
+            return True, None
+
+        summary = auto_download.auto_download_pending(
+            user_db, queue_release=_queue, admin_user_id=admin["id"]
+        )
+
+        assert summary["queued"] == 1
+        assert queued == [(reader["id"], "reader")]
+        assert user_db.get_request(row["id"])["user_id"] == reader["id"]
+
 
 class TestAutoDownloadRequest:
     @pytest.fixture(autouse=True)
