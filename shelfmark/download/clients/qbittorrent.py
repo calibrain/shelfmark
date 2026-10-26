@@ -639,6 +639,7 @@ class QBittorrentClient(DownloadClient):
                 ),  # None = use default progress message
                 "stalledDL": ("downloading", "Stalled"),
                 "metaDL": ("downloading", "Fetching metadata"),
+                "forcedMetaDL": ("downloading", "Fetching metadata"),
                 "forcedDL": ("downloading", None),
                 "allocating": ("downloading", "Allocating space"),
                 "uploading": ("seeding", "Seeding"),
@@ -646,6 +647,9 @@ class QBittorrentClient(DownloadClient):
                 "forcedUP": ("seeding", "Seeding"),
                 "pausedDL": ("paused", "Paused"),
                 "pausedUP": ("paused", "Paused"),
+                # qBittorrent 5 renamed "paused" to "stopped"
+                "stoppedDL": ("paused", "Paused"),
+                "stoppedUP": ("paused", "Paused"),
                 "queuedDL": ("queued", "Queued"),
                 "queuedUP": ("queued", "Queued"),
                 "checkingDL": ("checking", "Checking files"),
