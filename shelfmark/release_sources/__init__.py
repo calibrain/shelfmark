@@ -15,6 +15,7 @@ if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
     from shelfmark.download.postprocess.packs import PackFile
 
+from shelfmark.core.logger import redact_secrets
 from shelfmark.metadata_providers import BookMetadata
 
 
@@ -29,7 +30,16 @@ class ReleaseProtocol(StrEnum):
 
 
 class SourceUnavailableError(Exception):
-    """Raised when a source is configured but currently unreachable."""
+    """Raised when a source is configured but currently unreachable.
+
+    The message is shown to whoever ran the search, and it is usually built from a requests
+    exception whose text carries the request URL. A source that puts its key in the query
+    string (Jackett's ``apikey=``) would hand that key to every user, so credentials are
+    masked here for every source rather than at each place that raises.
+    """
+
+    def __init__(self, message: object = "") -> None:
+        super().__init__(redact_secrets(str(message)))
 
 
 @dataclass

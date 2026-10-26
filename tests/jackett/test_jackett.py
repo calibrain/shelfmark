@@ -212,6 +212,40 @@ class TestSource:
         ):
             JackettSource().search(_book(), _plan())
 
+    def test_an_unreachable_jackett_does_not_put_its_api_key_in_the_error(self, jackett_config):
+        # requests puts the request URL, apikey included, in a connection error's text.
+        client = JackettClient("http://jackett:9117", "SECRETKEY123")
+        error = requests.exceptions.ConnectionError(
+            "HTTPConnectionPool(host='jackett', port=9117): Max retries exceeded with url: "
+            "/api/v2.0/indexers/all/results/torznab/api?apikey=SECRETKEY123&t=book&q=dune"
+        )
+        with (
+            patch.object(JackettSource, "_get_client", return_value=client),
+            patch.object(client._session, "get", side_effect=error),
+            pytest.raises(SourceUnavailableError) as raised,
+        ):
+            JackettSource().search(_book(), _plan())
+
+        assert "SECRETKEY123" not in str(raised.value)
+        assert "Max retries exceeded" in str(raised.value)
+
+    def test_the_indexer_lookup_error_does_not_put_the_api_key_in_the_message(self, jackett_config):
+        client = JackettClient("http://jackett:9117", "SECRETKEY123")
+        error = requests.exceptions.ConnectionError(
+            "HTTPConnectionPool(host='jackett', port=9117): Max retries exceeded with url: "
+            "/api/v2.0/indexers/all/results/torznab/api?t=indexers&configured=true"
+            "&apikey=SECRETKEY123"
+        )
+        with (
+            patch.object(JackettSource, "_get_client", return_value=client),
+            patch.object(client._session, "get", side_effect=error),
+            pytest.raises(SourceUnavailableError) as raised,
+        ):
+            JackettSource().search(_book(), _plan(indexers=["Alpha"]))
+
+        assert "SECRETKEY123" not in str(raised.value)
+        assert str(raised.value).startswith("could not reach Jackett")
+
     def test_auto_expand_retries_without_categories(self, jackett_config):
         jackett_config["JACKETT_AUTO_EXPAND"] = True
         client = MagicMock()
