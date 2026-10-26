@@ -170,6 +170,37 @@ class TestReleaseListPolicy:
         assert resp.json["code"] == "policy_blocked"
         assert searched == []
 
+    def test_a_blocked_provider_record_is_not_resolved_through_an_allowed_source(
+        self, client, main_module
+    ):
+        _login(client, main_module)
+        policy = _policy(rules=[{"source": "prowlarr", "content_type": "*", "mode": "blocked"}])
+        searched: list[str] = []
+        auth_patch, policy_patch = _with_policy(main_module, policy)
+        with (
+            auth_patch,
+            policy_patch,
+            patch(
+                "shelfmark.release_sources.list_available_sources",
+                return_value=[{"name": "direct_download", "enabled": True}],
+            ),
+            patch("shelfmark.release_sources.get_source", return_value=_Source(searched)),
+            patch("shelfmark.release_sources.source_results_are_releases", return_value=True),
+        ):
+            resp = client.get(
+                "/api/releases",
+                query_string={
+                    "provider": "prowlarr",
+                    "book_id": "rec-1",
+                    "source": "direct_download",
+                    "title": "Dune",
+                },
+            )
+
+        assert resp.status_code == 403
+        assert resp.json["code"] == "policy_blocked"
+        assert searched == []
+
     def test_admin_is_not_gated(self, client, main_module):
         _login(client, main_module, is_admin=True)
 
