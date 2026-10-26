@@ -162,8 +162,27 @@ def match_entries(book: BookMetadata, entries: list[LibraryEntry]) -> str | None
         if external_id in entry.external_ids or entry.isbns & book_isbns:
             return "owned"
 
-    title = book.search_title or book.title
     surname = author_surname(book.search_author or (book.authors[0] if book.authors else ""))
+    # The search title is the looser of the two, so it goes first. Hardcover cuts "Series:
+    # Book Title" down to the series name when it cannot tell that prefix from a title, and a
+    # shelf title with the book's own words then reads as a longer, different work. The full
+    # title is the more specific of the two and names the book as the shelf does.
+    titles = [book.search_title or book.title]
+    if book.title and book.title not in titles:
+        titles.append(book.title)
+
+    collection: str | None = None
+    for title in titles:
+        held = _held_as(title, surname, entries)
+        if held == "owned":
+            return "owned"
+        collection = collection or held
+
+    return collection
+
+
+def _held_as(title: str, surname: str | None, entries: list[LibraryEntry]) -> str | None:
+    """How the shelf holds a book of this ``title``: ``"owned"``, ``"collection"`` or None."""
     collection: str | None = None
     title_toks = significant_tokens(title)
     for entry in entries:
