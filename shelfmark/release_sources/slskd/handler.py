@@ -825,15 +825,16 @@ class SlskdHandler(DownloadHandler):
             _remove_files(leftovers)
 
         status_callback("resolving", "Sending to slskd")
-        batch: dict[str, Any] | None = None
-        for attempt in range(_ENQUEUE_ATTEMPTS):
+        attempt = 0
+        while True:
+            attempt += 1
             try:
                 batch = client.enqueue_batch(spec.username, spec.files, destination)
                 break
             except SlskdBatchUnsupportedError:
                 return _USE_ORIGINAL_ENQUEUE
             except _SLSKD_ERRORS as e:
-                if attempt + 1 < _ENQUEUE_ATTEMPTS and _is_server_error(e):
+                if attempt < _ENQUEUE_ATTEMPTS and _is_server_error(e):
                     # slskd answers 500 when the peer does not reply to the queue request
                     # inside its own 5 second wait. A peer that missed it once often answers
                     # a moment later.
@@ -851,8 +852,6 @@ class SlskdHandler(DownloadHandler):
                 logger.error("Failed to enqueue slskd batch: %s", _error_text(e), exc_info=True)
                 status_callback("error", f"Failed to add to slskd: {_error_text(e)}")
                 return None
-        if batch is None:
-            return None
 
         ids = {
             str(t.get("filename") or ""): str(t["id"])
