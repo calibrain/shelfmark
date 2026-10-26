@@ -1,6 +1,7 @@
 import type { CSSProperties } from 'react';
-import { useMemo } from 'react';
+import { useMemo, useRef, useState } from 'react';
 
+import { useDependencyEffect } from '../../../hooks/useMountEffect';
 import type {
   MultiSelectFieldConfig,
   TableFieldConfig,
@@ -59,6 +60,12 @@ function normalizeMultiValue(value: unknown): string[] {
     return normalized ? [normalized] : [];
   }
   return [];
+}
+
+export function buildRowEntries(rows: Record<string, unknown>[], rowIds: string[]) {
+  return rows.map((row, index) => {
+    return { row, key: rowIds[index] ?? `untracked-${index}` };
+  });
 }
 
 function normalizeRows(
@@ -147,46 +154,33 @@ function getFilteredSelectOptions(
   return options.filter((opt) => !opt.childOf || opt.childOf === filterValue);
 }
 
-function serializeRowKeyValue(value: unknown): string {
-  if (value === null || value === undefined) {
-    return '';
-  }
-  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
-    return String(value);
-  }
-  if (Array.isArray(value)) {
-    return value.map((entry) => serializeRowKeyValue(entry)).join('|');
-  }
-
-  try {
-    return JSON.stringify(value) ?? '';
-  } catch {
-    return '[unserializable]';
-  }
-}
-
 export const TableField = ({ field, value, onChange, disabled }: TableFieldProps) => {
   const isDisabled = disabled ?? false;
+  const [rowIds, setRowIds] = useState(() => (value ?? []).map((_, index) => `row-${index}`));
+  const nextRowIdRef = useRef(rowIds.length);
+  const valueLength = (value ?? []).length;
 
   const columns = useMemo(() => field.columns ?? [], [field.columns]);
   const rows = useMemo(() => normalizeTableRows(value ?? [], columns), [value, columns]);
-  const rowEntries = useMemo(() => {
-    const rowOccurrences = new Map<string, number>();
+  const rowEntries = useMemo(() => buildRowEntries(rows, rowIds), [rows, rowIds]);
 
-    return rows.map((row) => {
-      const baseKey = columns
-        .map((col) => `${col.key}:${serializeRowKeyValue(row[col.key])}`)
-        .join('||');
-      const occurrence = rowOccurrences.get(baseKey) ?? 0;
+  useDependencyEffect(() => {
+    setRowIds((currentRowIds) => {
+      if (valueLength > currentRowIds.length) {
+        const newIds = Array.from(
+          { length: valueLength - currentRowIds.length },
+          () => `row-${nextRowIdRef.current++}`,
+        );
+        return [...currentRowIds, ...newIds];
+      }
 
-      rowOccurrences.set(baseKey, occurrence + 1);
+      if (valueLength < currentRowIds.length) {
+        return currentRowIds.slice(0, valueLength);
+      }
 
-      return {
-        row,
-        key: `${baseKey}::${occurrence}`,
-      };
+      return currentRowIds;
     });
-  }, [rows, columns]);
+  }, [valueLength]);
 
   // Use minmax(0, ...) so the grid can shrink inside the settings modal.
   // Use fixed width for delete button column to ensure header/data alignment.
@@ -216,11 +210,14 @@ export const TableField = ({ field, value, onChange, disabled }: TableFieldProps
     columns.forEach((col) => {
       newRow[col.key] = defaultCellValue(col);
     });
+    const newRowId = `row-${nextRowIdRef.current++}`;
+    setRowIds((current) => [...current, newRowId]);
     commitRows([...rows, newRow]);
   };
 
   const removeRow = (rowIndex: number) => {
     const next = rows.filter((_, idx) => idx !== rowIndex);
+    setRowIds((current) => current.filter((_, idx) => idx !== rowIndex));
     commitRows(next);
   };
 
