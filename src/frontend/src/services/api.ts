@@ -900,6 +900,7 @@ interface SelfUserEditContext {
   deliveryPreferences: DeliveryPreferencesResponse | null;
   searchPreferences: DeliveryPreferencesResponse | null;
   notificationPreferences: DeliveryPreferencesResponse | null;
+  hardcoverPreferences?: DeliveryPreferencesResponse | null;
   userOverridableKeys: string[];
   visibleUserSettingsSections?: string[];
 }

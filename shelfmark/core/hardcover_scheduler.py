@@ -66,6 +66,40 @@ def _enabled() -> bool:
     )
 
 
+def _sync_all_accounts(user_db: UserDB, *, db_path: str | None) -> dict[str, Any]:
+    """Sync every connected Hardcover account, then the app-level token.
+
+    Each user is synced on their own so a bad token, a rate limit or an API outage on
+    one account cannot stop the rest of the sweep. Totals are summed across the runs
+    and ``accounts`` reports how many were attempted.
+    """
+    from shelfmark.core.hardcover_sync import sync_wishlist, users_with_hardcover_token
+
+    totals: dict[str, Any] = {"added": 0, "skipped": 0, "in_library": 0, "errors": 0}
+    per_user_ids = users_with_hardcover_token(user_db)
+
+    def merge(summary: dict[str, int]) -> None:
+        for key in ("added", "skipped", "in_library", "errors"):
+            totals[key] += int(summary.get(key, 0))
+
+    for user_id in per_user_ids:
+        try:
+            merge(sync_wishlist(user_db, db_path=db_path, user_id=user_id))
+        except Exception:
+            logger.exception("hardcover-sync: sync failed for user %s", user_id)
+            totals["errors"] += 1
+
+    # The app-level token still runs, for instances where nobody connected their own.
+    try:
+        merge(sync_wishlist(user_db, db_path=db_path))
+    except Exception:
+        logger.exception("hardcover-sync: app-level sync failed")
+        totals["errors"] += 1
+
+    totals["accounts"] = len(per_user_ids) + 1
+    return totals
+
+
 def run_once(*, force: bool = False) -> dict[str, Any]:
     """Run one sync + auto-download pass. Returns a combined summary.
 
@@ -86,11 +120,10 @@ def run_once(*, force: bool = False) -> dict[str, Any]:
             return {"status": "unconfigured"}
 
         from shelfmark.core.auto_download import auto_download_pending
-        from shelfmark.core.hardcover_sync import sync_wishlist
 
         sync_summary: dict[str, Any] | None = None
         if force or bool(app_config.get("HARDCOVER_SYNC_ENABLED", False)):
-            sync_summary = sync_wishlist(user_db, db_path=db_path)
+            sync_summary = _sync_all_accounts(user_db, db_path=db_path)
         auto_summary = auto_download_pending(
             user_db, queue_release=queue_release, db_path=db_path, ignore_backoff=force
         )
