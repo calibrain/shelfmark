@@ -981,6 +981,8 @@ export interface DeliveryPreferencesResponse {
   globalValues: Record<string, unknown>;
   userOverrides: Record<string, unknown>;
   effective: Record<string, { value: unknown; source: string }>;
+  // Self-service payloads only: an admin default notification route exists (its URL is not sent).
+  adminDefaultRoutesSet?: boolean;
 }
 
 export const getAdminDeliveryPreferences = async (

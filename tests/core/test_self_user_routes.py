@@ -185,6 +185,28 @@ def test_users_me_edit_context_hides_admin_global_values(app, user_db):
     notifications = resp.json["notificationPreferences"]
     assert notifications["globalValues"]["USER_NOTIFICATION_ROUTES"] is None
     assert notifications["effective"]["USER_NOTIFICATION_ROUTES"]["value"] is None
+    # That a default exists is served, so the page can say it applies. Its URL is not.
+    assert notifications["adminDefaultRoutesSet"] is True
+
+
+def test_users_me_edit_context_reports_no_admin_default_route_without_a_url(app, user_db):
+    user = user_db.create_user(username="alice")
+    client = _authed_client_for_user(app, user)
+    admin_globals: dict[str, object] = {
+        "USER_NOTIFICATION_ROUTES": [{"event": ["all"], "url": ""}],
+    }
+
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
+        with patch(
+            "shelfmark.core.self_user_routes.app_config.get",
+            side_effect=_admin_globals_config_get(
+                ["delivery", "search", "notifications"], admin_globals
+            ),
+        ):
+            resp = client.get("/api/users/me/edit-context")
+
+    assert resp.status_code == 200
+    assert resp.json["notificationPreferences"]["adminDefaultRoutesSet"] is False
 
 
 def test_users_me_edit_context_falls_back_to_default_sections_for_invalid_config(app, user_db):
