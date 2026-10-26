@@ -152,6 +152,7 @@ export const UserOverridesSections = ({
             userSettings={userSettings}
             setUserSettings={setUserSettings}
             onTestNotificationRoutes={onTestNotificationRoutes}
+            scope={scope}
           />
         ),
       });

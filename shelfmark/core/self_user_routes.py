@@ -110,6 +110,19 @@ def _serialize_self_user(user: Mapping[str, Any], auth_mode: str) -> dict[str, A
     return payload
 
 
+def _admin_default_routes_set() -> bool:
+    """Whether the admin has set a default notification route with a URL.
+
+    The routes themselves stay hidden from a self-service user because their URLs can carry
+    tokens or credentials. The fact that a default exists is what the settings page needs to say
+    that it applies to them.
+    """
+    routes = app_config.get("USER_NOTIFICATION_ROUTES", [])
+    if not isinstance(routes, list):
+        return False
+    return any(isinstance(row, dict) and str(row.get("url") or "").strip() for row in routes)
+
+
 def _build_optional_user_preferences(
     user_db: UserDB,
     *,
@@ -311,6 +324,8 @@ def register_self_user_routes(
             )
             if error_response:
                 return error_response
+            if notification_preferences is not None:
+                notification_preferences["adminDefaultRoutesSet"] = _admin_default_routes_set()
 
         user_overridable_keys = sorted(
             set(delivery_preferences.get("keys", []) if delivery_preferences else [])

@@ -21,6 +21,7 @@ interface UserNotificationOverridesSectionProps {
   userSettings: PerUserSettings;
   setUserSettings: (updater: (prev: PerUserSettings) => PerUserSettings) => void;
   onTestNotificationRoutes?: (routes: Array<Record<string, unknown>>) => Promise<ActionResult>;
+  scope?: 'admin' | 'self';
 }
 
 type NotificationSettingKey = 'USER_NOTIFICATION_ROUTES';
@@ -67,6 +68,26 @@ const fallbackRoutesField: TableFieldConfig = {
   addLabel: 'Add Route',
   emptyMessage: 'No routes configured.',
 };
+
+const SELF_ROUTES_DESCRIPTION =
+  'Create one route per URL. Start with All, then add event-specific routes ' +
+  'for targeted delivery. Use {User} or {Email} in the path or query to fill in ' +
+  'your account details, e.g. ntfys://ntfy.sh/shelfmark-{User}. Personal routes can use ' +
+  'ntfy, Gotify, Discord, Slack, Telegram, Pushover and PushBullet. Need format examples? ' +
+  '[View Apprise URL formats](https://appriseit.com/services/).';
+
+// What a user sees above their own routes. The admin's default route is not sent to them (its
+// URL can carry credentials), so the page says that one applies and that their own replace it.
+export function buildSelfRoutesDescription(adminDefaultSet: boolean, overridden: boolean): string {
+  if (!adminDefaultSet) {
+    return SELF_ROUTES_DESCRIPTION;
+  }
+  const note = overridden
+    ? 'The routes below replace the default your administrator set.'
+    : 'Your administrator has set a default route that applies to you until you add your own. ' +
+      'Routes added below replace it.';
+  return `${SELF_ROUTES_DESCRIPTION} ${note}`;
+}
 
 const notificationHeading: HeadingFieldConfig = {
   type: 'HeadingField',
@@ -146,6 +167,7 @@ export const UserNotificationOverridesSection = ({
   userSettings,
   setUserSettings,
   onTestNotificationRoutes,
+  scope = 'admin',
 }: UserNotificationOverridesSectionProps) => {
   if (!notificationPreferences) {
     return null;
@@ -154,7 +176,7 @@ export const UserNotificationOverridesSection = ({
   const fields = notificationPreferences.fields ?? [];
   const globalValues = notificationPreferences.globalValues ?? {};
 
-  const routesField = getFieldByKey(fields, 'USER_NOTIFICATION_ROUTES', fallbackRoutesField);
+  const baseRoutesField = getFieldByKey(fields, 'USER_NOTIFICATION_ROUTES', fallbackRoutesField);
 
   const isOverridden = (key: NotificationSettingKey): boolean => {
     if (
@@ -190,6 +212,17 @@ export const UserNotificationOverridesSection = ({
     }
     return normalizeRoutesValue([]);
   };
+
+  const routesField: TableFieldConfig =
+    scope === 'self'
+      ? {
+          ...baseRoutesField,
+          description: buildSelfRoutesDescription(
+            Boolean(notificationPreferences.adminDefaultRoutesSet),
+            isOverridden('USER_NOTIFICATION_ROUTES'),
+          ),
+        }
+      : baseRoutesField;
 
   const routesValue = readRoutesValue('USER_NOTIFICATION_ROUTES');
 
