@@ -28,3 +28,4 @@ def test_missing_source_id_drops_client_supplied_download_url(source):
     )
 
     assert fields["retry_download_url"] is None
+    assert fields["retry_download_protocol"] is None
