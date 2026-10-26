@@ -13,6 +13,7 @@ import json
 from threading import Event
 
 import pytest
+import requests
 
 import shelfmark.release_sources.slskd.handler as mod
 from shelfmark.core.models import DownloadTask
@@ -337,6 +338,100 @@ class TestFailuresAndCancel:
         assert result is None
         assert "minutes" in (rec.real[-1][1] or "")
         assert fake.cancelled
+
+
+def _http_error(status, body=""):
+    response = requests.Response()
+    response.status_code = status
+    response._content = body.encode()
+    return requests.exceptions.HTTPError(f"{status} Server Error", response=response)
+
+
+class _FlakyEnqueue(FakeSlskd):
+    """A slskd whose first ``failures`` enqueue calls fail with the given error."""
+
+    def __init__(self, root, *, failures, error, **kwargs):
+        super().__init__(root, **kwargs)
+        self.failures = failures
+        self.error = error
+        self.attempts = 0
+
+    def enqueue_batch(self, username, files, destination):
+        self.attempts += 1
+        if self.attempts <= self.failures:
+            raise self.error
+        return super().enqueue_batch(username, files, destination)
+
+
+class TestEnqueueRetry:
+    @pytest.fixture(autouse=True)
+    def _no_wait(self, monkeypatch):
+        monkeypatch.setattr(mod, "_ENQUEUE_RETRY_WAIT_SECONDS", 0.0)
+
+    def test_a_500_from_a_peer_that_did_not_answer_is_tried_once_more(self, handler, cfg, tmp_path):
+        fake = _FlakyEnqueue(tmp_path, failures=1, error=_http_error(500, "timed out"))
+
+        result, _, rec = _run(handler, fake)
+
+        assert result is not None
+        assert fake.attempts == 2
+        assert ("resolving", "The peer did not answer, trying again") in rec.real
+        assert rec.real[-1][0] != "error"
+
+    def test_it_gives_up_after_the_second_500_and_says_what_slskd_said(
+        self, handler, cfg, tmp_path
+    ):
+        fake = _FlakyEnqueue(
+            tmp_path, failures=5, error=_http_error(500, "The wait timed out after 5000 ms")
+        )
+
+        result, _, rec = _run(handler, fake)
+
+        assert result is None
+        assert fake.attempts == 2
+        status, message = rec.real[-1]
+        assert status == "error"
+        assert message.startswith("Failed to add to slskd: 500 Server Error")
+        assert "The wait timed out after 5000 ms" in message
+
+    def test_a_client_error_is_not_retried(self, handler, cfg, tmp_path):
+        fake = _FlakyEnqueue(tmp_path, failures=5, error=_http_error(400, "bad request"))
+
+        result, _, rec = _run(handler, fake)
+
+        assert result is None
+        assert fake.attempts == 1
+        assert rec.real[-1][0] == "error"
+
+    def test_a_connection_error_is_not_retried(self, handler, cfg, tmp_path):
+        fake = _FlakyEnqueue(
+            tmp_path, failures=5, error=requests.exceptions.ConnectionError("refused")
+        )
+
+        result, _, _rec = _run(handler, fake)
+
+        assert result is None
+        assert fake.attempts == 1
+
+    def test_cancelling_during_the_wait_stops_without_a_second_try(
+        self, handler, cfg, tmp_path, monkeypatch
+    ):
+        monkeypatch.setattr(mod, "_ENQUEUE_RETRY_WAIT_SECONDS", 60.0)
+        cancel = Event()
+        fake = _FlakyEnqueue(tmp_path, failures=5, error=_http_error(500))
+        original = fake.enqueue_batch
+
+        def enqueue_then_cancel(username, files, destination):
+            cancel.set()
+            return original(username, files, destination)
+
+        fake.enqueue_batch = enqueue_then_cancel
+
+        result, _, rec = _run(handler, fake, cancel=cancel)
+
+        assert result is None
+        assert fake.attempts == 1
+        assert rec.real[-1][0] == "cancelled"
 
 
 class TestPeerQueue:
