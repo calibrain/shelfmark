@@ -3357,6 +3357,12 @@ def api_releases() -> Response | tuple[Response, int]:
             # Source-backed browse flows can reopen the release modal with provider=<source name>.
             # In that flow, treat the source-native record as release-search context instead of
             # requiring a metadata provider registration.
+            # A source named in `source` was gated above. When provider names another one,
+            # its record lookup needs the refusal the record route applies.
+            if normalize_source(provider) not in {normalize_source(s) for s in sources_to_search}:
+                refused_record_mode = _release_source_record_refusal(provider)
+                if refused_record_mode is not None:
+                    return _release_listing_block_response(refused_record_mode)
             source = get_source(provider)
             direct_record = source.get_record(book_id)
             if direct_record is None:
