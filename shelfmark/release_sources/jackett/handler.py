@@ -86,7 +86,8 @@ class JackettHandler(ExternalClientHandler):
         source_id = normalize_optional_text(release_data.get("source_id"))
         result = get_release(source_id) if source_id else None
         if result is None:
-            return {}
+            # Never fall back to the URL the client sent along with the request.
+            return {"retry_download_url": None, "retry_download_protocol": None}
 
         protocol = get_protocol(result)
         return {

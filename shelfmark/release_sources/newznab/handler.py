@@ -93,12 +93,10 @@ class NewznabHandler(ExternalClientHandler):
 
     def build_retry_resolution_fields(self, release_data: dict) -> dict:
         source_id = normalize_optional_text(release_data.get("source_id"))
-        if source_id is None:
-            return {}
-
-        result = get_release(source_id)
+        result = get_release(source_id) if source_id else None
         if result is None:
-            return {}
+            # Never fall back to the URL the client sent along with the request.
+            return {"retry_download_url": None, "retry_download_protocol": None}
 
         protocol = _get_protocol(result)
         return {
