@@ -96,9 +96,12 @@ def hardcover_sync_settings() -> list[SettingsField]:
             label="Hardcover API Token",
             description=(
                 "Bearer token for your Hardcover account. Leave blank to reuse the "
-                "token from the Hardcover metadata provider."
+                "token from the Hardcover metadata provider. Each user can connect "
+                "their own account instead, in which case their shelf syncs to "
+                "requests they own and this token is the fallback for everyone else."
             ),
             placeholder="Reuses metadata provider token if blank",
+            user_overridable=True,
         ),
         SelectField(
             key="HARDCOVER_SYNC_STATUSES",
