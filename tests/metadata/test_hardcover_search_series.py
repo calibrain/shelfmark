@@ -58,3 +58,10 @@ def test_the_search_title_is_unchanged_by_the_series():
 
     assert book is not None
     assert book.search_title == "Mistborn"
+
+
+def test_a_hit_with_a_null_document_and_no_series_is_still_parsed():
+    book = _provider()._parse_search_result(_hit(featured_series=None, document=None))
+
+    assert book is not None
+    assert book.series_name is None

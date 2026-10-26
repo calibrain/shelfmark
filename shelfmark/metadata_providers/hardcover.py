@@ -2983,7 +2983,7 @@ class HardcoverProvider(MetadataProvider):
             subtitle = item.get("subtitle")
             search_title = _compute_search_title(title, subtitle)
             series_id, series_name, series_position, series_count = _featured_series_fields(
-                item.get("featured_series") or item.get("document", {}).get("featured_series")
+                item.get("featured_series") or (item.get("document") or {}).get("featured_series")
             )
 
             if matched_title and matched_title != title:
