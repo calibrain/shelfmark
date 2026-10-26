@@ -444,6 +444,30 @@ def test_the_series_and_volume_a_shelf_title_repeats_do_not_block_a_match() -> N
     assert library_index.match_entries(book, shelf) == "owned"
 
 
+def test_the_full_title_matches_when_the_search_title_is_only_the_series() -> None:
+    # Hardcover searches "Mistborn: The Final Empire" as "Mistborn" when it cannot tell the
+    # series prefix from a title prefix, and the shelf title then reads as a longer work.
+    shelf = [_shelf_entry({"mistborn", "the", "final", "empire"}, {"brandon", "sanderson"})]
+    book = _book(
+        title="Mistborn: The Final Empire",
+        search_title="Mistborn",
+        authors=["Brandon Sanderson"],
+    )
+
+    assert library_index.match_entries(book, shelf) == "owned"
+
+
+def test_the_full_title_does_not_match_another_book_in_the_series() -> None:
+    shelf = [_shelf_entry({"mistborn", "the", "well", "of", "ascension"}, {"brandon", "sanderson"})]
+    book = _book(
+        title="Mistborn: The Final Empire",
+        search_title="Mistborn",
+        authors=["Brandon Sanderson"],
+    )
+
+    assert library_index.match_entries(book, shelf) is None
+
+
 def test_an_edition_word_does_not_block_a_match() -> None:
     shelf = [_shelf_entry({"dune", "illustrated", "edition"}, {"frank", "herbert"})]
 
