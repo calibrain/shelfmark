@@ -33,10 +33,36 @@ _PAGE_LIMIT = 25  # Hardcover API page size.
 _MAX_PAGES = 40  # Safety bound (~1000 books) so a bad response can't loop forever.
 
 
-def _configured_token() -> str:
-    """Prefer a dedicated sync token, fall back to the provider API key."""
-    token = app_config.get("HARDCOVER_SYNC_TOKEN", "") or app_config.get("HARDCOVER_API_KEY", "")
+def _configured_token(user_id: int | None = None) -> str:
+    """Token for this sync: the user's own if they connected one, else the app-level token.
+
+    ``HARDCOVER_SYNC_TOKEN`` is user overridable, so passing a user id resolves their
+    value first and falls back to the global one. Without a user id this is the
+    single-account behaviour it has always had.
+    """
+    token = app_config.get("HARDCOVER_SYNC_TOKEN", "", user_id=user_id) or app_config.get(
+        "HARDCOVER_API_KEY", "", user_id=user_id
+    )
     return str(token or "").strip()
+
+
+def _user_token(user_id: int) -> str:
+    """The token this user connected themselves, ignoring the app-level fallback."""
+    token = app_config.get_user_override("HARDCOVER_SYNC_TOKEN", user_id=user_id)
+    return str(token or "").strip()
+
+
+def users_with_hardcover_token(user_db: UserDB) -> list[int]:
+    """Ids of users who connected their own Hardcover token, lowest id first."""
+    user_ids: list[int] = []
+    for user in user_db.list_users():
+        raw_id = user.get("id")
+        if raw_id is None:
+            continue
+        user_id = int(raw_id)
+        if _user_token(user_id):
+            user_ids.append(user_id)
+    return sorted(user_ids)
 
 
 def _configured_statuses() -> list[int]:
@@ -67,10 +93,10 @@ def _configured_content_types() -> list[str]:
     return list(_CONTENT_TYPES.get(raw.strip().lower(), _CONTENT_TYPES[DEFAULT_SYNC_CONTENT_TYPE]))
 
 
-def _build_provider() -> Any | None:
+def _build_provider(user_id: int | None = None) -> Any | None:
     from shelfmark.metadata_providers import get_provider
 
-    token = _configured_token()
+    token = _configured_token(user_id)
     if not token:
         logger.warning("hardcover-sync: no Hardcover token configured")
         return None
@@ -113,14 +139,16 @@ def _book_to_book_data(book: BookMetadata, content_type: str) -> dict[str, Any]:
     return book_data
 
 
-def _existing_request_keys(user_db: UserDB) -> set[tuple[str, str]]:
+def _existing_request_keys(user_db: UserDB, user_id: int | None = None) -> set[tuple[str, str]]:
     """``(hardcover id, content_type)`` pairs already requested, in any status.
 
     Other providers' ids are not counted, so one that happens to equal a Hardcover id
-    cannot skip a book.
+    cannot skip a book. Scoped to one owner when syncing that user's own shelf, matching
+    the per-user duplicate check in requests_service, so one user's request does not
+    silently swallow another user's. The app-level path stays instance-wide.
     """
     keys: set[tuple[str, str]] = set()
-    for row in user_db.list_requests():
+    for row in user_db.list_requests(user_id=user_id):
         book_data = row.get("book_data") or {}
         if isinstance(book_data, dict) and book_data.get("provider") == "hardcover":
             pid = book_data.get("provider_id") or book_data.get("id")
@@ -251,9 +279,17 @@ def sync_wishlist(
     ebook and an audiobook request each), so each format is checked against its own
     library. Returns ``{"added", "skipped", "in_library", "errors"}``. Requires a
     configured token; enable-gating is the caller's responsibility (see hardcover_scheduler).
+
+    Pass ``user_id`` to sync that user's own Hardcover account: their token is used and
+    the requests are theirs. Omit it for the app-level token, whose requests are owned
+    by :func:`resolve_request_owner`.
     """
     summary = {"added": 0, "skipped": 0, "in_library": 0, "errors": 0}
 
+    # A caller-supplied id is the user whose own shelf this is, so their token and
+    # their existing requests are the ones that matter. Without one this is the
+    # app-level pass, owned by an admin and deduped instance-wide as before.
+    per_user = user_id is not None
     if user_id is None:
         user_id = resolve_request_owner(user_db)
     if user_id is None:
@@ -261,7 +297,7 @@ def sync_wishlist(
         summary["errors"] += 1
         return summary
 
-    provider = _build_provider()
+    provider = _build_provider(user_id if per_user else None)
     if provider is None:
         summary["errors"] += 1
         return summary
@@ -276,7 +312,7 @@ def sync_wishlist(
         logger.warning("hardcover-sync: %s; skipping this sync", exc)
         summary["errors"] += 1
         return summary
-    known_requests = _existing_request_keys(user_db)
+    known_requests = _existing_request_keys(user_db, user_id if per_user else None)
 
     from shelfmark.core.requests_service import RequestServiceError, create_request
 

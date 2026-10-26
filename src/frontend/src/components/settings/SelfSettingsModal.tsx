@@ -124,6 +124,8 @@ const SelfSettingsModalSession = ({
   );
   const [notificationPreferences, setNotificationPreferences] =
     useState<DeliveryPreferencesResponse | null>(null);
+  const [hardcoverPreferences, setHardcoverPreferences] =
+    useState<DeliveryPreferencesResponse | null>(null);
   const [visibleSections, setVisibleSections] = useState(DEFAULT_SELF_USER_OVERRIDE_SECTIONS);
 
   const [editPassword, setEditPassword] = useState('');
@@ -133,8 +135,8 @@ const SelfSettingsModalSession = ({
   const [themeValue, setThemeValue] = useState(getStoredThemePreference());
 
   const preferenceGroups = useMemo(
-    () => [deliveryPreferences, searchPreferences, notificationPreferences],
-    [deliveryPreferences, searchPreferences, notificationPreferences],
+    () => [deliveryPreferences, searchPreferences, notificationPreferences, hardcoverPreferences],
+    [deliveryPreferences, searchPreferences, notificationPreferences, hardcoverPreferences],
   );
   const {
     userSettings,
@@ -156,6 +158,7 @@ const SelfSettingsModalSession = ({
       setDeliveryPreferences(context.deliveryPreferences || null);
       setSearchPreferences(context.searchPreferences || null);
       setNotificationPreferences(context.notificationPreferences || null);
+      setHardcoverPreferences(context.hardcoverPreferences || null);
       setVisibleSections(
         normalizeUserOverrideSections(context.visibleUserSettingsSections, 'self'),
       );
@@ -383,6 +386,7 @@ const SelfSettingsModalSession = ({
                           deliveryPreferences={deliveryPreferences}
                           searchPreferences={searchPreferences}
                           notificationPreferences={notificationPreferences}
+                          hardcoverPreferences={hardcoverPreferences}
                           isUserOverridable={isUserOverridable}
                           userSettings={userSettings}
                           setUserSettings={setUserSettings}
