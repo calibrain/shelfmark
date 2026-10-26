@@ -64,12 +64,28 @@ Both shelf sync and automatic downloads ask the libraries you have enabled under
 
 The check **fails closed** here: if an enabled library cannot be read and has not been read before, the sync cycle is skipped and an automatic download is held, and the request stays pending until the next cycle. Skipping is the safe side, because carrying on would request or download books the library already holds. Badges in search results still fail open.
 
+## Per-user accounts
+
+Every user can connect their own Hardcover account instead of sharing one. The token
+field is user overridable, so it appears under **Settings, Hardcover Account** for each
+user, and it is also settable per user by an admin from the user editor. Admins choose
+whether that section is shown at all with **Visible self settings sections** on the Users
+tab.
+
+When a user connects a token, each scheduled run syncs their shelf on their own token and
+the requests it creates are owned by them, deduplicated against their own requests rather
+than the whole instance. Accounts are synced one at a time, so a token that has expired or
+an API error on one account does not stop the others.
+
+The app-level token still runs as its own pass afterwards, owned by the lowest-id admin,
+which is what a single-account install keeps doing with no change.
+
 ## Settings
 
 | Key | Label | Default | Notes |
 |-----|-------|---------|-------|
 | `HARDCOVER_SYNC_ENABLED` | Enable scheduled sync | Off | Runs shelf sync on the interval below |
-| `HARDCOVER_SYNC_TOKEN` | Hardcover API Token | — | Leave blank to reuse the Hardcover metadata provider's token |
+| `HARDCOVER_SYNC_TOKEN` | Hardcover API Token | — | Leave blank to reuse the Hardcover metadata provider's token. Each user can connect their own account instead, see [Per-user accounts](#per-user-accounts) |
 | `HARDCOVER_SYNC_STATUSES` | Shelves to sync | Want to Read | Hardcover reading status to pull from |
 | `HARDCOVER_SYNC_CONTENT_TYPE` | Request as | Audiobooks | `Audiobooks`, `Ebooks`, or `Ebooks and audiobooks` — the last creates one request of each per shelf book, each checked against its own library |
 | `HARDCOVER_SYNC_INTERVAL` | Sync interval | 6 | Combined with the unit below |
