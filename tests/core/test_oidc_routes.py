@@ -6,8 +6,9 @@ from unittest.mock import Mock, patch
 from urllib.parse import parse_qs, urlparse
 
 import pytest
-from authlib.jose.errors import InvalidClaimError
+from authlib.oidc.core import CodeIDToken
 from flask import Flask, redirect
+from joserfc.errors import InvalidClaimError
 
 from shelfmark.core.user_db import UserDB
 
@@ -456,6 +457,35 @@ class TestOIDCCallbackEndpoint:
         fake_client = Mock()
         fake_client.authorize_access_token.side_effect = InvalidClaimError("iss")
         fake_client.load_server_metadata.side_effect = RuntimeError("metadata failed")
+        mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
+
+        resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
+        error = _get_oidc_error(resp)
+        assert error is not None
+        assert "issuer validation failed" in error
+
+    @patch("shelfmark.core.oidc_routes._get_oidc_client")
+    def test_callback_gives_issuer_guidance_for_the_error_authlib_really_raises(
+        self, mock_get_client, client
+    ):
+        # Authlib validates the ID token with joserfc, so the error that reaches the route is
+        # joserfc's. Raising it from a real CodeIDToken keeps this test honest if the class moves.
+        def validate_wrong_issuer(*_args, **_kwargs):
+            CodeIDToken(
+                {
+                    "iss": "https://other.example.com",
+                    "sub": "u",
+                    "aud": "a",
+                    "exp": 4102444800,
+                    "iat": 1,
+                },
+                {},
+                {"iss": {"essential": True, "value": "https://auth.example.com"}},
+            ).validate()
+
+        fake_client = Mock()
+        fake_client.authorize_access_token.side_effect = validate_wrong_issuer
+        fake_client.load_server_metadata.return_value = {"issuer": "https://auth.example.com"}
         mock_get_client.return_value = (fake_client, MOCK_OIDC_CONFIG)
 
         resp = client.get("/api/auth/oidc/callback?code=abc123&state=test-state")
