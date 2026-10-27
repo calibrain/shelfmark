@@ -12,8 +12,8 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from authlib.integrations.base_client.errors import OAuthError
 from authlib.integrations.flask_client import OAuth
-from authlib.jose.errors import InvalidClaimError
 from flask import Flask, jsonify, redirect, request, session
+from joserfc.errors import InvalidClaimError
 
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
@@ -261,7 +261,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             try:
                 token = client.authorize_access_token()
             except InvalidClaimError as e:
-                claim_name = getattr(e, "claim_name", "unknown")
+                claim_name = getattr(e, "claim", "unknown")
                 discovery_url = str(config.get("OIDC_DISCOVERY_URL", ""))
                 provider_issuer = ""
                 try:
