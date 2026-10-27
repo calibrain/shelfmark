@@ -356,8 +356,11 @@ def register_flaresolverr(flask_app: Flask) -> None:
 # Role: prowlarr  (minimal Prowlarr API for the `full` real-client pipeline)
 # --------------------------------------------------------------------------- #
 # Implements just the endpoints shelfmark's prowlarr client calls, returning one
-# torrent release whose download is mock-aa's webseed .torrent. A real
-# qBittorrent then completes the download over HTTP (no tracker/peer needed).
+# torrent release whose download is mock-aa's webseed .torrent. Like real Prowlarr,
+# the release link points at Prowlarr's own download endpoint, which fetches the
+# indexer's file: shelfmark fetches .torrent files only from the configured
+# Prowlarr origin or from public addresses, and mock-aa is neither. A real torrent
+# client then completes the download over HTTP (no tracker/peer needed).
 AA_INTERNAL_URL = os.environ.get("AA_INTERNAL_URL", "http://mock-aa")
 
 
@@ -390,12 +393,22 @@ def register_prowlarr(flask_app: Flask) -> None:
 
     @flask_app.route("/api/v1/indexer/<int:indexer_id>/newznab")
     def prowlarr_torznab(indexer_id: int) -> Response:
-        del indexer_id
         t = request.args.get("t", "search")
         if t == "caps":
             return Response(_torznab_caps(), mimetype="application/xml")
         query = request.args.get("q", "") or "E2E Mock Book"
-        return Response(_torznab_search(query), mimetype="application/xml")
+        return Response(_torznab_search(query, indexer_id), mimetype="application/xml")
+
+    @flask_app.route("/<int:indexer_id>/download")
+    def prowlarr_download(indexer_id: int) -> Response:
+        # Prowlarr's proxied download: fetch the indexer's .torrent and serve it.
+        del indexer_id
+        import requests as _rq
+
+        upstream = _rq.get(f"{AA_INTERNAL_URL}/payload.torrent", timeout=10)
+        resp = make_response(upstream.content, upstream.status_code)
+        resp.headers["Content-Type"] = "application/x-bittorrent"
+        return resp
 
 
 def _torznab_caps() -> str:
@@ -410,8 +423,9 @@ def _torznab_caps() -> str:
     )
 
 
-def _torznab_search(query: str) -> str:
-    torrent_url = f"{AA_INTERNAL_URL}/payload.torrent"
+def _torznab_search(query: str, indexer_id: int) -> str:
+    # Same origin shelfmark used to reach this mock, i.e. its PROWLARR_URL.
+    torrent_url = f"{request.host_url.rstrip('/')}/{indexer_id}/download"
     size = len(_payload_bytes())
     title = f"{query} - E2E Mock Book"
     return (

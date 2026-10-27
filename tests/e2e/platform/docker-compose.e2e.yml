@@ -208,8 +208,11 @@ services:
 
   # ----- Mock Prowlarr indexer (full + client-* profiles) ----------------- #
   # Minimal Prowlarr API returning one torrent release whose .torrent is a
-  # webseed pointing at mock-aa. Drives the real torrent-client download in the
-  # `full` (qBittorrent) and `client-*` (transmission/deluge/rtorrent) profiles.
+  # webseed pointing at mock-aa. Like real Prowlarr it serves that .torrent from
+  # its own origin (fetched from AA_INTERNAL_URL): shelfmark fetches a .torrent
+  # from a private host only when it is the configured Prowlarr. Drives the real
+  # torrent-client download in the `full` (qBittorrent) and `client-*`
+  # (transmission/deluge/rtorrent) profiles.
   mock-prowlarr:
     <<: *mock-build
     container_name: e2e-mock-prowlarr
