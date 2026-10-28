@@ -25,7 +25,7 @@ dependencies = [
     # Authlib validates ID tokens with joserfc and raises its errors, so the OIDC routes
     # catch joserfc's InvalidClaimError. authlib.jose is deprecated and goes in Authlib 2.0.
     "joserfc>=1.6.8",
-    "apprise>=2.0.1",
+    "apprise>=2.1.0",
     # HTTP/2 client for RFC 8484 DoH: quad9 rejects HTTP/1.1 outright (505), which
     # requests cannot speak. See shelfmark/download/doh_wireformat.py.
     "httpx[http2]>=0.28.1",
