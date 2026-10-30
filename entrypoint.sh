@@ -517,7 +517,9 @@ if [ "$DEBUG" = "true" ] && [ "$USING_EXTERNAL_BYPASSER" != "true" ]; then
     echo "Debugging Chrome itself"
     chromium --version
     mkdir -p /tmp/chrome_crash_dumps
-    timeout --preserve-status 5s chromium \
+    # BusyBox timeout already returns the child's status (143 when it kills it),
+    # which is what GNU's --preserve-status did; BusyBox rejects the flag.
+    timeout 5s chromium \
             --headless=new \
             --no-sandbox \
             --disable-gpu \
@@ -531,8 +533,8 @@ if [ "$DEBUG" = "true" ] && [ "$USING_EXTERNAL_BYPASSER" != "true" ]; then
     ls -lh /tmp/chrome_crash_dumps
     if [[ "$EXIT_CODE" -ne 0 && "$EXIT_CODE" -le 127 ]]; then
         echo "Chrome failed to start. Lets trace it"
-        apt-get update && apt-get install -y strace
-        timeout --preserve-status 10s strace -f -o "/tmp/chrome_strace.log" chromium \
+        apk add --no-cache strace
+        timeout 10s strace -f -o "/tmp/chrome_strace.log" chromium \
                 --headless=new \
                 --no-sandbox \
                 --version \

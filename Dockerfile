@@ -3,8 +3,14 @@ ARG TARGETARCH
 ARG BUILDPLATFORM
 ARG BUILDARCH
 
+# Every stage builds on Chainguard's Wolfi base. Free-tier Chainguard images
+# only publish `latest` (the `node` and `python` images track Current/3.15), so
+# runtime versions are pinned through Wolfi's versioned packages instead of tags.
+
 # Frontend build stage.
-FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS frontend-builder
+FROM --platform=$BUILDPLATFORM cgr.dev/chainguard/wolfi-base:latest@sha256:88a20e2d017bd20cdc0cb3910de603e7bea9512a6c351a8dd3c9df212ab03d73 AS frontend-builder
+
+RUN apk add --no-cache nodejs-24 npm
 
 # Helpful debug output to see what platforms BuildKit thinks it's using
 RUN echo "BUILDPLATFORM=$BUILDPLATFORM BUILDARCH=$BUILDARCH TARGETPLATFORM=$TARGETPLATFORM TARGETARCH=$TARGETARCH"
@@ -30,15 +36,61 @@ RUN npm run build
 # a RUN adds a layer, it does not rewrite the one underneath.
 FROM ghcr.io/astral-sh/uv:0.13.5@sha256:32a7bb39b496babbd997b0a39a4d66c126bdaf5661b302bf6f06abda8deca6ff AS uv
 
-# Use python-slim as the base image
-FROM python:3.14.8-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS base
+# --- Tor (PINNED to 0.4.9.15) ---
+# Wolfi has no tor package, so it is built from the upstream release. Bump
+# TOR_VERSION and TOR_SHA256 together; the hash is the one published next to the
+# tarball on dist.torproject.org. Only the binary reaches the final image.
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:88a20e2d017bd20cdc0cb3910de603e7bea9512a6c351a8dd3c9df212ab03d73 AS tor-builder
+
+ARG TOR_VERSION=0.4.9.15
+ARG TOR_SHA256=1911f5b216a6814ed143a08bbcff1c6dc96d2ca3b505df9a21876080a92963f3
+
+RUN apk add --no-cache build-base curl openssl-dev libevent-dev zlib-dev && \
+    curl -fsSLo /tmp/tor.tar.gz "https://dist.torproject.org/tor-${TOR_VERSION}.tar.gz" && \
+    echo "${TOR_SHA256}  /tmp/tor.tar.gz" | sha256sum -c - && \
+    tar -xzf /tmp/tor.tar.gz -C /tmp && \
+    cd "/tmp/tor-${TOR_VERSION}" && \
+    ./configure --prefix=/usr --sysconfdir=/etc --localstatedir=/var \
+        --disable-asciidoc --disable-manpage --disable-html-manual \
+        --disable-lzma --disable-zstd --disable-unittests && \
+    make -j"$(nproc)" && \
+    install -Dm755 src/app/tor /out/usr/bin/tor
+
+# --- Chrome for Testing (PINNED to 156.0.8078.47) ---
+# Wolfi's chromium package stopped receiving updates in June 2026, so the browser
+# is Google's Chrome for Testing build of the same Chromium release. Bump the
+# version and both per-arch hashes together (Google publishes no checksums; take
+# them from the downloaded zips).
+FROM --platform=$BUILDPLATFORM cgr.dev/chainguard/wolfi-base:latest@sha256:88a20e2d017bd20cdc0cb3910de603e7bea9512a6c351a8dd3c9df212ab03d73 AS chrome-download
+
+ARG TARGETARCH
+ARG CHROME_VERSION=156.0.8078.47
+ARG CHROME_SHA256_AMD64=e6c94490f0b6b337225aeb2d2a5034858516b7017356980ba94f5176d8774a50
+ARG CHROME_SHA256_ARM64=9e37000e3ee2731e45e475a6a2eac587d3c0ee5f8aef7cab5211ecd52cf3fb7b
+
+RUN apk add --no-cache curl && \
+    case "${TARGETARCH}" in \
+        amd64) platform=linux64; sha="${CHROME_SHA256_AMD64}" ;; \
+        arm64) platform=linux-arm64; sha="${CHROME_SHA256_ARM64}" ;; \
+        *) echo "unsupported TARGETARCH: ${TARGETARCH}" >&2; exit 1 ;; \
+    esac && \
+    curl -fsSLo /tmp/chrome.zip \
+        "https://storage.googleapis.com/chrome-for-testing-public/${CHROME_VERSION}/${platform}/chrome-${platform}.zip" && \
+    echo "${sha}  /tmp/chrome.zip" | sha256sum -c - && \
+    mkdir -p /out/opt && \
+    unzip -q /tmp/chrome.zip -d /tmp/chrome && \
+    mv "/tmp/chrome/chrome-${platform}" /out/opt/chrome-for-testing
+
+FROM cgr.dev/chainguard/wolfi-base:latest@sha256:88a20e2d017bd20cdc0cb3910de603e7bea9512a6c351a8dd3c9df212ab03d73 AS base
+
+# wolfi-base ships only busybox sh; bash must exist before SHELL can use it.
+RUN apk add --no-cache bash
 
 # Set shell to bash with pipefail option
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
 
 # Consistent environment variables grouped together
-ENV DEBIAN_FRONTEND=noninteractive \
-    DOCKERMODE=true \
+ENV DOCKERMODE=true \
     UV_LINK_MODE=copy \
     PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -55,46 +107,65 @@ ENV DEBIAN_FRONTEND=noninteractive \
 ENV FLASK_PORT=8084
 
 # Configure locale, timezone, and perform initial cleanup in a single layer
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
+RUN apk add --no-cache \
+    # Runtime interpreter. The minor is fixed by the package name; moving to a
+    # new minor is a deliberate change (see the python notes in dependabot.yml).
+    python-3.14 \
     # No C toolchain: every compiled dependency (cffi, gevent, greenlet,
     # zope-interface) ships a cp314 manylinux wheel for amd64 and arm64, and
-    # the sdist-only ones are pure Python. The toolchain was 290MB of the
-    # runtime image, and python3-dev pulled Debian's libpython3.13 into a 3.14
-    # image. If a dependency ever needs compiling, build it in a separate stage.
-    # For locale
-    locales tzdata \
+    # the sdist-only ones are pure Python. If a dependency ever needs
+    # compiling, build it in a separate stage.
+    # For locale (en_US.UTF-8 ships precompiled; no locale-gen step)
+    glibc-locale-en tzdata \
     # For healthcheck
     curl \
-    # For entrypoint
-    dumb-init \
+    # For entrypoint (groupadd/useradd, getent)
+    dumb-init shadow posix-libc-utils \
+    # GNU grep: tor.sh parses the Tor check with `grep -oP`, which BusyBox lacks
+    grep \
     # For debug
-    zip iputils-ping \
+    zip iputils \
     # For user switching
     gosu \
     # --- Tor support (activated via USING_TOR=true) ---
-    tor \
-    supervisor \
-    iptables \
+    # tor itself is built from source (see tor-builder); these are its libraries.
+    so:libevent-2.1.so.7 so:libssl.so.3 so:libcrypto.so.3 \
+    # Installing the legacy backend makes `iptables`/`ip6tables` resolve to it,
+    # which tor.sh expects.
+    iptables iptables-legacy \
     # --- WireGuard support (activated via USING_WIREGUARD=true) ---
     wireguard-tools \
     iproute2 \
     procps \
     ca-certificates && \
-    # Configure iptables alternatives for tor.sh compatibility
-    update-alternatives --set iptables /usr/sbin/iptables-legacy && \
-    update-alternatives --set ip6tables /usr/sbin/ip6tables-legacy && \
-    # Cleanup APT cache *after* all installs in this layer
-    apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/* && \
     # Default to UTC timezone but will be overridden by the entrypoint script
     ln -snf /usr/share/zoneinfo/UTC /etc/localtime && echo UTC > /etc/timezone && \
-    # Configure locale
-    sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && \
-    locale-gen en_US.UTF-8 && \
     echo "LC_ALL=en_US.UTF-8" >> /etc/environment && \
     echo "LANG=en_US.UTF-8" > /etc/locale.conf
+
+# Tor: the source-built binary plus the account and paths tor.sh expects
+# (Debian's tor package used to create them).
+COPY --from=tor-builder /out/usr/bin/tor /usr/bin/tor
+RUN groupadd -r debian-tor && \
+    useradd -r -g debian-tor -d /var/lib/tor -s /sbin/nologin debian-tor && \
+    install -d -m 0755 /etc/tor && \
+    install -d -m 0700 -o debian-tor -g debian-tor /var/lib/tor && \
+    install -d -m 2750 -o debian-tor -g adm /var/log/tor && \
+    tor --version
+
+# supervisor (tor.sh's process manager) comes from PyPI: Wolfi's package runs on
+# python3.13. It gets its own hash-pinned venv on the image's interpreter and is
+# linked to the paths tor.sh expects.
+RUN --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
+    printf 'supervisor==4.3.0 --hash=sha256:0bcb763fddafba410f35cbde226aa7f8514b9fb82eb05a0c85f6588d1c13f8db\n' \
+        > /tmp/supervisor-requirements.txt && \
+    uv venv --python /usr/bin/python3.14 /opt/supervisor && \
+    uv pip install --python /opt/supervisor/bin/python --no-cache --require-hashes \
+        -r /tmp/supervisor-requirements.txt && \
+    rm /tmp/supervisor-requirements.txt && \
+    ln -s /opt/supervisor/bin/supervisord /usr/bin/supervisord && \
+    ln -s /opt/supervisor/bin/supervisorctl /usr/bin/supervisorctl && \
+    mkdir -p /etc/supervisor
 
 # Create a fixed runtime user/group so hardened Docker/Kubernetes deployments
 # can start the container directly as a non-root user with a passwd entry.
@@ -111,15 +182,6 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
     uv sync --locked --no-default-groups
-
-# Runtime dependencies are installed into /app/.venv during the build. Remove the
-# base image's system pip so stale installer CVEs do not ship in the final image.
-RUN rm -rf \
-        /usr/local/bin/pip \
-        /usr/local/bin/pip3 \
-        /usr/local/bin/pip3.* \
-        /usr/local/lib/python*/site-packages/pip \
-        /usr/local/lib/python*/site-packages/pip-*.dist-info
 
 # The application code is deliberately NOT copied here. `base` is shared by the
 # final stages, so a COPY of the source at this point invalidates every layer
@@ -148,34 +210,25 @@ ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 FROM base AS shelfmark
 
-# --- Chromium (PINNED to 156.0.8078.47) ---
-ARG CHROMIUM_VERSION=156.0.8078.47-1~deb13u1
-ARG CHROMIUM_SNAPSHOT=20261023T000000Z
+# --- Chromium: Chrome for Testing, PINNED in the chrome-download stage ---
+COPY --from=chrome-download /out/opt/chrome-for-testing /opt/chrome-for-testing
 
-RUN echo "deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/${CHROMIUM_SNAPSHOT}/ trixie-security main" \
-        > /etc/apt/sources.list.d/chromium-pin-snapshot.list && \
-    apt-get update -o Acquire::Retries=5 && \
-    apt-get install -y --no-install-recommends -o Acquire::Retries=5 \
-    # For dumb display
-    xvfb \
+RUN apk add --no-cache \
+    # For dumb display. Xvfb exits at startup without xkbcomp, which Wolfi's
+    # xvfb package does not pull in (Debian's did, via x11-xkb-utils).
+    xvfb xkbcomp \
     # For screen recording
     ffmpeg \
-    chromium=${CHROMIUM_VERSION} \
-    chromium-common=${CHROMIUM_VERSION} \
+    # Chrome for Testing's runtime libraries (its deb.deps, mapped to Wolfi)
+    glib libnss libnspr libatk-1.0 libatk-bridge-2.0 cups-libs libxkbcommon alsa-lib mesa-gbm \
+    cairo pango eudev-libs libxcomposite libxdamage libxfixes libxrandr \
+    font-liberation \
     # For tkinter (pyautogui)
-    python3-tk \
-    # For RAR extraction
-    unrar-free && \
-    # Keep apt from "upgrading" chromium past the pin inside derived images
-    printf 'Package: chromium chromium-common\nPin: version %s\nPin-Priority: 1001\n' "${CHROMIUM_VERSION}" \
-        > /etc/apt/preferences.d/chromium-pin && \
-    rm /etc/apt/sources.list.d/chromium-pin-snapshot.list && \
-    # Create symlink so rarfile library can find unrar
-    ln -sf /usr/bin/unrar-free /usr/bin/unrar && \
-    # Cleanup APT cache
-    apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false && \
-    apt-get clean && \
-    rm -rf /var/lib/apt/lists/*
+    python-3.14-tk \
+    # For RAR extraction (rarfile uses 7z; it also reads RAR5, unlike unrar-free)
+    7zip && \
+    # Keep the Debian-era path that SeleniumBase and the rest of the image use
+    ln -s /opt/chrome-for-testing/chrome /usr/bin/chromium
 
 # Install the browser automation stack used by the full image
 RUN --mount=type=cache,target=/root/.cache/uv \
@@ -212,7 +265,7 @@ RUN SELENIUMBASE_DRIVERS_DIR=$(/app/.venv/bin/python -c "import pathlib, seleniu
     if [ -f "${SELENIUMBASE_DRIVERS_DIR}/uc_driver" ]; then chmod +x "${SELENIUMBASE_DRIVERS_DIR}/uc_driver"; fi
 
 # Grant read/execute permissions to others
-RUN chmod -R o+rx /usr/bin/chromium
+RUN chmod -R o+rX /opt/chrome-for-testing
 
 # --- Application code: last, so every expensive layer above stays cached ---
 
