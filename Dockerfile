@@ -180,7 +180,12 @@ RUN echo "deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-
 # Install the browser automation stack used by the full image
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
-    uv sync --locked --no-default-groups --extra browser
+    uv sync --locked --no-default-groups --extra browser && \
+    # Selenium ships prebuilt selenium-manager binaries (about 22MB) for every
+    # platform. They only run when selenium has to locate a webdriver, and the
+    # bypasser drives the browser through SeleniumBase's Pure-CDP driver, which
+    # needs none. Removed in this layer so the image does not carry them.
+    find /app/.venv/lib -name 'selenium-manager*' -delete
 
 # Deterministically resolve the Xlib namespace collision.
 # pyautogui/mouseinfo pull the stale `python3-xlib` (0.15, 2014), while the
