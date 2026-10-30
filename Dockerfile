@@ -4,7 +4,7 @@ ARG BUILDPLATFORM
 ARG BUILDARCH
 
 # Frontend build stage.
-FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS frontend-builder
+FROM --platform=$BUILDPLATFORM dhi.io/node:24.22.1-alpine3.23-dev@sha256:0e7bb431b722a59a87873c6b5e0dfc97d6164bf430214fd0de569e3a72f9f708 AS frontend-builder
 
 # Helpful debug output to see what platforms BuildKit thinks it's using
 RUN echo "BUILDPLATFORM=$BUILDPLATFORM BUILDARCH=$BUILDARCH TARGETPLATFORM=$TARGETPLATFORM TARGETARCH=$TARGETARCH"
@@ -30,8 +30,11 @@ RUN npm run build
 # a RUN adds a layer, it does not rewrite the one underneath.
 FROM ghcr.io/astral-sh/uv:0.13.5@sha256:32a7bb39b496babbd997b0a39a4d66c126bdaf5661b302bf6f06abda8deca6ff AS uv
 
-# Use python-slim as the base image
-FROM python:3.14.8-slim@sha256:a2b82f3c48559aa0a8446d9af49826b6e2b2016f4cd2afabfe6013ec53729170 AS base
+# Use the DHI Python dev variant as the base for this image.
+# Shelfmark installs runtime Debian packages (Chromium, Tor, WireGuard,
+# supervisor, dumb-init, gosu) and runs a bash-based root bootstrap, so the
+# non-dev DHI runtime is not compatible without a larger filesystem split.
+FROM dhi.io/python:3.14.8-debian13-dev@sha256:debbc2a523d09b60d89c0d1f5792609a3cc8840726871b0ca278e9533a6c342e AS base
 
 # Set shell to bash with pipefail option
 SHELL ["/bin/bash", "-o", "pipefail", "-c"]
@@ -54,16 +57,26 @@ ENV DEBIAN_FRONTEND=noninteractive \
 # Set ARG for build-time expansion (FLASK_PORT), ENV for runtime access
 ENV FLASK_PORT=8084
 
+# The interpreter is DHI's own python-3.14 package, which provides `dhi-python3`
+# rather than Debian's `python3`. Any Debian package depending on `python3`
+# makes apt REMOVE the 3.14 interpreter and install Debian's 3.13 in its place.
+# Forbid Debian's python3 outright so such a package fails the build loudly.
+RUN printf 'Package: python3 python3-minimal python3.* libpython3-stdlib libpython3.*\nPin: release *\nPin-Priority: -1\n' \
+        > /etc/apt/preferences.d/no-debian-python3
+
 # Configure locale, timezone, and perform initial cleanup in a single layer
-RUN apt-get update && \
+# DHI's minimal /etc/group has no `adm`, which tor's postinst chowns /var/log/tor to.
+RUN getent group adm > /dev/null || echo 'adm:x:4:' >> /etc/group && \
+    apt-get update && \
     apt-get install -y --no-install-recommends \
     # No C toolchain: every compiled dependency (cffi, gevent, greenlet,
     # zope-interface) ships a cp314 manylinux wheel for amd64 and arm64, and
     # the sdist-only ones are pure Python. The toolchain was 290MB of the
     # runtime image, and python3-dev pulled Debian's libpython3.13 into a 3.14
     # image. If a dependency ever needs compiling, build it in a separate stage.
-    # For locale
-    locales tzdata \
+    # For locale. localedef reads the gzipped charmaps through gzip, which
+    # DHI omits along with hostname (genDebug.sh) from Debian's essential set.
+    locales tzdata gzip hostname \
     # For healthcheck
     curl \
     # For entrypoint
@@ -74,7 +87,6 @@ RUN apt-get update && \
     gosu \
     # --- Tor support (activated via USING_TOR=true) ---
     tor \
-    supervisor \
     iptables \
     # --- WireGuard support (activated via USING_WIREGUARD=true) ---
     wireguard-tools \
@@ -96,6 +108,20 @@ RUN apt-get update && \
     echo "LC_ALL=en_US.UTF-8" >> /etc/environment && \
     echo "LANG=en_US.UTF-8" > /etc/locale.conf
 
+# supervisor (tor.sh's process manager) comes from PyPI, not apt: Debian's
+# package depends on Debian's python3 (see above). It gets its own venv on the
+# DHI interpreter, hash-pinned, and is linked to the paths tor.sh expects.
+RUN --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
+    printf 'supervisor==4.3.0 --hash=sha256:0bcb763fddafba410f35cbde226aa7f8514b9fb82eb05a0c85f6588d1c13f8db\n' \
+        > /tmp/supervisor-requirements.txt && \
+    uv venv --python /usr/bin/python3.14 /opt/supervisor && \
+    uv pip install --python /opt/supervisor/bin/python --no-cache --require-hashes \
+        -r /tmp/supervisor-requirements.txt && \
+    rm /tmp/supervisor-requirements.txt && \
+    ln -s /opt/supervisor/bin/supervisord /usr/bin/supervisord && \
+    ln -s /opt/supervisor/bin/supervisorctl /usr/bin/supervisorctl && \
+    mkdir -p /etc/supervisor
+
 # Create a fixed runtime user/group so hardened Docker/Kubernetes deployments
 # can start the container directly as a non-root user with a passwd entry.
 RUN groupadd -g 1000 shelfmark && \
@@ -114,12 +140,14 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 # Runtime dependencies are installed into /app/.venv during the build. Remove the
 # base image's system pip so stale installer CVEs do not ship in the final image.
-RUN rm -rf \
-        /usr/local/bin/pip \
-        /usr/local/bin/pip3 \
-        /usr/local/bin/pip3.* \
-        /usr/local/lib/python*/site-packages/pip \
-        /usr/local/lib/python*/site-packages/pip-*.dist-info
+# DHI ships them as dpkg packages, so purge them: an `rm` would leave dpkg (and
+# every SBOM/CVE scanner reading it) still listing them as installed. The DHI
+# dev variant's headers and C toolchain bits go too (see "No C toolchain" above).
+RUN apt-get purge -y python3-pip python3-pip-whl python3-setuptools \
+        python3-setuptools-whl python3-wheel python3-wheel-whl \
+        libpython-3.14-dev libc6-dev libc-dev-bin linux-libc-dev libcrypt-dev \
+        libexpat1-dev zlib1g-dev rpcsvc-proto && \
+    rm -rf /var/lib/apt/lists/* /usr/lib/python3/dist-packages/setuptools
 
 # The application code is deliberately NOT copied here. `base` is shared by the
 # final stages, so a COPY of the source at this point invalidates every layer
@@ -162,8 +190,9 @@ RUN echo "deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-
     ffmpeg \
     chromium=${CHROMIUM_VERSION} \
     chromium-common=${CHROMIUM_VERSION} \
-    # For tkinter (pyautogui)
-    python3-tk \
+    # For tkinter (pyautogui). DHI's interpreter already ships _tkinter and
+    # only needs the Tk runtime; python3-tk is for Debian's python3.
+    libtk8.6 \
     # For RAR extraction
     unrar-free && \
     # Keep apt from "upgrading" chromium past the pin inside derived images
