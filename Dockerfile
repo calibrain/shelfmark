@@ -148,9 +148,9 @@ ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 FROM base AS shelfmark
 
-# --- Chromium (PINNED to 156.0.8078.47) ---
-ARG CHROMIUM_VERSION=156.0.8078.47-1~deb13u1
-ARG CHROMIUM_SNAPSHOT=20261023T000000Z
+# --- Chromium (PINNED to 156.0.8078.73) ---
+ARG CHROMIUM_VERSION=156.0.8078.73-1~deb13u1
+ARG CHROMIUM_SNAPSHOT=20261029T020000Z
 
 RUN echo "deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/${CHROMIUM_SNAPSHOT}/ trixie-security main" \
         > /etc/apt/sources.list.d/chromium-pin-snapshot.list && \
