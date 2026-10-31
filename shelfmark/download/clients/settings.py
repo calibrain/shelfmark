@@ -1120,6 +1120,23 @@ def prowlarr_clients_settings() -> list[SettingsField]:
             max_value=STALL_TIMEOUT_MAX_MINUTES,
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "notEmpty": True},
         ),
+        NumberField(
+            key="STALE_TORRENT_HOURS",
+            label="Remove dead torrents after (hours)",
+            description=(
+                "Remove a torrent Shelfmark added when it is stalled or cannot fetch its "
+                "metadata, has had no activity for this many hours, and no running download "
+                "owns it. Its partial data goes with it. Only torrents Shelfmark itself added "
+                "are ever considered, whatever category they are in; torrents still "
+                "downloading, queued, or finished are never touched. 3 to 72 hours (a value "
+                "outside that is held to it); 0 keeps them. Checked every 15 minutes, "
+                "independent of the Hardcover sync; only qBittorrent is supported."
+            ),
+            default=6,
+            min_value=0,
+            max_value=72,
+            show_when={"field": "PROWLARR_TORRENT_CLIENT", "notEmpty": True},
+        ),
         # --- Usenet Client Selection ---
         HeadingField(
             key="usenet_heading",

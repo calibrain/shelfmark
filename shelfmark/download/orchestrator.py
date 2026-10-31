@@ -665,8 +665,14 @@ def retry_persisted_download(
     *,
     final_status: object,
     priority: int = -10,
+    allow_request_linked: bool = False,
 ) -> tuple[bool, str | None]:
-    """Retry a persisted download row after the in-memory task has been lost."""
+    """Retry a persisted download row after the in-memory task has been lost.
+
+    A request-linked download that failed is normally retried from its request, since the
+    request decides what to fetch next. ``allow_request_linked`` queues it anyway, for work
+    that is already done and only needs importing (a finished folder an interrupted run left).
+    """
     task = _restore_task_from_retry_payload(payload)
     if task is None:
         return False, "Download cannot be retried"
@@ -684,7 +690,12 @@ def retry_persisted_download(
     if normalized_status in {"active", "cancelled"} and not has_fresh_retry_context:
         return False, "Download cannot be retried"
 
-    if task.request_id is not None and normalized_status == "error" and not has_staged_retry_source:
+    if (
+        task.request_id is not None
+        and normalized_status == "error"
+        and not has_staged_retry_source
+        and not allow_request_linked
+    ):
         return False, "Request-linked downloads must be retried from requests"
 
     if (

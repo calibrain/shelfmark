@@ -303,6 +303,16 @@ if user_db is not None:
     except (ImportError, RuntimeError, OSError) as exc:
         logger.warning("Failed to start Hardcover scheduler: %s", exc)
 
+# Dead-torrent and Soulseek-leftover sweeps run on their own timer, whether or not
+# Hardcover sync is on. Each is a no-op unless its setting and client are configured.
+if user_db is not None and download_history_service is not None:
+    try:
+        from shelfmark.download import housekeeping
+
+        housekeeping.start(user_db, download_history_service)
+    except (ImportError, RuntimeError, OSError) as exc:
+        logger.warning("Failed to start download housekeeping: %s", exc)
+
 # Pre-solve the direct-download source's protection challenge in the background so the
 # first user search does not pay for a cold Chrome bypass. Never blocks startup.
 warmup.start()
