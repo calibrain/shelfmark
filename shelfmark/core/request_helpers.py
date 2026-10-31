@@ -180,6 +180,23 @@ def populate_request_usernames(rows: list[dict[str, Any]], user_db: object) -> N
         row["username"] = cache[requester_id]
 
 
+def populate_request_reviewers(rows: list[dict[str, Any]], user_db: object) -> None:
+    """Add 'reviewer_username' to each reviewed request row. Admin views only."""
+    if not _is_user_db_like(user_db):
+        return
+
+    cache: dict[int, str] = {}
+    for row in rows:
+        reviewer_id = normalize_positive_int(row.get("reviewed_by"))
+        if reviewer_id is None:
+            row["reviewer_username"] = ""
+            continue
+        if reviewer_id not in cache:
+            reviewer = user_db.get_user(user_id=reviewer_id)
+            cache[reviewer_id] = reviewer.get("username", "") if reviewer else ""
+        row["reviewer_username"] = cache[reviewer_id]
+
+
 def extract_release_source_id(release_data: object) -> str | None:
     """Extract and normalize release_data.source_id."""
     if not isinstance(release_data, dict):

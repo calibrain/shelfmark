@@ -280,7 +280,7 @@ interface UseActivityResult {
   prefetchActivityHistory: () => void;
   refreshActivitySnapshot: () => Promise<void>;
   refreshHistoryIfLoaded: () => void;
-  handleActivityTabChange: (tab: 'all' | 'downloads' | 'requests' | 'history') => void;
+  handleActivityTabChange: (tab: 'all' | 'downloads' | 'requests' | 'history' | 'rejected') => void;
   resetActivity: () => void;
   handleActivityHistoryLoadMore: () => void;
   handleRequestDismiss: (requestId: number) => void;
@@ -366,7 +366,7 @@ export const useActivity = ({
   }, [isAuthenticated, resetActivityHistory]);
 
   const handleActivityTabChange = useCallback(
-    (tab: 'all' | 'downloads' | 'requests' | 'history') => {
+    (tab: 'all' | 'downloads' | 'requests' | 'history' | 'rejected') => {
       if (tab !== 'history' || activityHistoryLoaded || activityHistoryLoading) {
         return;
       }
