@@ -533,13 +533,14 @@ class TestReadOnlyKeyRequests:
             assert client.get("/api/settings", headers=_bearer("ro-key")).status_code == 403
 
 
-class TestStatsEndpoint:
-    def test_stats_payload_carries_counters(self, wired, user_db):
+class TestStatsAndHealthEndpoints:
+    def test_stats_payload_carries_counters_and_scheduler(self, wired, user_db):
         user_db.create_user(username="root", role="admin")
         body = wired.app.test_client().get("/api/stats", headers=_bearer("s3cret")).get_json()
 
-        assert set(body) == {"generated_at", "added", "queue", "requests", "errors"}
+        assert set(body) == {"generated_at", "added", "queue", "requests", "errors", "scheduler"}
         assert body["added"]["total_7d"] == 0
+        assert "healthy" in body["scheduler"]
 
     def test_stats_is_closed_to_a_plain_non_admin_session(self, wired, user_db):
         user = user_db.create_user(username="reader", role="user")
@@ -552,3 +553,11 @@ class TestStatsEndpoint:
         client = _cookie_client(wired.app, admin, is_admin=True)
 
         assert client.get("/api/stats").status_code == 200
+
+    def test_health_reports_the_scheduler_without_needing_a_key(self, wired):
+        # The test app never starts the coordinator, which /api/health reports.
+        with patch.object(wired.backend, "coordinator_running", return_value=True):
+            body = wired.app.test_client().get("/api/health").get_json()
+
+        assert body["status"] == "ok"
+        assert set(body["scheduler"]) == {"enabled", "healthy", "seconds_since_last_cycle"}

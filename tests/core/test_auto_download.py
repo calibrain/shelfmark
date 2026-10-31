@@ -5,8 +5,15 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
-from shelfmark.core import auto_download, library_index, text_match
+from shelfmark.core import (
+    auto_download,
+    hardcover_scheduler,
+    library_index,
+    search_deadline,
+    text_match,
+)
 from shelfmark.core.download_history_service import DownloadHistoryService
+from shelfmark.core.search_deadline import SearchDeadline
 from shelfmark.core.user_db import UserDB
 from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources import Release, ReleaseProtocol
@@ -1123,6 +1130,121 @@ def test_pending_pass_without_an_admin_queues_nothing(user_db, monkeypatch):
     )
 
     assert summary == {"queued": 0, "no_match": 0, "in_library": 0, "skipped": 0, "error": 0}
+
+
+class TestSearchBudget:
+    """Each request's source walk runs under the UI's search budget, within the cycle's."""
+
+    @pytest.fixture(autouse=True)
+    def _library_check_off(self, monkeypatch):
+        monkeypatch.setattr(auto_download, "app_config", FakeConfig(LIBRARY_CHECK_ENABLED=False))
+        monkeypatch.setattr(
+            "shelfmark.core.library_index.is_in_library", lambda *_args, **_kwargs: False
+        )
+
+    def _run(self, user_db, monkeypatch, search, sources=("first", "second")):
+        admin = user_db.create_user(username="admin", role="admin")
+        reader = user_db.create_user(username="reader", role="user")
+        row = _pending_request(user_db, reader["id"])
+        _stub_provider(monkeypatch, _book())
+        monkeypatch.setattr(auto_download, "search_source_releases", search)
+        return auto_download.auto_download_request(
+            user_db,
+            row,
+            sources=list(sources),
+            content_type="audiobook",
+            min_seeders=1,
+            queue_release=lambda *_args, **_kwargs: (True, None),
+            admin_user_id=admin["id"],
+        )
+
+    def test_a_source_search_runs_under_the_release_search_budget(self, user_db, monkeypatch):
+        budgets = []
+
+        def _search(source_name, _book_arg, **_kwargs):
+            budgets.append((source_name, search_deadline.current().budget_seconds))
+            return None, [], None
+
+        self._run(user_db, monkeypatch, _search)
+
+        # The default RELEASE_SEARCH_TIMEOUT, the same budget /api/releases gives a search.
+        assert budgets == [("first", 300.0), ("second", 300.0)]
+        assert search_deadline.current() is None  # it does not outlive the request
+
+    def test_the_budget_is_capped_by_what_is_left_of_the_cycle(self, user_db, monkeypatch):
+        budgets = []
+
+        def _search(_source_name, _book_arg, **_kwargs):
+            budgets.append(search_deadline.current().budget_seconds)
+            return None, [], None
+
+        with hardcover_scheduler._in_cycle(SearchDeadline(10.0)):
+            self._run(user_db, monkeypatch, _search, sources=("first",))
+
+        assert len(budgets) == 1
+        assert 0 < budgets[0] <= 10.0
+
+    def test_a_spent_budget_skips_the_remaining_sources(self, user_db, monkeypatch):
+        searched = []
+
+        def _search(source_name, _book_arg, **_kwargs):
+            searched.append(source_name)
+            search_deadline.current().event.set()  # the first source used the whole budget
+            return None, [], "took too long"
+
+        outcome = self._run(user_db, monkeypatch, _search)
+
+        assert searched == ["first"]
+        assert outcome.status == "error"
+        assert "first: took too long" in outcome.detail
+        assert "second: The release search ran out of time" in outcome.detail
+
+    def test_a_cycle_out_of_time_ends_the_source_walk(self, user_db, monkeypatch):
+        deadline = SearchDeadline(60.0)
+        searched = []
+
+        def _search(source_name, _book_arg, **_kwargs):
+            searched.append(source_name)
+            deadline.event.set()  # the scheduler gave up on the cycle during this search
+            return None, [], None
+
+        with hardcover_scheduler._in_cycle(deadline):
+            outcome = self._run(user_db, monkeypatch, _search)
+
+        assert searched == ["first"]
+        assert outcome.status == "error"
+        assert outcome.detail == "search failed: second: the sync cycle ran out of time"
+
+    def test_the_pass_stops_at_the_next_request_once_the_cycle_is_out_of_time(
+        self, user_db, monkeypatch
+    ):
+        monkeypatch.setattr(auto_download, "app_config", FakeConfig(AUTO_DOWNLOAD_ENABLED=True))
+        user_db.create_user(username="admin", role="admin")
+        reader = user_db.create_user(username="reader", role="user")
+        pending = {
+            _pending_request(user_db, reader["id"], provider_id="1")["id"],
+            _pending_request(user_db, reader["id"], provider_id="2")["id"],
+        }
+        monkeypatch.setattr(auto_download, "_configured_source_priority", lambda _ct: ["first"])
+        deadline = SearchDeadline(60.0)
+        handled = []
+
+        def _request(_user_db, row, **_kwargs):
+            handled.append(row["id"])
+            deadline.event.set()
+            return auto_download.AutoDownloadOutcome(row["id"], "no_match")
+
+        monkeypatch.setattr(auto_download, "auto_download_request", _request)
+
+        with hardcover_scheduler._in_cycle(deadline):
+            summary = auto_download.auto_download_pending(
+                user_db, queue_release=lambda *_args, **_kwargs: (True, None), db_path=None
+            )
+
+        # One request was handled (whichever the pending list put first); the other waits.
+        assert len(handled) == 1
+        assert handled[0] in pending
+        assert summary == {"queued": 0, "no_match": 1, "in_library": 0, "skipped": 0, "error": 1}
 
 
 class TestDownloadCountRanking:
@@ -2479,6 +2601,23 @@ class TestQueryLadder:
         variants = {title for _source, title in searched} - {book.title}
         assert 1 <= len(variants) <= 3
         assert len(searched) == 2 * (1 + len(variants))
+
+    def test_no_variant_once_the_cycle_has_run_out(self, user_db, monkeypatch):
+        calls = []
+
+        def _cycle_expired():
+            calls.append(1)
+            return len(calls) > 1  # time for the request's own walk, none after
+
+        monkeypatch.setattr(auto_download, "cycle_expired", _cycle_expired)
+        book = self._find_your_why()
+
+        outcome, searched = self._run(
+            user_db, monkeypatch, book, {"Find Your Why": ["Find Your Why - Simon Sinek [m4b]"]}
+        )
+
+        assert outcome.status == "no_match"
+        assert searched == [("first", self.FIND_YOUR_WHY)]
 
 
 class TestRetryAfterCooldown:
