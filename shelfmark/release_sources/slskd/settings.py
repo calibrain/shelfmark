@@ -154,9 +154,9 @@ def slskd_config_settings() -> list[SettingsField]:
             default=True,
             description=(
                 "A restart can land after the last file arrives and before it is copied to "
-                "your library. At startup, and at each sync cycle, a download folder that "
-                "holds every file asked for, whose download never completed, is imported "
-                "without downloading anything again."
+                "your library. Checked every 15 minutes, independent of the Hardcover sync, "
+                "a download folder that holds every file asked for, whose download never "
+                "completed, is imported without downloading anything again."
             ),
             show_when={"field": "SLSKD_ISOLATE_DOWNLOADS", "value": True},
         ),
