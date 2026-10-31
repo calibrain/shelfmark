@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any
 
 from shelfmark.core import search_deadline
 from shelfmark.core.config import config as app_config
+from shelfmark.core.hardcover_scheduler import cycle_expired, cycle_remaining
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import QueueStatus
 from shelfmark.core.release_search import search_source_releases
@@ -1273,6 +1274,19 @@ _SOURCE_PRIORITY_KEYS = {
 }
 
 
+def _search_budget() -> float:
+    """What one request's release search may spend, in seconds.
+
+    The same budget ``/api/releases`` gives a search (``RELEASE_SEARCH_TIMEOUT``), and no
+    more than what is left of the scheduler's cycle. It is what bounds the sources that
+    have no request timeout of their own: a search handed to the browser bypasser can
+    otherwise run for minutes per page.
+    """
+    budget = search_deadline.budget_seconds()
+    remaining = cycle_remaining()
+    return budget if remaining is None else min(budget, remaining)
+
+
 def _configured_source_priority(content_type: str) -> list[str]:
     """Return enabled release-source names for ``content_type`` in configured priority order."""
     from shelfmark.release_sources import list_available_sources
@@ -1503,6 +1517,12 @@ def auto_download_request(
         """Search the sources in priority order; the first with a strict match wins."""
         nonlocal skipped_pack
         for source_name in sources:
+            if cycle_expired():
+                source_errors.append(f"{source_name}: the sync cycle ran out of time")
+                break
+            if search_deadline.expired():
+                source_errors.append(f"{source_name}: {search_deadline.deadline_message()}")
+                continue
             # The requester's id lets the search plan apply their default languages.
             _source, releases, search_error = search_source_releases(
                 source_name,
@@ -1578,29 +1598,34 @@ def auto_download_request(
             return AutoDownloadOutcome(request_id, "queued", chosen.title, source=source_name)
         return None
 
-    outcome = _walk(book)
-    if outcome is not None:
-        return outcome
-    # Nothing matched the request's own query. Try a few simpler ones, stopping at the
-    # first that yields a strict match; the match rules are the same for each.
-    for label, title in query_variants(book):
-        logger.info(
-            "auto-download: request %s (%s): no strict match, trying %s: %r",
-            request_id,
-            book.title,
-            label,
-            title,
-        )
-        outcome = _walk(replace(book, search_title=title))
+    # The whole walk, variants included, shares one search budget, as it does for a search
+    # from the UI: a stuck first source cannot spend the request on its own.
+    with search_deadline.search_deadline(_search_budget()):
+        outcome = _walk(book)
         if outcome is not None:
-            if outcome.status == "queued":
-                logger.info(
-                    "auto-download: request %s matched on the query %s: %r",
-                    request_id,
-                    label,
-                    title,
-                )
             return outcome
+        # Nothing matched the request's own query. Try a few simpler ones, stopping at the
+        # first that yields a strict match; the match rules are the same for each.
+        for label, title in query_variants(book):
+            if cycle_expired():
+                break
+            logger.info(
+                "auto-download: request %s (%s): no strict match, trying %s: %r",
+                request_id,
+                book.title,
+                label,
+                title,
+            )
+            outcome = _walk(replace(book, search_title=title))
+            if outcome is not None:
+                if outcome.status == "queued":
+                    logger.info(
+                        "auto-download: request %s matched on the query %s: %r",
+                        request_id,
+                        label,
+                        title,
+                    )
+                return outcome
 
     if source_errors:
         # A source that failed has not said the book is missing.
@@ -1771,6 +1796,15 @@ def auto_download_pending(
             )
             summary["skipped"] += 1
             continue
+
+        if cycle_expired():
+            logger.warning(
+                "auto-download: cycle out of time; request %s and any after it wait for "
+                "the next cycle",
+                row.get("id"),
+            )
+            summary["error"] += 1
+            break
 
         started = time.monotonic()
         try:

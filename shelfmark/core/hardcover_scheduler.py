@@ -10,13 +10,17 @@ from __future__ import annotations
 
 import threading
 import time
+from contextlib import contextmanager
+from contextvars import ContextVar
+from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.search_deadline import SearchDeadline
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from shelfmark.core.user_db import UserDB
 
@@ -35,6 +39,126 @@ _thread_lock = threading.Lock()
 
 # Prevents a scheduled cycle and a manual "Sync now" from overlapping.
 _run_lock = threading.Lock()
+
+_OVERDUE_INTERVALS = 2  # A cycle this many intervals late is reported as a problem.
+
+# A cycle still running after this long is stuck, not slow. Every call it makes has its
+# own timeout (Hardcover and Audiobookshelf requests, each request's release search), so a
+# healthy cycle finishes well inside it; what this catches is the call no timeout reaches,
+# such as a hung DNS lookup or a dead network mount under the Calibre database. When it
+# trips, run_once stops waiting and releases _run_lock, so the next scheduled cycle and
+# "Sync now" work again, and the cycle's own code stops at its next unit of work (see
+# cycle_expired). A thread cannot be killed, so that is the whole of the recovery.
+_CYCLE_TIMEOUT_SECONDS = 3600.0
+# A cycle may use most of the gap between cycles: a long auto-download backlog is slow, not
+# stuck, and tripping the guard on it would report an error every cycle.
+_CYCLE_TIMEOUT_SHARE_OF_INTERVAL = 0.8
+
+
+def _cycle_timeout() -> float:
+    """Seconds one cycle may run: most of the interval, never less than an hour."""
+    return max(_CYCLE_TIMEOUT_SECONDS, _CYCLE_TIMEOUT_SHARE_OF_INTERVAL * _interval_seconds())
+
+
+# The budget of the cycle running in this thread. Only the cycle's worker thread sets it;
+# a route or a test calling the sync directly sees None and is never cut short.
+_cycle: ContextVar[SearchDeadline | None] = ContextVar("hardcover_cycle", default=None)
+
+
+@contextmanager
+def _in_cycle(deadline: SearchDeadline) -> Iterator[None]:
+    token = _cycle.set(deadline)
+    try:
+        yield
+    finally:
+        _cycle.reset(token)
+
+
+def cycle_expired() -> bool:
+    """Whether the scheduler has given up on the cycle this thread is part of.
+
+    The sync and the auto-download pass ask between units of work (an account, a shelf
+    page, a request, a source) so an abandoned cycle winds down at its next boundary
+    instead of running on beside the cycle that replaced it. False outside a cycle.
+    """
+    deadline = _cycle.get()
+    return deadline is not None and deadline.expired
+
+
+def cycle_remaining() -> float | None:
+    """Seconds left in the cycle this thread is part of, or None outside a cycle."""
+    deadline = _cycle.get()
+    return deadline.remaining if deadline is not None else None
+
+
+def _now() -> float:
+    return time.time()
+
+
+def _new_state() -> dict[str, Any]:
+    return {
+        "started_at": _now(),
+        "last_cycle_at": None,
+        "last_cycle_errors": 0,
+        "consecutive_failed_cycles": 0,
+    }
+
+
+# What the last cycle did, for /api/stats and /api/health. In memory: a restart starts clean.
+_state_lock = threading.Lock()
+_state: dict[str, Any] = _new_state()
+
+
+def _cycle_errors(result: dict[str, Any]) -> int:
+    """Errors a finished cycle reported, across the sync and the auto-download pass."""
+    total = 0
+    for key, field in (("sync", "errors"), ("auto_download", "error")):
+        part = result.get(key)
+        if isinstance(part, dict):
+            total += int(part.get(field, 0) or 0)
+    return total
+
+
+def _record_cycle(errors: int) -> None:
+    with _state_lock:
+        _state["last_cycle_at"] = _now()
+        _state["last_cycle_errors"] = errors
+        _state["consecutive_failed_cycles"] = (
+            _state["consecutive_failed_cycles"] + 1 if errors else 0
+        )
+
+
+def status() -> dict[str, Any]:
+    """The background cycle's health: when it last ran, what it hit, and what is wrong."""
+    enabled = _enabled()
+    interval = _interval_seconds()
+    now = _now()
+    with _state_lock:
+        state = dict(_state)
+    thread_alive = _thread is not None and _thread.is_alive()
+    last = state["last_cycle_at"]
+
+    problems: list[str] = []
+    if enabled:
+        if not thread_alive:
+            problems.append("scheduler thread is not running")
+        if state["last_cycle_errors"]:
+            problems.append(f"last cycle had {state['last_cycle_errors']} error(s)")
+        reference = last if last is not None else state["started_at"] + _WARMUP_SECONDS
+        if now - reference > _OVERDUE_INTERVALS * interval:
+            problems.append(f"no cycle in {int((now - reference) // 3600)}h")
+
+    return {
+        "enabled": enabled,
+        "thread_alive": thread_alive,
+        "interval_seconds": int(interval),
+        "last_cycle_at": datetime.fromtimestamp(last, UTC).isoformat() if last else None,
+        "seconds_since_last_cycle": int(now - last) if last is not None else None,
+        "last_cycle_errors": state["last_cycle_errors"],
+        "consecutive_failed_cycles": state["consecutive_failed_cycles"],
+        "healthy": not problems,
+        "problems": problems,
+    }
 
 
 def configure(
@@ -77,12 +201,16 @@ def _sync_all_accounts(user_db: UserDB, *, db_path: str | None) -> dict[str, Any
 
     totals: dict[str, Any] = {"added": 0, "skipped": 0, "in_library": 0, "errors": 0}
     per_user_ids = users_with_hardcover_token(user_db)
+    attempted = 0
 
     def merge(summary: dict[str, int]) -> None:
         for key in ("added", "skipped", "in_library", "errors"):
             totals[key] += int(summary.get(key, 0))
 
     for user_id in per_user_ids:
+        if cycle_expired():
+            break
+        attempted += 1
         try:
             merge(sync_wishlist(user_db, db_path=db_path, user_id=user_id))
         except Exception:
@@ -90,14 +218,50 @@ def _sync_all_accounts(user_db: UserDB, *, db_path: str | None) -> dict[str, Any
             totals["errors"] += 1
 
     # The app-level token still runs, for instances where nobody connected their own.
-    try:
-        merge(sync_wishlist(user_db, db_path=db_path))
-    except Exception:
-        logger.exception("hardcover-sync: app-level sync failed")
+    if cycle_expired():
+        logger.warning(
+            "hardcover-sync: cycle out of time; %d of %d account(s) not synced",
+            len(per_user_ids) + 1 - attempted,
+            len(per_user_ids) + 1,
+        )
         totals["errors"] += 1
+    else:
+        attempted += 1
+        try:
+            merge(sync_wishlist(user_db, db_path=db_path))
+        except Exception:
+            logger.exception("hardcover-sync: app-level sync failed")
+            totals["errors"] += 1
 
-    totals["accounts"] = len(per_user_ids) + 1
+    totals["accounts"] = attempted
     return totals
+
+
+def _cycle_body(
+    user_db: UserDB,
+    queue_release: Callable[..., tuple[bool, str | None]],
+    db_path: str | None,
+    *,
+    force: bool,
+) -> dict[str, Any]:
+    from shelfmark.core.auto_download import auto_download_pending
+
+    sync_summary: dict[str, Any] | None = None
+    if force or bool(app_config.get("HARDCOVER_SYNC_ENABLED", False)):
+        sync_summary = _sync_all_accounts(user_db, db_path=db_path)
+    auto_summary = auto_download_pending(
+        user_db, queue_release=queue_release, db_path=db_path, ignore_backoff=force
+    )
+    return {"status": "ok", "sync": sync_summary, "auto_download": auto_summary}
+
+
+def _run_cycle(deadline: SearchDeadline, box: dict[str, Any], **kwargs: Any) -> None:
+    """Worker-thread entry: run one cycle under its budget and leave the outcome in ``box``."""
+    with _in_cycle(deadline):
+        try:
+            box["result"] = _cycle_body(**kwargs)
+        except BaseException as exc:  # noqa: BLE001 - handed back to run_once, which re-raises
+            box["error"] = exc
 
 
 def run_once(*, force: bool = False) -> dict[str, Any]:
@@ -107,6 +271,11 @@ def run_once(*, force: bool = False) -> dict[str, Any]:
     toggle; auto-download always remains gated by ``AUTO_DOWNLOAD_ENABLED`` inside
     ``auto_download_pending``. Skips (returns ``{"status": "busy"}``) if another run
     is in progress.
+
+    The cycle runs in a worker thread and is waited on for at most
+    ``_cycle_timeout()`` (most of the interval, at least an hour). Past that it is reported as ``{"status": "timeout"}``,
+    recorded as a failed cycle, and the lock is released; the worker is told to stop at
+    its next unit of work and whatever it reports later is ignored.
     """
     if not _run_lock.acquire(blocking=False):
         return {"status": "busy"}
@@ -119,15 +288,43 @@ def run_once(*, force: bool = False) -> dict[str, Any]:
         if user_db is None or queue_release is None:
             return {"status": "unconfigured"}
 
-        from shelfmark.core.auto_download import auto_download_pending
-
-        sync_summary: dict[str, Any] | None = None
-        if force or bool(app_config.get("HARDCOVER_SYNC_ENABLED", False)):
-            sync_summary = _sync_all_accounts(user_db, db_path=db_path)
-        auto_summary = auto_download_pending(
-            user_db, queue_release=queue_release, db_path=db_path, ignore_backoff=force
+        timeout = _cycle_timeout()
+        deadline = SearchDeadline(timeout)
+        box: dict[str, Any] = {}
+        worker = threading.Thread(
+            target=_run_cycle,
+            args=(deadline, box),
+            kwargs={
+                "user_db": user_db,
+                "queue_release": queue_release,
+                "db_path": db_path,
+                "force": force,
+            },
+            daemon=True,
+            name="HardcoverSyncCycle",
         )
-        return {"status": "ok", "sync": sync_summary, "auto_download": auto_summary}
+        try:
+            deadline.start()
+            worker.start()
+            worker.join(timeout)
+            if worker.is_alive():
+                deadline.event.set()
+                logger.error(
+                    "Hardcover scheduler: cycle still running after %ds; giving up on it "
+                    "so the next cycle can run",
+                    int(timeout),
+                )
+                _record_cycle(1)
+                return {"status": "timeout", "timeout_seconds": int(timeout), "errors": 1}
+        finally:
+            deadline.cancel()
+
+        if "error" in box:
+            _record_cycle(1)
+            raise box["error"]
+        result = box["result"]
+        _record_cycle(_cycle_errors(result))
+        return result
     finally:
         _run_lock.release()
 

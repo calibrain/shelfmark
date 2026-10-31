@@ -15,6 +15,7 @@ from typing import TYPE_CHECKING, Any
 from shelfmark.core import library_index
 from shelfmark.core.config import config as app_config
 from shelfmark.core.download_history_service import ACTIVE_DOWNLOAD_STATUS
+from shelfmark.core.hardcover_scheduler import cycle_expired
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_policy import normalize_content_type
 from shelfmark.core.utils import transform_cover_url
@@ -248,10 +249,23 @@ def _already_downloaded(
 
 
 def _fetch_status_books(provider: Any, status_id: int) -> tuple[list[BookMetadata], bool]:
-    """Page through a Hardcover status shelf: the books read, and whether a fetch failed."""
+    """Page through a Hardcover status shelf: the books read, and whether a fetch failed.
+
+    Each page is one Hardcover request, bounded by the provider's own timeout and retry
+    cap. A shelf left unfinished because the scheduler gave up on the cycle counts as a
+    failed fetch: the books read so far are still returned, so they can be requested.
+    """
     books: list[BookMetadata] = []
     failed = False
     for page in range(1, _MAX_PAGES + 1):
+        if cycle_expired():
+            logger.warning(
+                "hardcover-sync: cycle out of time; shelf %s not read past page %s",
+                status_id,
+                page - 1,
+            )
+            failed = True
+            break
         try:
             result = provider._fetch_current_user_books_by_status(status_id, page, _PAGE_LIMIT)
         except Exception as exc:  # noqa: BLE001 - network/provider errors shouldn't abort the sync
