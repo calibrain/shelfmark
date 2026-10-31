@@ -221,7 +221,12 @@ def test_users_me_edit_context_falls_back_to_default_sections_for_invalid_config
             resp = client.get("/api/users/me/edit-context")
 
     assert resp.status_code == 200
-    assert resp.json["visibleUserSettingsSections"] == ["delivery", "search", "notifications"]
+    assert resp.json["visibleUserSettingsSections"] == [
+        "delivery",
+        "search",
+        "notifications",
+        "hardcover",
+    ]
     assert resp.json["deliveryPreferences"] is not None
     assert resp.json["searchPreferences"] is not None
     assert resp.json["notificationPreferences"] is not None

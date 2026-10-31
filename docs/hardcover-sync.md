@@ -64,12 +64,28 @@ Both shelf sync and automatic downloads ask the libraries you have enabled under
 
 The check **fails closed** here: if an enabled library cannot be read and has not been read before, the sync cycle is skipped and an automatic download is held, and the request stays pending until the next cycle. Skipping is the safe side, because carrying on would request or download books the library already holds. Badges in search results still fail open.
 
+## Per-user accounts
+
+Every user can connect their own Hardcover account instead of sharing one. The token
+field is user overridable, so it appears under **Settings, Hardcover Account** for each
+user, and it is also settable per user by an admin from the user editor. Admins choose
+whether that section is shown at all with **Visible self settings sections** on the Users
+tab.
+
+When a user connects a token, each scheduled run syncs their shelf on their own token and
+the requests it creates are owned by them, deduplicated against their own requests rather
+than the whole instance. Accounts are synced one at a time, so a token that has expired or
+an API error on one account does not stop the others.
+
+The app-level token still runs as its own pass afterwards, owned by the lowest-id admin,
+which is what a single-account install keeps doing with no change.
+
 ## Settings
 
 | Key | Label | Default | Notes |
 |-----|-------|---------|-------|
 | `HARDCOVER_SYNC_ENABLED` | Enable scheduled sync | Off | Runs shelf sync on the interval below |
-| `HARDCOVER_SYNC_TOKEN` | Hardcover API Token | — | Leave blank to reuse the Hardcover metadata provider's token |
+| `HARDCOVER_SYNC_TOKEN` | Hardcover API Token | — | Leave blank to reuse the Hardcover metadata provider's token. Each user can connect their own account instead, see [Per-user accounts](#per-user-accounts) |
 | `HARDCOVER_SYNC_STATUSES` | Shelves to sync | Want to Read | Hardcover reading status to pull from |
 | `HARDCOVER_SYNC_CONTENT_TYPE` | Request as | Audiobooks | `Audiobooks`, `Ebooks`, or `Ebooks and audiobooks` — the last creates one request of each per shelf book, each checked against its own library |
 | `HARDCOVER_SYNC_INTERVAL` | Sync interval | 6 | Combined with the unit below |
@@ -103,6 +119,8 @@ Only requests whose provider is Hardcover are considered for automatic downloads
 The scheduler starts with the app and waits **60 seconds** before its first cycle. Each cycle runs a shelf sync (when scheduled sync is enabled) followed by an automatic-download pass (when that is enabled), then sleeps for the configured interval. Intervals shorter than 60 seconds are raised to 60 seconds so a typo cannot hammer the Hardcover API. If the interval cannot be read at all, the scheduler logs the error and tries again after six hours instead of stopping. When neither toggle is on the scheduler idles.
 
 Only one run happens at a time. If a scheduled cycle is in progress, **Sync now** reports that a sync is already running.
+
+Each request's release search during a cycle runs under the same time limit as a search from the UI (`RELEASE_SEARCH_TIMEOUT`). A cycle that is still running after an hour is treated as stuck: the scheduler stops waiting for it, logs an error, counts the cycle as failed in `/api/health`, and lets the next cycle or **Sync now** run. The stuck cycle itself stops at its next request. Whatever it did not get to waits for the next cycle.
 
 ## Troubleshooting
 

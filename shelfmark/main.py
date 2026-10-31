@@ -227,6 +227,7 @@ try:
         PasswordAttemptLimiter,
         register_self_user_routes,
     )
+    from shelfmark.core.series_gap_routes import register_series_gap_routes
 
     register_oidc_routes(app, user_db)
     register_admin_routes(app, user_db)
@@ -240,6 +241,7 @@ try:
             clear=lambda username: clear_failed_logins(username),  # noqa: PLW0108
         ),
     )
+    register_series_gap_routes(app, user_db)
 except (sqlite3.OperationalError, OSError) as e:
     logger.warning(
         "User database initialization failed: %s. Multi-user authentication features will be disabled. Ensure CONFIG_DIR (%s) exists and is writable.",
@@ -1513,7 +1515,18 @@ def api_health() -> Response | tuple[Response, int]:
         downloaded without it.
 
     """
-    response: dict[str, object] = {"status": "ok"}
+    from shelfmark.core import hardcover_scheduler
+
+    scheduler = hardcover_scheduler.status()
+    response: dict[str, object] = {
+        "status": "ok",
+        # What a monitor keys on: the container can be up while the sync cycle is not.
+        "scheduler": {
+            "enabled": scheduler["enabled"],
+            "healthy": scheduler["healthy"],
+            "seconds_since_last_cycle": scheduler["seconds_since_last_cycle"],
+        },
+    }
 
     # Report degraded features
     if not backend.WEBSOCKET_AVAILABLE:

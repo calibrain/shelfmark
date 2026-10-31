@@ -48,11 +48,26 @@ def _session(url: str, token: str) -> requests.Session:
     return session
 
 
-def _first_series_name(value: object) -> str | None:
-    """The first series in Audiobookshelf's ``seriesName`` ("Name #1, Other Name #3")."""
-    first = str(value or "").split(", ", 1)[0].strip()
-    name = re.sub(r"\s+#\S+$", "", first).strip()
-    return name or None
+# The minified item metadata carries the series as one string, "Name #sequence" per
+# series joined with ", " (Audiobookshelf's Book.seriesName). The sequence is free text.
+_SERIES_WITH_SEQUENCE = re.compile(r"^(?P<name>.+?)\s+#(?P<sequence>\S+)$")
+
+
+def _parse_series_name(value: object) -> tuple[str | None, float | None]:
+    """The first series in a ``seriesName`` string, and its position when numeric."""
+    text = str(value or "").strip()
+    if not text:
+        return None, None
+    first = text.split(", ", 1)[0].strip()
+    match = _SERIES_WITH_SEQUENCE.match(first)
+    if not match:
+        return first or None, None
+    name = match["name"].strip()
+    try:
+        position: float | None = float(match["sequence"])
+    except ValueError:
+        position = None
+    return name or None, position
 
 
 def _item_to_entry(item: dict[str, Any]) -> LibraryEntry:
@@ -61,15 +76,23 @@ def _item_to_entry(item: dict[str, Any]) -> LibraryEntry:
     title = meta.get("title") or ""
     author = meta.get("authorName") or ""
     rel_path = item.get("relPath") or ""
+    shown_title = title
+    item_tags = frozenset(
+        str(tag) for tag in (media.get("tags") or []) if isinstance(tag, str) and tag
+    )
 
     context_tok = set(tokens(author))
+    series_name, series_index = _parse_series_name(meta.get("seriesName"))
     # A book in a series is often titled "Alex Cross 02: Kiss the Girls" so players that
     # ignore the series number still show the order. Those leading words name the series,
     # not another work, so they go with the author as context.
-    prefix = _SERIES_PREFIX.match(title) if _first_series_name(meta.get("seriesName")) else None
+    prefix = _SERIES_PREFIX.match(title) if series_name else None
     if prefix:
         context_tok |= set(tokens(f"{prefix['label']} {prefix['number']}"))
         title = title[prefix.end() :]
+        if series_index is None:
+            # No sequence in the series field; the label's number is the next best thing.
+            series_index = float(prefix["number"])
     title_tok = set(tokens(title))
     tok = title_tok | context_tok | set(tokens(rel_path))
 
@@ -81,6 +104,12 @@ def _item_to_entry(item: dict[str, Any]) -> LibraryEntry:
         frozenset(),
         frozenset(title_tok),
         frozenset(context_tok),
+        item_id=str(item.get("id") or ""),
+        title=shown_title,
+        author=str(author).strip() or None,
+        tags=item_tags,
+        series_name=series_name,
+        series_index=series_index,
     )
 
 
@@ -160,6 +189,51 @@ def search_books(
         msg = "Audiobookshelf answered the book search with something other than a list"
         raise ValueError(msg)  # noqa: TRY004 - a bad answer from the server, not a bad argument
     return [item for item in payload if isinstance(item, dict)]
+
+
+class AudiobookshelfForbiddenError(PermissionError):
+    """Audiobookshelf answered 403: the token's user may not update library items."""
+
+
+def _item_tags(payload: dict[str, Any]) -> list[str]:
+    media = payload.get("media") or {}
+    return [tag for tag in (media.get("tags") or []) if isinstance(tag, str) and tag]
+
+
+class AudiobookshelfTagClient:
+    """Read and replace one item's tag list over the REST API.
+
+    ``PATCH /api/items/<id>/media`` takes a Book payload whose ``tags`` is the whole
+    list, so a write always starts from a fresh ``GET /api/items/<id>`` rather than
+    the cached index: a tag someone added in Audiobookshelf a minute ago survives.
+    Audiobookshelf refuses the PATCH with 403 when the token's user lacks the update
+    permission; that surfaces as :class:`AudiobookshelfForbiddenError`.
+    """
+
+    def __init__(self, overrides: Mapping[str, Any] | None = None) -> None:
+        _enabled, url, token, _lib_ids = _config(overrides)
+        if not url or not token:
+            raise ValueError("Set the Audiobookshelf URL and token first.")
+        self._url = url
+        self._session = _session(url, token)
+
+    def tags(self, item_id: str) -> list[str]:
+        resp = self._session.get(f"{self._url}/api/items/{item_id}", timeout=_REQUEST_TIMEOUT)
+        resp.raise_for_status()
+        return _item_tags(resp.json())
+
+    def set_tags(self, item_id: str, tags: list[str]) -> None:
+        resp = self._session.patch(
+            f"{self._url}/api/items/{item_id}/media",
+            json={"tags": list(tags)},
+            timeout=_REQUEST_TIMEOUT,
+        )
+        if resp.status_code == 403:
+            raise AudiobookshelfForbiddenError(
+                "Audiobookshelf refused the update (403): the API token's user needs the "
+                "'Can update' permission to change tags."
+            )
+        resp.raise_for_status()
 
 
 class AudiobookshelfLibrary:
