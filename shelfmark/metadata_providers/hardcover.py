@@ -1046,6 +1046,29 @@ def _compute_search_title(
     return None
 
 
+def _featured_series_fields(
+    featured_series: Any,
+) -> tuple[str | None, str | None, Any, int | None]:
+    """The ``(id, name, position, book count)`` of a book's featured series.
+
+    A book record carries it as ``featured_book_series`` and a search hit as
+    ``featured_series``; both hold the position and a nested ``series``.
+    """
+    if not isinstance(featured_series, dict):
+        return None, None, None, None
+
+    series_id = None
+    series_name = None
+    series_count = None
+    series_data = featured_series.get("series")
+    if isinstance(series_data, dict):
+        if series_data.get("id") is not None:
+            series_id = str(series_data.get("id"))
+        series_name = series_data.get("name")
+        series_count = series_data.get("primary_books_count")
+    return series_id, series_name, featured_series.get("position"), series_count
+
+
 @register_provider_kwargs("hardcover")
 def _hardcover_kwargs() -> dict[str, Any]:
     """Provide Hardcover-specific constructor kwargs."""
@@ -2959,6 +2982,9 @@ class HardcoverProvider(MetadataProvider):
             # Extract subtitle if available in search results
             subtitle = item.get("subtitle")
             search_title = _compute_search_title(title, subtitle)
+            series_id, series_name, series_position, series_count = _featured_series_fields(
+                item.get("featured_series") or (item.get("document") or {}).get("featured_series")
+            )
 
             if matched_title and matched_title != title:
                 # The subtitle belongs to the original title, not to the translation.
@@ -2977,6 +3003,10 @@ class HardcoverProvider(MetadataProvider):
                 description=full_description,
                 publish_year=publish_year,
                 source_url=source_url,
+                series_id=series_id,
+                series_name=series_name,
+                series_position=series_position,
+                series_count=series_count,
                 display_fields=display_fields,
             )
 
@@ -3058,19 +3088,9 @@ class HardcoverProvider(MetadataProvider):
         full_description = _combine_headline_description(headline, description)
 
         # Extract series info from featured_book_series
-        series_id = None
-        series_name = None
-        series_position = None
-        series_count = None
-        featured_series = book.get("featured_book_series")
-        if featured_series:
-            series_position = featured_series.get("position")
-            series_data = featured_series.get("series")
-            if series_data:
-                if series_data.get("id") is not None:
-                    series_id = str(series_data.get("id"))
-                series_name = series_data.get("name")
-                series_count = series_data.get("primary_books_count")
+        series_id, series_name, series_position, series_count = _featured_series_fields(
+            book.get("featured_book_series")
+        )
 
         # Extract titles by language from editions
         # This allows searching with localized titles when language filter is active
