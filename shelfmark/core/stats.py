@@ -10,6 +10,7 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from typing import Any
 
+_INTERRUPTED_MESSAGE = "Interrupted"  # What the startup sweep writes for a restart casualty.
 _FORMATS = ("ebook", "audiobook")
 
 
@@ -88,8 +89,18 @@ def collect(db_path: str, *, now: datetime | None = None) -> dict[str, Any]:
                     """
                     SELECT COUNT(*) FROM download_history
                     WHERE final_status = 'error' AND datetime(terminal_at) >= datetime(?)
+                      AND COALESCE(status_message, '') != ?
                     """,
-                    (week,),
+                    (week, _INTERRUPTED_MESSAGE),
+                ),
+                "interrupted_7d": _count(
+                    conn,
+                    """
+                    SELECT COUNT(*) FROM download_history
+                    WHERE final_status = 'error' AND datetime(terminal_at) >= datetime(?)
+                      AND status_message = ?
+                    """,
+                    (week, _INTERRUPTED_MESSAGE),
                 ),
             },
         }
