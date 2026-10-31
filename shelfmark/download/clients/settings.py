@@ -1129,8 +1129,8 @@ def prowlarr_clients_settings() -> list[SettingsField]:
                 "owns it. Its partial data goes with it. Only torrents Shelfmark itself added "
                 "are ever considered, whatever category they are in; torrents still "
                 "downloading, queued, or finished are never touched. 3 to 72 hours (a value "
-                "outside that is held to it); 0 keeps them. Checked at each sync cycle; only "
-                "qBittorrent is supported."
+                "outside that is held to it); 0 keeps them. Checked every 15 minutes, "
+                "independent of the Hardcover sync; only qBittorrent is supported."
             ),
             default=6,
             min_value=0,
