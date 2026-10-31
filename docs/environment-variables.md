@@ -56,7 +56,7 @@ These environment variables are used at startup before the settings system loads
 | `HIDE_LOCAL_AUTH` | Hide the username/password login form when OIDC is active. | boolean | `false` |
 | `DISABLE_LOCAL_AUTH` | Disable username/password login and remove the local-admin prerequisite for OIDC. Implies HIDE_LOCAL_AUTH; with AUTH_METHOD=builtin, everyone is locked out until auth env vars are changed. | boolean | `false` |
 | `SHELFMARK_API_KEY` | Optional static API key. When set, requests carrying it as 'Authorization: Bearer <key>' (or X-Api-Key) are authenticated as an admin; browser sessions keep working. Unset = off. | string | `unset` |
-| `SHELFMARK_API_KEY_READONLY` | Optional second API key for dashboards and monitors. Send it like SHELFMARK_API_KEY. It can only GET /api/stats (counters only, no titles or user names). Every other request, and any write, is refused with 403, and it never gets a session. Unset = off. | string | `unset` |
+| `SHELFMARK_API_KEY_READONLY` | Optional second API key for dashboards and monitors. Send it like SHELFMARK_API_KEY. It can only GET /api/stats (counters and scheduler health, no titles or user names). Every other request, and any write, is refused with 403, and it never gets a session. Unset = off. | string | `unset` |
 | `OIDC_AUTO_REDIRECT` | Automatically redirect to the OIDC provider instead of showing the login page. | boolean | `false` |
 | `UMASK` | File creation mask for the app process, read by entrypoint.sh. The default 0022 gives files 644 and directories 755. | string (octal) | `0022` |
 | `DOCKERMODE` | Indicates the application is running inside a Docker container. | boolean | `false` |
@@ -151,7 +151,7 @@ Optional static API key. When set, requests carrying it as 'Authorization: Beare
 
 #### `SHELFMARK_API_KEY_READONLY`
 
-Optional second API key for dashboards and monitors. Send it like SHELFMARK_API_KEY. It can only GET /api/stats (counters only, no titles or user names). Every other request, and any write, is refused with 403, and it never gets a session. Unset = off.
+Optional second API key for dashboards and monitors. Send it like SHELFMARK_API_KEY. It can only GET /api/stats (counters and scheduler health, no titles or user names). Every other request, and any write, is refused with 403, and it never gets a session. Unset = off.
 
 - **Type:** string
 - **Default:** `unset`

@@ -6,7 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from shelfmark.core import hardcover_sync, library_index
+from shelfmark.core import hardcover_scheduler, hardcover_sync, library_index
+from shelfmark.core.search_deadline import SearchDeadline
 from shelfmark.core.user_db import UserDB
 from shelfmark.core.utils import transform_cover_url
 from shelfmark.metadata_providers import BookMetadata
@@ -334,6 +335,29 @@ class TestSyncWishlist:
 
     def _use_provider(self, monkeypatch, provider):
         monkeypatch.setattr(hardcover_sync, "_build_provider", lambda *_args: provider)
+
+    def test_a_shelf_is_left_unfinished_once_the_scheduler_gives_up_on_the_cycle(
+        self, user_db, db_path, monkeypatch
+    ):
+        user = user_db.create_user(username="reader", role="user")
+        deadline = SearchDeadline(60.0)
+
+        class _Slow(_Provider):
+            def _fetch_current_user_books_by_status(self, status_id, page, limit):
+                deadline.event.set()  # the cycle runs out while this page is in flight
+                return super()._fetch_current_user_books_by_status(status_id, page, limit)
+
+        provider = _Slow(
+            {1: [[_book(1, "Dungeon Crawler Carl")], [_book(2, "Carl's Doomsday Scenario")]]}
+        )
+        self._use_provider(monkeypatch, provider)
+
+        with hardcover_scheduler._in_cycle(deadline):
+            summary = hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=user["id"])
+
+        assert provider.calls == [(1, 1, 25)]  # page 2 was never asked for
+        assert summary["added"] == 1  # what was read is still requested
+        assert summary["errors"] == 1
 
     def test_a_failed_shelf_fetch_is_counted_as_an_error(self, user_db, db_path, monkeypatch):
         user = user_db.create_user(username="reader", role="user")
