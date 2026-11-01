@@ -12,6 +12,8 @@ Shelfmark writes its log to the container output, so `docker logs shelfmark` sho
 
 Set `DEBUG=true` on the container and restart it. A **DEBUG** button then appears in the interface. It generates a zip with logs, configuration and environment details, with sensitive values redacted. Have a look through it before you post it publicly, then attach it when you open an issue.
 
+The full image also records the browser's screen during a bypass while Debug mode is on. ffmpeg isn't in the image, so the container installs it at startup, which adds about 10 seconds and needs network access. In non-root mode it can't install anything, so the log warns that bypasses won't be recorded and everything else works as normal.
+
 ## Reporting an issue
 
 Open an issue on [GitHub](https://github.com/calibrain/shelfmark/issues) and fill in the bug report template. A description of what you expected, the steps to reproduce it and the debug bundle are what make a problem findable.

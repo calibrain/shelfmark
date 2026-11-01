@@ -498,6 +498,21 @@ else
 fi
 command="${GUNICORN_BIN} --log-level ${gunicorn_loglevel} --access-logfile - --error-logfile - --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker --workers 1 -t 300 -b ${FLASK_HOST:-0.0.0.0}:${FLASK_PORT:-8084} shelfmark.main:app"
 
+# Debug-mode screen recording needs ffmpeg, which the image leaves out because nothing
+# else uses it. Ask the app rather than reading $DEBUG: the Debug Mode setting lives in
+# the config file and needs a restart, so this is where it takes effect.
+if [ "$USING_EXTERNAL_BYPASSER" != "true" ] && ! command -v ffmpeg >/dev/null 2>&1 &&
+    "$PYTHON_BIN" -c 'from shelfmark.config.env import DEBUG; raise SystemExit(0 if DEBUG else 1)' 2>/dev/null; then
+    if [ "$RUN_AS_NON_ROOT" = "true" ]; then
+        echo "Debug mode is on but ffmpeg is not installed and non-root mode cannot install it; bypasses will not be recorded."
+    else
+        echo "Debug mode is on: installing ffmpeg for screen recording"
+        # No && after update: a partial index failure should not rule out the install.
+        { apt-get update -o Acquire::Retries=3; apt-get install -y --no-install-recommends ffmpeg; } ||
+            echo "Could not install ffmpeg; bypasses will not be recorded."
+    fi
+fi
+
 # If DEBUG and not using an external bypass
 if [ "$DEBUG" = "true" ] && [ "$USING_EXTERNAL_BYPASSER" != "true" ]; then
     set +e
