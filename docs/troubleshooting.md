@@ -12,7 +12,7 @@ Shelfmark writes its log to the container output, so `docker logs shelfmark` sho
 
 Set `DEBUG=true` on the container and restart it. A **DEBUG** button then appears in the interface. It generates a zip with logs, configuration and environment details, with sensitive values redacted. Have a look through it before you post it publicly, then attach it when you open an issue.
 
-The full image also records the browser's screen during a bypass while Debug mode is on. ffmpeg isn't in the image, so the container installs it at startup, which adds about 10 seconds and needs network access. In non-root mode it can't install anything, so the log warns that bypasses won't be recorded and everything else works as normal.
+The full image also records the browser's screen during a bypass while Debug mode is on. ffmpeg isn't in the image, so the container installs it in the background at startup, which needs network access. Bypasses that run before it finishes aren't recorded. The log says when the install succeeds, fails or gives up after 120 seconds. In non-root mode it can't install anything, so the log warns that bypasses won't be recorded and everything else works as normal.
 
 ## Reporting an issue
 
