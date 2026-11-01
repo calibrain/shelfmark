@@ -662,13 +662,15 @@ class AllDebridClient(DownloadClient):
                 buf = download_url(
                     direct_link,
                     referer="https://alldebrid.com/",
+                    spool_to_disk=True,
                 )
                 if not buf:
                     msg = f"Failed to download from {safe_url(direct_link)}"
                     _raise_runtime_error(msg)
 
-                with dest.open("wb") as fh:
-                    fh.write(buf.getvalue())
+                with buf, dest.open("wb") as fh:
+                    buf.seek(0)
+                    shutil.copyfileobj(buf, fh)
 
                 with state.lock:
                     state.progress = 50.0 + (idx + 1) / total * 50.0
