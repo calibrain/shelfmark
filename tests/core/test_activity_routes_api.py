@@ -384,7 +384,7 @@ class TestActivityRoutes:
             main_module.backend.book_queue.update_status(task_id, QueueStatus.COMPLETE)
             with (
                 patch.object(main_module, "get_auth_mode", return_value="builtin"),
-                patch.object(main_module, "send_file", side_effect=failure),
+                patch("shelfmark.core.queue_routes.send_file", side_effect=failure),
             ):
                 response = client.get(f"/api/localdownload?id={task_id}")
         finally:

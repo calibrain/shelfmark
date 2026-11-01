@@ -475,8 +475,9 @@ class TestStatus:
         ]
         with _builtin(main_module):
             with patch.object(main_module.backend, "queue_status", return_value={}):
-                with patch.object(
-                    main_module, "sync_delivery_states_from_queue_status", return_value=changed
+                with patch(
+                    "shelfmark.core.queue_routes.sync_delivery_states_from_queue_status",
+                    return_value=changed,
                 ):
                     with patch.object(main_module, "emit_ws_event") as emit:
                         resp = client.get("/api/status")
