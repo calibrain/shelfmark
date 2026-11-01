@@ -77,7 +77,9 @@ class TestConnect:
         _login(client, user_id="alice", db_user_id=7)
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             with patch.object(main_module.backend, "queue_status", return_value=_STATUS) as status:
-                with patch.object(main_module, "redact_status", return_value={"redacted": {}}):
+                with patch(
+                    "shelfmark.core.socket_handlers.redact_status", return_value={"redacted": {}}
+                ):
                     with patch.object(main_module.ws_manager, "join_user_room") as join:
                         socket = _socket(main_module, client)
                         events = _events(socket)
