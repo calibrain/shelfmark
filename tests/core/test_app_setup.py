@@ -10,6 +10,13 @@ from unittest.mock import patch
 
 import pytest
 
+from shelfmark.core.app_setup import (
+    FLASK_SECRET_KEY_MIN_BYTES,
+    LogNoiseFilter,
+    load_or_create_secret_key,
+    register_security_headers,
+)
+
 
 @pytest.fixture(scope="module")
 def main_module():
@@ -30,13 +37,11 @@ class TestSecretKey:
         persisted = b"k" * 64
         (tmp_path / ".flask_secret").write_bytes(persisted)
 
-        with patch.object(main_module, "CONFIG_DIR", tmp_path):
-            assert main_module._load_or_create_secret_key() == persisted
+        assert load_or_create_secret_key(tmp_path) == persisted
 
     def test_a_missing_key_is_created_and_kept_private(self, main_module, tmp_path):
-        with patch.object(main_module, "CONFIG_DIR", tmp_path):
-            created = main_module._load_or_create_secret_key()
-            again = main_module._load_or_create_secret_key()
+        created = load_or_create_secret_key(tmp_path)
+        again = load_or_create_secret_key(tmp_path)
 
         path = tmp_path / ".flask_secret"
         assert len(created) == 64
@@ -47,25 +52,22 @@ class TestSecretKey:
         path = tmp_path / ".flask_secret"
         path.write_bytes(b"short")
 
-        with patch.object(main_module, "CONFIG_DIR", tmp_path):
-            key = main_module._load_or_create_secret_key()
+        key = load_or_create_secret_key(tmp_path)
 
         assert len(key) == 64
         assert path.read_bytes() == key
 
     def test_a_key_of_exactly_the_minimum_length_is_kept(self, main_module, tmp_path):
-        minimum = b"m" * main_module.FLASK_SECRET_KEY_MIN_BYTES
+        minimum = b"m" * FLASK_SECRET_KEY_MIN_BYTES
         (tmp_path / ".flask_secret").write_bytes(minimum)
 
-        with patch.object(main_module, "CONFIG_DIR", tmp_path):
-            assert main_module._load_or_create_secret_key() == minimum
+        assert load_or_create_secret_key(tmp_path) == minimum
 
     def test_an_unwritable_config_dir_still_gives_a_key(self, main_module, tmp_path):
         blocked = tmp_path / "file-not-dir"
         blocked.write_text("x")
 
-        with patch.object(main_module, "CONFIG_DIR", blocked / "config"):
-            key = main_module._load_or_create_secret_key()
+        key = load_or_create_secret_key(blocked / "config")
 
         assert len(key) == 64
 
@@ -99,12 +101,15 @@ class TestSecurityHeaders:
         assert "connect-src 'self' ws: wss:" in csp
 
     def test_a_header_already_on_the_response_is_not_overridden(self, main_module):
-        from flask import Response
+        from flask import Flask, Response
 
         response = Response("{}")
         response.headers["X-Content-Type-Options"] = "route-value"
 
-        result = main_module.set_security_headers(response)
+        app = Flask(__name__)
+        register_security_headers(app)
+        with app.test_request_context():
+            result = app.process_response(response)
 
         assert result is response
         assert response.headers["X-Content-Type-Options"] == "route-value"
@@ -113,18 +118,18 @@ class TestSecurityHeaders:
 
 class TestLogNoiseFilter:
     def test_status_polling_is_dropped(self, main_module):
-        noise = main_module.LogNoiseFilter()
+        noise = LogNoiseFilter()
 
         assert noise.filter(_record('127.0.0.1 - "GET /api/status HTTP/1.1" 200 -')) is False
 
     def test_other_requests_are_kept(self, main_module):
-        noise = main_module.LogNoiseFilter()
+        noise = LogNoiseFilter()
 
         assert noise.filter(_record('127.0.0.1 - "GET /api/releases HTTP/1.1" 200 -')) is True
         assert noise.filter(_record('127.0.0.1 - "POST /api/status HTTP/1.1" 200 -')) is True
 
     def test_the_websocket_upgrade_noise_is_dropped(self, main_module):
-        noise = main_module.LogNoiseFilter()
+        noise = LogNoiseFilter()
 
         assert noise.filter(_record("write() before start_response")) is False
         assert noise.filter(_record("Error on request:", level=logging.ERROR)) is False
@@ -132,7 +137,7 @@ class TestLogNoiseFilter:
     def test_an_assertion_error_from_the_upgrade_is_dropped_but_other_errors_are_not(
         self, main_module
     ):
-        noise = main_module.LogNoiseFilter()
+        noise = LogNoiseFilter()
         upgrade = AssertionError("write() before start_response")
         other = AssertionError("something else")
 

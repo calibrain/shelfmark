@@ -1,7 +1,6 @@
 """Flask app - routes, WebSocket handlers, and middleware."""
 
 import binascii
-import logging
 import os
 import re
 import sqlite3
@@ -43,6 +42,11 @@ from shelfmark.config.settings import (
 from shelfmark.core import api_key as api_key_module  # module access lets tests monkeypatch the key
 from shelfmark.core import search_deadline
 from shelfmark.core.activity_view_state_service import ActivityViewStateService
+from shelfmark.core.app_setup import (
+    configure_app_logging,
+    configure_secret_key_and_session,
+    register_security_headers,
+)
 from shelfmark.core.auth_modes import (
     get_auth_check_admin_status,
     is_settings_or_onboarding_path,
@@ -119,7 +123,6 @@ if TYPE_CHECKING:
     from shelfmark.metadata_providers import BookMetadata
 
 logger = setup_logger(__name__)
-FLASK_SECRET_KEY_MIN_BYTES = 32
 _OPERATIONAL_ERRORS = (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error)
 _IMPORT_OPERATIONAL_ERRORS = (ImportError, *_OPERATIONAL_ERRORS)
 
@@ -721,97 +724,17 @@ if _is_debug_enabled():
     )
 
 
-# Custom log filter to exclude routine status endpoint polling and WebSocket noise
-class LogNoiseFilter(logging.Filter):
-    """Filter out routine status endpoint requests and WebSocket upgrade errors to reduce log noise.
-
-    WebSocket upgrade errors are benign - Flask-SocketIO automatically falls back to polling transport.
-    The error occurs because Werkzeug's built-in server doesn't fully support WebSocket upgrades.
-    """
-
-    def filter(self, record: logging.LogRecord) -> bool:
-        """Return whether a log record should be emitted."""
-        message = record.getMessage() if hasattr(record, "getMessage") else str(record.msg)
-
-        # Exclude GET /api/status requests (polling noise)
-        if "GET /api/status" in message:
-            return False
-
-        # Exclude WebSocket upgrade errors (benign - falls back to polling)
-        if "write() before start_response" in message:
-            return False
-
-        # Exclude the Error on request line that precedes WebSocket errors
-        if record.levelno == logging.ERROR:
-            if "Error on request:" in message:
-                return False
-            # Filter WebSocket-related AssertionError tracebacks
-            if hasattr(record, "exc_info") and record.exc_info:
-                exc_type, exc_value = record.exc_info[0], record.exc_info[1]
-                if (
-                    exc_type
-                    and exc_type.__name__ == "AssertionError"
-                    and exc_value
-                    and "write() before start_response" in str(exc_value)
-                ):
-                    return False
-
-        return True
-
-
-# Flask logger
-app.logger.handlers = logger.handlers
-app.logger.setLevel(logger.level)
-# Also handle Werkzeug's logger
-werkzeug_logger = logging.getLogger("werkzeug")
-werkzeug_logger.handlers = logger.handlers
-werkzeug_logger.setLevel(logger.level)
-# Add filter to suppress routine status endpoint polling logs and WebSocket upgrade errors
-werkzeug_logger.addFilter(LogNoiseFilter())
+configure_app_logging(app, logger)
 
 # Set up authentication defaults
 SESSION_COOKIE_SECURE = string_to_bool(SESSION_COOKIE_SECURE_ENV)
 
 
-def _load_or_create_secret_key() -> bytes:
-    """Load a persisted Flask secret key from config, or create one."""
-    secret_path = CONFIG_DIR / ".flask_secret"
-
-    try:
-        if secret_path.exists():
-            secret_key = secret_path.read_bytes()
-            if len(secret_key) >= FLASK_SECRET_KEY_MIN_BYTES:
-                return secret_key
-            logger.warning(
-                "Invalid persisted Flask secret key at %s (length=%s). Regenerating.",
-                secret_path,
-                len(secret_key),
-            )
-    except OSError as exc:
-        logger.warning("Failed to read Flask secret key at %s: %s", secret_path, exc)
-
-    secret_key = os.urandom(64)
-    try:
-        secret_path.parent.mkdir(parents=True, exist_ok=True)
-        secret_path.write_bytes(secret_key)
-        secret_path.chmod(0o600)
-    except OSError as exc:
-        logger.warning(
-            "Failed to persist Flask secret key at %s. Sessions may reset on restart: %s",
-            secret_path,
-            exc,
-        )
-
-    return secret_key
-
-
-app.config.update(
-    SECRET_KEY=_load_or_create_secret_key(),
-    SESSION_COOKIE_HTTPONLY=True,
-    SESSION_COOKIE_SAMESITE="Lax",
-    SESSION_COOKIE_SECURE=SESSION_COOKIE_SECURE,
-    SESSION_COOKIE_NAME=SESSION_COOKIE_NAME,
-    PERMANENT_SESSION_LIFETIME=604800,  # 7 days in seconds
+configure_secret_key_and_session(
+    app,
+    CONFIG_DIR,
+    cookie_secure=SESSION_COOKIE_SECURE,
+    cookie_name=SESSION_COOKIE_NAME,
 )
 configure_public_id_key(app.config["SECRET_KEY"])
 
@@ -1037,17 +960,7 @@ def proxy_auth_middleware() -> Response | tuple[Response, int] | None:
         return None
 
 
-@app.after_request
-def set_security_headers(response: Response) -> Response:
-    """Add baseline security headers to every response."""
-    response.headers.setdefault("X-Content-Type-Options", "nosniff")
-    response.headers.setdefault(
-        "Content-Security-Policy",
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; connect-src 'self' ws: wss:",
-    )
-    response.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
-    response.headers.setdefault("Cross-Origin-Embedder-Policy", "credentialless")
-    return response
+register_security_headers(app)
 
 
 @app.after_request
