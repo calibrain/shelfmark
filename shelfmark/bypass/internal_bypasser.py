@@ -5,6 +5,7 @@ import asyncio
 import json
 import os
 import random
+import shutil
 import signal
 import socket
 import stat
@@ -1499,6 +1500,11 @@ async def _close_websocket_connection(conn: Any) -> None:
 def _start_ffmpeg_recording(display: str) -> None:
     """Start FFmpeg screen recording for debug mode."""
     global DISPLAY
+    # Debug mode can be on when ffmpeg is not installed. A recording is a diagnostic, so
+    # going without one must not fail the bypass it was meant to help diagnose.
+    if shutil.which("ffmpeg") is None:
+        logger.warning("ffmpeg is not installed; no recording for this bypass.")
+        return
     RECORDING_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(UTC).strftime("%y%m%d-%H%M%S")
     output_file = RECORDING_DIR / f"screen_recording_{timestamp}.mp4"

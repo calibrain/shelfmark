@@ -498,6 +498,50 @@ else
 fi
 command="${GUNICORN_BIN} --log-level ${gunicorn_loglevel} --access-logfile - --error-logfile - --worker-class geventwebsocket.gunicorn.workers.GeventWebSocketWorker --workers 1 -t 300 -b ${FLASK_HOST:-0.0.0.0}:${FLASK_PORT:-8084} shelfmark.main:app"
 
+# Debug mode's screen recording needs ffmpeg, which the image leaves out because nothing
+# else uses it. This runs in the background so a slow or silent mirror can't hold up
+# startup. A mirror can only hang the download, and killing that leaves nothing half
+# installed. dpkg then works from what's on disk, and the next start's --configure -a
+# clears up if a restart or the time limit cuts it off.
+install_ffmpeg() {
+    local limit="${FFMPEG_INSTALL_TIMEOUT:-120}" status=0
+    export DEBIAN_FRONTEND=noninteractive
+    umask 0022
+    timeout -k 10 "$limit" dpkg --configure -a || status=$?
+    if [ "$status" = 0 ]; then
+        # No && after update: a partial index failure should not rule out the install.
+        timeout -k 10 "$limit" sh -c 'apt-get update -o Acquire::Retries=3
+            apt-get install -y --no-install-recommends --download-only ffmpeg' || status=$?
+    fi
+    if [ "$status" = 0 ]; then
+        timeout -k 10 "$limit" apt-get install -y --no-install-recommends --no-download ffmpeg || status=$?
+    fi
+    case "$status" in
+        0)
+            if ffmpeg -version >/dev/null 2>&1; then
+                echo "ffmpeg installed; bypasses will be recorded from now on."
+            else
+                echo "Could not install ffmpeg (apt finished but ffmpeg does not run); bypasses will not be recorded."
+            fi
+            ;;
+        124 | 137) echo "Timed out installing ffmpeg after ${limit}s; bypasses will not be recorded." ;;
+        *) echo "Could not install ffmpeg (exit $status); bypasses will not be recorded." ;;
+    esac
+}
+
+# Ask the app rather than reading $DEBUG: the Debug Mode setting lives in the config file
+# and needs a restart, so this is where it takes effect.
+INSTALL_FFMPEG="false"
+if [ "$USING_EXTERNAL_BYPASSER" != "true" ] && ! ffmpeg -version >/dev/null 2>&1 &&
+    "$PYTHON_BIN" -c 'from shelfmark.config.env import DEBUG; raise SystemExit(0 if DEBUG else 1)' 2>/dev/null; then
+    if [ "$RUN_AS_NON_ROOT" = "true" ]; then
+        echo "Debug mode is on but ffmpeg is not installed and non-root mode cannot install it; bypasses will not be recorded."
+    else
+        echo "Debug mode is on: installing ffmpeg in the background; bypasses before it finishes will not be recorded."
+        INSTALL_FFMPEG="true"
+    fi
+fi
+
 # If DEBUG and not using an external bypass
 if [ "$DEBUG" = "true" ] && [ "$USING_EXTERNAL_BYPASSER" != "true" ]; then
     set +e
@@ -589,4 +633,13 @@ echo "Setting umask to $UMASK_VALUE"
 umask $UMASK_VALUE
 
 stop_file_logging
+# Started only now because stop_file_logging waits for the log pipe to close, which a
+# background job holding it would delay. The outer subshell leaves it to dumb-init to reap.
+if [ "$INSTALL_FFMPEG" = "true" ]; then
+    if [ "$FILE_LOGGING_ENABLED" = "true" ]; then
+        ( (install_ffmpeg 2>&1 | tee -a "$LOG_FILE") </dev/null & )
+    else
+        ( (install_ffmpeg 2>&1) </dev/null & )
+    fi
+fi
 exec_as_target_user env HOME="$RUNTIME_HOME" $command

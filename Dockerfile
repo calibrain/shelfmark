@@ -158,8 +158,6 @@ RUN echo "deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-
     apt-get install -y --no-install-recommends -o Acquire::Retries=5 \
     # For dumb display
     xvfb \
-    # For screen recording
-    ffmpeg \
     chromium=${CHROMIUM_VERSION} \
     chromium-common=${CHROMIUM_VERSION} \
     # For tkinter (pyautogui)

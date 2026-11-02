@@ -24,6 +24,12 @@ def _clean_display():
     ib.DISPLAY.update(before)
 
 
+@pytest.fixture(autouse=True)
+def _ffmpeg_on_path(monkeypatch):
+    # The recorder checks for the binary first; these tests stub the process itself.
+    monkeypatch.setattr(ib.shutil, "which", lambda _name: "/usr/bin/ffmpeg")
+
+
 class _Proc:
     def __init__(self, returncode):
         self.returncode = returncode
@@ -133,3 +139,23 @@ def test_summary_survives_a_missing_log():
     ib.DISPLAY["ffmpeg_error_log"] = None
 
     assert "No FFmpeg error log" in ib._ffmpeg_error_summary()
+
+
+def test_debug_mode_without_ffmpeg_skips_the_recording_and_says_so(monkeypatch, tmp_path):
+    """Debug mode can be on with no ffmpeg in the image; that must not fail the bypass."""
+    monkeypatch.setattr(ib, "RECORDING_DIR", tmp_path / "recording")
+    monkeypatch.setattr(ib.shutil, "which", lambda _name: None)
+
+    def popen_must_not_run(*_args, **_kwargs):
+        raise AssertionError("ffmpeg should not be started when it is not installed")
+
+    monkeypatch.setattr(ib.subprocess, "Popen", popen_must_not_run)
+
+    warnings: list[str] = []
+    monkeypatch.setattr(ib.logger, "warning", lambda msg, *_args: warnings.append(msg))
+
+    ib._start_ffmpeg_recording(display=":99")
+
+    assert ib.DISPLAY["ffmpeg"] is None
+    assert any("ffmpeg is not installed" in message for message in warnings)
+    assert not (tmp_path / "recording").exists()
