@@ -1731,6 +1731,11 @@ const ReleaseModalSession = ({
 
                   {/* Links row */}
                   <div className="mt-auto flex flex-wrap items-center gap-3 text-xs">
+                    {book.year && (
+                      <span className="text-zinc-500 dark:text-zinc-400">
+                        Year: {book.year}
+                      </span>
+                    )}
                     {(book.isbn_13 || book.isbn_10) && (
                       <span className="text-zinc-500 dark:text-zinc-400">
                         ISBN: {book.isbn_13 || book.isbn_10}

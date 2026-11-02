@@ -988,6 +988,9 @@ function App() {
         const fullBook = await getMetadataBookInfo(metadataBook.provider, metadataBook.provider_id);
         setSelectedBook({
           ...metadataBook,
+          year: fullBook.year || metadataBook.year,
+          isbn_10: fullBook.isbn_10 || metadataBook.isbn_10,
+          isbn_13: fullBook.isbn_13 || metadataBook.isbn_13,
           description: fullBook.description || metadataBook.description,
           series_id: fullBook.series_id || metadataBook.series_id,
           series_name: fullBook.series_name,
