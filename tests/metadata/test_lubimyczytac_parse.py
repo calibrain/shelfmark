@@ -302,43 +302,24 @@ class TestLubimyczytacSearch:
 
     def test_hyphenated_title_is_not_treated_as_explicit_separator(self):
         title, author, explicit_separator = _split_title_author("Spider-Man Stan Lee")
-        assert title == "Spider-Man"
-        assert author == "Stan Lee"
+        assert title == "Spider-Man Stan Lee"
+        assert author == ""
         assert explicit_separator is False
 
     def test_hyphenated_title_retries_original_query_without_author_filter(self):
         get_metadata_cache().clear()
-        wrong_author_html = SEARCH_HTML.replace("Andrzej Sapkowski", "Someone Else")
-        matching_html = SEARCH_HTML.replace("Andrzej Sapkowski", "Stan Lee")
-        session = _Session({"phrase=Spider-Man": wrong_author_html, "phrase=Spider-Man+Stan+Lee": matching_html})
+        session = _Session({"phrase=Spider-Man+Stan+Lee": SEARCH_HTML})
         books = _provider(session).search(MetadataSearchOptions(query="Spider-Man Stan Lee"))
         assert books
-        assert len(session.urls) == 2
-        assert "phrase=Spider-Man+Stan+Lee" in session.urls[1]
+        assert len(session.urls) == 1
+        assert "phrase=Spider-Man+Stan+Lee" in session.urls[0]
 
-    def test_search_splits_unspaced_title_author_separator(self):
-        title, author, explicit_separator = _split_title_author("Ostatnie życzenie-Andrzej Sapkowski")
-        assert title == "Ostatnie życzenie"
-        assert author == "Andrzej Sapkowski"
-        assert explicit_separator is True
+    def test_unspaced_hyphen_query_is_kept_whole(self):
+        query = "Ostatnie życzenie-Andrzej Sapkowski"
+        assert _split_title_author(query) == (query, "", False)
 
-    def test_search_splits_unspaced_title_author_separator(self):
-        title, author, explicit_separator = _split_title_author("Ostatnie życzenie-Andrzej Sapkowski")
-        assert title == "Ostatnie życzenie"
-        assert author == "Andrzej Sapkowski"
-        assert explicit_separator is True
 
-    def test_search_splits_unspaced_title_author_separator(self):
-        title, author, explicit_separator = _split_title_author("Ostatnie życzenie-Andrzej Sapkowski")
-        assert title == "Ostatnie życzenie"
-        assert author == "Andrzej Sapkowski"
-        assert explicit_separator is True
 
-    def test_search_splits_unspaced_title_author_separator(self):
-        title, author, explicit_separator = _split_title_author("Ostatnie życzenie-Andrzej Sapkowski")
-        assert title == "Ostatnie życzenie"
-        assert author == "Andrzej Sapkowski"
-        assert explicit_separator is True
 
     def test_search_splits_multiword_author_with_separator(self):
         get_metadata_cache().clear()

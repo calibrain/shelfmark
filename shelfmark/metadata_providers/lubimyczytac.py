@@ -87,13 +87,10 @@ def _split_title_author(query: str) -> tuple[str, str, bool]:
         title, author = cleaned[:match.start()].strip(), cleaned[match.end():].strip()
         if len(author.split()) >= 2:
             return title, author, True
-    parts = re.split(r"[–—-]", cleaned, maxsplit=1)
-    if len(parts) == 2 and len(parts[0].split()) >= 2 and len(parts[1].split()) >= 2:
-        return parts[0].strip(), parts[1].strip(), True
 
+    if re.search(r"[–—-]", cleaned):
+        return cleaned, "", False
     words = cleaned.split()
-    if len(words) == 3 and "-" in words[0] and all(word[:1].isupper() for word in words[-2:]):
-        return words[0], " ".join(words[-2:]), False
     if len(words) >= 4 and all(word[:1].isupper() for word in words[-2:]):
         return " ".join(words[:-2]), " ".join(words[-2:]), False
 
@@ -105,17 +102,16 @@ def _split_title_author(query: str) -> tuple[str, str, bool]:
 def _alternative_search_phrase(query: str) -> str | None:
     cleaned = _clean_text(query)
     match = re.search(r"\s+[–—-]\s+", cleaned)
-    parts = [cleaned[:match.start()].strip(), cleaned[match.end():].strip()] if match else re.split(r"[–—-]", cleaned, maxsplit=1)
-    if len(parts) == 2 and len(parts[0].split()) >= 2 and len(parts[1].split()) >= 2:
-        title, author = parts
-        author_words = author.split()
-        if len(author_words) >= 2:
-            return " ".join([title, author_words[-1]]).strip()
-        return None
+    if match:
+        title = cleaned[:match.start()].strip()
+        author_words = cleaned[match.end():].strip().split()
+        if len(title.split()) < 2 or len(author_words) < 2:
+            return None
+        return " ".join([title, author_words[-1]])
 
+    if re.search(r"[–—-]", cleaned):
+        return None
     words = cleaned.split()
-    if len(words) == 3 and "-" in words[0] and all(word[:1].isupper() for word in words[-2:]):
-        return " ".join([words[0], words[-1]])
     if len(words) < 3 or not all(word[:1].isupper() for word in words[:2]):
         return None
     return " ".join([words[1], *words[2:]])
