@@ -142,17 +142,30 @@ def _absolute_url(value: str | None) -> str | None:
 
 
 def _extract_cover(soup: BeautifulSoup, data: dict[str, Any]) -> str | None:
+    json_image = data.get("image")
+    if isinstance(json_image, list):
+        json_image = json_image[0] if json_image else None
+    if isinstance(json_image, dict):
+        json_image = json_image.get("url")
+
     candidates = []
-    for value in (soup.select_one("a#js-lightboxCover"), soup.select_one(".book-cover__link"), data.get("image"), soup.select_one("meta[property=\"og:image\"]")):
+    for value in (
+        soup.select_one("a#js-lightboxCover"),
+        soup.select_one(".book-cover__link"),
+        json_image,
+        soup.select_one('meta[property="og:image"]'),
+    ):
         if isinstance(value, str):
             raw = value
         elif value:
             raw = value.get("href") or value.get("content") or ""
         else:
             raw = ""
+
         url = _absolute_url(str(raw))
         if url and url not in candidates:
             candidates.append(url)
+
     return candidates[0] if candidates else None
 
 
@@ -259,8 +272,10 @@ class LubimyczytacProvider(MetadataProvider):
         query = _clean_text(options.query)
         if options.search_type == SearchType.AUTHOR and not author:
             author, query = query, ""
+        inferred_author = False
         if not title and not author and options.search_type == SearchType.GENERAL:
             title, author = _split_title_author(query)
+            inferred_author = bool(author)
         phrase = title or query or author
         if not phrase:
             return []
@@ -280,7 +295,13 @@ class LubimyczytacProvider(MetadataProvider):
             return books[: options.limit]
         alternative_key = f"{cache_key}:alternative:{alternative}"
         extra = (
-            self._search_cached(alternative_key, alternative, author, options.page, options.limit)
+            self._search_cached(
+                alternative_key,
+                alternative,
+                "" if inferred_author else author,
+                options.page,
+                options.limit,
+            )
             or []
         )
         merged: list[BookMetadata] = []
@@ -324,7 +345,6 @@ class LubimyczytacProvider(MetadataProvider):
             if not book_id or not title or book_id in seen or not href:
                 continue
 
-            card_text = _clean_text(card.get_text(" "))
             authors = self._parse_authors(card, {})
 
             if author and authors:

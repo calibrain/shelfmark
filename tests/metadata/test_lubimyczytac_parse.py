@@ -106,7 +106,7 @@ class TestLubimyczytacSearch:
         bad_html = SEARCH_HTML.replace("Andrzej Sapkowski", "Irene Anders")
         session = _Session(
             {
-                "phrase=Ostatnie+%C5%BCyczenie": SEARCH_HTML,
+                "phrase=Ostatnie+%C5%BCyczenie": bad_html,
                 "phrase=Ostatnie+%C5%BCyczenie+Sapkowski": SEARCH_HTML,
             }
         )
@@ -120,14 +120,14 @@ class TestLubimyczytacSearch:
             "123456--wiedzmin-ostatnie-zyczenie",
             "123457--krew-elfow",
         ]
-        assert len(session.urls) == 1
+        assert len(session.urls) == 2
 
     def test_search_splits_author_before_title(self):
         get_metadata_cache().clear()
         bad_html = SEARCH_HTML.replace("Andrzej Sapkowski", "Irene Anders")
         session = _Session(
             {
-                "phrase=Ostatnie+%C5%BCyczenie": SEARCH_HTML,
+                "phrase=Ostatnie+%C5%BCyczenie": bad_html,
                 "phrase=Sapkowski+Ostatnie+%C5%BCyczenie": SEARCH_HTML,
             }
         )
@@ -139,7 +139,7 @@ class TestLubimyczytacSearch:
             "123456--wiedzmin-ostatnie-zyczenie",
             "123457--krew-elfow",
         ]
-        assert len(session.urls) == 1
+        assert len(session.urls) == 2
 
     def test_search_by_author_uses_author_field(self):
         get_metadata_cache().clear()
@@ -283,6 +283,13 @@ class TestLubimyczytacSearch:
         ]
         assert len(session.urls) == 2
 
+
+    def test_general_search_retries_without_inferred_author(self):
+        get_metadata_cache().clear()
+        session = _Session({"phrase=Elf%C3%B3w": SEARCH_HTML, "phrase=Krew+Elf%C3%B3w": SEARCH_HTML})
+        books = _provider(session).search(MetadataSearchOptions(query="Wiedźmin Krew Elfów"))
+        assert "123457--krew-elfow" in [book.provider_id for book in books]
+        assert len(session.urls) == 2
 
     def test_search_splits_multiword_author_with_separator(self):
         get_metadata_cache().clear()
