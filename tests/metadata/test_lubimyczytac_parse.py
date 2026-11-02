@@ -293,6 +293,13 @@ class TestLubimyczytacSearch:
         assert len(session.urls) == 2
         assert "phrase=Wied%C5%BAmin+Krew+Elf%C3%B3w" in session.urls[1]
 
+    def test_empty_raw_retry_continues_to_alternative(self):
+        get_metadata_cache().clear()
+        session = _Session({"phrase=Elf%C3%B3w": "", "phrase=Wied%C5%BAmin+Krew+Elf%C3%B3w": "", "phrase=Krew+Elf%C3%B3w": SEARCH_HTML})
+        books = _provider(session).search(MetadataSearchOptions(query="Wiedźmin Krew Elfów"))
+        assert "123457--krew-elfow" in [b.provider_id for b in books]
+        assert len(session.urls) == 3
+
     def test_search_splits_multiword_author_with_separator(self):
         get_metadata_cache().clear()
         query = "Ostatnie życzenie – Anna Maria Kowalska"

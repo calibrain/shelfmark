@@ -290,7 +290,8 @@ class LubimyczytacProvider(MetadataProvider):
                 self._search_cached(raw_key, query, "", options.page, options.limit)
                 or []
             )
-            return books[: options.limit]
+            if books:
+                return books[: options.limit]
         if (
             not title
             or not author
