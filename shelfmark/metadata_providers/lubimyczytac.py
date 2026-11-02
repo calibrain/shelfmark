@@ -275,7 +275,7 @@ class LubimyczytacProvider(MetadataProvider):
         inferred_author = False
         if not title and not author and options.search_type == SearchType.GENERAL:
             title, author = _split_title_author(query)
-            inferred_author = bool(author) and not re.search(r"\s[–—-]\s", query)
+            inferred_author = bool(author) and not re.search(r"[–—-]", query)
         phrase = title or query or author
         if not phrase:
             return []
@@ -644,7 +644,7 @@ class LubimyczytacProvider(MetadataProvider):
 
     def _parse_language(self, data: dict[str, Any], soup: BeautifulSoup) -> str | None:
         value = str(data.get("inLanguage") or "").strip().lower()
-        if not value:
+        if not value or (len(value) != 2 and value not in _LANGUAGE_MAP):
             node = soup.select_one('[itemprop="inLanguage"]')
             value = (
                 _clean_text(str(node.get("content") or node.get_text(" "))).lower() if node else ""
