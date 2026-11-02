@@ -4,6 +4,7 @@ from shelfmark.core.cache import get_metadata_cache
 from shelfmark.metadata_providers import MetadataSearchOptions, SearchType
 from shelfmark.metadata_providers.lubimyczytac import (
     LubimyczytacProvider,
+    _split_title_author,
     _valid_isbn,
 )
 
@@ -282,6 +283,13 @@ class TestLubimyczytacSearch:
         ]
         assert len(session.urls) == 2
 
+
+    def test_search_splits_multiword_author_with_separator(self):
+        get_metadata_cache().clear()
+        query = "Ostatnie życzenie – Anna Maria Kowalska"
+        title, author = _split_title_author(query)
+        assert title == "Ostatnie życzenie"
+        assert author == "Anna Maria Kowalska"
 
 class TestLubimyczytacBook:
     def test_lightbox_cover_has_priority_over_json_ld(self):

@@ -82,7 +82,7 @@ def _normalize_search_text(value: str | None) -> str:
 def _split_title_author(query: str) -> tuple[str, str]:
     """Split a general query into title and author when recognizable."""
     cleaned = _clean_text(query)
-    parts = re.split(r"\\s*[–—-]\\s*", cleaned, maxsplit=1)
+    parts = re.split(r"\s*[–—-]\s*", cleaned, maxsplit=1)
     if len(parts) == 2 and len(parts[1].split()) >= 2:
         return parts[0].strip().rstrip("–—- "), parts[1].strip()
 
@@ -187,7 +187,7 @@ def _json_ld_books(soup: BeautifulSoup) -> list[dict[str, Any]]:
     for script in soup.find_all("script", type="application/ld+json"):
         try:
             payload = json.loads(script.string or script.get_text())
-        except TypeError, ValueError:
+        except (TypeError, ValueError):
             continue
         items = payload if isinstance(payload, list) else [payload]
         for item in items:
