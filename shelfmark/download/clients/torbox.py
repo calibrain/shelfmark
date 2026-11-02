@@ -531,6 +531,8 @@ class TorBoxClient(DownloadClient):
                     spool_to_disk=True,
                 )
                 if state.cancel_event.is_set():
+                    if buffer is not None:
+                        buffer.close()
                     return
                 if not buffer:
                     _raise_runtime_error(
