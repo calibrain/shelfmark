@@ -364,7 +364,7 @@ class LubimyczytacProvider(MetadataProvider):
             if author and authors:
 
                 def normalize_name(value: str) -> tuple[str, ...]:
-                    return tuple(sorted(_clean_text(value).casefold().split()))
+                    return tuple(sorted(_normalize_search_text(value).split()))
 
                 requested_author = normalize_name(author)
                 if not any(normalize_name(name) == requested_author for name in authors):
@@ -646,6 +646,9 @@ class LubimyczytacProvider(MetadataProvider):
             node = soup.select_one('[itemprop="datePublished"], .book__release-date')
             text = node.get("content", node.get_text(" ")) if node else ""
             match = re.search(r"\b(1[5-9]\d{2}|20\d{2})\b", text)
+        if not match:
+            detail_date = self._detail_value(soup, "Data wydania")
+            match = re.search(r"\b(1[5-9]\d{2}|20\d{2})\b", detail_date or "")
         return int(match.group(1)) if match else None
 
     def _parse_language(self, data: dict[str, Any], soup: BeautifulSoup) -> str | None:

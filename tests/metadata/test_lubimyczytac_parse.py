@@ -329,6 +329,13 @@ class TestLubimyczytacSearch:
         assert author == "Anna Maria Kowalska"
         assert explicit_separator is True
 
+    def test_author_search_matches_without_polish_diacritics(self):
+        get_metadata_cache().clear()
+        html = SEARCH_HTML.replace("Andrzej Sapkowski", "Andrzej Żulczyk")
+        provider = _provider(_Session({"szukaj/ksiazki": html}))
+        books = provider.search(MetadataSearchOptions(query="Andrzej Zulczyk", search_type=SearchType.AUTHOR))
+        assert len(books) == 2
+
 class TestLubimyczytacBook:
     def test_lightbox_cover_has_priority_over_json_ld(self):
         get_metadata_cache().clear()
@@ -544,6 +551,14 @@ class TestLubimyczytacBook:
             (field.label, field.value) for field in book.display_fields
         ]
 
+
+    def test_get_book_uses_publication_date_detail_as_year_fallback(self):
+        get_metadata_cache().clear()
+        html = BOOK_HTML.replace(chr(34)+"datePublished"+chr(34)+": "+chr(34)+"2014"+chr(34)+",", "")
+        html = html.replace("</dl>", "<dt>Data wydania:</dt><dd>2014-01-01</dd><dt>Data 1. wyd. pol.:</dt><dd>1993-01-01</dd></dl>")
+        book = _provider(_Session({"/ksiazka/123456/wiedzmin-ostatnie-zyczenie": html})).get_book("123456--wiedzmin-ostatnie-zyczenie")
+        assert book is not None
+        assert book.publish_year == 2014
 
 class TestValidIsbn:
     def test_accepts_isbn10_and_isbn13_with_separators(self):
