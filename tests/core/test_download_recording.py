@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from shelfmark.core import download_recording
 from shelfmark.core.models import QueueStatus
 from shelfmark.core.notifications import NotificationEvent
 from shelfmark.download import orchestrator as backend
@@ -26,9 +27,7 @@ def main_module():
 
 def _recording():
     """The module that holds the recording code (notify_*, reopen_failed_request live there)."""
-    import shelfmark.main as module
-
-    return module
+    return download_recording
 
 
 def _queued_hook():

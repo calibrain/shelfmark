@@ -9,6 +9,7 @@ from unittest.mock import ANY, patch
 
 import pytest
 
+from shelfmark.core import download_recording
 from shelfmark.core.models import DownloadTask, QueueStatus
 from shelfmark.core.notifications import NotificationEvent
 from shelfmark.core.viewer_redaction import public_download_id
@@ -172,8 +173,8 @@ class TestTerminalSnapshotCapture:
         assert main_module.backend.book_queue.add(task) is True
 
         try:
-            with patch.object(main_module, "notify_admin") as mock_notify:
-                with patch.object(main_module, "notify_user") as mock_notify_user:
+            with patch.object(download_recording, "notify_admin") as mock_notify:
+                with patch.object(download_recording, "notify_user") as mock_notify_user:
                     main_module.backend.book_queue.update_status(task_id, QueueStatus.COMPLETE)
 
             mock_notify.assert_called_once()
@@ -264,8 +265,8 @@ class TestTerminalSnapshotCapture:
 
         try:
             main_module.backend.book_queue.update_status_message(task_id, "Resolver timed out")
-            with patch.object(main_module, "notify_admin") as mock_notify:
-                with patch.object(main_module, "notify_user") as mock_notify_user:
+            with patch.object(download_recording, "notify_admin") as mock_notify:
+                with patch.object(download_recording, "notify_user") as mock_notify_user:
                     main_module.backend.book_queue.update_status(task_id, QueueStatus.ERROR)
 
             mock_notify.assert_called_once()
@@ -324,7 +325,7 @@ class TestTerminalSnapshotCapture:
             main_module.backend.book_queue.update_status_message(
                 task_id, "Destination not writable"
             )
-            with patch.object(main_module, "reopen_failed_request") as mock_reopen:
+            with patch.object(download_recording, "reopen_failed_request") as mock_reopen:
                 main_module.backend.book_queue.update_status(task_id, QueueStatus.ERROR)
 
             mock_reopen.assert_not_called()
@@ -463,7 +464,7 @@ class TestTerminalSnapshotCapture:
 
         with patch.object(main_module.ws_manager, "is_enabled", return_value=True):
             with patch.object(main_module.ws_manager.socketio, "emit") as mock_emit:
-                main_module._record_download_queued(task_id, task)
+                main_module.backend.book_queue._queue_hook(task_id, task)
 
         mock_emit.assert_any_call(
             "activity_update",
@@ -501,7 +502,7 @@ class TestTerminalSnapshotCapture:
 
         with patch.object(main_module.ws_manager, "is_enabled", return_value=True):
             with patch.object(main_module.ws_manager.socketio, "emit") as mock_emit:
-                main_module._record_download_queued(task_id, task)
+                main_module.backend.book_queue._queue_hook(task_id, task)
 
         payloads = _activity_update_payloads(mock_emit)
         assert payloads["admins"] == {"kind": "activity_reset", "task_id": task_id}
@@ -524,8 +525,8 @@ class TestTerminalSnapshotCapture:
         assert main_module.backend.book_queue.add(task) is True
 
         try:
-            with patch.object(main_module, "notify_admin") as mock_notify:
-                with patch.object(main_module, "notify_user") as mock_notify_user:
+            with patch.object(download_recording, "notify_admin") as mock_notify:
+                with patch.object(download_recording, "notify_user") as mock_notify_user:
                     main_module.backend.book_queue.update_status(task_id, QueueStatus.CANCELLED)
 
             mock_notify.assert_not_called()

@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 import pytest
 
-from shelfmark.core.models import DownloadTask
+from shelfmark.core.models import DownloadTask, QueueStatus
 
 
 @pytest.fixture(scope="module")
@@ -687,7 +687,7 @@ class TestRetryDownloadEndpointGuardrails:
                 with patch.object(
                     main_module.backend.book_queue,
                     "get_task_status",
-                    return_value=main_module.QueueStatus.ERROR,
+                    return_value=QueueStatus.ERROR,
                 ):
                     with patch.object(
                         main_module.backend, "retry_download", return_value=(True, None)

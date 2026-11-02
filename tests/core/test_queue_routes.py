@@ -17,6 +17,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from shelfmark.core.models import DownloadTask
+from shelfmark.core.viewer_redaction import viewer_download_id
 
 
 @pytest.fixture(scope="module")
@@ -272,7 +273,7 @@ class TestCancel:
         user = _create_user(main_module, prefix="reader")
         _login(client, user_id=user["username"], db_user_id=user["id"])
         real_id = "21:https://tracker.example/t/1"
-        viewer_id = main_module.viewer_download_id(real_id, 5)
+        viewer_id = viewer_download_id(real_id, 5)
         assert viewer_id != real_id
         task = _task(real_id, user=user, request_id=None)
         live = MagicMock()
