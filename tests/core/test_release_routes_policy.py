@@ -282,8 +282,9 @@ def _get_record(
     with (
         auth_patch,
         policy_patch,
-        patch.object(
-            main_module, "get_source_content_type_capabilities", return_value=capabilities
+        patch(
+            "shelfmark.core.release_routes.get_source_content_type_capabilities",
+            return_value=capabilities,
         ),
         patch("shelfmark.release_sources.get_source", return_value=_Source(searched)),
     ):

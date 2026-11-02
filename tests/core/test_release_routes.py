@@ -141,9 +141,8 @@ class TestDownloadContentType:
     def test_a_source_that_only_serves_audiobooks_decides_the_type(self, client, main_module):
         payload = {"source": "audio_only", "source_id": "a", "title": "Some Book"}
 
-        with patch.object(
-            main_module,
-            "get_source_content_type_capabilities",
+        with patch(
+            "shelfmark.core.release_routes.get_source_content_type_capabilities",
             return_value={"audio_only": {"audiobook"}},
         ):
             resp, captured = _download(client, main_module, payload)
