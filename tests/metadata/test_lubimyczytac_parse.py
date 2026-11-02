@@ -300,12 +300,53 @@ class TestLubimyczytacSearch:
         assert "123457--krew-elfow" in [b.provider_id for b in books]
         assert len(session.urls) == 3
 
+    def test_hyphenated_title_is_not_treated_as_explicit_separator(self):
+        title, author, explicit_separator = _split_title_author("Spider-Man Stan Lee")
+        assert title == "Spider-Man"
+        assert author == "Stan Lee"
+        assert explicit_separator is False
+
+    def test_hyphenated_title_retries_original_query_without_author_filter(self):
+        get_metadata_cache().clear()
+        wrong_author_html = SEARCH_HTML.replace("Andrzej Sapkowski", "Someone Else")
+        matching_html = SEARCH_HTML.replace("Andrzej Sapkowski", "Stan Lee")
+        session = _Session({"phrase=Spider-Man": wrong_author_html, "phrase=Spider-Man+Stan+Lee": matching_html})
+        books = _provider(session).search(MetadataSearchOptions(query="Spider-Man Stan Lee"))
+        assert books
+        assert len(session.urls) == 2
+        assert "phrase=Spider-Man+Stan+Lee" in session.urls[1]
+
+    def test_search_splits_unspaced_title_author_separator(self):
+        title, author, explicit_separator = _split_title_author("Ostatnie życzenie-Andrzej Sapkowski")
+        assert title == "Ostatnie życzenie"
+        assert author == "Andrzej Sapkowski"
+        assert explicit_separator is True
+
+    def test_search_splits_unspaced_title_author_separator(self):
+        title, author, explicit_separator = _split_title_author("Ostatnie życzenie-Andrzej Sapkowski")
+        assert title == "Ostatnie życzenie"
+        assert author == "Andrzej Sapkowski"
+        assert explicit_separator is True
+
+    def test_search_splits_unspaced_title_author_separator(self):
+        title, author, explicit_separator = _split_title_author("Ostatnie życzenie-Andrzej Sapkowski")
+        assert title == "Ostatnie życzenie"
+        assert author == "Andrzej Sapkowski"
+        assert explicit_separator is True
+
+    def test_search_splits_unspaced_title_author_separator(self):
+        title, author, explicit_separator = _split_title_author("Ostatnie życzenie-Andrzej Sapkowski")
+        assert title == "Ostatnie życzenie"
+        assert author == "Andrzej Sapkowski"
+        assert explicit_separator is True
+
     def test_search_splits_multiword_author_with_separator(self):
         get_metadata_cache().clear()
         query = "Ostatnie życzenie – Anna Maria Kowalska"
-        title, author = _split_title_author(query)
+        title, author, explicit_separator = _split_title_author(query)
         assert title == "Ostatnie życzenie"
         assert author == "Anna Maria Kowalska"
+        assert explicit_separator is True
 
 class TestLubimyczytacBook:
     def test_lightbox_cover_has_priority_over_json_ld(self):
