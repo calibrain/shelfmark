@@ -1661,7 +1661,7 @@ class TestActivityRoutes:
             viewer_scope=f"user:{user['id']}",
         )
 
-        main_module._record_download_queued(
+        main_module.backend.book_queue._queue_hook(
             "task-reused-1",
             SimpleNamespace(
                 user_id=user["id"],
