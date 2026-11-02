@@ -15,7 +15,7 @@ from urllib.parse import quote
 
 from flask import Flask, g, jsonify, request, send_file, session
 from flask_cors import CORS
-from flask_socketio import SocketIO, emit
+from flask_socketio import SocketIO
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash
 from werkzeug.wrappers import Response
@@ -102,6 +102,7 @@ from shelfmark.core.requests_service import (
     sync_delivery_states_from_queue_status,
 )
 from shelfmark.core.settings_routes import register_settings_routes
+from shelfmark.core.socket_handlers import register_socket_handlers
 from shelfmark.core.socketio_origins import build_cors_allowed_origins
 from shelfmark.core.stats_routes import STATS_PATH, register_stats_routes
 from shelfmark.core.system_routes import DebugHooks, register_system_routes
@@ -2471,78 +2472,9 @@ register_settings_routes(app, login_required)
 register_onboarding_routes(app, login_required)
 
 
-def _get_request_sid() -> str | None:
-    """Return the Socket.IO session id for the active request when available."""
-    sid = getattr(request, "sid", None)
-    return sid if isinstance(sid, str) and sid else None
-
-
-# WebSocket event handlers
-@socketio.on("connect")
-def handle_connect() -> None:
-    """Handle client connection."""
-    logger.info("WebSocket client connected")
-
-    # Track the connection (triggers warmup callbacks on first connect)
-    ws_manager.client_connected()
-
-    # Join appropriate room based on authenticated user session
-    is_admin, db_user_id, can_access_status = _resolve_status_scope()
-    sid = _get_request_sid()
-    if sid is None:
-        logger.warning("Socket.IO connect event missing sid")
-        return
-    ws_manager.join_user_room(sid, is_admin=is_admin, db_user_id=db_user_id)
-
-    # Send initial status to the newly connected client (filtered)
-    try:
-        if not can_access_status:
-            emit("status_update", {})
-            return
-
-        user_id = None if is_admin else db_user_id
-        status = backend.queue_status(user_id=user_id)
-        emit("status_update", status if is_admin else redact_status(status))
-    except _OPERATIONAL_ERRORS:
-        logger.exception("Error sending initial status")
-
-
-@socketio.on("disconnect")
-def handle_disconnect() -> None:
-    """Handle client disconnection."""
-    logger.info("WebSocket client disconnected")
-
-    # Leave room
-    sid = _get_request_sid()
-    if sid is not None:
-        ws_manager.leave_user_room(sid)
-
-    # Track the disconnection
-    ws_manager.client_disconnected()
-
-
-@socketio.on("request_status")
-def handle_status_request() -> None:
-    """Handle manual status request from client."""
-    try:
-        is_admin, db_user_id, can_access_status = _resolve_status_scope()
-        sid = _get_request_sid()
-        if sid is None:
-            logger.warning("Socket.IO request_status event missing sid")
-            emit("status_update", {})
-            return
-        ws_manager.sync_user_room(sid, is_admin=is_admin, db_user_id=db_user_id)
-
-        if not can_access_status:
-            emit("status_update", {})
-            return
-
-        user_id = None if is_admin else db_user_id
-        status = backend.queue_status(user_id=user_id)
-        emit("status_update", status if is_admin else redact_status(status))
-    except _OPERATIONAL_ERRORS:
-        logger.exception("Error handling status request")
-        emit("error", {"message": "Failed to get status"})
+register_socket_handlers(
+    socketio, ws_manager=ws_manager, resolve_status_scope=_resolve_status_scope
+)
 
 
 logger.log_resource_usage()
