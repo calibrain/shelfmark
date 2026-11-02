@@ -404,11 +404,11 @@ wheels = [
 
 [[package]]
 name = "dnspython"
-version = "2.9.0"
+version = "2.9.1"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/ef/4a/50822184bd67cc6493f0fb6a880749158fcd31ab3fa07409acfd91f9fc85/dnspython-2.9.0.tar.gz", hash = "sha256:b44dc6b18f07a8b1c56676a19fbfdb5209415b046a9cece286baafa87ff3f7f1", size = 423560, upload-time = "2026-10-09T00:07:24.352Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/91/21/7fcd6780f61e9756aafaea760560509bb4111375daa2e23c1be7a89f33f1/dnspython-2.9.1.tar.gz", hash = "sha256:9a6d30e55f8dc63e6052597666112bff0586b95a2474a9deda03afbbf820d37a", size = 455302, upload-time = "2026-10-29T18:05:12.156Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/10/02/cdcc9b7c051786a103c3b09e1003a82fa0c66bcb91ffbdabcfbf7b4163b9/dnspython-2.9.0-py3-none-any.whl", hash = "sha256:9a4aedb833c3c1b49214d04d44d3032ab7a9135f7c1d29a549b4ff78fd82fda9", size = 354822, upload-time = "2026-10-09T00:07:22.622Z" },
+    { url = "https://files.pythonhosted.org/packages/61/55/f90405bbbbd3dd8f788e92cec2d39964f5c09783f0570fc35f3bb3381485/dnspython-2.9.1-py3-none-any.whl", hash = "sha256:7c81caf8de1ed57b8cfc7e0ad4f528a0b8ceace473c7eb946df195dc9def751f", size = 360364, upload-time = "2026-10-29T18:05:10.206Z" },
 ]
 
 [[package]]
@@ -1467,7 +1467,7 @@ wheels = [
 
 [[package]]
 name = "seleniumbase"
-version = "4.56.4"
+version = "4.56.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "attrs" },
@@ -1530,9 +1530,9 @@ dependencies = [
     { name = "wheel" },
     { name = "wsproto" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a0/d6/fcee7be240b05034b3b0ff8bcba6b586dbec84c62c9883bb7da2dcb82cb2/seleniumbase-4.56.4.tar.gz", hash = "sha256:bbc20a469349a6aa439f022d5aa61f9543ce58c43d486302e4f313930b5862e4", size = 706713, upload-time = "2026-10-25T23:46:04.666Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/5d/d5/bde2bf89796270739d0f449f25dcacfd9660bbb06edf5f9195e16f50207e/seleniumbase-4.56.5.tar.gz", hash = "sha256:eaf8faf781da19fae2f15f26972a5d63687975421a573ac94705434164d81d9e", size = 706621, upload-time = "2026-10-29T04:53:20.383Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ab/d0/388c77bea651c0d9388822a28f4827ff08c91e529a1fada62912e4d07542/seleniumbase-4.56.4-py3-none-any.whl", hash = "sha256:5be2779fa3608417d7569607e4d531f269a0a4157de2a69f3400395ea4644519", size = 701276, upload-time = "2026-10-25T23:46:02.63Z" },
+    { url = "https://files.pythonhosted.org/packages/bb/8d/d35c3f93e650e7f01b95cde8c6d301524b00aebc738099e6fb67f72aee27/seleniumbase-4.56.5-py3-none-any.whl", hash = "sha256:89d954eb5f4a947c7d6ddc4359c08d4b63d5374023cf5f012a801cf10a9993fe", size = 701264, upload-time = "2026-10-29T04:53:16.864Z" },
 ]
 
 [[package]]
@@ -1617,7 +1617,7 @@ requires-dist = [
     { name = "qbittorrent-api", specifier = ">=2026.10.1" },
     { name = "rarfile" },
     { name = "requests", extras = ["socks"] },
-    { name = "seleniumbase", marker = "extra == 'browser'", specifier = "==4.56.4" },
+    { name = "seleniumbase", marker = "extra == 'browser'", specifier = "==4.56.5" },
     { name = "tqdm" },
     { name = "transmission-rpc" },
 ]
