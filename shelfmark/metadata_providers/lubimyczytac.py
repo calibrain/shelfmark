@@ -275,7 +275,7 @@ class LubimyczytacProvider(MetadataProvider):
         inferred_author = False
         if not title and not author and options.search_type == SearchType.GENERAL:
             title, author = _split_title_author(query)
-            inferred_author = bool(author)
+            inferred_author = bool(author) and not re.search(r"\s[–—-]\s", query)
         phrase = title or query or author
         if not phrase:
             return []
@@ -284,6 +284,13 @@ class LubimyczytacProvider(MetadataProvider):
             f"{phrase}:{options.search_type.value}:{options.page}:{options.limit}:{fields_key}"
         )
         books = self._search_cached(cache_key, phrase, author, options.page, options.limit) or []
+        if not books and inferred_author:
+            raw_key = f"{cache_key}:raw:{query}"
+            books = (
+                self._search_cached(raw_key, query, "", options.page, options.limit)
+                or []
+            )
+            return books[: options.limit]
         if (
             not title
             or not author
