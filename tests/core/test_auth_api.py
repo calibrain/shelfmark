@@ -10,6 +10,11 @@ import pytest
 from werkzeug.security import generate_password_hash
 
 
+def _hook(main_module, name):
+    """The registered before_request hook called `name` (it lives in core/auth_middleware.py)."""
+    return next(f for f in main_module.app.before_request_funcs[None] if f.__name__ == name)
+
+
 @pytest.fixture(scope="module")
 def main_module():
     """Import `shelfmark.main` with background startup disabled."""
@@ -309,7 +314,7 @@ class TestProxyProvisioningRole:
             ):
                 main_module.session["user_id"] = "bob"
                 main_module.session["db_user_id"] = bob["id"]
-                assert main_module.proxy_auth_middleware() is None
+                assert _hook(main_module, "proxy_auth_middleware")() is None
                 return main_module.session["is_admin"]
 
         assert run_middleware() is False

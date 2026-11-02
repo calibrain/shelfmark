@@ -14,6 +14,11 @@ import pytest
 from shelfmark.core import api_key
 
 
+def _hook(main_module, name):
+    """The registered before_request hook called `name` (it lives in core/auth_middleware.py)."""
+    return next(f for f in main_module.app.before_request_funcs[None] if f.__name__ == name)
+
+
 @pytest.fixture
 def user_db():
     from shelfmark.core.user_db import UserDB
@@ -111,7 +116,7 @@ def _identity_for_key(wired):
     the middleware in a request context sidesteps that entirely.
     """
     with wired.app.test_request_context("/api/downloads/active", headers=_bearer("s3cret")):
-        assert wired.api_key_auth_middleware() is None
+        assert _hook(wired, "api_key_auth_middleware")() is None
         from flask import session
 
         return dict(session)
@@ -492,7 +497,7 @@ class TestReadOnlyKeyRequests:
     def test_never_gets_an_admin_session(self, ro, user_db):
         user_db.create_user(username="root", role="admin")
         with ro.app.test_request_context("/api/stats", headers=_bearer("ro-key")):
-            assert ro.api_key_auth_middleware() is None
+            assert _hook(ro, "api_key_auth_middleware")() is None
             from flask import session
 
             assert "is_admin" not in session

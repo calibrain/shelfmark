@@ -12,6 +12,11 @@ import pytest
 pytestmark = pytest.mark.e2e
 
 
+def _hook(main_module, name):
+    """The registered before_request hook called `name` (it lives in core/auth_middleware.py)."""
+    return next(f for f in main_module.app.before_request_funcs[None] if f.__name__ == name)
+
+
 def _as_response(result: Any):
     if isinstance(result, tuple) and len(result) == 2:
         resp, status = result
@@ -61,7 +66,7 @@ class TestProxyAuthMiddleware:
             patch.object(main_module, "get_auth_mode", return_value="builtin"),
             main_module.app.test_request_context("/api/releases"),
         ):
-            result = main_module.proxy_auth_middleware()
+            result = _hook(main_module, "proxy_auth_middleware")()
             assert result is None
             assert "user_id" not in main_module.session
 
@@ -70,7 +75,7 @@ class TestProxyAuthMiddleware:
             patch.object(main_module, "get_auth_mode", return_value="proxy"),
             main_module.app.test_request_context("/api/health"),
         ):
-            result = main_module.proxy_auth_middleware()
+            result = _hook(main_module, "proxy_auth_middleware")()
             assert result is None
 
     def test_allows_auth_check_without_header(self, main_module):
@@ -83,7 +88,7 @@ class TestProxyAuthMiddleware:
             ),
             main_module.app.test_request_context("/api/auth/check"),
         ):
-            result = main_module.proxy_auth_middleware()
+            result = _hook(main_module, "proxy_auth_middleware")()
             assert result is None
             assert "user_id" not in main_module.session
 
@@ -100,7 +105,7 @@ class TestProxyAuthMiddleware:
                 headers={"X-Auth-User": "proxyuser"},
             ),
         ):
-            result = main_module.proxy_auth_middleware()
+            result = _hook(main_module, "proxy_auth_middleware")()
             assert result is None
             assert main_module.session.get("user_id") == "proxyuser"
             assert main_module.session.get("is_admin") is True
@@ -125,7 +130,7 @@ class TestProxyAuthMiddleware:
                 environ_base={"REMOTE_USER": "proxyremote"},
             ),
         ):
-            result = main_module.proxy_auth_middleware()
+            result = _hook(main_module, "proxy_auth_middleware")()
             assert result is None
             assert main_module.session.get("user_id") == "proxyremote"
             assert main_module.session.get("is_admin") is True
@@ -150,7 +155,7 @@ class TestProxyAuthMiddleware:
                 headers={"X-Auth-User": "proxy_takeover_local"},
             ),
         ):
-            result = main_module.proxy_auth_middleware()
+            result = _hook(main_module, "proxy_auth_middleware")()
             assert result is None
 
             db_user_id = main_module.session.get("db_user_id")
@@ -176,7 +181,7 @@ class TestProxyAuthMiddleware:
             main_module.session["user_id"] = "old-user"
             main_module.session["db_user_id"] = 999999
 
-            result = main_module.proxy_auth_middleware()
+            result = _hook(main_module, "proxy_auth_middleware")()
             assert result is None
             assert main_module.session.get("user_id") == "proxyuser2"
             db_user_id = main_module.session.get("db_user_id")
@@ -203,7 +208,7 @@ class TestProxyAuthMiddleware:
             main_module.session["user_id"] = username
             main_module.session["db_user_id"] = stale_user_id
 
-            result = main_module.proxy_auth_middleware()
+            result = _hook(main_module, "proxy_auth_middleware")()
             assert result is None
             assert main_module.session.get("user_id") == username
 
@@ -238,7 +243,7 @@ class TestProxyAuthMiddleware:
             main_module.session["user_id"] = username
             main_module.session["db_user_id"] = other_user["id"]
 
-            result = main_module.proxy_auth_middleware()
+            result = _hook(main_module, "proxy_auth_middleware")()
             assert result is None
             assert main_module.session.get("user_id") == username
 
@@ -264,7 +269,7 @@ class TestProxyAuthMiddleware:
                 "/api/releases",
                 headers={"X-Auth-User": "first_proxy_user"},
             ):
-                assert main_module.proxy_auth_middleware() is None
+                assert _hook(main_module, "proxy_auth_middleware")() is None
                 assert main_module.session.get("is_admin") is True
 
             # The instance now has an admin, so nobody is at risk of being locked
@@ -273,7 +278,7 @@ class TestProxyAuthMiddleware:
                 "/api/releases",
                 headers={"X-Auth-User": "second_proxy_user"},
             ):
-                assert main_module.proxy_auth_middleware() is None
+                assert _hook(main_module, "proxy_auth_middleware")() is None
                 assert main_module.session.get("is_admin") is False
 
     def test_default_role_admin_promotes_later_accounts(self, main_module):
@@ -300,7 +305,7 @@ class TestProxyAuthMiddleware:
                 headers={"X-Auth-User": "later_proxy_admin"},
             ),
         ):
-            assert main_module.proxy_auth_middleware() is None
+            assert _hook(main_module, "proxy_auth_middleware")() is None
             assert main_module.session.get("is_admin") is True
 
     def test_existing_user_keeps_its_stored_role(self, main_module):
@@ -332,7 +337,7 @@ class TestProxyAuthMiddleware:
                 headers={"X-Auth-User": "known_plain_user"},
             ),
         ):
-            assert main_module.proxy_auth_middleware() is None
+            assert _hook(main_module, "proxy_auth_middleware")() is None
             # The stored role wins; the default only applies to new accounts.
             assert main_module.session.get("is_admin") is False
 
@@ -346,7 +351,7 @@ class TestProxyAuthMiddleware:
             ),
             main_module.app.test_request_context("/api/releases"),
         ):
-            resp = _as_response(main_module.proxy_auth_middleware())
+            resp = _as_response(_hook(main_module, "proxy_auth_middleware")())
             data = resp.get_json()
 
         assert resp.status_code == 401
@@ -374,7 +379,7 @@ class TestProxyAuthMiddleware:
                 },
             ),
         ):
-            result = main_module.proxy_auth_middleware()
+            result = _hook(main_module, "proxy_auth_middleware")()
             assert result is None
             assert main_module.session.get("is_admin") is True
 
