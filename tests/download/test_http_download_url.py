@@ -336,3 +336,69 @@ def test_default_download_does_not_log_the_rotated_url(monkeypatch):
     assert http.download_url(source_url) is None
 
     assert rotated_url not in str(logger.mock_calls)
+
+
+def test_spooled_download_rolls_to_disk_and_retains_contents(monkeypatch):
+    http = _prepare_download_test(monkeypatch)
+    payload = b"a" * (8 * 1024 * 1024 + 1)
+    monkeypatch.setattr(
+        http.requests,
+        "get",
+        lambda url, **kwargs: _FakeResponse(
+            200, headers={"content-length": str(len(payload))}, chunks=[payload], url=url
+        ),
+    )
+    result = http.download_url("https://example.com/file", spool_to_disk=True)
+    assert result is not None
+    with result:
+        assert result._rolled
+        result.seek(0)
+        assert result.read() == payload
+
+
+def test_spooled_download_closes_temporary_file_on_error(monkeypatch):
+    http = _prepare_download_test(monkeypatch)
+    created = []
+    factory = http.SpooledTemporaryFile
+
+    def track(*args, **kwargs):
+        stream = factory(*args, **kwargs)
+        created.append(stream)
+        return stream
+
+    monkeypatch.setattr(http, "SpooledTemporaryFile", track)
+    monkeypatch.setattr(
+        http.requests,
+        "get",
+        lambda *args, **kwargs: (_ for _ in ()).throw(requests.exceptions.Timeout()),
+    )
+    assert http.download_url("https://example.com/file", spool_to_disk=True) is None
+    assert len(created) == 1 and created[0].closed
+
+
+def test_spooled_download_resumes_and_returns_complete_content(monkeypatch):
+    http = _prepare_download_test(monkeypatch)
+    responses = iter(
+        [
+            _FakeResponse(
+                200,
+                headers={"content-length": "8"},
+                chunks=[b"abcd"],
+                iter_error=requests.exceptions.ConnectionError("interrupted"),
+            ),
+            _FakeResponse(206, chunks=[b"efgh"]),
+        ]
+    )
+    calls = []
+
+    def fake_get(url, **kwargs):
+        calls.append(kwargs)
+        return next(responses)
+
+    monkeypatch.setattr(http.requests, "get", fake_get)
+    result = http.download_url("https://example.com/file", spool_to_disk=True)
+    assert result is not None
+    with result:
+        result.seek(0)
+        assert result.read() == b"abcdefgh"
+    assert calls[1]["headers"]["Range"] == "bytes=4-"

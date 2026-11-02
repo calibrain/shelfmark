@@ -617,7 +617,7 @@ class TestDownloadPipeline:
         state = _state(tmp_path, phase="downloading_http")
         fetched: list[str] = []
 
-        def fake_download(url, referer=None, cancel_flag=None):
+        def fake_download(url, referer=None, cancel_flag=None, spool_to_disk=False):
             fetched.append(url)
             return _buffer(payload)
 
@@ -678,7 +678,7 @@ class TestDownloadPipeline:
         state = _state(target, phase="downloading_http")
         monkeypatch.setattr(
             "shelfmark.download.clients.debridlink.download_url",
-            lambda url, referer=None, cancel_flag=None: _buffer(),
+            lambda url, referer=None, cancel_flag=None, spool_to_disk=False: _buffer(),
         )
 
         client._process_and_download(state, [{"name": name, "downloadUrl": "https://dl.example/x"}])
@@ -693,7 +693,9 @@ class TestDownloadPipeline:
         state = _state(tmp_path, phase="downloading_http")
         monkeypatch.setattr(
             "shelfmark.download.clients.debridlink.download_url",
-            lambda url, referer=None, cancel_flag=None: _buffer(next(payloads)),
+            lambda url, referer=None, cancel_flag=None, spool_to_disk=False: _buffer(
+                next(payloads)
+            ),
         )
 
         client._process_and_download(
@@ -712,7 +714,7 @@ class TestDownloadPipeline:
         state = _state(tmp_path, phase="downloading_http")
         monkeypatch.setattr(
             "shelfmark.download.clients.debridlink.download_url",
-            lambda url, referer=None, cancel_flag=None: None,
+            lambda url, referer=None, cancel_flag=None, spool_to_disk=False: None,
         )
 
         client._process_and_download(
@@ -730,7 +732,7 @@ class TestDownloadPipeline:
         monkeypatch.setattr(client, "_fetch_file_list", listing)
         monkeypatch.setattr(
             "shelfmark.download.clients.debridlink.download_url",
-            lambda url, referer=None, cancel_flag=None: _buffer(),
+            lambda url, referer=None, cancel_flag=None, spool_to_disk=False: _buffer(),
         )
 
         client._process_and_download(state)
@@ -743,7 +745,7 @@ class TestDownloadPipeline:
         state = _state(tmp_path, phase="downloading_http")
         fetched: list[str] = []
 
-        def fake_download(url, referer=None, cancel_flag=None):
+        def fake_download(url, referer=None, cancel_flag=None, spool_to_disk=False):
             fetched.append(url)
             state.cancel_event.set()
             return _buffer()

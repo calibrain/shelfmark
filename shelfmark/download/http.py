@@ -4,7 +4,8 @@ import random
 import time
 from http import HTTPStatus
 from io import BytesIO
-from typing import TYPE_CHECKING, NoReturn
+from tempfile import SpooledTemporaryFile
+from typing import TYPE_CHECKING, BinaryIO, NoReturn
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import requests
@@ -881,7 +882,8 @@ def download_url(
     _selector: network.AAMirrorSelector | None = None,
     status_callback: Callable[[str, str | None], None] | None = None,
     referer: str | None = None,
-) -> BytesIO | None:
+    spool_to_disk: bool = False,
+) -> BinaryIO | None:
     """Download content from URL with automatic retry and resume support."""
     selector = _selector or network.AAMirrorSelector()
     current_url = selector.rewrite(link)
@@ -904,134 +906,146 @@ def download_url(
         if cancel_flag and cancel_flag.is_set():
             return None
 
-        buffer = BytesIO()
+        buffer = (
+            SpooledTemporaryFile(max_size=8 * 1024 * 1024, mode="w+b")  # noqa: SIM115 - caller owns successful downloads
+            if spool_to_disk
+            else BytesIO()
+        )
         bytes_downloaded = 0
+        returned = False
 
         try:
-            if attempt > 0 and status_callback:
-                status_callback(
-                    "resolving",
-                    f"Connecting (Attempt {attempt + 1}/{MAX_DOWNLOAD_RETRIES})",
-                )
+            try:
+                if attempt > 0 and status_callback:
+                    status_callback(
+                        "resolving",
+                        f"Connecting (Attempt {attempt + 1}/{MAX_DOWNLOAD_RETRIES})",
+                    )
 
-            logger.info("Downloading (attempt %s/%s)", attempt + 1, MAX_DOWNLOAD_RETRIES)
-            # Try with CF cookies/UA if available
-            cookies = _apply_cf_bypass(current_url, headers)
-            response = requests.get(
-                current_url,
-                stream=True,
-                proxies=get_proxies(current_url),
-                timeout=REQUEST_TIMEOUT,
-                cookies=cookies,
-                headers=headers,
-                verify=get_ssl_verify(current_url),
-                hooks=network.REDIRECT_GUARD_HOOKS,
-            )
-            response.raise_for_status()
-
-            if status_callback:
-                status_callback("downloading", "")
-
-            total_size = total_size or float(response.headers.get("content-length", 0))
-            pbar = tqdm(total=total_size, unit="B", unit_scale=True, desc="Downloading")
-
-            for chunk in response.iter_content(chunk_size=8192):
-                if chunk:
-                    buffer.write(chunk)
-                    bytes_downloaded += len(chunk)
-                    pbar.update(len(chunk))
-                    if progress_callback and total_size > 0:
-                        progress_callback(bytes_downloaded * 100.0 / total_size)
-                    if cancel_flag and cancel_flag.is_set():
-                        pbar.close()
-                        return None
-            pbar.close()
-
-            # Validate - check we didn't get HTML instead of file
-            if (
-                total_size > 0
-                and bytes_downloaded < total_size * 0.9
-                and response.headers.get("content-type", "").startswith("text/html")
-            ):
-                logger.warning("Received HTML instead of file")
-                return None
-
-            logger.debug("Download completed: %s bytes", bytes_downloaded)
-
-        except requests.exceptions.RequestException as e:
-            status = _get_status_code(e)
-            retryable = _is_retryable_error(e)
-
-            # Z-Library 403 - try refreshing cookies via bypasser once before giving up
-            if (
-                status == _HTTP_STATUS_FORBIDDEN
-                and _is_cf_bypass_enabled()
-                and not zlib_cookie_refresh_attempted
-            ):
-                parsed = urlparse(current_url)
-                if _is_configured_zlib_host(parsed.hostname) and referer:
-                    zlib_cookie_refresh_attempted = True
-                    logger.info("Z-Library 403 - refreshing cookies via referer")
-                    try:
-                        get_bypassed_page(referer, selector, cancel_flag)
-                        time.sleep(0.5)
-                        # Retry with fresh cookies (don't increment attempt)
-                        continue
-                    except _BYPASSER_ERRORS as cookie_err:
-                        logger.warning(
-                            "Z-Library cookie refresh failed: %s",
-                            type(cookie_err).__name__,
-                        )
-
-            # Non-retryable errors
-            if status in _HTTP_STATUS_NON_RETRYABLE:
-                logger.warning("Download failed (%s)", status)
-                return None
-
-            # Rate limited - skip to next source immediately
-            # (waiting doesn't help with concurrent downloads hitting the same server)
-            if status == _HTTP_STATUS_RATE_LIMITED:
-                network.note_rate_limited(current_url)
-                logger.info("Rate limited (429) - trying next source")
-                if status_callback:
-                    status_callback("resolving", "Server busy, trying next")
-                return None
-
-            # Timeout - don't retry, server likely overloaded
-            if isinstance(e, requests.exceptions.Timeout):
-                logger.warning("Timeout - skipping to next source")
-                if status_callback:
-                    status_callback("resolving", "Server timed out, trying next")
-                return None
-
-            # Try to resume if we got some data
-            if bytes_downloaded > 0 and retryable:
-                resumed = _try_resume(
+                logger.info("Downloading (attempt %s/%s)", attempt + 1, MAX_DOWNLOAD_RETRIES)
+                # Try with CF cookies/UA if available
+                cookies = _apply_cf_bypass(current_url, headers)
+                response = requests.get(
                     current_url,
-                    buffer,
-                    bytes_downloaded,
-                    total_size,
-                    progress_callback,
-                    cancel_flag,
-                    headers,
+                    stream=True,
+                    proxies=get_proxies(current_url),
+                    timeout=REQUEST_TIMEOUT,
+                    cookies=cookies,
+                    headers=headers,
+                    verify=get_ssl_verify(current_url),
+                    hooks=network.REDIRECT_GUARD_HOOKS,
                 )
-                if resumed:
-                    return resumed
+                response.raise_for_status()
 
-            # Try mirror/DNS rotation if nothing downloaded yet
-            if bytes_downloaded == 0 and retryable:
-                new_url = _try_rotation(link, current_url, selector)
-                if new_url:
-                    current_url = new_url
-                    attempt += 1
-                    continue
+                if status_callback:
+                    status_callback("downloading", "")
 
-            logger.warning("Download error: %s", type(e).__name__)
-            if attempt < MAX_DOWNLOAD_RETRIES - 1:
-                time.sleep(_backoff_delay(attempt + 1))
-            attempt += 1
-        else:
-            return buffer
+                total_size = total_size or float(response.headers.get("content-length", 0))
+                pbar = tqdm(total=total_size, unit="B", unit_scale=True, desc="Downloading")
+
+                for chunk in response.iter_content(chunk_size=8192):
+                    if chunk:
+                        buffer.write(chunk)
+                        bytes_downloaded += len(chunk)
+                        pbar.update(len(chunk))
+                        if progress_callback and total_size > 0:
+                            progress_callback(bytes_downloaded * 100.0 / total_size)
+                        if cancel_flag and cancel_flag.is_set():
+                            pbar.close()
+                            return None
+                pbar.close()
+
+                # Validate - check we didn't get HTML instead of file
+                if (
+                    total_size > 0
+                    and bytes_downloaded < total_size * 0.9
+                    and response.headers.get("content-type", "").startswith("text/html")
+                ):
+                    logger.warning("Received HTML instead of file")
+                    return None
+
+                logger.debug("Download completed: %s bytes", bytes_downloaded)
+
+            except requests.exceptions.RequestException as e:
+                status = _get_status_code(e)
+                retryable = _is_retryable_error(e)
+
+                # Z-Library 403 - try refreshing cookies via bypasser once before giving up
+                if (
+                    status == _HTTP_STATUS_FORBIDDEN
+                    and _is_cf_bypass_enabled()
+                    and not zlib_cookie_refresh_attempted
+                ):
+                    parsed = urlparse(current_url)
+                    if _is_configured_zlib_host(parsed.hostname) and referer:
+                        zlib_cookie_refresh_attempted = True
+                        logger.info("Z-Library 403 - refreshing cookies via referer")
+                        try:
+                            get_bypassed_page(referer, selector, cancel_flag)
+                            time.sleep(0.5)
+                            # Retry with fresh cookies (don't increment attempt)
+                            continue
+                        except _BYPASSER_ERRORS as cookie_err:
+                            logger.warning(
+                                "Z-Library cookie refresh failed: %s",
+                                type(cookie_err).__name__,
+                            )
+
+                # Non-retryable errors
+                if status in _HTTP_STATUS_NON_RETRYABLE:
+                    logger.warning("Download failed (%s)", status)
+                    return None
+
+                # Rate limited - skip to next source immediately
+                # (waiting doesn't help with concurrent downloads hitting the same server)
+                if status == _HTTP_STATUS_RATE_LIMITED:
+                    network.note_rate_limited(current_url)
+                    logger.info("Rate limited (429) - trying next source")
+                    if status_callback:
+                        status_callback("resolving", "Server busy, trying next")
+                    return None
+
+                # Timeout - don't retry, server likely overloaded
+                if isinstance(e, requests.exceptions.Timeout):
+                    logger.warning("Timeout - skipping to next source")
+                    if status_callback:
+                        status_callback("resolving", "Server timed out, trying next")
+                    return None
+
+                # Try to resume if we got some data
+                if bytes_downloaded > 0 and retryable:
+                    resumed = _try_resume(
+                        current_url,
+                        buffer,
+                        bytes_downloaded,
+                        total_size,
+                        progress_callback,
+                        cancel_flag,
+                        headers,
+                    )
+                    if resumed:
+                        returned = True
+                        return resumed
+
+                # Try mirror/DNS rotation if nothing downloaded yet
+                if bytes_downloaded == 0 and retryable:
+                    new_url = _try_rotation(link, current_url, selector)
+                    if new_url:
+                        current_url = new_url
+                        attempt += 1
+                        continue
+
+                logger.warning("Download error: %s", type(e).__name__)
+                if attempt < MAX_DOWNLOAD_RETRIES - 1:
+                    time.sleep(_backoff_delay(attempt + 1))
+                attempt += 1
+            else:
+                returned = True
+                return buffer
+
+        finally:
+            if not returned:
+                buffer.close()
 
     logger.error("Download failed after %s attempts", MAX_DOWNLOAD_RETRIES)
     return None
@@ -1057,13 +1071,13 @@ def _is_configured_zlib_host(hostname: str | None) -> bool:
 
 def _try_resume(
     url: str,
-    buffer: BytesIO,
+    buffer: BinaryIO,
     start_byte: int,
     total_size: float,
     progress_callback: Callable[[float], None] | None,
     cancel_flag: Event | None,
     base_headers: dict | None = None,
-) -> BytesIO | None:
+) -> BinaryIO | None:
     """Try to resume an interrupted download."""
     for attempt in range(MAX_RESUME_ATTEMPTS):
         logger.info(

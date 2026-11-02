@@ -528,8 +528,11 @@ class TorBoxClient(DownloadClient):
                     direct_url,
                     referer="https://torbox.app/",
                     cancel_flag=state.cancel_event,
+                    spool_to_disk=True,
                 )
                 if state.cancel_event.is_set():
+                    if buffer is not None:
+                        buffer.close()
                     return
                 if not buffer:
                     _raise_runtime_error(
@@ -538,7 +541,7 @@ class TorBoxClient(DownloadClient):
 
                 destination = state.target_dir / relative_path
                 destination.parent.mkdir(parents=True, exist_ok=True)
-                with destination.open("wb") as output:
+                with buffer, destination.open("wb") as output:
                     buffer.seek(0)
                     shutil.copyfileobj(buffer, output)
                 with state.lock:

@@ -740,8 +740,11 @@ class DebridLinkClient(DownloadClient):
                     str(file_info.get("downloadUrl", "")),
                     referer="https://debrid-link.com/",
                     cancel_flag=state.cancel_event,
+                    spool_to_disk=True,
                 )
                 if state.cancel_event.is_set():
+                    if buf is not None:
+                        buf.close()
                     return
                 if not buf:
                     # The URL is signed and stays out of the message, which ends up
@@ -749,7 +752,7 @@ class DebridLinkClient(DownloadClient):
                     msg = f"Failed to download {rel_path} from Debrid-Link"
                     _raise_runtime_error(msg)
 
-                with dest.open("wb") as fh:
+                with buf, dest.open("wb") as fh:
                     buf.seek(0)
                     shutil.copyfileobj(buf, fh)
 
