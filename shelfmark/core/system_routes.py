@@ -305,7 +305,7 @@ def register_system_routes(
                 return jsonify({"error": f"Debug script failed: {e.stderr}"}), 500
             except _OPERATIONAL_ERRORS as e:
                 logger.error_trace(f"Debug endpoint error: {e}")
-                return jsonify({"error": str(e)}), 500
+                return jsonify({"error": "Could not create the debug file"}), 500
 
         @app.route("/api/restart", methods=["GET"])
         @admin_required
