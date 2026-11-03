@@ -69,6 +69,7 @@ import type {
   AppConfig,
   ContentType,
   ButtonStateInfo,
+  DisplayField,
   RequestPolicyMode,
   CreateRequestPayload,
   ActingAsUserSelection,
@@ -112,6 +113,17 @@ import {
 } from './utils/requestPolicyUi';
 import { getSearchByPreference, setSearchByPreference } from './utils/searchByPreference';
 import { buildUrlSearchHash } from './utils/urlSearchHash';
+
+const mergeDisplayFields = (
+  searchFields: DisplayField[] = [],
+  fullFields: DisplayField[] = [],
+): DisplayField[] => {
+  const fieldsByLabel = new Map(searchFields.map((field) => [field.label, field]));
+  for (const field of fullFields) {
+    fieldsByLabel.set(field.label, field);
+  }
+  return Array.from(fieldsByLabel.values());
+};
 
 // eslint-disable-next-line import/no-unassigned-import -- global app stylesheet is loaded for side effects
 import './styles.css';
@@ -992,7 +1004,7 @@ function App() {
           isbn_10: fullBook.isbn_10 || metadataBook.isbn_10,
           isbn_13: fullBook.isbn_13 || metadataBook.isbn_13,
           description: fullBook.description || metadataBook.description,
-          display_fields: fullBook.display_fields?.length ? fullBook.display_fields : metadataBook.display_fields,
+          display_fields: mergeDisplayFields(metadataBook.display_fields, fullBook.display_fields),
           series_id: fullBook.series_id || metadataBook.series_id,
           series_name: fullBook.series_name,
           series_position: fullBook.series_position,
@@ -1614,8 +1626,11 @@ function App() {
         const fullBook = await getMetadataBookInfo(book.provider, book.provider_id);
         setReleaseBook({
           ...book,
+          year: fullBook.year || book.year,
+          isbn_10: fullBook.isbn_10 || book.isbn_10,
+          isbn_13: fullBook.isbn_13 || book.isbn_13,
           description: fullBook.description || book.description,
-          display_fields: fullBook.display_fields?.length ? fullBook.display_fields : book.display_fields,
+          display_fields: mergeDisplayFields(book.display_fields, fullBook.display_fields),
           series_id: fullBook.series_id || book.series_id,
           series_name: fullBook.series_name,
           series_position: fullBook.series_position,

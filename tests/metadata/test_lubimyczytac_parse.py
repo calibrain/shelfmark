@@ -1,7 +1,7 @@
 import requests
 
 from shelfmark.core.cache import get_metadata_cache
-from shelfmark.metadata_providers import MetadataSearchOptions, SearchType
+from shelfmark.metadata_providers import BookMetadata, MetadataSearchOptions, SearchType
 from shelfmark.metadata_providers.lubimyczytac import (
     LubimyczytacProvider,
     _split_title_author,
@@ -99,6 +99,28 @@ def _provider(session):
 
 
 class TestLubimyczytacSearch:
+    def test_search_paginated_reports_more_for_full_source_page(self, monkeypatch):
+        provider = _provider(_Session({}))
+        books = [
+            BookMetadata(provider=provider.name, provider_id=str(index), title=f"Book {index}")
+            for index in range(10)
+        ]
+        searched_options = []
+
+        def search(options):
+            searched_options.append(options)
+            return books
+
+        monkeypatch.setattr(provider, "search", search)
+        result = provider.search_paginated(MetadataSearchOptions(query="books", page=2, limit=40))
+
+        assert result.books == books
+        assert result.page == 2
+        assert result.total_found == 0
+        assert result.has_more is True
+        assert searched_options[0].page == 2
+        assert searched_options[0].limit == 10
+
     def test_search_by_title_parses_cards(self):
         get_metadata_cache().clear()
         session = _Session({"szukaj/ksiazki": SEARCH_HTML})
@@ -139,8 +161,8 @@ class TestLubimyczytacSearch:
         bad_html = SEARCH_HTML.replace("Andrzej Sapkowski", "Irene Anders")
         session = _Session(
             {
-                "phrase=Ostatnie+%C5%BCyczenie": bad_html,
                 "phrase=Ostatnie+%C5%BCyczenie+Sapkowski": SEARCH_HTML,
+                "phrase=Ostatnie+%C5%BCyczenie": bad_html,
             }
         )
         provider = _provider(session)
@@ -149,7 +171,10 @@ class TestLubimyczytacSearch:
             MetadataSearchOptions(query="Ostatnie życzenie – Andrzej Sapkowski")
         )
 
-        assert books == []
+        assert [book.provider_id for book in books] == [
+            "123456--wiedzmin-ostatnie-zyczenie",
+            "123457--krew-elfow",
+        ]
         assert len(session.urls) == 2
 
     def test_search_splits_author_before_title(self):

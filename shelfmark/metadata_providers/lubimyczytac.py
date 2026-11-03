@@ -8,6 +8,7 @@ where available and HTML fallbacks for edition-specific details.
 import json
 import re
 import unicodedata
+from dataclasses import replace
 from typing import Any, ClassVar
 from urllib.parse import urlencode, urljoin, urlsplit
 
@@ -30,6 +31,7 @@ from shelfmark.metadata_providers import (
     MetadataProvider,
     MetadataSearchOptions,
     SearchField,
+    SearchResult,
     SearchType,
     SortOrder,
     TextSearchField,
@@ -304,6 +306,17 @@ class LubimyczytacProvider(MetadataProvider):
             logger.exception("LubimyCzytać pagination request failed: page %s", page)
             return None
 
+    def search_paginated(self, options: MetadataSearchOptions) -> SearchResult:
+        """LubimyCzytać returns at most ten results on each search page."""
+        page_options = replace(options, limit=10)
+        books = self.search(page_options)
+        return SearchResult(
+            books=books[: options.limit],
+            page=options.page,
+            total_found=0,  # The site does not expose an exact result count.
+            has_more=len(books) >= 10,
+        )
+
     def search(self, options: MetadataSearchOptions) -> list[BookMetadata]:
         if options.search_type == SearchType.ISBN:
             book = self.search_by_isbn(options.query)
@@ -481,7 +494,7 @@ class LubimyczytacProvider(MetadataProvider):
             'a[href*="/autor/"]',
         ):
             found = [
-                _clean_text(node.get("name") or node.get_text(" "))
+                _clean_text(str(node.get("name") or node.get_text(" ")))
                 for node in scope.select(selector)
             ]
             found = [name for name in found if name]
@@ -704,7 +717,7 @@ class LubimyczytacProvider(MetadataProvider):
         match = re.search(r"\b(1[5-9]\d{2}|20\d{2})\b", str(value or ""))
         if not match:
             node = soup.select_one('[itemprop="datePublished"], .book__release-date')
-            text = node.get("content", node.get_text(" ")) if node else ""
+            text = str(node.get("content", node.get_text(" "))) if node else ""
             match = re.search(r"\b(1[5-9]\d{2}|20\d{2})\b", text)
         if not match:
             detail_date = self._detail_value(soup, "Data wydania")
@@ -749,11 +762,8 @@ class LubimyczytacProvider(MetadataProvider):
                 position = None
             series_url = str(series.get("url") or series.get("@id") or "")
             if series_url:
-                series_id = (
-                    re.search(r"/cykl/(\d+)", series_url).group(1)
-                    if re.search(r"/cykl/(\d+)", series_url)
-                    else None
-                )
+                series_match = re.search(r"/cykl/(\d+)", series_url)
+                series_id = series_match.group(1) if series_match else None
         elif series:
             name = _clean_text(str(series)) or None
 
@@ -779,11 +789,8 @@ class LubimyczytacProvider(MetadataProvider):
             name = name or _clean_text(node.get_text(" ")) or None
             href = str(node.get("href") or "")
             if href:
-                series_id = (
-                    re.search(r"/cykl/(\d+)", href).group(1)
-                    if re.search(r"/cykl/(\d+)", href)
-                    else None
-                )
+                series_match = re.search(r"/cykl/(\d+)", href)
+                series_id = series_match.group(1) if series_match else None
             parent_text = _clean_text(node.parent.get_text(" ") if node.parent else "")
             match = re.search(
                 r"(?:tom|część|nr)\s*(\d+(?:[.,]\d+)?)",
