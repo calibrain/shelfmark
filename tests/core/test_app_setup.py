@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import importlib
 import logging
+import os
 from unittest.mock import patch
 
 import pytest
@@ -46,6 +47,35 @@ class TestSecretKey:
         path = tmp_path / ".flask_secret"
         assert len(created) == 64
         assert path.read_bytes() == created == again
+        assert path.stat().st_mode & 0o777 == 0o600
+
+    def test_the_key_is_never_written_to_a_file_others_can_read(
+        self, main_module, tmp_path, monkeypatch
+    ):
+        # Writing first and tightening the mode after leaves the key readable under the umask until
+        # the chmod, and readable for good when the chmod fails.
+        def chmod_fails(*_args, **_kwargs):
+            raise OSError("chmod not supported here")
+
+        monkeypatch.setattr("pathlib.Path.chmod", chmod_fails)
+        old_umask = os.umask(0o022)
+        try:
+            key = load_or_create_secret_key(tmp_path)
+        finally:
+            os.umask(old_umask)
+
+        path = tmp_path / ".flask_secret"
+        assert path.read_bytes() == key
+        assert path.stat().st_mode & 0o777 == 0o600
+
+    def test_a_replaced_key_file_is_made_private(self, main_module, tmp_path):
+        path = tmp_path / ".flask_secret"
+        path.write_bytes(b"short")
+        path.chmod(0o644)
+
+        key = load_or_create_secret_key(tmp_path)
+
+        assert path.read_bytes() == key
         assert path.stat().st_mode & 0o777 == 0o600
 
     def test_a_key_that_is_too_short_is_replaced(self, main_module, tmp_path):
