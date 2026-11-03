@@ -171,7 +171,7 @@ def register_metadata_routes(
             )
         except _IMPORT_OPERATIONAL_ERRORS as e:
             logger.error_trace(f"Metadata providers error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "Could not load the metadata providers"}), 500
 
     @app.route("/api/metadata/config", methods=["GET"])
     @login_required
@@ -239,7 +239,7 @@ def register_metadata_routes(
             )
         except _IMPORT_OPERATIONAL_ERRORS as e:
             logger.error_trace(f"Metadata config error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "Could not load the metadata configuration"}), 500
 
     @app.route("/api/metadata/search", methods=["GET"])
     @login_required
@@ -393,7 +393,7 @@ def register_metadata_routes(
             return jsonify(response_data)
         except _IMPORT_OPERATIONAL_ERRORS as e:
             logger.error_trace(f"Metadata search error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "Metadata search failed"}), 500
 
     @app.route("/api/metadata/field-options", methods=["GET"])
     @login_required
@@ -480,7 +480,7 @@ def register_metadata_routes(
             return jsonify({"error": str(e)}), 503
         except (OSError, TypeError, sqlite3.Error) as e:
             logger.error_trace(f"Metadata book error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "Could not load the book"}), 500
 
     @app.route("/api/metadata/book/<provider>/<book_id>/targets", methods=["GET"])
     @login_required

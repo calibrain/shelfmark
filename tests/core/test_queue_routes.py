@@ -258,7 +258,7 @@ class TestCancel:
             "code": "user_identity_unavailable",
         }
 
-    def test_a_failure_in_the_backend_is_a_500_with_its_message(self, main_module, client):
+    def test_a_failure_in_the_backend_is_a_500_with_a_fixed_message(self, main_module, client):
         _login(client, is_admin=True)
         with _builtin(main_module):
             with patch.object(
@@ -267,7 +267,7 @@ class TestCancel:
                 resp = client.delete("/api/download/task-1/cancel")
 
         assert resp.status_code == 500
-        assert resp.get_json() == {"error": "queue broke"}
+        assert resp.get_json() == {"error": "Could not cancel the download"}
 
     def test_the_opaque_id_a_viewer_sees_cancels_the_real_task(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
@@ -440,7 +440,7 @@ class TestQueueViews:
         assert order.status_code == active.status_code == 403
         assert order.get_json()["code"] == active.get_json()["code"] == "user_identity_unavailable"
 
-    def test_a_failure_is_a_500_with_its_message(self, main_module, client):
+    def test_a_failure_is_a_500_with_a_fixed_message(self, main_module, client):
         _login(client, is_admin=True)
         with _builtin(main_module):
             with patch.object(
@@ -449,7 +449,7 @@ class TestQueueViews:
                 resp = client.get("/api/queue/order")
 
         assert resp.status_code == 500
-        assert resp.get_json() == {"error": "order broke"}
+        assert resp.get_json() == {"error": "Could not read the queue order"}
 
 
 class TestStatus:

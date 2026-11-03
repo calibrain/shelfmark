@@ -459,7 +459,7 @@ def register_release_routes(
             return jsonify({"error": error_msg or "Failed to queue release"}), 500
         except _OPERATIONAL_ERRORS as e:
             logger.error_trace(f"Release download error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "Could not queue the release"}), 500
 
     @app.route("/api/releases", methods=["GET"])
     @login_required
@@ -756,7 +756,7 @@ def register_release_routes(
             return jsonify({"error": str(e)}), 503
         except _IMPORT_OPERATIONAL_ERRORS as e:
             logger.error_trace(f"Releases search error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "Could not search for releases"}), 500
 
     @app.route("/api/release-sources", methods=["GET"])
     @login_required
@@ -774,7 +774,7 @@ def register_release_routes(
             return jsonify(sources)
         except _IMPORT_OPERATIONAL_ERRORS as e:
             logger.error_trace(f"Release sources error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "Could not list the release sources"}), 500
 
     @app.route("/api/release-sources/<source_name>/records/<path:record_id>", methods=["GET"])
     @login_required
@@ -800,4 +800,4 @@ def register_release_routes(
             return jsonify({"error": str(e)}), 503
         except _OPERATIONAL_ERRORS as e:
             logger.error_trace(f"Release source record error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "Could not resolve the record"}), 500
