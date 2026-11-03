@@ -27,6 +27,7 @@ from shelfmark.core import library_index
 from shelfmark.core.config import config as app_config
 from shelfmark.core.library_providers import all_providers, setting
 from shelfmark.core.library_providers.audiobookshelf import (
+    FORBIDDEN_MESSAGE,
     AudiobookshelfForbiddenError,
     AudiobookshelfTagClient,
 )
@@ -40,6 +41,15 @@ if TYPE_CHECKING:
 logger = setup_logger(__name__)
 
 DEFAULT_TAG = "ebook-in-library"
+
+
+NOT_CONFIGURED_MESSAGE = (
+    "Cross-format markers need both library checks enabled: Calibre and Audiobookshelf."
+)
+TAGGING_OFF_MESSAGE = (
+    "Audiobookshelf tagging is off. Turn on 'Tag audiobooks whose ebook is in "
+    "Calibre' and save, or run a dry run."
+)
 
 
 class CrossFormatNotConfiguredError(ValueError):
@@ -101,9 +111,7 @@ def _libraries(
     calibre = providers.get("calibre")
     audiobookshelf = providers.get("audiobookshelf")
     if calibre is None or audiobookshelf is None:
-        raise CrossFormatNotConfiguredError(
-            "Cross-format markers need both library checks enabled: Calibre and Audiobookshelf."
-        )
+        raise CrossFormatNotConfiguredError(NOT_CONFIGURED_MESSAGE)
     return (
         library_index.entries_for_provider(calibre, strict=True),
         library_index.entries_for_provider(audiobookshelf, strict=True),
@@ -197,10 +205,7 @@ def sync_audiobookshelf_tags(
     items so a scheduler cycle out of time can hand back early.
     """
     if not dry_run and not tagging_enabled():
-        raise CrossFormatDisabledError(
-            "Audiobookshelf tagging is off. Turn on 'Tag audiobooks whose ebook is in "
-            "Calibre' and save, or run a dry run."
-        )
+        raise CrossFormatDisabledError(TAGGING_OFF_MESSAGE)
     tag = tag_name(overrides)
     ebooks, audiobooks = _libraries(overrides)
     pairs = compute_pairs(ebooks, audiobooks)
@@ -240,7 +245,8 @@ def sync_audiobookshelf_tags(
             logger.warning("cross-format: %s", exc)
             summary["forbidden"] = True
             summary["errors"] += 1
-            summary["error"] = str(exc)
+            # The fixed sentence, not the exception: the summary is returned to the caller.
+            summary["error"] = FORBIDDEN_MESSAGE
             break
         except Exception as exc:  # noqa: BLE001 - one item's failure must not stop the rest
             logger.warning(

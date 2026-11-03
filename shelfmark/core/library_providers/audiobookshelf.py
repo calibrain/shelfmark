@@ -170,6 +170,12 @@ def search_books(
     return [item for item in payload if isinstance(item, dict)]
 
 
+FORBIDDEN_MESSAGE = (
+    "Audiobookshelf refused the update (403): the API token's user needs the "
+    "'Can update' permission to change tags."
+)
+
+
 class AudiobookshelfForbiddenError(PermissionError):
     """Audiobookshelf answered 403: the token's user may not update library items."""
 
@@ -208,10 +214,7 @@ class AudiobookshelfTagClient:
             timeout=_REQUEST_TIMEOUT,
         )
         if resp.status_code == 403:
-            raise AudiobookshelfForbiddenError(
-                "Audiobookshelf refused the update (403): the API token's user needs the "
-                "'Can update' permission to change tags."
-            )
+            raise AudiobookshelfForbiddenError(FORBIDDEN_MESSAGE)
         resp.raise_for_status()
 
 
