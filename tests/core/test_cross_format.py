@@ -8,7 +8,10 @@ import pytest
 
 from shelfmark.core import cross_format, library_index
 from shelfmark.core.library_providers import LibraryEntry, audiobookshelf, calibre
-from shelfmark.core.library_providers.audiobookshelf import AudiobookshelfForbiddenError
+from shelfmark.core.library_providers.audiobookshelf import (
+    FORBIDDEN_MESSAGE,
+    AudiobookshelfForbiddenError,
+)
 from tests.core.fakes import FakeConfig, capture_log
 
 pytestmark = pytest.mark.usefixtures("fake_app_config")
@@ -501,11 +504,12 @@ def test_a_403_stops_the_run_and_is_reported(
 
     assert summary["forbidden"] is True
     assert summary["errors"] == 1
-    assert "403" in summary["error"]
+    # The returned summary carries the fixed sentence; the exception's own text is only logged.
+    assert summary["error"] == FORBIDDEN_MESSAGE
     assert (summary["added"], summary["removed"]) == ([], [])
     assert fake.reads == ["li_dcc"]  # the second item is never attempted
     assert warnings == ["cross-format: Audiobookshelf refused the update (403)"]
-    assert "Stopped:" in cross_format.describe_summary(summary)
+    assert cross_format.describe_summary(summary).endswith(f"Stopped: {FORBIDDEN_MESSAGE}")
 
 
 def test_one_failing_item_does_not_stop_the_rest(

@@ -9,7 +9,9 @@ import pytest
 from flask import Flask
 
 from shelfmark.core import cross_format
+from shelfmark.core.cross_format_routes import LIBRARY_UNAVAILABLE_MESSAGE
 from shelfmark.core.library_index import LibraryUnavailableError
+from shelfmark.core.library_providers.audiobookshelf import FORBIDDEN_MESSAGE
 from shelfmark.core.user_db import UserDB
 
 PAIRS = "/api/admin/library/cross-format"
@@ -80,15 +82,23 @@ def test_pairs_are_reported(monkeypatch: pytest.MonkeyPatch, admin) -> None:
     assert resp.get_json() == report
 
 
+# An exception's text can carry a library URL with its token; it must never reach the response.
+_LEAKY = "http://abs.local/api?token=s3cret: connection refused"
+
+
 @pytest.mark.parametrize(
-    ("error", "status"),
+    ("error", "status", "message"),
     [
-        (cross_format.CrossFormatNotConfiguredError("enable both"), 400),
-        (LibraryUnavailableError("Calibre is unavailable"), 503),
+        (
+            cross_format.CrossFormatNotConfiguredError(_LEAKY),
+            400,
+            cross_format.NOT_CONFIGURED_MESSAGE,
+        ),
+        (LibraryUnavailableError(_LEAKY), 503, LIBRARY_UNAVAILABLE_MESSAGE),
     ],
 )
 def test_pairs_report_errors_by_cause(
-    monkeypatch: pytest.MonkeyPatch, admin, error: Exception, status: int
+    monkeypatch: pytest.MonkeyPatch, admin, error: Exception, status: int, message: str
 ) -> None:
     def _raise(overrides=None):
         raise error
@@ -98,7 +108,8 @@ def test_pairs_report_errors_by_cause(
     resp = admin.get(PAIRS)
 
     assert resp.status_code == status
-    assert resp.get_json() == {"error": str(error)}
+    assert resp.get_json() == {"error": message}
+    assert "s3cret" not in resp.get_data(as_text=True)
 
 
 def test_tag_sync_defaults_to_a_dry_run(monkeypatch: pytest.MonkeyPatch, admin) -> None:
@@ -144,7 +155,7 @@ def test_tag_sync_reports_an_audiobookshelf_refusal_as_upstream(
         cross_format,
         "sync_audiobookshelf_tags",
         lambda **_kwargs: _summary(
-            dry_run=False, added=[], forbidden=True, errors=1, error="refused (403)"
+            dry_run=False, added=[], forbidden=True, errors=1, error=FORBIDDEN_MESSAGE
         ),
     )
 
@@ -152,19 +163,24 @@ def test_tag_sync_reports_an_audiobookshelf_refusal_as_upstream(
 
     assert resp.status_code == 502
     assert resp.get_json()["forbidden"] is True
-    assert "refused (403)" in resp.get_json()["message"]
+    assert resp.get_json()["error"] == FORBIDDEN_MESSAGE
+    assert resp.get_json()["message"].endswith(f"Stopped: {FORBIDDEN_MESSAGE}")
 
 
 @pytest.mark.parametrize(
-    ("error", "status"),
+    ("error", "status", "message"),
     [
-        (cross_format.CrossFormatDisabledError("tagging is off"), 409),
-        (cross_format.CrossFormatNotConfiguredError("enable both"), 400),
-        (LibraryUnavailableError("Audiobookshelf is unavailable"), 503),
+        (cross_format.CrossFormatDisabledError(_LEAKY), 409, cross_format.TAGGING_OFF_MESSAGE),
+        (
+            cross_format.CrossFormatNotConfiguredError(_LEAKY),
+            400,
+            cross_format.NOT_CONFIGURED_MESSAGE,
+        ),
+        (LibraryUnavailableError(_LEAKY), 503, LIBRARY_UNAVAILABLE_MESSAGE),
     ],
 )
 def test_tag_sync_errors_by_cause(
-    monkeypatch: pytest.MonkeyPatch, admin, error: Exception, status: int
+    monkeypatch: pytest.MonkeyPatch, admin, error: Exception, status: int, message: str
 ) -> None:
     def _raise(**_kwargs: Any) -> dict[str, Any]:
         raise error
@@ -174,4 +190,5 @@ def test_tag_sync_errors_by_cause(
     resp = admin.post(TAGS, json={"dry_run": False})
 
     assert resp.status_code == status
-    assert resp.get_json() == {"error": str(error)}
+    assert resp.get_json() == {"error": message}
+    assert "s3cret" not in resp.get_data(as_text=True)
