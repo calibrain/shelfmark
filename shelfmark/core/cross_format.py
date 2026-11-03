@@ -25,6 +25,7 @@ from typing import TYPE_CHECKING, Any
 
 from shelfmark.core import library_index
 from shelfmark.core.config import config as app_config
+from shelfmark.core.library_index import LibraryUnavailableError
 from shelfmark.core.library_providers import all_providers, setting
 from shelfmark.core.library_providers.audiobookshelf import (
     FORBIDDEN_MESSAGE,
@@ -36,7 +37,7 @@ from shelfmark.core.logger import setup_logger
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
 
-    from shelfmark.core.library_providers import LibraryEntry
+    from shelfmark.core.library_providers import LibraryEntry, LibraryProvider
 
 logger = setup_logger(__name__)
 
@@ -112,10 +113,23 @@ def _libraries(
     audiobookshelf = providers.get("audiobookshelf")
     if calibre is None or audiobookshelf is None:
         raise CrossFormatNotConfiguredError(NOT_CONFIGURED_MESSAGE)
+    if overrides:
+        # Unsaved form values: the shared index is keyed by provider name, not by the
+        # configuration behind it, so reading through it would answer for the saved
+        # libraries and could replace their cached entries with the form's.
+        return _read_uncached(calibre), _read_uncached(audiobookshelf)
     return (
         library_index.entries_for_provider(calibre, strict=True),
         library_index.entries_for_provider(audiobookshelf, strict=True),
     )
+
+
+def _read_uncached(provider: LibraryProvider) -> list[LibraryEntry]:
+    try:
+        return provider.fetch_entries()
+    except Exception as exc:
+        msg = f"{provider.describe()} is unavailable: {exc}"
+        raise LibraryUnavailableError(msg) from exc
 
 
 def _describe(entry: LibraryEntry) -> dict[str, str]:

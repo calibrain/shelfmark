@@ -274,6 +274,34 @@ def test_pairs_report_indexes_both_sides() -> None:
     }
 
 
+def test_a_preview_with_form_values_leaves_the_shared_index_alone() -> None:
+    library_index._cache.clear()
+    saved = _CalibreRows()
+    saved.add(1, "Dune", "Frank Herbert")
+    _register_libraries(_ebooks(saved), [_audiobook("li_1", "Dune", "Frank Herbert")])
+    assert cross_format.pairs_report()["pair_count"] == 1  # fills the shared index
+
+    form = _CalibreRows()
+    form.add(7, "The Martian", "Andy Weir")
+    _register_libraries(_ebooks(form), [_audiobook("li_9", "The Martian", "Andy Weir")])
+
+    preview = cross_format.pairs_report({"CALIBRE_LIBRARY_DB_PATH": "/unsaved"})
+
+    # The preview reads the form's libraries, not the saved ones the cache holds...
+    assert set(preview["by_calibre_id"]) == {"7"}
+    # ...and what it read did not replace the saved libraries' cached entries.
+    _register_libraries(_ebooks(form), [_audiobook("li_9", "The Martian", "Andy Weir")])
+    assert set(cross_format.pairs_report()["by_calibre_id"]) == {"1"}
+
+
+def test_a_preview_whose_libraries_cannot_be_read_is_a_library_error() -> None:
+    library_index._cache.clear()
+    _register_libraries(OSError("disk gone"), [_audiobook("li_1", "Dune", "Frank Herbert")])
+
+    with pytest.raises(library_index.LibraryUnavailableError):
+        cross_format.pairs_report({"CALIBRE_LIBRARY_DB_PATH": "/unsaved"})
+
+
 # --- the Audiobookshelf tag sync ----------------------------------------------------------
 
 
