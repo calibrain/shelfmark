@@ -393,6 +393,27 @@ class TestSyncWishlist:
         assert rows["2"]["book_data"]["year"] == 2021
         assert "preview" not in rows["2"]["book_data"]
 
+    def test_a_content_type_the_users_policy_blocks_is_not_requested(
+        self, user_db, db_path, monkeypatch
+    ):
+        user = user_db.create_user(username="reader", role="user")
+        user_db.set_user_settings(user["id"], {"REQUEST_POLICY_DEFAULT_AUDIOBOOK": "blocked"})
+        self._use_provider(monkeypatch, _Provider({1: [[_book(1, "Dungeon Crawler Carl")]]}))
+
+        summary = hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=user["id"])
+
+        assert summary == {"added": 0, "skipped": 1, "in_library": 0, "errors": 0}
+        assert user_db.list_requests() == []
+
+    def test_an_admin_is_not_held_to_the_request_policy(self, user_db, db_path, monkeypatch):
+        admin = user_db.create_user(username="ops", role="admin")
+        user_db.set_user_settings(admin["id"], {"REQUEST_POLICY_DEFAULT_AUDIOBOOK": "blocked"})
+        self._use_provider(monkeypatch, _Provider({1: [[_book(1, "Dungeon Crawler Carl")]]}))
+
+        summary = hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=admin["id"])
+
+        assert summary["added"] == 1
+
     def test_skips_known_downloaded_owned_and_duplicate_books(self, user_db, db_path, monkeypatch):
         user = user_db.create_user(username="reader", role="user")
         user_db.create_request(

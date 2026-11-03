@@ -74,7 +74,7 @@ def _sync_all_accounts(user_db: UserDB, *, db_path: str | None) -> dict[str, Any
     and ``accounts`` reports how many were attempted.
     """
     from shelfmark.core.hardcover_sync import (
-        _configured_token,
+        has_app_level_token,
         sync_wishlist,
         users_with_hardcover_token,
     )
@@ -96,7 +96,7 @@ def _sync_all_accounts(user_db: UserDB, *, db_path: str | None) -> dict[str, Any
     # The app-level token still runs, for instances where nobody connected their own. When
     # accounts are connected and no app-level token is set there is nothing for it to do, and
     # running it would only log "no token" and count an error every cycle.
-    run_app_level = not per_user_ids or bool(_configured_token())
+    run_app_level = not per_user_ids or has_app_level_token()
     if run_app_level:
         try:
             merge(sync_wishlist(user_db, db_path=db_path))
