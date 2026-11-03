@@ -8,7 +8,10 @@ import pytest
 from flask import Flask
 
 from shelfmark.core import library_index, series_gap
-from shelfmark.core.series_gap_routes import register_series_gap_routes
+from shelfmark.core.series_gap_routes import (
+    LIBRARY_UNAVAILABLE_MESSAGE,
+    register_series_gap_routes,
+)
 from shelfmark.core.user_db import UserDB
 
 REPORT = {
@@ -118,7 +121,7 @@ class TestReport:
         assert resp.status_code == 503
         assert "Hardcover" in resp.json["error"]
 
-    def test_an_unreadable_library_is_a_503_with_the_reason(
+    def test_an_unreadable_library_is_a_503_without_the_exception_text(
         self, admin_client, provider, monkeypatch
     ) -> None:
         def _down(*_args, **_kwargs):
@@ -129,7 +132,8 @@ class TestReport:
         resp = admin_client.get("/api/admin/series-gaps")
 
         assert resp.status_code == 503
-        assert resp.json == {"error": "Calibre library at /x is unavailable"}
+        assert resp.json == {"error": LIBRARY_UNAVAILABLE_MESSAGE}
+        assert "/x" not in resp.get_data(as_text=True)
 
 
 class TestRequests:
@@ -156,22 +160,59 @@ class TestRequests:
 
         assert resp.status_code == 400
 
-    def test_a_malformed_item_is_a_400_with_the_reason(self, admin_client, provider) -> None:
+    def test_a_malformed_item_is_a_400_with_a_fixed_message(self, admin_client, provider) -> None:
         resp = admin_client.post("/api/admin/series-gaps/requests", json={"items": ["x"]})
 
         assert resp.status_code == 400
-        assert resp.json == {"error": "Each item must be an object"}
+        assert resp.json == {"error": series_gap.INVALID_ITEMS_MESSAGE}
+
+    def test_a_refusal_answers_with_a_fixed_message_not_its_text(
+        self, admin_client, provider, monkeypatch
+    ) -> None:
+        def _refuse(*_args, **_kwargs):
+            raise series_gap.SeriesGapError("/srv/secret token=abc123")
+
+        monkeypatch.setattr(series_gap, "request_volumes", _refuse)
+
+        resp = admin_client.post("/api/admin/series-gaps/requests", json={"items": [{}]})
+
+        assert resp.status_code == 400
+        assert resp.json == {"error": series_gap.INVALID_ITEMS_MESSAGE}
 
     def test_a_service_refusal_keeps_its_status(self, admin_client, provider, monkeypatch) -> None:
         def _refuse(*_args, **_kwargs):
-            raise series_gap.SeriesGapError("No admin user exists", status_code=503)
+            raise series_gap.SeriesGapError("/srv/secret token=abc123", status_code=503)
 
         monkeypatch.setattr(series_gap, "request_volumes", _refuse)
 
         resp = admin_client.post("/api/admin/series-gaps/requests", json={"items": [{}]})
 
         assert resp.status_code == 503
-        assert resp.json == {"error": "No admin user exists"}
+        assert resp.json == {"error": series_gap.NO_OWNER_MESSAGE}
+
+    def test_without_an_admin_owner_the_503_says_so(self, admin_client, provider, user_db) -> None:
+        user_db.delete_user(user_db.get_user(username="admin")["id"])
+        items = [{"series_id": 77, "provider_id": "3", "content_type": "ebook"}]
+
+        resp = admin_client.post("/api/admin/series-gaps/requests", json={"items": items})
+
+        assert resp.status_code == 503
+        assert resp.json == {"error": series_gap.NO_OWNER_MESSAGE}
+
+    def test_an_unreadable_library_is_a_503_without_the_exception_text(
+        self, admin_client, provider, monkeypatch
+    ) -> None:
+        def _down(*_args, **_kwargs):
+            raise library_index.LibraryUnavailableError("Calibre library at /x is unavailable")
+
+        monkeypatch.setattr(series_gap, "request_volumes", _down)
+        items = [{"series_id": 77, "provider_id": "3", "content_type": "ebook"}]
+
+        resp = admin_client.post("/api/admin/series-gaps/requests", json={"items": items})
+
+        assert resp.status_code == 503
+        assert resp.json == {"error": LIBRARY_UNAVAILABLE_MESSAGE}
+        assert "/x" not in resp.get_data(as_text=True)
 
     def test_without_a_hardcover_token_nothing_is_requested(
         self, admin_client, monkeypatch

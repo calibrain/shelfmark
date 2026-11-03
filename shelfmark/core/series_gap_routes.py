@@ -10,6 +10,7 @@ from flask import Response, g, jsonify, request, session
 from shelfmark.core import series_gap
 from shelfmark.core.auth_modes import load_active_auth_mode
 from shelfmark.core.library_index import LibraryUnavailableError
+from shelfmark.core.logger import setup_logger
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -19,8 +20,13 @@ if TYPE_CHECKING:
 
     from shelfmark.core.user_db import UserDB
 
+logger = setup_logger(__name__)
+
 P = ParamSpec("P")
 _NO_PROVIDER = "Hardcover is not configured: set a Hardcover API token first"
+# Fixed sentences only: an exception's text can carry a library path or URL or a server's
+# own words, so it goes to the log and never into the response.
+LIBRARY_UNAVAILABLE_MESSAGE = "A library could not be read; see the log for which one and why."
 
 
 def register_series_gap_routes(app: Flask, user_db: UserDB) -> None:
@@ -59,7 +65,8 @@ def register_series_gap_routes(app: Flask, user_db: UserDB) -> None:
         try:
             report = series_gap.build_report(user_db, provider)
         except LibraryUnavailableError as exc:
-            return jsonify({"error": str(exc)}), 503
+            logger.warning("series-gap: %s", exc)
+            return jsonify({"error": LIBRARY_UNAVAILABLE_MESSAGE}), 503
         return jsonify(report)
 
     @app.route("/api/admin/series-gaps/requests", methods=["POST"])
@@ -75,7 +82,11 @@ def register_series_gap_routes(app: Flask, user_db: UserDB) -> None:
         try:
             result = series_gap.request_volumes(user_db, provider, data.get("items"))
         except series_gap.SeriesGapError as exc:
-            return jsonify({"error": str(exc)}), exc.status_code
+            logger.info("series-gap: request refused: %s", exc)
+            if exc.status_code == 503:
+                return jsonify({"error": series_gap.NO_OWNER_MESSAGE}), 503
+            return jsonify({"error": series_gap.INVALID_ITEMS_MESSAGE}), 400
         except LibraryUnavailableError as exc:
-            return jsonify({"error": str(exc)}), 503
+            logger.warning("series-gap: %s", exc)
+            return jsonify({"error": LIBRARY_UNAVAILABLE_MESSAGE}), 503
         return jsonify(result)
