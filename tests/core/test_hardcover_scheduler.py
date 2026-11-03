@@ -159,7 +159,7 @@ class TestRunOnce:
             "shelfmark.core.hardcover_sync._user_token",
             lambda user_id: "token" if user_id in {3, 7} else "",
         )
-        monkeypatch.setattr("shelfmark.core.hardcover_sync._configured_token", lambda *_a: "app")
+        monkeypatch.setattr("shelfmark.core.hardcover_sync.has_app_level_token", lambda: True)
         scheduler.configure(user_db, object(), "/data/users.db")
 
         result = scheduler.run_once()
@@ -173,7 +173,7 @@ class TestRunOnce:
         _configure(monkeypatch, HARDCOVER_SYNC_ENABLED=True)
         user_db = _FakeUserDB([{"id": 7}, {"id": 3}])
         monkeypatch.setattr("shelfmark.core.hardcover_sync._user_token", lambda _user_id: "token")
-        monkeypatch.setattr("shelfmark.core.hardcover_sync._configured_token", lambda *_a: "")
+        monkeypatch.setattr("shelfmark.core.hardcover_sync.has_app_level_token", lambda: False)
         scheduler.configure(user_db, object(), None)
 
         result = scheduler.run_once()
@@ -186,7 +186,7 @@ class TestRunOnce:
         _configure(monkeypatch, HARDCOVER_SYNC_ENABLED=True)
         user_db = _FakeUserDB([{"id": 1}])
         monkeypatch.setattr("shelfmark.core.hardcover_sync._user_token", lambda _user_id: "")
-        monkeypatch.setattr("shelfmark.core.hardcover_sync._configured_token", lambda *_a: "")
+        monkeypatch.setattr("shelfmark.core.hardcover_sync.has_app_level_token", lambda: False)
         scheduler.configure(user_db, object(), None)
 
         result = scheduler.run_once()
@@ -198,7 +198,7 @@ class TestRunOnce:
         _configure(monkeypatch, HARDCOVER_SYNC_ENABLED=True)
         user_db = _FakeUserDB([{"id": 1}, {"id": 2}])
         monkeypatch.setattr("shelfmark.core.hardcover_sync._user_token", lambda _user_id: "token")
-        monkeypatch.setattr("shelfmark.core.hardcover_sync._configured_token", lambda *_a: "app")
+        monkeypatch.setattr("shelfmark.core.hardcover_sync.has_app_level_token", lambda: True)
 
         def _sync(user_db_arg, **kwargs):
             if kwargs.get("user_id") == 1:

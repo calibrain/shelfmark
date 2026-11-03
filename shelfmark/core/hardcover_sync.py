@@ -46,6 +46,11 @@ def _configured_token(user_id: int | None = None) -> str:
     return str(token or "").strip()
 
 
+def has_app_level_token() -> bool:
+    """Whether the app-level pass has a token to sync with (no user id, no user override)."""
+    return bool(_configured_token())
+
+
 def _user_token(user_id: int) -> str:
     """The token this user connected themselves, ignoring the app-level fallback."""
     token = app_config.get_user_override("HARDCOVER_SYNC_TOKEN", user_id=user_id)
@@ -105,6 +110,33 @@ def _build_provider(user_id: int | None = None) -> Any | None:
         logger.warning("hardcover-sync: Hardcover provider unavailable (bad token?)")
         return None
     return provider
+
+
+def _blocked_content_types(user_db: UserDB, user_id: int) -> set[str]:
+    """Content types this user's request policy blocks, so their sync does not queue them.
+
+    An admin is not held to the policy. Requests created here skip the request routes, and
+    auto-download later approves them, so a blocked type has to be left out at this point.
+    """
+    from shelfmark.core.request_helpers import load_users_request_policy_settings
+    from shelfmark.core.request_policy import PolicyMode, resolve_policy_mode
+
+    user = user_db.get_user(user_id=user_id)
+    if user is None or user.get("role") == "admin":
+        return set()
+    global_settings = load_users_request_policy_settings()
+    user_settings = user_db.get_user_settings(user_id)
+    return {
+        content_type
+        for content_type in ("ebook", "audiobook")
+        if resolve_policy_mode(
+            source=None,
+            content_type=content_type,
+            global_settings=global_settings,
+            user_settings=user_settings,
+        )
+        == PolicyMode.BLOCKED
+    }
 
 
 def resolve_request_owner(user_db: UserDB) -> int | None:
@@ -313,6 +345,7 @@ def sync_wishlist(
         summary["errors"] += 1
         return summary
     known_requests = _existing_request_keys(user_db, user_id if per_user else None)
+    blocked_types = _blocked_content_types(user_db, user_id) if per_user else set()
 
     from shelfmark.core.requests_service import RequestServiceError, create_request
 
@@ -326,6 +359,9 @@ def sync_wishlist(
                 author = _primary_author(book)
 
                 for content_type in content_types:
+                    if content_type in blocked_types:
+                        summary["skipped"] += 1
+                        continue
                     if (provider_id, content_type) in known_requests:
                         summary["skipped"] += 1
                         continue
