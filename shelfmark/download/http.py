@@ -901,6 +901,19 @@ def download_url(
 ) -> SpooledTemporaryFile[bytes] | None: ...
 
 
+@overload
+def download_url(
+    link: str,
+    size: str,
+    progress_callback: Callable[[float], None] | None,
+    cancel_flag: Event | None,
+    _selector: network.AAMirrorSelector | None,
+    status_callback: Callable[[str, str | None], None] | None,
+    referer: str | None,
+    spool_to_disk: Literal[True],
+) -> SpooledTemporaryFile[bytes] | None: ...
+
+
 def download_url(
     link: str,
     size: str = "",
