@@ -346,7 +346,7 @@ def register_queue_routes(
             response.headers["X-Cache"] = "MISS"
         except _IMPORT_OPERATIONAL_ERRORS as e:
             logger.error_trace(f"Cover fetch error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "Could not fetch the cover image"}), 500
         else:
             return response
 
@@ -398,7 +398,7 @@ def register_queue_routes(
             return jsonify({"error": "Failed to cancel download or book not found"}), 404
         except _OPERATIONAL_ERRORS as e:
             logger.error_trace(f"Cancel download error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "Could not cancel the download"}), 500
 
     @app.route("/api/download/<path:book_id>/retry", methods=["POST"])
     @login_required
@@ -479,7 +479,7 @@ def register_queue_routes(
             return jsonify({"error": error or "Download cannot be retried"}), 409
         except _OPERATIONAL_ERRORS as e:
             logger.error_trace(f"Retry download error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "Could not retry the download"}), 500
 
     @app.route("/api/queue/<path:book_id>/priority", methods=["PUT"])
     @login_required
@@ -531,7 +531,7 @@ def register_queue_routes(
             return jsonify({"error": "Invalid priority value"}), 400
         except _OPERATIONAL_ERRORS as e:
             logger.error_trace(f"Set priority error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "Could not set the priority"}), 500
 
     @app.route("/api/queue/reorder", methods=["POST"])
     @login_required
@@ -587,7 +587,7 @@ def register_queue_routes(
             return jsonify({"error": "Failed to reorder queue"}), 500
         except _OPERATIONAL_ERRORS as e:
             logger.error_trace(f"Reorder queue error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "Could not reorder the queue"}), 500
 
     @app.route("/api/queue/order", methods=["GET"])
     @login_required
@@ -617,7 +617,7 @@ def register_queue_routes(
             return jsonify({"queue": queue_order})
         except _OPERATIONAL_ERRORS as e:
             logger.error_trace(f"Queue order error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "Could not read the queue order"}), 500
 
     @app.route("/api/downloads/active", methods=["GET"])
     @login_required
@@ -647,4 +647,4 @@ def register_queue_routes(
             return jsonify({"active_downloads": active_downloads})
         except _OPERATIONAL_ERRORS as e:
             logger.error_trace(f"Active downloads error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return jsonify({"error": "Could not read the active downloads"}), 500

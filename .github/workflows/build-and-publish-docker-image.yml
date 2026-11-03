@@ -77,7 +77,7 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           annotations: ${{ steps.meta.outputs.annotations }}
           # Runners are ephemeral, so without this every layer is rebuilt on every
-          # run: the pinned Chromium install, the dependency syncs, the driver
+          # run: the Chromium install, the dependency syncs, the driver
           # setup. Scoped per target so the two images do not evict each other. A cache
           # export error (ignore-error defaults to false) should not fail a finished publish.
           cache-from: type=gha,scope=${{ matrix.target }}
