@@ -148,26 +148,16 @@ ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 
 FROM base AS shelfmark
 
-# --- Chromium (PINNED to 156.0.8078.73) ---
-ARG CHROMIUM_VERSION=156.0.8078.73-1~deb13u1
-ARG CHROMIUM_SNAPSHOT=20261029T020000Z
-
-RUN echo "deb [check-valid-until=no] https://snapshot.debian.org/archive/debian-security/${CHROMIUM_SNAPSHOT}/ trixie-security main" \
-        > /etc/apt/sources.list.d/chromium-pin-snapshot.list && \
-    apt-get update -o Acquire::Retries=5 && \
+# --- Chromium (Debian's current build from trixie-security) ---
+RUN apt-get update -o Acquire::Retries=5 && \
     apt-get install -y --no-install-recommends -o Acquire::Retries=5 \
     # For dumb display
     xvfb \
-    chromium=${CHROMIUM_VERSION} \
-    chromium-common=${CHROMIUM_VERSION} \
+    chromium \
     # For tkinter (pyautogui)
     python3-tk \
     # For RAR extraction
     unrar-free && \
-    # Keep apt from "upgrading" chromium past the pin inside derived images
-    printf 'Package: chromium chromium-common\nPin: version %s\nPin-Priority: 1001\n' "${CHROMIUM_VERSION}" \
-        > /etc/apt/preferences.d/chromium-pin && \
-    rm /etc/apt/sources.list.d/chromium-pin-snapshot.list && \
     # Create symlink so rarfile library can find unrar
     ln -sf /usr/bin/unrar-free /usr/bin/unrar && \
     # Cleanup APT cache
