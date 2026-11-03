@@ -41,7 +41,13 @@ export const UserHardcoverOverridesSection = ({
     return null;
   }
 
-  const tokenField = getFieldByKey(hardcoverPreferences.fields, TOKEN_KEY, fallbackTokenField);
+  // The registered field is worded for the admin's tab; for a user, blank means no shelf sync.
+  const tokenField: PasswordFieldConfig = {
+    ...getFieldByKey(hardcoverPreferences.fields, TOKEN_KEY, fallbackTokenField),
+    description:
+      'Bearer token for your Hardcover account. Leave it blank and your shelves are not synced.',
+    placeholder: 'No account connected',
+  };
   const tokenValue = toTextValue(userSettings[TOKEN_KEY]);
   // The stored token is masked and the global one too, so the only sign of an own
   // token is a non-empty value; comparing with the global value would say nothing.
