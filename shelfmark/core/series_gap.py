@@ -60,6 +60,16 @@ MAX_CANDIDATES = 4
 _build_lock = threading.Lock()
 
 
+# The fixed sentences the request route answers with. The detailed reason a SeriesGapError
+# carries goes to the log, so no exception text reaches a response.
+INVALID_ITEMS_MESSAGE = (
+    "The volumes to request are not valid: send a non-empty list of at most "
+    f"{MAX_REQUEST_ITEMS} items, each with series_id, provider_id and content_type "
+    "('ebook' or 'audiobook')."
+)
+NO_OWNER_MESSAGE = "No admin user exists to own the requests"
+
+
 class SeriesGapError(ValueError):
     """A request the report cannot act on, with the HTTP status it maps to."""
 
@@ -553,7 +563,7 @@ def request_volumes(user_db: UserDB, provider: Any, items: object) -> dict[str, 
 
     owner = resolve_request_owner(user_db)
     if owner is None:
-        raise SeriesGapError("No admin user exists to own the requests", status_code=503)
+        raise SeriesGapError(NO_OWNER_MESSAGE, status_code=503)
     entries_by_type = _library_entries()
     requested = requested_index(user_db)
 
