@@ -73,7 +73,11 @@ def _sync_all_accounts(user_db: UserDB, *, db_path: str | None) -> dict[str, Any
     one account cannot stop the rest of the sweep. Totals are summed across the runs
     and ``accounts`` reports how many were attempted.
     """
-    from shelfmark.core.hardcover_sync import sync_wishlist, users_with_hardcover_token
+    from shelfmark.core.hardcover_sync import (
+        _configured_token,
+        sync_wishlist,
+        users_with_hardcover_token,
+    )
 
     totals: dict[str, Any] = {"added": 0, "skipped": 0, "in_library": 0, "errors": 0}
     per_user_ids = users_with_hardcover_token(user_db)
@@ -89,14 +93,18 @@ def _sync_all_accounts(user_db: UserDB, *, db_path: str | None) -> dict[str, Any
             logger.exception("hardcover-sync: sync failed for user %s", user_id)
             totals["errors"] += 1
 
-    # The app-level token still runs, for instances where nobody connected their own.
-    try:
-        merge(sync_wishlist(user_db, db_path=db_path))
-    except Exception:
-        logger.exception("hardcover-sync: app-level sync failed")
-        totals["errors"] += 1
+    # The app-level token still runs, for instances where nobody connected their own. When
+    # accounts are connected and no app-level token is set there is nothing for it to do, and
+    # running it would only log "no token" and count an error every cycle.
+    run_app_level = not per_user_ids or bool(_configured_token())
+    if run_app_level:
+        try:
+            merge(sync_wishlist(user_db, db_path=db_path))
+        except Exception:
+            logger.exception("hardcover-sync: app-level sync failed")
+            totals["errors"] += 1
 
-    totals["accounts"] = len(per_user_ids) + 1
+    totals["accounts"] = len(per_user_ids) + int(run_app_level)
     return totals
 
 

@@ -159,6 +159,7 @@ class TestRunOnce:
             "shelfmark.core.hardcover_sync._user_token",
             lambda user_id: "token" if user_id in {3, 7} else "",
         )
+        monkeypatch.setattr("shelfmark.core.hardcover_sync._configured_token", lambda *_a: "app")
         scheduler.configure(user_db, object(), "/data/users.db")
 
         result = scheduler.run_once()
@@ -168,10 +169,36 @@ class TestRunOnce:
         assert result["sync"]["added"] == 3
         assert result["sync"]["accounts"] == 3
 
+    def test_app_level_pass_is_skipped_when_only_accounts_are_connected(self, monkeypatch, calls):
+        _configure(monkeypatch, HARDCOVER_SYNC_ENABLED=True)
+        user_db = _FakeUserDB([{"id": 7}, {"id": 3}])
+        monkeypatch.setattr("shelfmark.core.hardcover_sync._user_token", lambda _user_id: "token")
+        monkeypatch.setattr("shelfmark.core.hardcover_sync._configured_token", lambda *_a: "")
+        scheduler.configure(user_db, object(), None)
+
+        result = scheduler.run_once()
+
+        assert [kwargs.get("user_id") for _db, kwargs in calls["sync"]] == [3, 7]
+        assert result["sync"]["accounts"] == 2
+        assert result["sync"]["errors"] == 0
+
+    def test_app_level_pass_still_runs_when_nobody_connected_an_account(self, monkeypatch, calls):
+        _configure(monkeypatch, HARDCOVER_SYNC_ENABLED=True)
+        user_db = _FakeUserDB([{"id": 1}])
+        monkeypatch.setattr("shelfmark.core.hardcover_sync._user_token", lambda _user_id: "")
+        monkeypatch.setattr("shelfmark.core.hardcover_sync._configured_token", lambda *_a: "")
+        scheduler.configure(user_db, object(), None)
+
+        result = scheduler.run_once()
+
+        assert [kwargs.get("user_id") for _db, kwargs in calls["sync"]] == [None]
+        assert result["sync"]["accounts"] == 1
+
     def test_one_failing_account_does_not_stop_the_sweep(self, monkeypatch, calls):
         _configure(monkeypatch, HARDCOVER_SYNC_ENABLED=True)
         user_db = _FakeUserDB([{"id": 1}, {"id": 2}])
         monkeypatch.setattr("shelfmark.core.hardcover_sync._user_token", lambda _user_id: "token")
+        monkeypatch.setattr("shelfmark.core.hardcover_sync._configured_token", lambda *_a: "app")
 
         def _sync(user_db_arg, **kwargs):
             if kwargs.get("user_id") == 1:
