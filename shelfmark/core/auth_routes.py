@@ -46,7 +46,8 @@ def cleanup_old_lockouts() -> None:
             expired_users.append(username)
     for username in expired_users:
         logger.info("Lockout expired for user: %s", username)
-        del failed_login_attempts[username]
+        # A login can clear the entry while this runs, so it may be gone already.
+        failed_login_attempts.pop(username, None)
 
 
 def _get_lockout_until(username: str, *, repair_if_locked: bool = False) -> datetime | None:
@@ -123,8 +124,7 @@ def record_failed_login(username: str, ip_address: str) -> bool:
 
 def clear_failed_logins(username: str) -> None:
     """Clear failed login attempts for a user after successful login."""
-    if username in failed_login_attempts:
-        del failed_login_attempts[username]
+    if failed_login_attempts.pop(username, None) is not None:
         logger.debug("Cleared failed login attempts for user: %s", username)
 
 
@@ -255,29 +255,26 @@ def register_auth_routes(
                         return _failed_login_response(username, ip_address)
 
                     # Authenticate against DB user
-                    if db_user:
-                        if not db_user.get("password_hash") or not check_password(
-                            db_user["password_hash"], password
-                        ):
-                            return _failed_login_response(username, ip_address)
+                    if not db_user.get("password_hash") or not check_password(
+                        db_user["password_hash"], password
+                    ):
+                        return _failed_login_response(username, ip_address)
 
-                        is_admin = db_user["role"] == "admin"
-                        session["user_id"] = username
-                        session["db_user_id"] = db_user["id"]
-                        session["is_admin"] = is_admin
-                        session.permanent = remember_me
-                        clear_failed_logins(username)
-                        logger.info(
-                            "Login successful for user '%s' from IP %s (%s auth, is_admin=%s, remember_me=%s)",
-                            username,
-                            ip_address,
-                            auth_mode,
-                            is_admin,
-                            remember_me,
-                        )
-                        return jsonify({"success": True})
-
-                    return _failed_login_response(username, ip_address)
+                    is_admin = db_user["role"] == "admin"
+                    session["user_id"] = username
+                    session["db_user_id"] = db_user["id"]
+                    session["is_admin"] = is_admin
+                    session.permanent = remember_me
+                    clear_failed_logins(username)
+                    logger.info(
+                        "Login successful for user '%s' from IP %s (%s auth, is_admin=%s, remember_me=%s)",
+                        username,
+                        ip_address,
+                        auth_mode,
+                        is_admin,
+                        remember_me,
+                    )
+                    return jsonify({"success": True})
 
                 except operational_errors as e:
                     logger.error_trace(f"Built-in auth error: {e}")
