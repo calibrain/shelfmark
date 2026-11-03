@@ -5,7 +5,7 @@ import time
 from http import HTTPStatus
 from io import BytesIO
 from tempfile import SpooledTemporaryFile
-from typing import TYPE_CHECKING, BinaryIO, NoReturn
+from typing import TYPE_CHECKING, Literal, NoReturn, overload
 from urllib.parse import parse_qsl, urlencode, urljoin, urlparse, urlunparse
 
 import requests
@@ -874,6 +874,46 @@ def html_get_page(
     )
 
 
+@overload
+def download_url(
+    link: str,
+    size: str = "",
+    progress_callback: Callable[[float], None] | None = None,
+    cancel_flag: Event | None = None,
+    _selector: network.AAMirrorSelector | None = None,
+    status_callback: Callable[[str, str | None], None] | None = None,
+    referer: str | None = None,
+    spool_to_disk: Literal[False] = False,
+) -> BytesIO | None: ...
+
+
+@overload
+def download_url(
+    link: str,
+    size: str = "",
+    progress_callback: Callable[[float], None] | None = None,
+    cancel_flag: Event | None = None,
+    _selector: network.AAMirrorSelector | None = None,
+    status_callback: Callable[[str, str | None], None] | None = None,
+    referer: str | None = None,
+    *,
+    spool_to_disk: Literal[True],
+) -> SpooledTemporaryFile[bytes] | None: ...
+
+
+@overload
+def download_url(
+    link: str,
+    size: str,
+    progress_callback: Callable[[float], None] | None,
+    cancel_flag: Event | None,
+    _selector: network.AAMirrorSelector | None,
+    status_callback: Callable[[str, str | None], None] | None,
+    referer: str | None,
+    spool_to_disk: Literal[True],
+) -> SpooledTemporaryFile[bytes] | None: ...
+
+
 def download_url(
     link: str,
     size: str = "",
@@ -883,8 +923,11 @@ def download_url(
     status_callback: Callable[[str, str | None], None] | None = None,
     referer: str | None = None,
     spool_to_disk: bool = False,
-) -> BinaryIO | None:
-    """Download content from URL with automatic retry and resume support."""
+) -> BytesIO | SpooledTemporaryFile[bytes] | None:
+    """Download content from URL with automatic retry and resume support.
+
+    Returns a ``BytesIO``, or a ``SpooledTemporaryFile`` when ``spool_to_disk`` is set.
+    """
     selector = _selector or network.AAMirrorSelector()
     current_url = selector.rewrite(link)
     try:
@@ -1071,13 +1114,13 @@ def _is_configured_zlib_host(hostname: str | None) -> bool:
 
 def _try_resume(
     url: str,
-    buffer: BinaryIO,
+    buffer: BytesIO | SpooledTemporaryFile[bytes],
     start_byte: int,
     total_size: float,
     progress_callback: Callable[[float], None] | None,
     cancel_flag: Event | None,
     base_headers: dict | None = None,
-) -> BinaryIO | None:
+) -> BytesIO | SpooledTemporaryFile[bytes] | None:
     """Try to resume an interrupted download."""
     for attempt in range(MAX_RESUME_ATTEMPTS):
         logger.info(
