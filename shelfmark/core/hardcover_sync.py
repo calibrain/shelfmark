@@ -285,7 +285,8 @@ def _fetch_status_books(provider: Any, status_id: int) -> tuple[list[BookMetadat
 
     Each page is one Hardcover request, bounded by the provider's own timeout and retry
     cap. A shelf left unfinished because the scheduler gave up on the cycle counts as a
-    failed fetch: the books read so far are still returned, so they can be requested.
+    failed fetch; the books read so far are still returned, though a cycle that is out of
+    time requests none of them.
     """
     books: list[BookMetadata] = []
     failed = False
@@ -369,6 +370,13 @@ def sync_wishlist(
             if fetch_failed:
                 summary["errors"] += 1
             for book in shelf:
+                if cycle_expired():
+                    # A cycle the scheduler gave up on must not keep creating requests beside
+                    # the cycle that replaced it.
+                    logger.warning(
+                        "hardcover-sync: cycle out of time; stopping before '%s'", book.title
+                    )
+                    return summary
                 provider_id = str(book.provider_id)
                 author = _primary_author(book)
 

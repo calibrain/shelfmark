@@ -24,6 +24,7 @@ def _isolated_scheduler(monkeypatch):
     monkeypatch.setattr(scheduler, "app_config", _Config())
     monkeypatch.setattr(scheduler, "_state", scheduler._new_state())
     monkeypatch.setattr(scheduler, "_thread", None)
+    monkeypatch.setattr(scheduler, "_abandoned", [])
 
 
 def _configure(monkeypatch, **values):
@@ -467,6 +468,27 @@ class TestStatus:
 
         assert scheduler.status()["healthy"] is True
 
+    def test_a_short_interval_with_a_long_cycle_budget_is_not_overdue(
+        self, clock, alive, stubs, monkeypatch
+    ):
+        _configure(
+            monkeypatch,
+            HARDCOVER_SYNC_ENABLED=True,
+            HARDCOVER_SYNC_INTERVAL=5,
+            HARDCOVER_SYNC_INTERVAL_UNIT="minutes",
+        )
+        scheduler.run_once()
+        # Three intervals on, but a cycle may still be running inside its one hour budget.
+        clock[0] += 15 * 60
+
+        assert scheduler.status()["healthy"] is True
+
+        clock[0] += 3600
+
+        status = scheduler.status()
+        assert status["healthy"] is False
+        assert "no cycle" in status["problems"][0]
+
     def test_a_dead_thread_is_unhealthy_when_enabled(self, clock, stubs):
         status = scheduler.status()
 
@@ -537,6 +559,12 @@ class TestCycleTimeout:
         worker.join(timeout=5)
         assert worker.is_alive() is False
         assert seen == {"woke_in_time": True, "expired_on_waking": True}
+        assert scheduler.status()["last_cycle_errors"] == 1
+
+    def test_no_new_cycle_starts_while_several_abandoned_ones_are_still_running(self, stuck_sync):
+        results = [scheduler.run_once(force=True)["status"] for _ in range(4)]
+
+        assert results == ["timeout", "timeout", "timeout", "stuck"]
         assert scheduler.status()["last_cycle_errors"] == 1
 
     def test_sync_now_is_accepted_again_after_a_stuck_cycle(self, stuck_sync, monkeypatch):

@@ -119,7 +119,7 @@ The scheduler starts with the app and waits **60 seconds** before its first cycl
 
 Only one run happens at a time. If a scheduled cycle is in progress, **Sync now** reports that a sync is already running.
 
-Each request's release search during a cycle runs under the same time limit as a search from the UI (`RELEASE_SEARCH_TIMEOUT`). A cycle that is still running after an hour is treated as stuck: the scheduler stops waiting for it, logs an error, counts the cycle as failed in `/api/health`, and lets the next cycle or **Sync now** run. The stuck cycle itself stops at its next request. Whatever it did not get to waits for the next cycle.
+Each request's release search during a cycle runs under the same time limit as a search from the UI (`RELEASE_SEARCH_TIMEOUT`). A cycle that is still running after most of the interval (80%, and never less than an hour, so 4.8 hours at the default six) is treated as stuck: the scheduler stops waiting for it, logs an error, counts the cycle as failed in `/api/health`, and lets the next cycle or **Sync now** run. The stuck cycle itself stops at its next request. If three stuck cycles are still running at once, no new cycle starts until one of them exits. Whatever it did not get to waits for the next cycle.
 
 ## Troubleshooting
 

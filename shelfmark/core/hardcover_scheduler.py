@@ -55,6 +55,17 @@ _CYCLE_TIMEOUT_SECONDS = 3600.0
 _CYCLE_TIMEOUT_SHARE_OF_INTERVAL = 0.8
 
 
+# Workers the scheduler gave up on that are still running. One hung call is survivable; this
+# many at once means the hang is not clearing and starting another cycle would only add to it.
+_MAX_ABANDONED_WORKERS = 3
+_abandoned: list[threading.Thread] = []
+
+
+def _live_abandoned_workers() -> int:
+    _abandoned[:] = [worker for worker in _abandoned if worker.is_alive()]
+    return len(_abandoned)
+
+
 def _cycle_timeout() -> float:
     """Seconds one cycle may run: most of the interval, never less than an hour."""
     return max(_CYCLE_TIMEOUT_SECONDS, _CYCLE_TIMEOUT_SHARE_OF_INTERVAL * _interval_seconds())
@@ -145,7 +156,10 @@ def status() -> dict[str, Any]:
         if state["last_cycle_errors"]:
             problems.append(f"last cycle had {state['last_cycle_errors']} error(s)")
         reference = last if last is not None else state["started_at"] + _WARMUP_SECONDS
-        if now - reference > _OVERDUE_INTERVALS * interval:
+        # A cycle that is still running has not been recorded yet, so the budget it may
+        # use counts towards the wait: a short interval with a long backlog is not late.
+        overdue_after = max(_OVERDUE_INTERVALS * interval, interval + _cycle_timeout())
+        if now - reference > overdue_after:
             problems.append(f"no cycle in {int((now - reference) // 3600)}h")
 
     return {
@@ -281,9 +295,12 @@ def run_once(*, force: bool = False) -> dict[str, Any]:
     is in progress.
 
     The cycle runs in a worker thread and is waited on for at most
-    ``_cycle_timeout()`` (most of the interval, at least an hour). Past that it is reported as ``{"status": "timeout"}``,
-    recorded as a failed cycle, and the lock is released; the worker is told to stop at
-    its next unit of work and whatever it reports later is ignored.
+    ``_cycle_timeout()`` (most of the interval, at least an hour). Past that it is reported
+    as ``{"status": "timeout"}``, recorded as a failed cycle, and the lock is released; the
+    worker is told to stop at its next unit of work and whatever it reports later is
+    ignored. Abandoned workers are counted, and once ``_MAX_ABANDONED_WORKERS`` of them are
+    still alive no further cycle starts (``{"status": "stuck"}``), so a hang that never
+    clears cannot pile up threads.
     """
     if not _run_lock.acquire(blocking=False):
         return {"status": "busy"}
@@ -295,6 +312,14 @@ def run_once(*, force: bool = False) -> dict[str, Any]:
 
         if user_db is None or queue_release is None:
             return {"status": "unconfigured"}
+
+        if _live_abandoned_workers() >= _MAX_ABANDONED_WORKERS:
+            logger.error(
+                "Hardcover scheduler: %d abandoned cycles are still running; not starting another",
+                len(_abandoned),
+            )
+            _record_cycle(1)
+            return {"status": "stuck", "abandoned_workers": len(_abandoned), "errors": 1}
 
         timeout = _cycle_timeout()
         deadline = SearchDeadline(timeout)
@@ -322,6 +347,7 @@ def run_once(*, force: bool = False) -> dict[str, Any]:
                     "so the next cycle can run",
                     int(timeout),
                 )
+                _abandoned.append(worker)
                 _record_cycle(1)
                 return {"status": "timeout", "timeout_seconds": int(timeout), "errors": 1}
         finally:
