@@ -107,11 +107,11 @@ class TestLubimyczytacSearch:
         ]
         searched_options = []
 
-        def search(options):
+        def search_with_page_info(options):
             searched_options.append(options)
-            return books
+            return books, True
 
-        monkeypatch.setattr(provider, "search", search)
+        monkeypatch.setattr(provider, "_search_with_page_info", search_with_page_info)
         result = provider.search_paginated(MetadataSearchOptions(query="books", page=2, limit=40))
 
         assert result.books == books
@@ -120,6 +120,24 @@ class TestLubimyczytacSearch:
         assert result.has_more is True
         assert searched_options[0].page == 2
         assert searched_options[0].limit == 10
+
+    def test_search_paginated_uses_unfiltered_source_count(self):
+        get_metadata_cache().clear()
+        other_author_cards = "".join(
+            f'<article class="book-card book-card--l" data-book-id="{123458 + index}">'
+            f'<a class="book-card__title" href="/ksiazka/{123458 + index}/other-{index}">'
+            f'Other book {index}</a><div class="book-card__author">Different Author</div></article>'
+            for index in range(8)
+        )
+        html = SEARCH_HTML.replace("</body>", f"{other_author_cards}</body>")
+        provider = _provider(_Session({"szukaj/ksiazki": html}))
+
+        result = provider.search_paginated(
+            MetadataSearchOptions(query="Sapkowski", search_type=SearchType.AUTHOR, limit=40)
+        )
+
+        assert [book.title for book in result.books] == ["Ostatnie życzenie", "Krew elfów"]
+        assert result.has_more is True
 
     def test_search_by_title_parses_cards(self):
         get_metadata_cache().clear()

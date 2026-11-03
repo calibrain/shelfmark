@@ -118,9 +118,25 @@ const mergeDisplayFields = (
   searchFields: DisplayField[] = [],
   fullFields: DisplayField[] = [],
 ): DisplayField[] => {
-  const fieldsByLabel = new Map(searchFields.map((field) => [field.label, field]));
+  const translatorFields = fullFields.some((field) => field.label === 'Translator')
+    ? fullFields.filter((field) => field.label === 'Translator')
+    : searchFields.filter((field) => field.label === 'Translator');
+  const fieldsByLabel = new Map(
+    searchFields
+      .filter((field) => field.label !== 'Translator')
+      .map((field) => [field.label, field]),
+  );
   for (const field of fullFields) {
-    fieldsByLabel.set(field.label, field);
+    if (field.label !== 'Translator') {
+      fieldsByLabel.set(field.label, field);
+    }
+  }
+  if (translatorFields.length > 0) {
+    const lastTranslator = translatorFields[translatorFields.length - 1];
+    fieldsByLabel.set('Translator', {
+      ...lastTranslator,
+      value: Array.from(new Set(translatorFields.map((field) => field.value))).join(', '),
+    });
   }
   return Array.from(fieldsByLabel.values());
 };

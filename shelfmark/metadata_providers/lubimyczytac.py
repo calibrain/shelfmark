@@ -309,18 +309,24 @@ class LubimyczytacProvider(MetadataProvider):
     def search_paginated(self, options: MetadataSearchOptions) -> SearchResult:
         """LubimyCzytać returns at most ten results on each search page."""
         page_options = replace(options, limit=10)
-        books = self.search(page_options)
+        books, has_more = self._search_with_page_info(page_options)
         return SearchResult(
             books=books[: options.limit],
             page=options.page,
             total_found=0,  # The site does not expose an exact result count.
-            has_more=len(books) >= 10,
+            has_more=has_more,
         )
 
     def search(self, options: MetadataSearchOptions) -> list[BookMetadata]:
+        books, _ = self._search_with_page_info(options)
+        return books
+
+    def _search_with_page_info(
+        self, options: MetadataSearchOptions
+    ) -> tuple[list[BookMetadata], bool]:
         if options.search_type == SearchType.ISBN:
             book = self.search_by_isbn(options.query)
-            return [book] if book else []
+            return ([book] if book else []), False
         title = _clean_text(options.fields.get("title"))
         author = _clean_text(options.fields.get("author"))
         query = _clean_text(options.query)
@@ -332,37 +338,40 @@ class LubimyczytacProvider(MetadataProvider):
             inferred_author = bool(author) and not explicit_separator
         phrase = title or query or author
         if not phrase:
-            return []
+            return [], False
         fields_key = ":".join(f"{k}={v}" for k, v in sorted(options.fields.items()))
         cache_key = (
             f"{phrase}:{options.search_type.value}:{options.page}:{options.limit}:{fields_key}"
         )
-        books = self._search_cached(cache_key, phrase, author, options.page, options.limit) or []
+        cached_page = self._search_cached(cache_key, phrase, author, options.page, options.limit)
+        books, source_count = cached_page or ([], 0)
+        has_more = source_count >= 10
         if not books and inferred_author:
             raw_key = f"{cache_key}:raw:{query}"
-            books = self._search_cached(raw_key, query, "", options.page, options.limit) or []
+            raw_page = self._search_cached(raw_key, query, "", options.page, options.limit)
+            books, source_count = raw_page or ([], 0)
+            has_more = source_count >= 10
             if books:
-                return books[: options.limit]
+                return books[: options.limit], has_more
         if (
             not title
             or not author
             or any(_is_exact_book_match(book, title, author) for book in books)
         ):
-            return books[: options.limit]
+            return books[: options.limit], has_more
         alternative = _alternative_search_phrase(query)
         if not alternative or alternative == phrase:
-            return books[: options.limit]
+            return books[: options.limit], has_more
         alternative_key = f"{cache_key}:alternative:{alternative}"
-        extra = (
-            self._search_cached(
-                alternative_key,
-                alternative,
-                "" if inferred_author else author,
-                options.page,
-                options.limit,
-            )
-            or []
+        alternative_page = self._search_cached(
+            alternative_key,
+            alternative,
+            "" if inferred_author else author,
+            options.page,
+            options.limit,
         )
+        extra, alternative_source_count = alternative_page or ([], 0)
+        has_more = has_more or alternative_source_count >= 10
         merged: list[BookMetadata] = []
         seen: set[str] = set()
         for book in [*books, *extra]:
@@ -371,24 +380,27 @@ class LubimyczytacProvider(MetadataProvider):
                 merged.append(book)
             if len(merged) >= options.limit:
                 break
-        return merged
+        return merged, has_more
 
     @cacheable(
         ttl_key="METADATA_CACHE_SEARCH_TTL", ttl_default=300, key_prefix="lubimyczytac:search"
     )
     def _search_cached(
         self, cache_key: str, phrase: str, author: str, page: int, limit: int
-    ) -> list[BookMetadata] | None:
+    ) -> tuple[list[BookMetadata], int] | None:
         html = self._fetch_search_page(phrase, page)
         if html is None:
             return None
         soup = BeautifulSoup(html, "html.parser")
         books: list[BookMetadata] = []
         seen: set[str] = set()
-        for card in soup.select(".book-card--l"):
-            if card.find_parent(class_=re.compile(r"promoted-offers")):
-                continue
-
+        cards = [
+            card
+            for card in soup.select(".book-card--l")
+            if not card.find_parent(class_=re.compile(r"promoted-offers"))
+        ]
+        source_count = len(cards)
+        for card in cards:
             title_link = card.select_one(".book-card__title")
             if title_link is None:
                 continue
@@ -481,7 +493,7 @@ class LubimyczytacProvider(MetadataProvider):
             )
             if len(books) >= limit:
                 break
-        return books
+        return books, source_count
 
     def _parse_authors(self, scope: Tag | BeautifulSoup | None, data: dict[str, Any]) -> list[str]:
         names = _names(data.get("author"))
