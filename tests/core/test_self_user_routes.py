@@ -826,6 +826,7 @@ def test_users_me_secret_returns_only_the_callers_own_override(app, user_db):
 
     assert alice_resp.status_code == 200
     assert alice_resp.json == {"key": "HARDCOVER_SYNC_TOKEN", "value": "alice-token-value"}
+    assert alice_resp.headers["Cache-Control"] == "no-store"
     assert bob_resp.status_code == 200
     assert bob_resp.json == {"key": "HARDCOVER_SYNC_TOKEN", "value": ""}
 
