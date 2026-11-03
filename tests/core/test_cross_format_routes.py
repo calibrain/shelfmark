@@ -133,6 +133,13 @@ def test_tag_sync_rejects_a_non_boolean_dry_run(admin) -> None:
     assert resp.status_code == 400
 
 
+@pytest.mark.parametrize("body", [[1], "x", 3])
+def test_tag_sync_rejects_a_body_that_is_not_an_object(admin, body) -> None:
+    resp = admin.post(TAGS, json=body)
+
+    assert resp.status_code == 400
+
+
 def test_tag_sync_reports_the_summary_with_a_message(
     monkeypatch: pytest.MonkeyPatch, admin
 ) -> None:

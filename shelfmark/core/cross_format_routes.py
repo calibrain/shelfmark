@@ -42,7 +42,11 @@ def register_cross_format_routes(
     @require_admin
     def admin_cross_format_audiobookshelf_tags() -> ResponseReturnValue:
         """Sync the tag. Body ``{"dry_run": false}`` writes; anything else only reports."""
-        data = request.get_json(silent=True) or {}
+        data = request.get_json(silent=True)
+        if data is None:
+            data = {}
+        if not isinstance(data, dict):
+            return jsonify({"error": "The body must be a JSON object"}), 400
         dry_run = data.get("dry_run", True)
         if not isinstance(dry_run, bool):
             return jsonify({"error": "dry_run must be true or false"}), 400
