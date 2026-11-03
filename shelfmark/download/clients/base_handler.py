@@ -1265,6 +1265,9 @@ class ExternalClientHandler(DownloadHandler, ABC):
                         message=f"Torrent file saved to {download_id}",
                     )
 
+            # A torrent the client already had is joined, not added again; the card says so.
+            task.reattached = existing is not None
+
             # Poll for progress
             return self._poll_and_complete(
                 client=client,

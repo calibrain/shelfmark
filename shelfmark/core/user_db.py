@@ -121,6 +121,13 @@ WHERE dismissed_at IS NOT NULL AND cleared_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_activity_view_state_hidden
 ON activity_view_state (viewer_scope, item_type, item_key)
 WHERE dismissed_at IS NOT NULL;
+
+-- Fork: rejected requests an admin hid from the Rejected view. Separate from
+-- activity_view_state, which is the activity list's own clear/dismiss state.
+CREATE TABLE IF NOT EXISTS rejected_request_hidden (
+    request_id INTEGER PRIMARY KEY REFERENCES download_requests(id) ON DELETE CASCADE,
+    hidden_at TEXT NOT NULL
+);
 """
 
 
@@ -974,6 +981,52 @@ class UserDB:
             finally:
                 conn.close()
 
+    def list_hidden_rejected_request_ids(self) -> list[int]:
+        """Ids of rejected requests hidden from the admin Rejected view."""
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                """
+                SELECT h.request_id FROM rejected_request_hidden h
+                JOIN download_requests r ON r.id = h.request_id
+                WHERE r.status = 'rejected'
+                ORDER BY h.request_id
+                """
+            ).fetchall()
+            return [int(row["request_id"]) for row in rows]
+        finally:
+            conn.close()
+
+    def set_rejected_request_hidden(self, request_id: int, *, hidden: bool) -> bool:
+        """Hide or show a rejected request in the Rejected view. False if it is not rejected."""
+        with self._lock:
+            conn = self._connect()
+            try:
+                row = conn.execute(
+                    "SELECT status FROM download_requests WHERE id = ?",
+                    (request_id,),
+                ).fetchone()
+                if row is None or row["status"] != RequestStatus.REJECTED:
+                    return False
+                if hidden:
+                    conn.execute(
+                        """
+                        INSERT INTO rejected_request_hidden (request_id, hidden_at)
+                        VALUES (?, datetime('now'))
+                        ON CONFLICT(request_id) DO NOTHING
+                        """,
+                        (request_id,),
+                    )
+                else:
+                    conn.execute(
+                        "DELETE FROM rejected_request_hidden WHERE request_id = ?",
+                        (request_id,),
+                    )
+                conn.commit()
+                return True
+            finally:
+                conn.close()
+
     def reopen_rejected_request(
         self,
         request_id: int,
@@ -1010,6 +1063,10 @@ class UserDB:
                     WHERE id = ? AND status = 'rejected'
                     """,
                     (admin_note, request_id),
+                )
+                conn.execute(
+                    "DELETE FROM rejected_request_hidden WHERE request_id = ?",
+                    (request_id,),
                 )
                 updated_row = conn.execute(
                     "SELECT * FROM download_requests WHERE id = ?",

@@ -126,3 +126,16 @@ def test_the_download_payload_leaves_a_missing_cover_alone():
         )["preview"]
         is None
     )
+
+
+def test_the_download_payload_says_when_a_finished_download_ended():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _user_db, service = _service(tmpdir)
+        _record(service, request_id=None, title="Book")
+        active = DownloadHistoryService.to_download_payload(service.get_by_task_id("release-1"))
+        service.finalize_download(task_id="release-1", final_status="complete", status_message="x")
+        done = DownloadHistoryService.to_download_payload(service.get_by_task_id("release-1"))
+
+    assert active["finished_at"] is None
+    assert isinstance(done["finished_at"], float)
+    assert done["finished_at"] >= done["added_time"]

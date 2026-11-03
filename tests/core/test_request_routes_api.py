@@ -1390,6 +1390,48 @@ class TestRequestRoutes:
         }
         assert f"request:{request_id}" not in hidden_keys
 
+    def test_admin_can_hide_a_rejected_request_and_list_hidden(self, main_module, client):
+        user = _create_user(main_module, prefix="reader")
+        admin = _create_user(main_module, prefix="admin", role="admin")
+        created = main_module.user_db.create_request(
+            user_id=user["id"],
+            content_type="ebook",
+            request_level="book",
+            policy_mode="request_book",
+            book_data={"title": "Half a Book", "author": "Someone", "content_type": "ebook"},
+        )
+        request_id = created["id"]
+
+        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+            _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+            as_user = client.post(
+                f"/api/admin/requests/{request_id}/rejected-hidden", json={"hidden": True}
+            )
+            _set_session(client, user_id=admin["username"], db_user_id=admin["id"], is_admin=True)
+            while_pending = client.post(
+                f"/api/admin/requests/{request_id}/rejected-hidden", json={"hidden": True}
+            )
+            main_module.user_db.update_request(request_id, status="rejected")
+            bad_payload = client.post(
+                f"/api/admin/requests/{request_id}/rejected-hidden", json={"hidden": "yes"}
+            )
+            hide = client.post(
+                f"/api/admin/requests/{request_id}/rejected-hidden", json={"hidden": True}
+            )
+            listed = client.get("/api/admin/requests/rejected-hidden")
+            show = client.post(
+                f"/api/admin/requests/{request_id}/rejected-hidden", json={"hidden": False}
+            )
+            listed_after = client.get("/api/admin/requests/rejected-hidden")
+
+        assert as_user.status_code == 403
+        assert while_pending.status_code == 409
+        assert bad_payload.status_code == 400
+        assert hide.status_code == 200
+        assert request_id in listed.json["request_ids"]
+        assert show.status_code == 200
+        assert request_id not in listed_after.json["request_ids"]
+
     def test_admin_reject_emits_update_to_user_and_admin_rooms(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
         admin = _create_user(main_module, prefix="admin", role="admin")

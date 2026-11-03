@@ -214,6 +214,12 @@ class DownloadHistoryService:
                 row.get("download_path")
             ),
             "added_time": DownloadHistoryService._iso_to_epoch(row.get("queued_at")),
+            # When it ended (epoch seconds, like added_time); None while it is still active.
+            "finished_at": (
+                None
+                if row.get("final_status") == "active"
+                else DownloadHistoryService._iso_to_epoch(row.get("terminal_at"))
+            ),
             "user_id": row.get("user_id"),
             "username": row.get("username"),
             "request_id": row.get("request_id"),

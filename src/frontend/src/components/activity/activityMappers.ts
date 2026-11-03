@@ -1,7 +1,8 @@
 import type { Book, RequestRecord, StatusData } from '../../types';
 import { getDownloadsCount } from '../../types';
 import { STATUS_LABELS, isActiveDownloadStatus } from './activityStyles.js';
-import type { ActivityItem, ActivityVisualStatus } from './activityTypes';
+import { buildTimingText } from './activityTiming';
+import type { ActivityItem, FormatPill, ActivityVisualStatus } from './activityTypes';
 
 export type DownloadStatusKey = Extract<
   keyof StatusData,
@@ -82,6 +83,41 @@ const getDownloadProgress = (
   return undefined;
 };
 
+// Fork: audio file formats, to colour a pill when the content type is not given.
+const AUDIO_FILE_FORMATS = new Set([
+  'mp3',
+  'm4b',
+  'm4a',
+  'aac',
+  'flac',
+  'ogg',
+  'opus',
+  'wav',
+  'aax',
+]);
+
+const formatKind = (
+  contentType: string | undefined,
+  fileFormat: string | undefined,
+): FormatPill['kind'] | undefined => {
+  const type = contentType?.toLowerCase();
+  if (type?.includes('audio')) return 'audiobook';
+  if (type) return 'ebook';
+  const format = fileFormat?.toLowerCase();
+  if (!format) return undefined;
+  return AUDIO_FILE_FORMATS.has(format) ? 'audiobook' : 'ebook';
+};
+
+const buildFormatPill = (
+  contentType: string | undefined,
+  fileFormat: string | undefined,
+): FormatPill | undefined => {
+  const kind = formatKind(contentType, fileFormat);
+  if (!kind) return undefined;
+  const label = fileFormat?.toUpperCase() || (kind === 'audiobook' ? 'Audiobook' : 'Ebook');
+  return { label, kind };
+};
+
 export const downloadToActivityItem = (book: Book, statusKey: DownloadStatusKey): ActivityItem => {
   const visualStatus = statusKeyToVisualStatus(statusKey);
   const requestId =
@@ -91,12 +127,26 @@ export const downloadToActivityItem = (book: Book, statusKey: DownloadStatusKey)
   const downloadsCount = getDownloadsCount(book);
   const downloadsText =
     downloadsCount != null ? `${downloadsCount.toLocaleString()} downloads` : undefined;
+  const formatPill = buildFormatPill(
+    toOptionalText(book.content_type),
+    toOptionalText(book.format),
+  );
+  // Fork: a finished download says how long it took and how long ago it ended.
+  const timingText =
+    statusKey === 'complete' || statusKey === 'error' || statusKey === 'cancelled'
+      ? buildTimingText({
+          startedMs: toEpochMillis(book.added_time),
+          finishedMs: toEpochMillis(book.finished_at),
+          showDuration: statusKey === 'complete',
+        })
+      : undefined;
   const metaLine = joinMetaParts([
-    toOptionalText(book.format)?.toUpperCase(),
+    formatPill ? undefined : toOptionalText(book.format)?.toUpperCase(),
     toOptionalText(book.size),
     toOptionalText(book.source_display_name) || toSourceLabel(book.source),
     downloadsText,
     toOptionalText(book.username),
+    timingText,
   ]);
   const progress = getDownloadProgress(visualStatus, book.progress);
   const statusDetail = toOptionalText(book.status_message);
@@ -110,6 +160,8 @@ export const downloadToActivityItem = (book: Book, statusKey: DownloadStatusKey)
     author: toText(book.author, 'Unknown author'),
     preview: toOptionalText(book.preview),
     metaLine,
+    formatPill,
+    reattached: book.reattached === true ? true : undefined,
     statusLabel: STATUS_LABELS[visualStatus],
     statusDetail,
     progress,
@@ -138,24 +190,30 @@ const requestStatusToVisualStatus = (status: RequestRecord['status']): ActivityV
 
 const buildRequestMetaLine = (
   record: RequestRecord,
-  bookData: Record<string, unknown>,
+  _bookData: Record<string, unknown>,
   releaseData: Record<string, unknown>,
   viewerRole: 'user' | 'admin',
 ): string => {
+  // Fork: a request that has been delivered says how long ago.
+  const deliveredMs = Date.parse(record.delivery_updated_at ?? '');
+  const delivered =
+    record.status === 'fulfilled' && record.delivery_state === 'complete' && deliveredMs > 0
+      ? buildTimingText({ finishedMs: deliveredMs, showDuration: false, agoPrefix: 'delivered' })
+      : undefined;
+
   if (record.request_level === 'book') {
-    const contentType = toOptionalText(record.content_type || bookData.content_type)?.toLowerCase();
-    const requestTypeLabel = contentType === 'audiobook' ? 'Audiobook request' : 'Book request';
+    // Fork: the card shows the format as a coloured pill, so the line only names the requester.
     const username = viewerRole === 'admin' ? toOptionalText(record.username) : undefined;
-    return joinMetaParts([requestTypeLabel, username]);
+    return joinMetaParts([username, delivered]);
   }
 
-  const format = toOptionalText(releaseData.format)?.toUpperCase();
+  // Fork: the release format is shown as the card's pill.
   const size = toOptionalText(releaseData.size);
   const source = toSourceLabel(releaseData.source || record.source_hint);
   const username = viewerRole === 'admin' ? toOptionalText(record.username) : undefined;
 
-  const line = joinMetaParts([format, size, source, username]);
-  return line || joinMetaParts(['Release request', username]);
+  const line = joinMetaParts([size, source, username, delivered]);
+  return line || joinMetaParts(['Release request', username, delivered]);
 };
 
 export const requestToActivityItem = (
@@ -178,6 +236,10 @@ export const requestToActivityItem = (
     author: toText(bookData.author ?? releaseData.author, 'Unknown author'),
     preview: toOptionalText(bookData.preview) || toOptionalText(releaseData.preview),
     metaLine: buildRequestMetaLine(record, bookData, releaseData, viewerRole),
+    formatPill: buildFormatPill(
+      toOptionalText(record.content_type || bookData.content_type),
+      record.request_level === 'release' ? toOptionalText(releaseData.format) : undefined,
+    ),
     statusLabel: STATUS_LABELS[visualStatus],
     adminNote: toOptionalText(record.admin_note),
     timestamp,

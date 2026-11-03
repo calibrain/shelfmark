@@ -1,4 +1,9 @@
 import type { RequestRecord } from '../../types';
+import {
+  isAutomaticNote,
+  isRetryingAutomatically,
+  stripAutomaticMarker,
+} from './activityAutomation';
 import { isActiveDownloadStatus } from './activityStyles.js';
 import type { ActivityItem, ActivityVisualStatus } from './activityTypes';
 
@@ -14,7 +19,13 @@ export type ActivityCardAction =
       record: RequestRecord;
     }
   | {
-      kind: 'request-reject' | 'request-reopen' | 'request-cancel' | 'request-dismiss';
+      kind:
+        | 'request-reject'
+        | 'request-reopen'
+        | 'request-hide'
+        | 'request-unhide'
+        | 'request-cancel'
+        | 'request-dismiss';
       requestId: number;
     };
 
@@ -51,12 +62,9 @@ const toRequestVisualStatus = (status: RequestRecord['status']): ActivityVisualS
   return 'cancelled';
 };
 
-const getPendingRequestText = (item: ActivityItem, isAdmin: boolean): string => {
-  if (!isAdmin) {
-    return 'Awaiting review';
-  }
-  const username = item.username?.trim() || item.requestRecord?.username?.trim();
-  return username ? `Needs review · ${username}` : 'Needs review';
+const getPendingRequestText = (_item: ActivityItem, isAdmin: boolean): string => {
+  // Fork: the requester is named once, on the card's meta line, not again in the badge.
+  return isAdmin ? 'No match yet' : 'Awaiting review';
 };
 
 const getRequestBadge = (item: ActivityItem, isAdmin: boolean): ActivityCardBadge => {
@@ -79,6 +87,10 @@ const getRequestBadge = (item: ActivityItem, isAdmin: boolean): ActivityCardBadg
   let text = item.statusLabel;
   if (hasInFlightLinkedDownload) {
     text = 'Approved';
+  } else if (isRetryingAutomatically(item.requestRecord)) {
+    // Fork: the automation reopened it after a failed download; the next pass searches again.
+    text = 'Retrying automatically';
+    visualStatus = 'resolving';
   } else if (hasFailureReason && failureReason) {
     text = failureReason;
   } else if (requestVisualStatus === 'pending') {
@@ -132,8 +144,49 @@ const buildBadges = (item: ActivityItem, isAdmin: boolean): ActivityCardBadge[] 
   return [getDownloadBadge(item)];
 };
 
-const buildRequestNoteLine = (item: ActivityItem): string | undefined => {
+const formatReviewDate = (value: string | null | undefined): string | undefined => {
+  if (!value) {
+    return undefined;
+  }
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) {
+    return undefined;
+  }
+  return new Intl.DateTimeFormat(undefined, { month: 'short', day: 'numeric' }).format(parsed);
+};
+
+/** An admin note for display: an automatic one loses its "[auto] " marker. */
+const formatAdminNote = (note: string): string =>
+  isAutomaticNote(note) ? stripAutomaticMarker(note) : note;
+
+// Who declined it and when, for admins. The reviewer is only sent to admin views.
+const buildDeclinedLine = (item: ActivityItem): string | undefined => {
+  const record = item.requestRecord;
+  if (!record || record.status !== 'rejected') {
+    return undefined;
+  }
+  // Fork: a decline the automation made says so, instead of naming the account it acted through.
+  const automatic = isAutomaticNote(item.adminNote);
+  let who = 'Declined';
+  if (automatic) {
+    who = 'Declined automatically';
+  } else if (record.reviewer_username) {
+    who = `Declined by ${record.reviewer_username}`;
+  }
+  const parts = [who];
+  const date = formatReviewDate(record.reviewed_at);
+  if (date) {
+    parts.push(date);
+  }
+  const line = parts.join(' · ');
+  return item.adminNote ? `${line}: "${formatAdminNote(item.adminNote)}"` : line;
+};
+
+const buildRequestNoteLine = (item: ActivityItem, isAdmin: boolean): string | undefined => {
   const requestStatus = item.requestRecord?.status;
+  if (isAdmin && requestStatus === 'rejected') {
+    return buildDeclinedLine(item);
+  }
   if (item.requestNote && (requestStatus === 'pending' || item.visualStatus === 'pending')) {
     return `"${item.requestNote}"`;
   }
@@ -144,7 +197,9 @@ const buildRequestNoteLine = (item: ActivityItem): string | undefined => {
       item.visualStatus === 'rejected' ||
       item.visualStatus === 'fulfilled')
   ) {
-    return `"${item.adminNote}"`;
+    return isAutomaticNote(item.adminNote)
+      ? `Automatic: ${formatAdminNote(item.adminNote)}`
+      : `"${item.adminNote}"`;
   }
   return undefined;
 };
@@ -215,10 +270,14 @@ const buildActions = (item: ActivityItem, isAdmin: boolean): ActivityCardAction[
     }
 
     if (item.visualStatus === 'rejected' && isAdmin) {
-      return [
-        { kind: 'request-reopen', requestId: item.requestId },
-        { kind: 'request-dismiss', requestId: item.requestId },
-      ];
+      const actions: ActivityCardAction[] = [{ kind: 'request-reopen', requestId: item.requestId }];
+      if (item.hiddenInRejected === true) {
+        actions.push({ kind: 'request-unhide', requestId: item.requestId });
+      } else if (item.hiddenInRejected === false) {
+        actions.push({ kind: 'request-hide', requestId: item.requestId });
+      }
+      actions.push({ kind: 'request-dismiss', requestId: item.requestId });
+      return actions;
     }
 
     if (
@@ -236,7 +295,7 @@ const buildActions = (item: ActivityItem, isAdmin: boolean): ActivityCardAction[
 export const buildActivityCardModel = (item: ActivityItem, isAdmin: boolean): ActivityCardModel => {
   return {
     badges: buildBadges(item, isAdmin),
-    noteLine: buildRequestNoteLine(item),
+    noteLine: buildRequestNoteLine(item, isAdmin),
     actions: buildActions(item, isAdmin),
   };
 };
