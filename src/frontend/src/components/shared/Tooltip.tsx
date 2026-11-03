@@ -3,6 +3,7 @@ import { useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 
 import { useMountEffect } from '../../hooks/useMountEffect';
+import { getTooltipViewportNudge } from '../../utils/tooltipViewportNudge';
 
 interface TooltipProps {
   content: ReactNode;
@@ -112,44 +113,25 @@ export function Tooltip({
       return;
     }
 
-    const tooltipRect = tooltipRef.current.getBoundingClientRect();
-    const viewportPadding = 6;
+    const nudge = getTooltipViewportNudge(
+      tooltipRef.current.getBoundingClientRect(),
+      window.innerWidth,
+      window.innerHeight,
+    );
 
-    let deltaX = 0;
-    let deltaY = 0;
-
-    if (tooltipRect.width + viewportPadding * 2 > window.innerWidth) {
-      deltaX = viewportPadding - tooltipRect.left;
-    } else {
-      if (tooltipRect.left < viewportPadding) {
-        deltaX = viewportPadding - tooltipRect.left;
-      } else if (tooltipRect.right > window.innerWidth - viewportPadding) {
-        deltaX = window.innerWidth - viewportPadding - tooltipRect.right;
-      }
-    }
-
-    if (tooltipRect.height + viewportPadding * 2 > window.innerHeight) {
-      deltaY = viewportPadding - tooltipRect.top;
-    } else {
-      if (tooltipRect.top < viewportPadding) {
-        deltaY = viewportPadding - tooltipRect.top;
-      } else if (tooltipRect.bottom > window.innerHeight - viewportPadding) {
-        deltaY = window.innerHeight - viewportPadding - tooltipRect.bottom;
-      }
-    }
-
-    if (deltaX !== 0 || deltaY !== 0) {
+    if (nudge.x !== 0 || nudge.y !== 0) {
       // Genuine measure-and-adjust: the tooltip must be laid out before we know
       // whether it overflows the viewport. The loop converges in one pass because
-      // the corrected position yields deltaX/deltaY of 0 on the next run.
+      // the corrected position measures as no nudge on the next run, which holds
+      // only because the nudge ignores sub-pixel overflow.
       // oxlint-disable-next-line react/set-state-in-effect
       setCoords((current) => {
         if (!current) {
           return current;
         }
         return {
-          top: current.top + deltaY,
-          left: current.left + deltaX,
+          top: current.top + nudge.y,
+          left: current.left + nudge.x,
         };
       });
     }
