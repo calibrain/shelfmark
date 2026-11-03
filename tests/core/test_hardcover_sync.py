@@ -368,7 +368,9 @@ class TestSyncWishlist:
             summary = hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=user["id"])
 
         assert provider.calls == [(1, 1, 25)]  # page 2 was never asked for
-        assert summary["added"] == 1  # what was read is still requested
+        # The cycle is out of time, so nothing is requested from what was read; the next
+        # cycle reads the shelf again and skips whatever it already knows.
+        assert summary["added"] == 0
         assert summary["errors"] == 1
 
     def test_a_failed_shelf_fetch_is_counted_as_an_error(self, user_db, db_path, monkeypatch):
@@ -449,6 +451,21 @@ class TestSyncWishlist:
         summary = hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=admin["id"])
 
         assert summary["added"] == 1
+
+    def test_a_cycle_that_ran_out_of_time_creates_no_more_requests(
+        self, user_db, db_path, monkeypatch
+    ):
+        user = user_db.create_user(username="reader", role="user")
+        self._use_provider(monkeypatch, _Provider({1: [[_book(1, "Dungeon Crawler Carl")]]}))
+        deadline = SearchDeadline(60.0)
+        deadline.event.set()
+
+        with hardcover_scheduler._in_cycle(deadline):
+            summary = hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=user["id"])
+
+        assert summary["added"] == 0
+        assert summary["errors"] >= 1
+        assert user_db.list_requests() == []
 
     def test_skips_known_downloaded_owned_and_duplicate_books(self, user_db, db_path, monkeypatch):
         user = user_db.create_user(username="reader", role="user")
