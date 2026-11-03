@@ -68,9 +68,8 @@ The check **fails closed** here: if an enabled library cannot be read and has no
 
 Every user can connect their own Hardcover account instead of sharing one. The token
 field is user overridable, so it appears under **Settings, Hardcover Account** for each
-user, and it is also settable per user by an admin from the user editor. Admins choose
-whether that section is shown at all with **Visible self settings sections** on the Users
-tab.
+user. Admins choose whether that section is shown at all with **Visible self settings
+sections** on the Users tab.
 
 When a user connects a token, each scheduled run syncs their shelf on their own token and
 the requests it creates are owned by them, deduplicated against their own requests rather
