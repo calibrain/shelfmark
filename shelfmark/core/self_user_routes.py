@@ -390,7 +390,9 @@ def register_self_user_routes(
 
         value = user_db.get_user_settings(user_id).get(key)
         logger.info("User %s revealed their own %s", user_id, key)
-        return jsonify({"key": key, "value": "" if value is None else str(value)})
+        response = jsonify({"key": key, "value": "" if value is None else str(value)})
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.route("/api/users/me/notification-preferences/test", methods=["POST"])
     @_require_authenticated_user

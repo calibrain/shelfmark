@@ -525,11 +525,10 @@ class TestPerUserTokens:
         assert 5 in seen
 
     def test_the_app_level_token_is_the_fallback(self, monkeypatch):
+        # Like the real Config.get: a user with no override of their own reads the global value.
         def _get(key, default=None, user_id=None):
-            if key == "HARDCOVER_SYNC_TOKEN" and user_id is None:
-                return "app-token"
             if key == "HARDCOVER_SYNC_TOKEN":
-                return ""
+                return "user-token" if user_id == 7 else "app-token"
             if key == "HARDCOVER_API_KEY":
                 return ""
             return default
@@ -538,7 +537,8 @@ class TestPerUserTokens:
 
         assert hardcover_sync._configured_token() == "app-token"
         # A user who connected nothing of their own still syncs on the shared token.
-        assert hardcover_sync._configured_token(5) == ""
+        assert hardcover_sync._configured_token(5) == "app-token"
+        assert hardcover_sync._configured_token(7) == "user-token"
 
     def test_provider_api_key_remains_the_last_resort(self, monkeypatch):
         def _get(key, default=None, user_id=None):
