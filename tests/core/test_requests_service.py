@@ -582,18 +582,16 @@ def test_reopen_failed_request_reverts_to_pending_from_queued_and_clears_on_refu
 def test_reopen_failed_request_delegates_to_user_db_public_api():
     class StubUserDB:
         def __init__(self) -> None:
-            self.calls: list[tuple[int, str | None]] = []
-
-        def get_request(self, request_id: int) -> None:
-            return None  # nothing to read the release from, so none is remembered
+            self.calls: list[tuple[int, str | None, bool]] = []
 
         def reopen_failed_request(
             self,
             request_id: int,
             *,
             failure_reason: str | None = None,
+            remember_failed_release: bool = False,
         ) -> dict[str, object]:
-            self.calls.append((request_id, failure_reason))
+            self.calls.append((request_id, failure_reason, remember_failed_release))
             return {"id": request_id, "status": "pending"}
 
     user_db = StubUserDB()
@@ -606,7 +604,7 @@ def test_reopen_failed_request_delegates_to_user_db_public_api():
 
     assert reopened == {"id": 7, "status": "pending"}
     # Service layer passes failure_reason through; normalization happens in UserDB.
-    assert user_db.calls == [(7, "  Download failed: Timeout  ")]
+    assert user_db.calls == [(7, "  Download failed: Timeout  ", True)]
 
 
 def test_reopen_failed_request_does_not_reopen_completed_delivery(user_db):
@@ -1012,6 +1010,29 @@ def test_reopening_after_a_failed_download_remembers_the_release(user_db):
         {"source": "slskd", "source_id": "rejected-release"}
     ]
     assert reopened["last_failure_reason"] == "Peer transfer failed: Rejected (01.mp3)"
+
+
+def test_reopening_records_the_failed_release_in_the_same_write(user_db, monkeypatch):
+    # A second write would leave the request pending without failed_releases for a moment, and
+    # an automatic search in that window could pick the failed release again.
+    user = user_db.create_user(username="alice")
+    request = _fulfilled_with_release(user_db, user["id"], "rejected-release")
+    user_db.update_request(request["id"], book_data={**request["book_data"], "note": "kept"})
+
+    def no_second_write(*_args, **_kwargs):
+        raise AssertionError("book_data must be written by the reopen itself")
+
+    monkeypatch.setattr(user_db, "update_request", no_second_write)
+
+    reopened = reopen_failed_request(
+        user_db, request_id=request["id"], failure_reason="Download failed"
+    )
+
+    assert reopened["status"] == "pending"
+    assert reopened["book_data"]["failed_releases"] == [
+        {"source": "slskd", "source_id": "rejected-release"}
+    ]
+    assert reopened["book_data"]["note"] == "kept"
 
 
 def test_reopening_after_an_unreachable_client_does_not_blame_the_release(user_db):

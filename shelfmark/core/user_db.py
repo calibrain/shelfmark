@@ -132,6 +132,31 @@ def _require_loaded_user(user: dict[str, Any] | None) -> dict[str, Any]:
     return user
 
 
+def _book_data_with_failed_release(request_row: dict[str, Any]) -> dict[str, Any] | None:
+    """The request's book data with the release it was fulfilled with added to ``failed_releases``.
+
+    None when there is nothing to add: no readable release, or it is already listed.
+    """
+    book_data = request_row.get("book_data")
+    release_data = request_row.get("release_data")
+    if not isinstance(book_data, dict) or not isinstance(release_data, dict):
+        return None
+    source = str(release_data.get("source") or "").strip()
+    source_id = str(release_data.get("source_id") or "").strip()
+    if not source or not source_id:
+        return None
+    tried = book_data.get("failed_releases")
+    tried = list(tried) if isinstance(tried, list) else []
+    if any(
+        isinstance(entry, dict)
+        and entry.get("source") == source
+        and entry.get("source_id") == source_id
+        for entry in tried
+    ):
+        return None
+    return {**book_data, "failed_releases": [*tried, {"source": source, "source_id": source_id}]}
+
+
 def get_users_db_path(config_dir: str | None = None) -> str:
     """Return the configured users database path."""
     root = config_dir or os.environ.get("CONFIG_DIR", "/config")
@@ -919,8 +944,14 @@ class UserDB:
         request_id: int,
         *,
         failure_reason: str | None = None,
+        remember_failed_release: bool = False,
     ) -> dict[str, Any] | None:
-        """Reopen a failed fulfilled request so admins can re-approve it."""
+        """Reopen a failed fulfilled request so admins can re-approve it.
+
+        With ``remember_failed_release``, the release it was fulfilled with is added to
+        ``book_data["failed_releases"]`` in the same write that reopens it, so a search that
+        picks the request up as soon as it is pending already skips that release.
+        """
         normalized_failure_reason = None
         if isinstance(failure_reason, str):
             normalized_failure_reason = failure_reason.strip() or None
@@ -951,6 +982,16 @@ class UserDB:
                 ):
                     return None
 
+                failed_book_data = (
+                    _book_data_with_failed_release(current_request)
+                    if remember_failed_release
+                    else None
+                )
+                book_data_json = (
+                    None
+                    if failed_book_data is None
+                    else self._serialize_json(failed_book_data, "book_data")
+                )
                 conn.execute(
                     """
                     UPDATE download_requests
@@ -958,12 +999,13 @@ class UserDB:
                         delivery_state = 'none',
                         delivery_updated_at = NULL,
                         release_data = NULL,
+                        book_data = COALESCE(?, book_data),
                         last_failure_reason = ?,
                         reviewed_by = NULL,
                         reviewed_at = NULL
                     WHERE id = ?
                     """,
-                    (normalized_failure_reason, request_id),
+                    (book_data_json, normalized_failure_reason, request_id),
                 )
                 updated_row = conn.execute(
                     "SELECT * FROM download_requests WHERE id = ?",
