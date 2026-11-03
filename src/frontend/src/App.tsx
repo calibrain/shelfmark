@@ -992,6 +992,7 @@ function App() {
           isbn_10: fullBook.isbn_10 || metadataBook.isbn_10,
           isbn_13: fullBook.isbn_13 || metadataBook.isbn_13,
           description: fullBook.description || metadataBook.description,
+          display_fields: fullBook.display_fields?.length ? fullBook.display_fields : metadataBook.display_fields,
           series_id: fullBook.series_id || metadataBook.series_id,
           series_name: fullBook.series_name,
           series_position: fullBook.series_position,
@@ -1614,6 +1615,7 @@ function App() {
         setReleaseBook({
           ...book,
           description: fullBook.description || book.description,
+          display_fields: fullBook.display_fields?.length ? fullBook.display_fields : book.display_fields,
           series_id: fullBook.series_id || book.series_id,
           series_name: fullBook.series_name,
           series_position: fullBook.series_position,

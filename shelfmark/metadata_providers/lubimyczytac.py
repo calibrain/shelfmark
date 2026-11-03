@@ -71,6 +71,18 @@ def _clean_text(value: str | None) -> str:
     return " ".join((value or "").replace("\u200b", "").replace("\ufeff", "").split())
 
 
+def _clean_description(value: str | None) -> str:
+    """Normalize description text while preserving paragraph breaks."""
+    if not value:
+        return ""
+    value = value.replace("\u200b", "").replace("\ufeff", "")
+    paragraphs = [
+        re.sub(r"\s+([.,;:!?])", r"\1", " ".join(part.split()))
+        for part in re.split(r"\n\s*\n", value)
+    ]
+    return "\n\n".join(paragraph for paragraph in paragraphs if paragraph)
+
+
 def _normalize_search_text(value: str | None) -> str:
     """Normalize text for comparing book titles and author names."""
     text = unicodedata.normalize("NFKD", _clean_text(value).casefold())
@@ -78,13 +90,12 @@ def _normalize_search_text(value: str | None) -> str:
     return " ".join(re.findall(r"[a-z0-9]+", text))
 
 
-
 def _split_title_author(query: str) -> tuple[str, str, bool]:
     """Split a general query into title and author when recognizable."""
     cleaned = _clean_text(query)
     match = re.search(r"\s+[–—-]\s+", cleaned)
     if match:
-        title, author = cleaned[:match.start()].strip(), cleaned[match.end():].strip()
+        title, author = cleaned[: match.start()].strip(), cleaned[match.end() :].strip()
         if len(author.split()) >= 2:
             return title, author, True
 
@@ -99,12 +110,13 @@ def _split_title_author(query: str) -> tuple[str, str, bool]:
 
     return cleaned, "", False
 
+
 def _alternative_search_phrase(query: str) -> str | None:
     cleaned = _clean_text(query)
     match = re.search(r"\s+[–—-]\s+", cleaned)
     if match:
-        title = cleaned[:match.start()].strip()
-        author_words = cleaned[match.end():].strip().split()
+        title = cleaned[: match.start()].strip()
+        author_words = cleaned[match.end() :].strip().split()
         if len(title.split()) < 2 or len(author_words) < 2:
             return None
         return " ".join([title, author_words[-1]])
@@ -206,7 +218,7 @@ def _json_ld_books(soup: BeautifulSoup) -> list[dict[str, Any]]:
     for script in soup.find_all("script", type="application/ld+json"):
         try:
             payload = json.loads(script.string or script.get_text())
-        except (TypeError, ValueError):
+        except TypeError, ValueError:
             continue
         items = payload if isinstance(payload, list) else [payload]
         for item in items:
@@ -269,6 +281,29 @@ class LubimyczytacProvider(MetadataProvider):
             return None
         return response.text
 
+    def _fetch_search_page(self, phrase: str, page: int, timeout: int = 15) -> str | None:
+        if page <= 1:
+            return self._fetch(LUBIMYCZYTAC_SEARCH_URL + urlencode({"phrase": phrase}), timeout)
+        _rate_limiter.wait_if_needed()
+        try:
+            response = self.session.post(
+                LUBIMYCZYTAC_BASE_URL.rstrip("/") + "/searcher/getNextResults/ksiazki",
+                data={
+                    "page": page,
+                    "listId": "ksiazki",
+                    "phrase": phrase,
+                    "paginatorType": "Standard",
+                },
+                headers={"X-Requested-With": "XMLHttpRequest"},
+                timeout=timeout,
+                verify=get_ssl_verify(LUBIMYCZYTAC_BASE_URL),
+            )
+            response.raise_for_status()
+            return response.json()["data"]["content"]
+        except requests.RequestException, ValueError, KeyError, TypeError:
+            logger.exception("LubimyCzytać pagination request failed: page %s", page)
+            return None
+
     def search(self, options: MetadataSearchOptions) -> list[BookMetadata]:
         if options.search_type == SearchType.ISBN:
             book = self.search_by_isbn(options.query)
@@ -292,10 +327,7 @@ class LubimyczytacProvider(MetadataProvider):
         books = self._search_cached(cache_key, phrase, author, options.page, options.limit) or []
         if not books and inferred_author:
             raw_key = f"{cache_key}:raw:{query}"
-            books = (
-                self._search_cached(raw_key, query, "", options.page, options.limit)
-                or []
-            )
+            books = self._search_cached(raw_key, query, "", options.page, options.limit) or []
             if books:
                 return books[: options.limit]
         if (
@@ -334,10 +366,7 @@ class LubimyczytacProvider(MetadataProvider):
     def _search_cached(
         self, cache_key: str, phrase: str, author: str, page: int, limit: int
     ) -> list[BookMetadata] | None:
-        params = {"phrase": phrase}
-        if page > 1:
-            params["page"] = str(page)
-        html = self._fetch(LUBIMYCZYTAC_SEARCH_URL + urlencode(params))
+        html = self._fetch_search_page(phrase, page)
         if html is None:
             return None
         soup = BeautifulSoup(html, "html.parser")
@@ -361,14 +390,8 @@ class LubimyczytacProvider(MetadataProvider):
 
             authors = self._parse_authors(card, {})
 
-            if author and authors:
-
-                def normalize_name(value: str) -> tuple[str, ...]:
-                    return tuple(sorted(_normalize_search_text(value).split()))
-
-                requested_author = normalize_name(author)
-                if not any(normalize_name(name) == requested_author for name in authors):
-                    continue
+            if author and authors and not any(_tokens_match(author, name) for name in authors):
+                continue
 
             image = card.select_one(".book-card__cover-image")
             cover = _absolute_url(
@@ -378,13 +401,27 @@ class LubimyczytacProvider(MetadataProvider):
             rating = card.select_one(".rating__avarage")
             rating_count = card.select_one(".rating__text")
             rating_value = _clean_text(rating.get_text(" ")) if rating else ""
-            count_value = _clean_text(rating_count.get_text(" ")) if rating_count else ""
-            rating_text = f"{rating_value} ({count_value})" if rating_value and count_value else rating_value
-            display_fields = [DisplayField(label="Ocena LC", value=rating_text, icon="star")] if rating_text else []
-            for selector, label in ((".book-card__readers", "Czytelnicy LC"), (".book-card__reviews", "Opinie LC")):
+            count_value = re.sub(r"\D", "", rating_count.get_text(" ")) if rating_count else ""
+            rating_text = (
+                f"{rating_value} ({count_value})" if rating_value and count_value else rating_value
+            )
+            display_fields = (
+                [DisplayField(label="Rating", value=rating_text, icon="star")]
+                if rating_text
+                else []
+            )
+            for selector, label in (
+                (".book-card__readers", "Readers"),
+                (".book-card__reviews", "Reviews"),
+            ):
                 element = card.select_one(selector)
                 if element:
-                    value = _clean_text(element.get_text(" "))
+                    highlighted = element.select_one(".book-card__highlighted")
+                    value = (
+                        _clean_text(highlighted.get_text(" "))
+                        if highlighted
+                        else re.sub(r"\D", "", element.get_text(" "))
+                    )
                     if value:
                         display_fields.append(DisplayField(label=label, value=value))
             series_link = card.select_one(".book-card__detail--cycle a")
@@ -396,7 +433,11 @@ class LubimyczytacProvider(MetadataProvider):
                 series_href = str(series_link.get("href") or "")
                 match = re.search(r"/cykl/(\d+)", series_href)
                 series_id = match.group(1) if match else None
-                position_text = series_text.lower().partition("(tom ")[2].partition(")")[0].strip() if "(tom " in series_text.lower() else ""
+                position_text = (
+                    series_text.lower().partition("(tom ")[2].partition(")")[0].strip()
+                    if "(tom " in series_text.lower()
+                    else ""
+                )
                 series_position = int(position_text) if position_text.isdigit() else None
                 series_name = series_text.partition("(tom ")[0].strip() or None
             book_url = _absolute_url(href)
@@ -493,15 +534,25 @@ class LubimyczytacProvider(MetadataProvider):
             return None
         isbn_10, isbn_13 = self._parse_isbns(soup, data)
         cover = _extract_cover(soup, data)
-        description = _clean_text(str(data.get("description") or "")) or None
+        description = _clean_description(str(data.get("description") or "")) or None
         if not description:
             node = soup.select_one(
                 '#book-description, [itemprop="description"], .book__description, .description'
             )
-            description = _clean_text(node.get_text(" ")) if node else None
+            if node:
+                paragraphs = node.select("p")
+                if paragraphs:
+                    description_text = "\n\n".join(
+                        paragraph.get_text(" ", strip=True) for paragraph in paragraphs
+                    )
+                else:
+                    description_text = node.get_text(" ", strip=True)
+                description = _clean_description(description_text) or None
         if not description:
             node = soup.select_one('meta[property="og:description"]')
-            description = _clean_text(str(node.get("content") or "")) if node else None
+            description = (
+                _clean_description(str(node.get("content") or "")) or None if node else None
+            )
 
         publisher = _names(data.get("publisher"))
         if not publisher:
@@ -554,15 +605,24 @@ class LubimyczytacProvider(MetadataProvider):
             DisplayField(label="Translator", value=name, icon="user") for name in translator
         ]
         if rating_value is not None:
-            display_fields.append(DisplayField(label="LC rating", value=f"{rating_value}/10", icon="star"))
+            display_fields.append(
+                DisplayField(label="Rating", value=f"{rating_value}/10", icon="star")
+            )
         if rating_count is not None:
-            display_fields.append(DisplayField(label="LC ratings", value=str(rating_count), icon="users"))
+            display_fields.append(
+                DisplayField(label="Ratings", value=str(rating_count), icon="users")
+            )
         page_count = self._detail_value(soup, "Liczba stron")
         if page_count:
             digits = re.sub(r"[^0-9]", "", page_count)
             if digits:
                 display_fields.append(DisplayField(label="Pages", value=digits, icon="book"))
-        for label, detail_label, icon in (("Original title", "Tytuł oryginału", "book"), ("Format", "Format", "book"), ("Publication date", "Data wydania", "calendar"), ("First Polish edition", "Data 1. wyd. pol.", "calendar")):
+        for label, detail_label, icon in (
+            ("Original title", "Tytuł oryginału", "book"),
+            ("Format", "Format", "book"),
+            ("Publication date", "Data wydania", "calendar"),
+            ("First Polish edition", "Data 1. wyd. pol.", "calendar"),
+        ):
             value = self._detail_value(soup, detail_label)
             if value:
                 display_fields.append(DisplayField(label=label, value=value, icon=icon))
