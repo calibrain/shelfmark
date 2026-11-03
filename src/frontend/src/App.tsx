@@ -2459,7 +2459,7 @@ function App() {
         <Header
           calibreWebUrl={config?.calibre_web_url || ''}
           audiobookLibraryUrl={config?.audiobook_library_url || ''}
-          debug={config?.debug || false}
+          debug={(config?.debug || false) && authIsAdmin}
           logoUrl={logoUrl}
           showSearch={!isInitialState}
           searchInput={activeQueryValue}
