@@ -96,23 +96,43 @@ class LibrarySeries:
 
 
 def library_series(entries_by_type: Mapping[str, list[LibraryEntry]]) -> list[LibrarySeries]:
-    """The series the libraries hold, grouped across formats by name, sorted by name."""
-    by_key: dict[str, LibrarySeries] = {}
+    """The series the libraries hold, grouped across formats by name, sorted by name.
+
+    Two series with one name by different authors stay apart: merging them would pool both
+    authors' positions under one of them and could show a missing volume as owned. An entry
+    whose author is unknown joins the first series of that name.
+    """
+    by_name: dict[str, list[LibrarySeries]] = {}
     for content_type in FORMATS:
         for entry in entries_by_type.get(content_type, ()):
-            key = series_key(entry.series_name)
-            if not key or not entry.series_name:
+            name_key = series_key(entry.series_name)
+            if not name_key or not entry.series_name:
                 continue
-            series = by_key.get(key)
+            surname = author_surname(entry.author)
+            groups = by_name.setdefault(name_key, [])
+            series = next(
+                (
+                    group
+                    for group in groups
+                    if surname is None
+                    or author_surname(group.author) is None
+                    or author_surname(group.author) == surname
+                ),
+                None,
+            )
             if series is None:
+                key = f"{name_key}|{surname}" if groups else name_key
                 series = LibrarySeries(key, entry.series_name.strip(), entry.author)
-                by_key[key] = series
+                groups.append(series)
             elif series.author is None and entry.author:
                 series.author = entry.author
             held = series.positions.setdefault(content_type, set())
             if entry.series_index is not None:
                 held.add(float(entry.series_index))
-    return sorted(by_key.values(), key=lambda series: series.name.casefold())
+    return sorted(
+        (series for groups in by_name.values() for series in groups),
+        key=lambda series: (series.name.casefold(), series.key),
+    )
 
 
 @dataclass
@@ -344,7 +364,8 @@ def lookup(provider: Any, series: LibrarySeries, *, fetch: bool = True) -> Listi
 class RequestedIndex:
     """Every request in any status, keyed the two ways a volume can match one."""
 
-    keys: set[tuple[str, str]] = field(default_factory=set)  # (provider_id, content_type)
+    # (provider, provider_id, content_type): ids are only unique within one provider
+    keys: set[tuple[str, str, str]] = field(default_factory=set)
     titles: set[tuple[str, str, str]] = field(default_factory=set)  # (title, author, type)
 
 
@@ -367,7 +388,7 @@ def requested_index(user_db: UserDB) -> RequestedIndex:
         )
         provider_id = book_data.get("provider_id") or book_data.get("id")
         if provider_id is not None:
-            index.keys.add((str(provider_id), content_type))
+            index.keys.add((str(book_data.get("provider") or ""), str(provider_id), content_type))
         title = _match_text(book_data.get("title"))
         if title:
             index.titles.add((title, _match_text(book_data.get("author")), content_type))
@@ -375,7 +396,7 @@ def requested_index(user_db: UserDB) -> RequestedIndex:
 
 
 def _is_requested(index: RequestedIndex, book: BookMetadata, content_type: str) -> bool:
-    if (str(book.provider_id), content_type) in index.keys:
+    if (str(book.provider or ""), str(book.provider_id), content_type) in index.keys:
         return True
     return (_match_text(book.title), _match_text(_author_of(book)), content_type) in index.titles
 
@@ -511,7 +532,7 @@ def build_report(
                 listing = lookup(provider, series, fetch=clock() < deadline)
             except Exception as exc:  # noqa: BLE001 - one series failing must not hide the rest
                 logger.warning("series-gap: Hardcover lookup failed for '%s': %s", series.name, exc)
-                listing = Listing(message=f"Hardcover lookup failed: {exc}")
+                listing = Listing(message="Hardcover lookup failed")
             if listing.pending:
                 pending += 1
             rows.append(
@@ -612,11 +633,12 @@ def request_volumes(user_db: UserDB, provider: Any, items: object) -> dict[str, 
                 outcome["result"] = "requested"
                 summary["skipped"] += 1
             else:
+                logger.warning("series-gap: could not request '%s': %s", book.title, exc)
                 outcome["result"] = "error"
-                outcome["message"] = str(exc)
+                outcome["message"] = "The request could not be created"
                 summary["errors"] += 1
             continue
-        requested.keys.add((provider_id, content_type))
+        requested.keys.add((str(book.provider or ""), provider_id, content_type))
         outcome["result"] = "created"
         outcome["request_id"] = row.get("id")
         summary["created"] += 1

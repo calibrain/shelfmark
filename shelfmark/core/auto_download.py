@@ -1608,6 +1608,8 @@ def auto_download_request(
         # first that yields a strict match; the match rules are the same for each.
         for label, title in query_variants(book):
             if cycle_expired():
+                # The ladder was cut short, so "no match" would say nothing about the book.
+                source_errors.append("the sync cycle ran out of time")
                 break
             logger.info(
                 "auto-download: request %s (%s): no strict match, trying %s: %r",

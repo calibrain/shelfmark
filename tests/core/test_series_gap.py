@@ -183,6 +183,25 @@ class TestLibrarySeries:
         assert series[0].positions == {"ebook": {1.0, 2.0}, "audiobook": set()}
         assert series[1].positions == {"audiobook": {1.0}}
 
+    def test_two_authors_sharing_a_series_name_stay_apart(self) -> None:
+        entries = {
+            "ebook": [
+                _entry("Book One", author="Frank Herbert", series="Legacy", index=1),
+                _entry("Book Two", author="Frank Herbert", series="Legacy", index=2),
+                _entry("Other One", author="Andy Weir", series="Legacy", index=7),
+            ],
+            # The audiobook side names the same author the other way round.
+            "audiobook": [_entry("Book One", author="Herbert, Frank", series="Legacy", index=1)],
+        }
+
+        series = series_gap.library_series(entries)
+
+        assert [(s.author, s.positions) for s in series] == [
+            ("Frank Herbert", {"ebook": {1.0, 2.0}, "audiobook": {1.0}}),
+            ("Andy Weir", {"ebook": {7.0}}),
+        ]
+        assert len({s.key for s in series}) == 2
+
     def test_an_entry_without_a_series_is_not_a_series(self) -> None:
         assert series_gap.library_series({"ebook": [_entry("Lone Book", series=None)]}) == []
 
@@ -281,6 +300,17 @@ class TestBuildReport:
         report = series_gap.build_report(user_db, _Hardcover())
 
         assert _statuses(report, "ebook")[2.0] == "requested"
+
+    def test_another_providers_request_with_the_same_id_is_not_this_volume(
+        self, libraries, user_db
+    ) -> None:
+        libraries.append(_Library("calibre", "ebook", [_entry("Dungeon Crawler Carl", index=1)]))
+        # Providers number their books independently: "2" over there is not Hardcover's "2".
+        _request(user_db, "An Unrelated Novel", "2", "ebook", provider="openlibrary")
+
+        report = series_gap.build_report(user_db, _Hardcover())
+
+        assert _statuses(report, "ebook")[2.0] == "missing"
 
     def test_a_format_the_library_does_not_collect_can_still_be_requested(
         self, libraries, user_db
@@ -504,7 +534,8 @@ class TestBuildReport:
 
         (row,) = report["series"]
         assert row["status"] == "unresolved"
-        assert row["message"] == "Hardcover lookup failed: Hardcover API request timed out"
+        assert row["message"] == "Hardcover lookup failed"
+        assert "timed out" not in str(report)
 
     def test_no_enabled_library_means_an_empty_report(self, libraries, user_db) -> None:
         report = series_gap.build_report(user_db, _Hardcover())
@@ -549,6 +580,26 @@ class TestRequestVolumes:
         assert row["book_data"]["year"] == 2020
         assert row["note"] == "Series gap: Dungeon Crawler Carl #2.5"
         assert result["items"][0]["request_id"] == row["id"]
+
+    def test_a_refused_request_does_not_echo_the_exception_text(
+        self, libraries, user_db, monkeypatch
+    ) -> None:
+        from shelfmark.core import requests_service
+
+        libraries.append(_Library("calibre", "ebook", [_entry("Dungeon Crawler Carl", index=1)]))
+
+        def _refuse(*_args: Any, **_kwargs: Any) -> None:
+            raise requests_service.RequestServiceError(
+                "cannot write /srv/secret/path", status_code=400, code="invalid"
+            )
+
+        monkeypatch.setattr(requests_service, "create_request", _refuse)
+
+        result = series_gap.request_volumes(user_db, _Hardcover(), self._items("25"))
+
+        assert result["errors"] == 1
+        assert result["items"][0]["message"] == "The request could not be created"
+        assert "secret" not in str(result)
 
     def test_owned_and_requested_volumes_are_skipped(self, libraries, user_db) -> None:
         libraries.append(_Library("calibre", "ebook", [_entry("Dungeon Crawler Carl", index=1)]))

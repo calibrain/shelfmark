@@ -2616,7 +2616,9 @@ class TestQueryLadder:
             user_db, monkeypatch, book, {"Find Your Why": ["Find Your Why - Simon Sinek [m4b]"]}
         )
 
-        assert outcome.status == "no_match"
+        # Cut short, so it says nothing about the book and does not count as a miss.
+        assert outcome.status == "error"
+        assert "ran out of time" in outcome.detail
         assert searched == [("first", self.FIND_YOUR_WHY)]
 
 
