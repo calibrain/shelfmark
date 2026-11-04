@@ -1904,6 +1904,8 @@ Automatically retry search without category filtering if no results are found
 | `SLSKD_ISOLATE_DOWNLOADS` | Download into a folder of its own inside slskd's downloads folder (needs slskd 0.26 or newer). Other apps using the same slskd cannot mix files with it or lose track of it when they clear slskd's list of finished transfers, and Shelfmark confirms a download by the files on disk. | boolean | `true` |
 | `SLSKD_DESTINATION_PREFIX` | The folder, inside slskd's downloads folder, that holds one folder per download. It must not climb out of slskd's downloads folder. | string | `shelfmark` |
 | `SLSKD_KEEP_COMPLETED` | Leave the finished files (and their transfer records) in slskd after Shelfmark copies them to your library, so they stay shared with other Soulseek users. Turn off to delete them once imported. | boolean | `true` |
+| `SLSKD_FINISH_LEFTOVERS` | A restart can land after the last file arrives and before it is copied to your library. Checked every 15 minutes, independent of the Hardcover sync, a download folder that holds every file asked for, whose download never completed, is imported without downloading anything again. | boolean | `true` |
+| `SLSKD_CLEAN_LEFTOVERS_DAYS` | Remove the folder of a failed or abandoned download, once the download is this old (one day when its request already has the book or was given up on). Folders holding every file, and the folders of running downloads, are never removed. 0 keeps them. | number | `0` |
 | `SLSKD_SEARCH_TIMEOUT` | How long a Soulseek search collects peer responses. Longer waits find more peers but make every search slower. | number | `15` |
 | `SLSKD_RESPONSE_LIMIT` | Stop a search early once this many peers have answered | number | `100` |
 | `SLSKD_QUEUE_TIMEOUT_MINUTES` | Give up when the peer has not started sending within this long. Set to 0 to wait indefinitely. | number | `60` |
@@ -1974,6 +1976,25 @@ Leave the finished files (and their transfer records) in slskd after Shelfmark c
 
 - **Type:** boolean
 - **Default:** `true`
+
+#### `SLSKD_FINISH_LEFTOVERS`
+
+**Import finished folders an interruption left behind**
+
+A restart can land after the last file arrives and before it is copied to your library. Checked every 15 minutes, independent of the Hardcover sync, a download folder that holds every file asked for, whose download never completed, is imported without downloading anything again.
+
+- **Type:** boolean
+- **Default:** `true`
+
+#### `SLSKD_CLEAN_LEFTOVERS_DAYS`
+
+**Remove partial download folders after (days)**
+
+Remove the folder of a failed or abandoned download, once the download is this old (one day when its request already has the book or was given up on). Folders holding every file, and the folders of running downloads, are never removed. 0 keeps them.
+
+- **Type:** number
+- **Default:** `0`
+- **Constraints:** min: 0, max: 365
 
 #### `SLSKD_SEARCH_TIMEOUT`
 
@@ -2343,6 +2364,7 @@ How long to keep cached search results before they expire.
 | `TORRENT_MIN_SEEDERS` | Seeds the client must see for a motionless torrent to keep waiting. 0 also turns the no-seed check off. Only qBittorrent reports seed counts. | number | `1` |
 | `PROWLARR_TORRENT_POST_IMPORT_CATEGORY` | Category or label to assign after a successful import | string | _empty string_ |
 | `TORRENT_STALL_TIMEOUT_MINUTES` | How long a torrent can go without any progress before Shelfmark cancels it. Applies from when the torrent starts and restarts each time it moves. Raise it for slow swarms or magnets that take a while to find peers, or lower it to give up on dead torrents sooner. | number | `15` |
+| `STALE_TORRENT_HOURS` | Remove a torrent Shelfmark added when it is stalled or cannot fetch its metadata, has had no activity for this many hours, and no running download owns it. Its partial data goes with it. Only torrents Shelfmark itself added are ever considered, whatever category they are in; torrents still downloading, queued, or finished are never touched. 3 to 72 hours (a value outside that is held to it); 0 keeps them. Checked every 15 minutes, independent of the Hardcover sync; only qBittorrent is supported. | number | `6` |
 | `PROWLARR_USENET_CLIENT` | Choose which usenet client to use | string (choice) | _empty string_ |
 | `NZBGET_URL` | URL of your NZBGet instance | string | _none_ |
 | `NZBGET_USERNAME` | NZBGet control username | string | `nzbget` |
@@ -2803,6 +2825,16 @@ How long a torrent can go without any progress before Shelfmark cancels it. Appl
 - **Type:** number
 - **Default:** `15`
 - **Constraints:** min: 5, max: 60
+
+#### `STALE_TORRENT_HOURS`
+
+**Remove dead torrents after (hours)**
+
+Remove a torrent Shelfmark added when it is stalled or cannot fetch its metadata, has had no activity for this many hours, and no running download owns it. Its partial data goes with it. Only torrents Shelfmark itself added are ever considered, whatever category they are in; torrents still downloading, queued, or finished are never touched. 3 to 72 hours (a value outside that is held to it); 0 keeps them. Checked every 15 minutes, independent of the Hardcover sync; only qBittorrent is supported.
+
+- **Type:** number
+- **Default:** `6`
+- **Constraints:** min: 0, max: 72
 
 #### `PROWLARR_USENET_CLIENT`
 

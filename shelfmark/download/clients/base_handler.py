@@ -15,6 +15,7 @@ from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import coerce_int, normalize_optional_text
 from shelfmark.core.utils import AUDIOBOOK_FORMATS, DEFAULT_EBOOK_FORMATS, is_audiobook
+from shelfmark.download import torrent_ledger
 from shelfmark.download.activity import release_activity_grace, request_activity_grace
 from shelfmark.download.clients import (
     DownloadClient,
@@ -1194,6 +1195,8 @@ class ExternalClientHandler(DownloadHandler, ABC):
                     return result
 
                 # Existing but still downloading - join the progress polling
+                if request.protocol == "torrent":
+                    torrent_ledger.claim(download_id, task.task_id)
                 logger.info("Existing download in progress, joining poll loop")
                 status_callback("downloading", "Resuming existing download")
             else:
@@ -1237,6 +1240,8 @@ class ExternalClientHandler(DownloadHandler, ABC):
                 logger.info(
                     "Added to %s: %s for '%s'", client.name, download_id, request.release_name
                 )
+                if request.protocol == "torrent":
+                    torrent_ledger.record(download_id, task.task_id)
                 if getattr(client, "handoff_only", False) is True:
                     if cancel_flag.is_set():
                         # The file is published and unpublishing it would race a watcher

@@ -350,6 +350,11 @@ class QBittorrentClient(DownloadClient):
         params = {"category": category} if category else {}
         return self._request_torrent_info_records(params)
 
+    def list_torrents(self, category: str | None = None) -> list[SimpleNamespace]:
+        """Every torrent record in ``category`` (all when unset); empty when qBittorrent fails."""
+        torrents, _error = self._list_torrents_by_category(category)
+        return torrents
+
     def _remember_primary_hash(self, download_id: str, torrent: SimpleNamespace) -> None:
         """Note the primary hash a listing scan found, so later lookups skip the scan."""
         torrent_hash = getattr(torrent, "hash", None)
