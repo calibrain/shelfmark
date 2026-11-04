@@ -4,6 +4,8 @@ import { useSearchMode } from '../contexts/SearchModeContext';
 import { SORT_OPTIONS } from '../data/filterOptions';
 import { useMediaQuery } from '../hooks/useMediaQuery';
 import type { Book, ButtonStateInfo, SortOption } from '../types';
+import type { PendingRequestKeys } from '../utils/requestedBooks';
+import { NO_PENDING_REQUESTS } from '../utils/requestedBooks';
 import { Dropdown } from './Dropdown';
 import { CardView } from './resultsViews/CardView';
 import { CompactView } from './resultsViews/CompactView';
@@ -37,6 +39,8 @@ interface ResultsSectionProps {
   directTotalResults?: number | string | null;
   onShowToast?: (message: string, type: 'success' | 'error' | 'info') => void;
   resultsSourceUrl?: string;
+  /** Results with a request still awaiting a decision, from the sidebar's records. */
+  pendingRequests?: PendingRequestKeys;
 }
 
 export const ResultsSection = ({
@@ -58,6 +62,7 @@ export const ResultsSection = ({
   directTotalResults,
   onShowToast,
   resultsSourceUrl,
+  pendingRequests = NO_PENDING_REQUESTS,
 }: ResultsSectionProps) => {
   const { searchMode } = useSearchMode();
   const activeViewClasses =
@@ -239,6 +244,7 @@ export const ResultsSection = ({
           getUniversalButtonState={getUniversalButtonState}
           showSeriesPosition={sortValue === 'series_order'}
           onShowToast={onShowToast}
+          pendingRequests={pendingRequests}
         />
       ) : (
         <div
@@ -265,6 +271,7 @@ export const ResultsSection = ({
                 animationDelay={animationDelay}
                 showSeriesPosition={sortValue === 'series_order'}
                 onShowToast={onShowToast}
+                pendingRequests={pendingRequests}
               />
             ) : (
               <CompactView
@@ -278,6 +285,7 @@ export const ResultsSection = ({
                 animationDelay={animationDelay}
                 showSeriesPosition={sortValue === 'series_order'}
                 onShowToast={onShowToast}
+                pendingRequests={pendingRequests}
               />
             );
           })}

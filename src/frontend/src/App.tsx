@@ -96,6 +96,7 @@ import { policyTrace } from './utils/policyTrace';
 import { buildQueryTargets, findQueryTarget, getDefaultQueryTargetKey } from './utils/queryTargets';
 import { buildReleaseDownloadPayload, type ReleaseDownloadOptions } from './utils/releasePayload';
 import { applyRequestNoteToPayload } from './utils/requestConfirmation';
+import { buildPendingRequestKeys } from './utils/requestedBooks';
 import { bookFromRequestData } from './utils/requestFulfil';
 import {
   buildDirectRequestPayload,
@@ -387,6 +388,16 @@ function App() {
     showToast,
     socket,
   });
+
+  // The sidebar already keeps these records live over the socket, so flagging a
+  // requested result costs no call and clears as soon as the request is decided.
+  const pendingRequests = useMemo(
+    () =>
+      buildPendingRequestKeys(
+        requestItems.map((item) => item.requestRecord).filter((record) => record !== undefined),
+      ),
+    [requestItems],
+  );
 
   const dismissedDownloadTaskIds = useMemo(() => {
     const result = new Set<string>();
@@ -2642,11 +2653,13 @@ function App() {
             directTotalResults={directTotalResults}
             onShowToast={showToast}
             resultsSourceUrl={resultsSourceUrl}
+            pendingRequests={pendingRequests}
           />
 
           {selectedBook && (
             <DetailsModal
               book={selectedBook}
+              pendingRequests={pendingRequests}
               onClose={() => setSelectedBook(null)}
               onDownload={handleDownload}
               onShowToast={showToast}
