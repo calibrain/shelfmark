@@ -672,3 +672,21 @@ class TestAuthCheck:
     def test_only_get_is_allowed(self, main_module):
         rules = [r for r in main_module.app.url_map.iter_rules() if r.rule == "/api/auth/check"]
         assert [sorted(r.methods - {"OPTIONS"}) for r in rules] == [["GET", "HEAD"]]
+
+
+class TestLockoutCleanupRace:
+    def test_cleanup_survives_an_entry_cleared_while_it_runs(self, main_module, client):
+        # A successful login can clear an expired entry between the cleanup collecting it and
+        # removing it (the log write in between is a yield point under gevent).
+        from shelfmark.core import auth_routes
+
+        expired = datetime.now(UTC) - timedelta(minutes=1)
+        main_module.failed_login_attempts["alice"] = {"count": 10, "lockout_until": expired}
+
+        def cleared_meanwhile(*_args, **_kwargs):
+            auth_routes.clear_failed_logins("alice")
+
+        with patch.object(auth_routes.logger, "info", side_effect=cleared_meanwhile):
+            auth_routes.cleanup_old_lockouts()
+
+        assert "alice" not in main_module.failed_login_attempts
