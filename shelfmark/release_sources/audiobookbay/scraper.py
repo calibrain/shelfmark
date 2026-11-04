@@ -1,8 +1,10 @@
 """Web scraping functions for AudiobookBay."""
 
+import base64
 import re
 import time
 from threading import Lock
+from typing import TYPE_CHECKING
 from urllib.parse import quote, quote_plus
 
 import requests
@@ -13,6 +15,9 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.download import http as downloader
 from shelfmark.download.postprocess.packs import PackFile
 from shelfmark.release_sources.audiobookbay.utils import normalize_search_punctuation
+
+if TYPE_CHECKING:
+    from bs4.element import Tag
 
 logger = setup_logger(__name__)
 
@@ -117,6 +122,26 @@ def _encode_search_query(query: str, *, exact_phrase: bool) -> str:
     # '&' would otherwise start a new query parameter, '%' would open an invalid
     # escape, and a literal '+' would arrive as a space.
     return quote_plus(search_query)
+
+
+def _decode_post(post: Tag) -> Tag | BeautifulSoup:
+    """Decode ABB's base64-encoded post markup when present.
+
+    ABB serves post content base64-encoded inside a hidden ``.post`` div and
+    decodes it client-side with JavaScript; the decoded payload is the classic
+    ``.postTitle``/``.postInfo``/``.postContent`` markup. Plain-markup posts
+    (older mirrors) are returned unchanged, so never assume base64.
+    """
+    raw = "".join(post.get_text(strip=True).split())
+    if not raw or len(raw) < 32:
+        return post
+    try:
+        html = base64.b64decode(raw, validate=True).decode("utf-8", "replace")
+    except ValueError:
+        return post
+    if "postTitle" not in html:
+        return post
+    return BeautifulSoup(html, "html.parser")
 
 
 def _normalize_result_url(url: str, hostname: str) -> str:
@@ -249,12 +274,13 @@ def search_audiobookbay(
             # Parse HTML
             soup = BeautifulSoup(page_html, "html.parser")
 
-            # Extract book entries
-            posts = soup.select(".post")
+            # Extract book entries (decoding ABB's base64-wrapped markup when present)
+            posts = [_decode_post(p) for p in soup.select(".post")]
             if not posts:
                 # No more results
                 break
 
+            parsed_before = len(results)
             for post in posts:
                 try:
                     # Extract title
@@ -350,6 +376,16 @@ def search_audiobookbay(
                 except (TypeError, ValueError, AttributeError, IndexError, KeyError) as e:
                     logger.debug("Skipping post due to error: %s", e)
                     continue
+
+            # A page with .post elements that all fail to parse usually means ABB
+            # changed its markup; without this the source silently returns [].
+            if len(results) == parsed_before:
+                logger.warning(
+                    "ABB page %s: found %d .post elements but parsed 0 results, "
+                    "site markup may have changed",
+                    page,
+                    len(posts),
+                )
 
             # Rate limiting delay between pages
             if page < max_pages and rate_limit_delay > 0:
