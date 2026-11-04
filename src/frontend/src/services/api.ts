@@ -900,8 +900,14 @@ interface SelfUserEditContext {
   deliveryPreferences: DeliveryPreferencesResponse | null;
   searchPreferences: DeliveryPreferencesResponse | null;
   notificationPreferences: DeliveryPreferencesResponse | null;
+  hardcoverPreferences?: DeliveryPreferencesResponse | null;
   userOverridableKeys: string[];
   visibleUserSettingsSections?: string[];
+}
+
+interface SelfUserSecret {
+  key: string;
+  value: string;
 }
 
 export const getAdminUsers = async (): Promise<AdminUser[]> => {
@@ -1073,6 +1079,11 @@ export const getAdminSettingsOverridesSummary = async (
 
 export const getSelfUserEditContext = async (): Promise<SelfUserEditContext> => {
   return fetchJSON<SelfUserEditContext>(`${API_BASE}/users/me/edit-context`);
+};
+
+/** The caller's own stored value for one secret setting; listings only carry a mask. */
+export const getSelfUserSecret = async (key: string): Promise<SelfUserSecret> => {
+  return fetchJSON<SelfUserSecret>(`${API_BASE}/users/me/secrets/${encodeURIComponent(key)}`);
 };
 
 export const updateSelfUser = async (
