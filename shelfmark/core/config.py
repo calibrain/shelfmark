@@ -202,6 +202,27 @@ class Config:
         user_settings = self._get_user_settings(user_id)
         return user_settings.get(key)
 
+    def get_user_override(self, key: str, *, user_id: int) -> object:
+        """Return the value this user set for a key, or None if they set none.
+
+        Unlike :meth:`get` this never falls back to the global value, so a caller can
+        tell "this user chose it" from "the instance is configured that way". Returns
+        None for a field that is not user overridable or whose value comes from the
+        environment, which is what :meth:`get` would honour anyway.
+        """
+        self._ensure_loaded()
+
+        if key not in self._field_map:
+            return None
+
+        field, _ = self._field_map[key]
+        if not getattr(field, "user_overridable", False):
+            return None
+        if field.env_supported and _get_registry().is_value_from_env(field):
+            return None
+
+        return self._get_user_override(user_id, key)
+
     def get(self, key: str, default: object = None, user_id: int | None = None) -> object:
         """Get a setting value by key.
 

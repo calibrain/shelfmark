@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING
 
 from flask import g, jsonify, session
 
-from shelfmark.core import stats
+from shelfmark.core import hardcover_scheduler, stats
 from shelfmark.core.logger import setup_logger
 
 if TYPE_CHECKING:
@@ -52,4 +52,5 @@ def register_stats_routes(
         except sqlite3.Error:
             logger.exception("stats: could not read the database")
             return jsonify({"error": "Internal Server Error"}), 500
+        payload["scheduler"] = hardcover_scheduler.status()
         return jsonify(payload)

@@ -82,4 +82,5 @@ curl -s -H "X-Api-Key: $SHELFMARK_API_KEY_READONLY" https://shelfmark.example.co
 ```
 
 The response has counts only: books added in the last 7 and 30 days by format, the queue, requests by outcome,
-and download failures in the last 7 days. No titles and no user names.
+download failures and restart interruptions in the last 7 days, and the sync scheduler's health.
+`/api/health` also carries a `scheduler` block (`enabled`, `healthy`, `seconds_since_last_cycle`) that needs no key.

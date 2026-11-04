@@ -272,3 +272,89 @@ def test_build_user_preferences_payload_carries_the_language_default():
     fields_by_key = {field["key"]: field for field in payload["fields"]}
     assert fields_by_key["BOOK_LANGUAGE"]["type"] == "MultiSelectField"
     assert fields_by_key["BOOK_LANGUAGE"]["options"]
+
+
+def test_build_user_preferences_payload_masks_password_fields(monkeypatch):
+    """A PasswordField value never leaves as itself; every copy becomes the placeholder."""
+    import shelfmark.config.settings  # noqa: F401
+    from shelfmark.core.user_settings_overrides import (
+        SECRET_PLACEHOLDER,
+        build_user_preferences_payload,
+    )
+
+    monkeypatch.delenv("HARDCOVER_SYNC_TOKEN", raising=False)
+    user_db = SimpleNamespace(
+        get_user_settings=lambda user_id: {"HARDCOVER_SYNC_TOKEN": "user-token-value"}
+    )
+
+    def fake_get(key, default=None, user_id=None):
+        if key == "HARDCOVER_SYNC_TOKEN":
+            return "user-token-value" if user_id is not None else "global-token-value"
+        return default
+
+    with (
+        patch(
+            "shelfmark.core.user_settings_overrides.load_config_file",
+            return_value={"HARDCOVER_SYNC_TOKEN": "global-token-value"},
+        ),
+        patch.object(config, "get", side_effect=fake_get),
+    ):
+        payload = build_user_preferences_payload(user_db, 7, "hardcover_sync")
+
+    assert payload["userOverrides"] == {"HARDCOVER_SYNC_TOKEN": SECRET_PLACEHOLDER}
+    assert payload["globalValues"]["HARDCOVER_SYNC_TOKEN"] == SECRET_PLACEHOLDER
+    assert payload["effective"]["HARDCOVER_SYNC_TOKEN"] == {
+        "value": SECRET_PLACEHOLDER,
+        "source": "user_override",
+    }
+    assert "user-token-value" not in repr(payload)
+    assert "global-token-value" not in repr(payload)
+
+
+def test_build_user_preferences_payload_leaves_an_unset_secret_empty(monkeypatch):
+    """No stored secret means no placeholder either, so a client can tell the two apart."""
+    import shelfmark.config.settings  # noqa: F401
+    from shelfmark.core.user_settings_overrides import (
+        SECRET_PLACEHOLDER,
+        build_user_preferences_payload,
+    )
+
+    monkeypatch.delenv("HARDCOVER_SYNC_TOKEN", raising=False)
+    user_db = SimpleNamespace(get_user_settings=lambda user_id: {})
+
+    with (
+        patch("shelfmark.core.user_settings_overrides.load_config_file", return_value={}),
+        patch.object(config, "get", side_effect=lambda key, default=None, user_id=None: default),
+    ):
+        payload = build_user_preferences_payload(user_db, 7, "hardcover_sync")
+
+    assert payload["userOverrides"] == {}
+    assert not payload["globalValues"]["HARDCOVER_SYNC_TOKEN"]
+    assert payload["effective"]["HARDCOVER_SYNC_TOKEN"]["value"] != SECRET_PLACEHOLDER
+
+
+def test_mask_secret_settings_masks_only_password_fields():
+    import shelfmark.config.settings  # noqa: F401
+    from shelfmark.core.settings_registry import PasswordField, TextField
+    from shelfmark.core.user_settings_overrides import (
+        SECRET_PLACEHOLDER,
+        is_masked_secret,
+        mask_secret_settings,
+    )
+
+    masked = mask_secret_settings(
+        {"HARDCOVER_SYNC_TOKEN": "user-token-value", "DESTINATION": "/books", "NOT_A_SETTING": 1}
+    )
+
+    assert masked == {
+        "HARDCOVER_SYNC_TOKEN": SECRET_PLACEHOLDER,
+        "DESTINATION": "/books",
+        "NOT_A_SETTING": 1,
+    }
+    assert mask_secret_settings({"HARDCOVER_SYNC_TOKEN": ""}) == {"HARDCOVER_SYNC_TOKEN": ""}
+
+    secret = PasswordField(key="k", label="k")
+    plain = TextField(key="k", label="k")
+    assert is_masked_secret(secret, SECRET_PLACEHOLDER) is True
+    assert is_masked_secret(secret, "user-token-value") is False
+    assert is_masked_secret(plain, SECRET_PLACEHOLDER) is False

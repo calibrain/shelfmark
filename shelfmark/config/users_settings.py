@@ -69,6 +69,11 @@ _SELF_SETTINGS_SECTION_OPTIONS = [
         "label": "Notifications",
         "description": "Show personal notification route settings.",
     },
+    {
+        "value": "hardcover",
+        "label": "Hardcover Account",
+        "description": "Let users connect their own Hardcover account for shelf sync.",
+    },
 ]
 _SELF_SETTINGS_SECTION_VALUES = {option["value"] for option in _SELF_SETTINGS_SECTION_OPTIONS}
 _SELF_SETTINGS_SECTION_DEFAULTS = [option["value"] for option in _SELF_SETTINGS_SECTION_OPTIONS]
