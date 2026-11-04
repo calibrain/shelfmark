@@ -69,6 +69,10 @@ Admins can override the default ebook/audiobook modes and request rules for indi
 
 ---
 
+## Clearing the activity list
+
+**Clear Completed** in the activity list clears finished downloads and their requests, and also finished requests that never had a download, such as a request closed because the book was already in the library. Pending and rejected requests are left alone.
+
 ## Requests
 
 The request system controls whether users can download directly or need admin approval first.

@@ -98,4 +98,32 @@ describe('getClearCompletedTargets', () => {
 
     expect(targets).toEqual([]);
   });
+
+  it('clears a finished request that never had a download', () => {
+    const closed = makeRequestItem(30, 'fulfilled');
+    closed.requestRecord = Object.assign({}, closed.requestRecord, {
+      delivery_state: 'complete' as const,
+      admin_note: '[auto] Already in the library.',
+    });
+    const cancelled = makeRequestItem(31, 'cancelled');
+
+    const targets = getClearCompletedTargets([closed, cancelled], [closed, cancelled]);
+
+    expect(targets).toEqual([
+      { itemType: 'request', itemKey: 'request:30' },
+      { itemType: 'request', itemKey: 'request:31' },
+    ]);
+  });
+
+  it('leaves pending, rejected and still-downloading requests alone', () => {
+    const pending = makeRequestItem(40, 'pending');
+    const rejected = makeRequestItem(41, 'rejected');
+    const downloading = makeRequestItem(42, 'fulfilled');
+    downloading.requestRecord = Object.assign({}, downloading.requestRecord, {
+      delivery_state: 'downloading' as const,
+    });
+
+    const items = [pending, rejected, downloading];
+    expect(getClearCompletedTargets(items, items)).toEqual([]);
+  });
 });

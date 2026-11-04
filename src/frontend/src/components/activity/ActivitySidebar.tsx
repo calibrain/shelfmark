@@ -379,17 +379,6 @@ export const ActivitySidebar = ({
     };
   }, [downloadItems, visibleRequestItems]);
 
-  const hasTerminalDownloadItems = useMemo(
-    () =>
-      mergedDownloadItems.some(
-        (item) =>
-          item.visualStatus === 'complete' ||
-          item.visualStatus === 'error' ||
-          item.visualStatus === 'cancelled',
-      ),
-    [mergedDownloadItems],
-  );
-
   const allItems = useMemo(() => {
     const combined = dedupeById([...mergedDownloadItems, ...mergedRequestItems]);
     return combined.toSorted((a, b) => b.timestamp - a.timestamp);
@@ -958,8 +947,9 @@ export const ActivitySidebar = ({
         })()}
       </div>
 
-      {(effectiveActiveTab === 'downloads' || effectiveActiveTab === 'all') &&
-        hasTerminalDownloadItems &&
+      {(effectiveActiveTab === 'downloads' ||
+        effectiveActiveTab === 'all' ||
+        effectiveActiveTab === 'requests') &&
         clearCompletedTargets.length > 0 && (
           <div
             className="flex items-center justify-center border-t p-3"
