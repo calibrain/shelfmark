@@ -90,8 +90,12 @@ def load_or_create_secret_key(config_dir: Path) -> bytes:
     secret_key = os.urandom(64)
     try:
         secret_path.parent.mkdir(parents=True, exist_ok=True)
-        secret_path.write_bytes(secret_key)
-        secret_path.chmod(0o600)
+        # Created private, and an existing file made private before the key goes in, so the key
+        # is never in a file others can read.
+        fd = os.open(secret_path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "wb") as secret_file:
+            os.fchmod(secret_file.fileno(), 0o600)
+            secret_file.write(secret_key)
     except OSError as exc:
         logger.warning(
             "Failed to persist Flask secret key at %s. Sessions may reset on restart: %s",
