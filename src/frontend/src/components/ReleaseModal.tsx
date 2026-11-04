@@ -914,6 +914,18 @@ const ReleaseModalSession = ({
 
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const tabIndicatorStyle = useTabIndicator(tabRefs, activeTab, allTabs);
+  const tabStripRef = useRef<HTMLDivElement>(null);
+
+  // The strip's scrollbar is hidden, so bring the selected tab fully into view. This sets
+  // the strip's own scrollLeft: scrollIntoView would also scroll the modal vertically.
+  const selectTab = (name: string, tab: HTMLButtonElement) => {
+    setActiveTab(name);
+    const strip = tabStripRef.current;
+    strip?.scrollTo({
+      left: tab.offsetLeft - (strip.clientWidth - tab.offsetWidth) / 2,
+      behavior: 'smooth',
+    });
+  };
 
   // Get unique formats from current releases for filter dropdown
   // Only show formats that are in the supported list
@@ -1814,9 +1826,16 @@ const ReleaseModalSession = ({
                 </div>
               )}
               {!sourcesLoading && allTabs.length > 0 && (
-                <div className="flex items-center px-5">
-                  {/* Tabs - scrollable on narrow screens */}
-                  <div className="scrollbar-hide min-w-0 flex-1 overflow-x-auto">
+                <div
+                  className={`flex items-center px-5 ${allTabs.length > 1 ? 'flex-wrap sm:flex-nowrap' : ''}`}
+                >
+                  {/* Tabs - scrollable on narrow screens. With more than one source they get
+                      their own row on phones, because the controls would otherwise leave
+                      them about 110px. */}
+                  <div
+                    ref={tabStripRef}
+                    className={`scrollbar-hide min-w-0 flex-1 overflow-x-auto ${allTabs.length > 1 ? 'basis-full sm:basis-0' : ''}`}
+                  >
                     <div className="relative flex gap-1">
                       {/* Sliding indicator */}
                       <div
@@ -1833,7 +1852,7 @@ const ReleaseModalSession = ({
                           ref={(el) => {
                             tabRefs.current[tab.name] = el;
                           }}
-                          onClick={() => setActiveTab(tab.name)}
+                          onClick={(event) => selectTab(tab.name, event.currentTarget)}
                           className={`border-b-2 border-transparent px-4 py-2.5 text-sm font-medium whitespace-nowrap transition-colors ${
                             activeTab === tab.name
                               ? 'text-emerald-600 dark:text-emerald-400'
