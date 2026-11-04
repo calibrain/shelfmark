@@ -34,6 +34,7 @@ _BASE_TAG = '<base href="/" data-shelfmark-base />'
 
 
 def _raise_runtime_error(message: str) -> NoReturn:
+    """Raise RuntimeError with the message, for raising inside a try block (ruff TRY301)."""
     raise RuntimeError(message)
 
 
@@ -76,6 +77,7 @@ def register_system_routes(
         @login_required
         @wraps(f)
         def decorated_function(*args: object, **kwargs: object) -> Response | tuple[Response, int]:
+            """Return 403 to a signed-in user who is not an admin, otherwise run the route."""
             if resolve_auth_mode() != "none" and not session.get("is_admin", False):
                 return jsonify({"error": "Admin access required"}), 403
             return f(*args, **kwargs)
@@ -83,6 +85,7 @@ def register_system_routes(
         return decorated_function
 
     def _base_href() -> str:
+        """The href for the page's base tag: the configured base path with a trailing slash."""
         base_path = get_base_path()
         if not base_path:
             return "/"

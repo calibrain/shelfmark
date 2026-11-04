@@ -39,10 +39,12 @@ _OPERATIONAL_ERRORS = (OSError, RuntimeError, TypeError, ValueError, sqlite3.Err
 
 
 def _queue_status_to_final_activity_status(status: QueueStatus) -> str | None:
+    """The status to record in download history, or None when the download has not finished."""
     return status.value if status in TERMINAL_QUEUE_STATUSES else None
 
 
 def _queue_status_to_notification_event(status: QueueStatus) -> NotificationEvent | None:
+    """The notification for a finished download, or None for a status that sends none."""
     if status == QueueStatus.COMPLETE:
         return NotificationEvent.DOWNLOAD_COMPLETE
     if status == QueueStatus.ERROR:
@@ -53,6 +55,10 @@ def _queue_status_to_notification_event(status: QueueStatus) -> NotificationEven
 def _notify_admin_for_terminal_download_status(
     *, task_id: str, status: QueueStatus, task: Any
 ) -> None:
+    """Notify the admins, and the user who owns the task, that a download completed or failed.
+
+    A notifier that raises is logged and does not stop the other.
+    """
     event = _queue_status_to_notification_event(status)
     if event is None:
         return
@@ -112,6 +118,7 @@ def register_download_recording(
     """Hook the download queue so every queued and finished download is recorded."""
 
     def _emit_activity_update_for_task(*, payload: dict[str, Any], task: Any) -> None:
+        """Send an activity update to the admins and to the user who owns the task."""
         owner_user_id = normalize_positive_int(getattr(task, "user_id", None))
         emit_ws_event(
             ws_manager,
@@ -198,6 +205,10 @@ def register_download_recording(
             logger.warning("Failed to reset activity viewer state for task %s: %s", task_id, exc)
 
     def _record_download_terminal_snapshot(task_id: str, status: QueueStatus, task: Any) -> None:
+        """Record a finished download: notify, finalize its history and tell the Activity view.
+
+        A failed download that cannot be retried also reopens the request it was fulfilling.
+        """
         _notify_admin_for_terminal_download_status(task_id=task_id, status=status, task=task)
 
         final_status = _queue_status_to_final_activity_status(status)

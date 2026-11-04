@@ -42,6 +42,7 @@ _IMPORT_OPERATIONAL_ERRORS = (ImportError, *_OPERATIONAL_ERRORS)
 def _task_owned_by_actor(
     task: Any, *, actor_user_id: int | None, actor_username: str | None
 ) -> bool:
+    """Whether a queue task belongs to the actor: by user id when both have one, else by username."""
     raw_task_user_id = getattr(task, "user_id", None)
     try:
         task_user_id = int(raw_task_user_id) if raw_task_user_id is not None else None
@@ -64,6 +65,7 @@ def _download_row_owned_by_actor(
     actor_user_id: int | None,
     actor_username: str | None,
 ) -> bool:
+    """Whether a download history row belongs to the actor, matched the same way as a task."""
     owner_user_id = normalize_positive_int(row.get("user_id"))
     if actor_user_id is not None and owner_user_id is not None:
         return owner_user_id == actor_user_id
@@ -82,6 +84,7 @@ def _queue_task_visible_to_actor(
     actor_user_id: int | None,
     actor_username: str | None,
 ) -> bool:
+    """Whether the actor may see a live queue task: admins see all, others only their own."""
     if is_admin:
         return True
 
@@ -144,6 +147,10 @@ def register_queue_routes(
     """
 
     def _resolve_queue_actor() -> tuple[bool, int | None, str | None, Response | None]:
+        """Return ``(is_admin, db_user_id, username, error)`` for the session.
+
+        ``error`` is a response to send back when a non-admin has no usable identity.
+        """
         is_admin, db_user_id, can_access_status = resolve_status_scope()
         actor_username = session.get("user_id")
         normalized_actor_username = actor_username if isinstance(actor_username, str) else None

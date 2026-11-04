@@ -50,6 +50,7 @@ _AUDIOBOOK_FORMAT_HINTS = frozenset(AUDIOBOOK_FORMATS)
 
 
 def _contains_audiobook_format_hint(value: Any) -> bool:
+    """Whether a string names an audiobook format as one of its words (m4b, mp3 and the like)."""
     if not isinstance(value, str):
         return False
 
@@ -110,6 +111,7 @@ def _resolve_release_content_type(data: dict[str, Any], source: Any) -> tuple[st
 def _policy_block_response(
     mode: PolicyMode, *, error: str = "Download not allowed by policy"
 ) -> tuple[Response, int]:
+    """Build the 403 for a request the user's policy mode refuses, with the mode they need."""
     logger.debug(
         "download policy guard user=%s db_user_id=%s mode=%s",
         session.get("user_id"),
@@ -148,6 +150,7 @@ _RELEASE_LISTING_REFUSED_MODES = frozenset({PolicyMode.REQUEST_BOOK, PolicyMode.
 
 
 def _release_listing_block_response(mode: PolicyMode) -> tuple[Response, int]:
+    """Build the 403 for a release listing the user's policy mode refuses."""
     return _policy_block_response(mode, error="Release listing not allowed by policy")
 
 
@@ -161,6 +164,7 @@ class _ReleasePolicy:
         get_user_db: Callable[[], UserDB | None],
         load_policy_settings: Callable[[], dict[str, Any]],
     ) -> None:
+        """Take the lookups as callables, so each check reads the current settings."""
         self._resolve_auth_mode = resolve_auth_mode
         self._get_user_db = get_user_db
         self._load_policy_settings = load_policy_settings

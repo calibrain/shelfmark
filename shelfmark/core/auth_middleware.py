@@ -29,6 +29,7 @@ _OPERATIONAL_ERRORS = (OSError, RuntimeError, TypeError, ValueError, sqlite3.Err
 
 
 def _raise_runtime_error(message: str) -> NoReturn:
+    """Raise RuntimeError with the message, for raising inside a try block (ruff TRY301)."""
     raise RuntimeError(message)
 
 

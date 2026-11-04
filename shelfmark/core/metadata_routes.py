@@ -62,8 +62,11 @@ def _handle_target_errors(
     def decorator(
         fn: Callable[..., Response | tuple[Response, int]],
     ) -> Callable[..., Response | tuple[Response, int]]:
+        """Wrap one route."""
+
         @wraps(fn)
         def wrapper(*args: object, **kwargs: object) -> Response | tuple[Response, int]:
+            """Map errors to responses: bad input 400, provider failure 502, anything else 500."""
             try:
                 return fn(*args, **kwargs)
             except (NotImplementedError, ValueError) as e:
