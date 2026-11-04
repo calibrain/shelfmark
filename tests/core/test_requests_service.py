@@ -582,15 +582,16 @@ def test_reopen_failed_request_reverts_to_pending_from_queued_and_clears_on_refu
 def test_reopen_failed_request_delegates_to_user_db_public_api():
     class StubUserDB:
         def __init__(self) -> None:
-            self.calls: list[tuple[int, str | None]] = []
+            self.calls: list[tuple[int, str | None, bool]] = []
 
         def reopen_failed_request(
             self,
             request_id: int,
             *,
             failure_reason: str | None = None,
+            remember_failed_release: bool = False,
         ) -> dict[str, object]:
-            self.calls.append((request_id, failure_reason))
+            self.calls.append((request_id, failure_reason, remember_failed_release))
             return {"id": request_id, "status": "pending"}
 
     user_db = StubUserDB()
@@ -603,7 +604,7 @@ def test_reopen_failed_request_delegates_to_user_db_public_api():
 
     assert reopened == {"id": 7, "status": "pending"}
     # Service layer passes failure_reason through; normalization happens in UserDB.
-    assert user_db.calls == [(7, "  Download failed: Timeout  ")]
+    assert user_db.calls == [(7, "  Download failed: Timeout  ", True)]
 
 
 def test_reopen_failed_request_does_not_reopen_completed_delivery(user_db):
@@ -764,6 +765,76 @@ def test_sync_delivery_states_reopens_fulfilled_request_when_error_is_not_retrya
     assert refreshed["last_failure_reason"] == "Staged retry source no longer exists"
 
 
+def test_sync_delivery_states_reopening_remembers_the_release_that_failed(user_db):
+    user = user_db.create_user(username="alice")
+    fulfilled_request = user_db.create_request(
+        user_id=user["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data={"source": "prowlarr", "source_id": "dead-rel", "title": "Dead"},
+        status="fulfilled",
+        delivery_state="queued",
+    )
+
+    sync_delivery_states_from_queue_status(
+        user_db,
+        queue_status={
+            "error": {
+                "dead-rel": {
+                    "id": "dead-rel",
+                    "request_id": fulfilled_request["id"],
+                    "retry_available": False,
+                    "status_message": "No seeders: 0 found, 1 needed, nothing downloaded in 5 min",
+                },
+            },
+        },
+        user_id=user["id"],
+    )
+
+    refreshed = user_db.get_request(fulfilled_request["id"])
+    assert refreshed["release_data"] is None
+    assert refreshed["book_data"]["failed_releases"] == [
+        {"source": "prowlarr", "source_id": "dead-rel"}
+    ]
+
+
+def test_sync_delivery_states_does_not_blame_the_release_when_the_client_was_unreachable(user_db):
+    user = user_db.create_user(username="alice")
+    fulfilled_request = user_db.create_request(
+        user_id=user["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data={"source": "prowlarr", "source_id": "fine-rel", "title": "Fine"},
+        status="fulfilled",
+        delivery_state="queued",
+    )
+
+    sync_delivery_states_from_queue_status(
+        user_db,
+        queue_status={
+            "error": {
+                "fine-rel": {
+                    "id": "fine-rel",
+                    "request_id": fulfilled_request["id"],
+                    "retry_available": False,
+                    "status_message": "Failed to add to qbittorrent: Failed to connect to qBittorrent",
+                },
+            },
+        },
+        user_id=user["id"],
+    )
+
+    refreshed = user_db.get_request(fulfilled_request["id"])
+    assert refreshed["status"] == "pending"  # still reopened
+    assert "failed_releases" not in refreshed["book_data"]  # but the release is not held against
+
+
 def test_sync_delivery_states_preserves_retryable_error_state(user_db):
     user = user_db.create_user(username="alice")
     fulfilled_request = user_db.create_request(
@@ -921,6 +992,98 @@ def test_sync_delivery_states_an_empty_queue_skips_the_request_history(
     )
     assert len(calls) == 1
     assert [row["delivery_state"] for row in updated] == ["downloading"]
+
+
+def test_reopening_after_a_failed_download_remembers_the_release(user_db):
+    # The terminal hook reopens a request the moment its download errors, with no admin involved.
+    user = user_db.create_user(username="alice")
+    request = _fulfilled_with_release(user_db, user["id"], "rejected-release")
+
+    reopened = reopen_failed_request(
+        user_db,
+        request_id=request["id"],
+        failure_reason="Peer transfer failed: Rejected (01.mp3)",
+    )
+
+    assert reopened["status"] == "pending"
+    assert reopened["book_data"]["failed_releases"] == [
+        {"source": "slskd", "source_id": "rejected-release"}
+    ]
+    assert reopened["last_failure_reason"] == "Peer transfer failed: Rejected (01.mp3)"
+
+
+def test_reopening_records_the_failed_release_in_the_same_write(user_db, monkeypatch):
+    # A second write would leave the request pending without failed_releases for a moment, and
+    # an automatic search in that window could pick the failed release again.
+    user = user_db.create_user(username="alice")
+    request = _fulfilled_with_release(user_db, user["id"], "rejected-release")
+    user_db.update_request(request["id"], book_data={**request["book_data"], "note": "kept"})
+
+    def no_second_write(*_args, **_kwargs):
+        raise AssertionError("book_data must be written by the reopen itself")
+
+    monkeypatch.setattr(user_db, "update_request", no_second_write)
+
+    reopened = reopen_failed_request(
+        user_db, request_id=request["id"], failure_reason="Download failed"
+    )
+
+    assert reopened["status"] == "pending"
+    assert reopened["book_data"]["failed_releases"] == [
+        {"source": "slskd", "source_id": "rejected-release"}
+    ]
+    assert reopened["book_data"]["note"] == "kept"
+
+
+def test_reopening_after_an_unreachable_client_does_not_blame_the_release(user_db):
+    user = user_db.create_user(username="alice")
+    request = _fulfilled_with_release(user_db, user["id"], "fine-release")
+
+    reopened = reopen_failed_request(
+        user_db,
+        request_id=request["id"],
+        failure_reason="Failed to connect to qBittorrent",
+    )
+
+    assert reopened["status"] == "pending"
+    assert "failed_releases" not in reopened["book_data"]
+
+
+def test_reopening_twice_lists_the_release_once(user_db):
+    user = user_db.create_user(username="alice")
+    request = _fulfilled_with_release(user_db, user["id"], "same-release")
+    reopen_failed_request(user_db, request_id=request["id"], failure_reason="Download failed")
+    user_db.update_request(
+        request["id"],
+        status="fulfilled",
+        delivery_state="queued",
+        release_data={"source": "slskd", "source_id": "same-release", "title": "x"},
+    )
+
+    reopened = reopen_failed_request(
+        user_db, request_id=request["id"], failure_reason="Download failed"
+    )
+
+    assert len(reopened["book_data"]["failed_releases"]) == 1
+
+
+def test_reopening_a_request_that_is_not_failed_changes_nothing(user_db):
+    user = user_db.create_user(username="alice")
+    request = user_db.create_request(
+        user_id=user["id"],
+        source_hint=None,
+        content_type="ebook",
+        request_level="book",
+        policy_mode="request_book",
+        book_data=_book_data(),
+        status="pending",
+    )
+
+    assert (
+        reopen_failed_request(user_db, request_id=request["id"], failure_reason="Download failed")
+        is None
+    )
+    assert "failed_releases" not in user_db.get_request(request["id"])["book_data"]
 
 
 def test_create_request_rejects_non_dict_book_data(user_db):

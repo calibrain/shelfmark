@@ -197,6 +197,21 @@ _DELIVERY_PRECEDENCE: dict[str, int] = {
 }
 
 
+# A download that failed because its client could not be reached says nothing about the release:
+# the same one is fine once the client is back, and it may already be downloading there.
+_CLIENT_UNREACHABLE_MARKERS = (
+    "failed to connect",
+    "cannot connect",
+    "connection refused",
+    "connection aborted",
+)
+
+
+def _client_unreachable(message: object) -> bool:
+    text = str(message or "").lower()
+    return any(marker in text for marker in _CLIENT_UNREACHABLE_MARKERS)
+
+
 def sync_delivery_states_from_queue_status(
     user_db: UserDB,
     *,
@@ -271,9 +286,12 @@ def sync_delivery_states_from_queue_status(
                 if isinstance(raw_status_message, str) and raw_status_message.strip()
                 else "Download failed"
             )
+            # Reopening clears the release, so note on the request that this one failed:
+            # the next search skips it.
             reopened = user_db.reopen_failed_request(
                 request_id,
                 failure_reason=failure_reason,
+                remember_failed_release=not _client_unreachable(failure_reason),
             )
             if reopened is not None:
                 updated.append(reopened)
@@ -700,8 +718,13 @@ def reopen_failed_request(
     request_id: int,
     failure_reason: str | None = None,
 ) -> dict[str, Any] | None:
-    """Reopen a failed fulfilled request so admins can re-approve with a new release."""
+    """Reopen a failed fulfilled request so admins can re-approve with a new release.
+
+    The release that failed is noted on the request, so the next search does not pick it again,
+    unless the failure was the client being unreachable, which says nothing about the release.
+    """
     return user_db.reopen_failed_request(
         request_id,
         failure_reason=failure_reason,
+        remember_failed_release=not _client_unreachable(failure_reason),
     )
