@@ -90,6 +90,24 @@ def test_item_to_entry_tokenizes_title_author_and_path() -> None:
     assert entry.external_ids == frozenset()
 
 
+def test_item_to_entry_keeps_the_id_title_author_and_tags() -> None:
+    item = {
+        "id": "li_8gch9ve09orgn4fdz8",
+        "relPath": "Terry Goodkind/Wizards First Rule",
+        "media": {
+            "metadata": {"title": "SOT 01: Wizards First Rule", "authorName": "Terry Goodkind"},
+            "tags": ["fantasy", "", 3, "ebook-in-library"],
+        },
+    }
+
+    entry = audiobookshelf._item_to_entry(item)
+
+    assert entry.item_id == "li_8gch9ve09orgn4fdz8"
+    assert entry.title == "SOT 01: Wizards First Rule"  # as Audiobookshelf shows it
+    assert entry.author == "Terry Goodkind"
+    assert entry.tags == {"fantasy", "ebook-in-library"}
+
+
 def test_item_to_entry_indexes_both_forms_of_an_isbn10() -> None:
     entry = audiobookshelf._item_to_entry(_item("Carl", "Dinniman", isbn="059382024X"))
 
@@ -410,3 +428,49 @@ def test_unsaved_form_values_override_the_saved_settings(config: dict[str, Any])
     provider = audiobookshelf.AudiobookshelfLibrary({"AUDIOBOOKSHELF_URL": "http://form:13378"})
 
     assert provider.describe() == "Audiobookshelf at http://form:13378"
+
+
+@pytest.mark.parametrize(
+    ("series_name", "expected"),
+    [
+        ("Alex Cross #2", ("Alex Cross", 2.0)),
+        ("Dungeon Crawler Carl #2.5", ("Dungeon Crawler Carl", 2.5)),
+        ("Sword of Truth", ("Sword of Truth", None)),
+        ("Jack Reacher #1-3", ("Jack Reacher", None)),
+        ("The Expanse #4, Expanse Novellas #2", ("The Expanse", 4.0)),
+        ("", (None, None)),
+        (None, (None, None)),
+    ],
+)
+def test_the_series_field_gives_the_first_series_name_and_its_position(
+    series_name: str | None, expected: tuple[str | None, float | None]
+) -> None:
+    assert audiobookshelf._parse_series_name(series_name) == expected
+
+
+def test_an_entry_carries_the_series_its_position_and_the_author() -> None:
+    entry = audiobookshelf._item_to_entry(
+        _item(
+            "DCC 2: Carl's Doomsday Scenario", "Matt Dinniman", seriesName="Dungeon Crawler Carl #2"
+        )
+    )
+
+    assert (entry.series_name, entry.series_index, entry.author) == (
+        "Dungeon Crawler Carl",
+        2.0,
+        "Matt Dinniman",
+    )
+
+
+def test_the_title_label_number_stands_in_for_a_missing_sequence() -> None:
+    entry = audiobookshelf._item_to_entry(
+        _item("Reacher 19: Personal", "Lee Child", seriesName="Jack Reacher")
+    )
+
+    assert (entry.series_name, entry.series_index) == ("Jack Reacher", 19.0)
+
+
+def test_an_entry_outside_any_series_has_no_series_fields() -> None:
+    entry = audiobookshelf._item_to_entry(_item("The Martian", "Andy Weir"))
+
+    assert (entry.series_name, entry.series_index, entry.author) == (None, None, "Andy Weir")

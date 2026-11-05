@@ -1,39 +1,89 @@
 import { useState } from 'react';
 
 import type { PasswordFieldConfig } from '../../../types/settings';
+import { SECRET_PLACEHOLDER } from '../../../utils/settingsValues';
 
 interface PasswordFieldProps {
   field: PasswordFieldConfig;
   value: string;
   onChange: (value: string) => void;
   disabled?: boolean;
+  /**
+   * Fetches the stored secret that a masked value stands for. The eye button
+   * calls it the first time a masked field is shown; without it the mask stays.
+   */
+  onReveal?: () => Promise<string>;
 }
 
-export const PasswordField = ({ field, value, onChange, disabled }: PasswordFieldProps) => {
+const MASKED_PLACEHOLDER_TEXT = 'Saved. Show it with the eye, or type a new value.';
+
+export const PasswordField = ({
+  field,
+  value,
+  onChange,
+  disabled,
+  onReveal,
+}: PasswordFieldProps) => {
   const [showPassword, setShowPassword] = useState(false);
+  const [revealedValue, setRevealedValue] = useState<string | null>(null);
+  const [isRevealing, setIsRevealing] = useState(false);
   // disabled prop is already computed by SettingsContent.getDisabledState()
   const isDisabled = disabled ?? false;
+
+  // A masked value means a secret is stored but was not sent. The input stays
+  // empty until the user reveals it or types a replacement.
+  const isMasked = value === SECRET_PLACEHOLDER;
+  const isRevealed = isMasked && revealedValue !== null;
+  const inputValue = isMasked ? (revealedValue ?? '') : value;
+  const isShowing = showPassword && (!isMasked || isRevealed);
+
+  const handleChange = (nextValue: string) => {
+    setRevealedValue(null);
+    onChange(nextValue);
+  };
+
+  const toggleVisibility = async () => {
+    if (isShowing) {
+      setShowPassword(false);
+      return;
+    }
+    if (isMasked && !isRevealed && onReveal) {
+      setIsRevealing(true);
+      try {
+        setRevealedValue(await onReveal());
+        setShowPassword(true);
+      } catch {
+        // The secret stays hidden; nothing about it changed.
+      } finally {
+        setIsRevealing(false);
+      }
+      return;
+    }
+    setShowPassword(true);
+  };
 
   return (
     <div className="relative">
       <input
-        type={showPassword ? 'text' : 'password'}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        placeholder={field.placeholder}
+        type={isShowing ? 'text' : 'password'}
+        value={inputValue}
+        onChange={(e) => handleChange(e.target.value)}
+        placeholder={isMasked && !isRevealed ? MASKED_PLACEHOLDER_TEXT : field.placeholder}
         aria-label={field.label || field.placeholder || 'Password field'}
         disabled={isDisabled}
         className="w-full rounded-lg border border-(--border-muted) bg-(--bg-soft) px-3 py-2 pr-10 text-sm transition-colors focus:border-sky-500 focus:ring-2 focus:ring-sky-500/50 focus:outline-hidden disabled:cursor-not-allowed disabled:opacity-60"
       />
       <button
         type="button"
-        onClick={() => setShowPassword(!showPassword)}
-        disabled={isDisabled}
+        onClick={() => {
+          void toggleVisibility();
+        }}
+        disabled={isDisabled || isRevealing}
         className="absolute top-1/2 right-2 -translate-y-1/2 rounded p-1 transition-colors hover:bg-(--hover-action) disabled:cursor-not-allowed disabled:opacity-60"
         tabIndex={-1}
-        aria-label={showPassword ? 'Hide password' : 'Show password'}
+        aria-label={isShowing ? 'Hide password' : 'Show password'}
       >
-        {showPassword ? (
+        {isShowing ? (
           <svg
             className="h-4 w-4 opacity-60"
             xmlns="http://www.w3.org/2000/svg"
