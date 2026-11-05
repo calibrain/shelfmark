@@ -31,6 +31,7 @@ from shelfmark.core.request_helpers import (
     populate_request_usernames,
 )
 from shelfmark.core.request_validation import RequestStatus
+from shelfmark.core.status_messages import explain_buckets, explain_request_rows
 from shelfmark.core.viewer_redaction import (
     is_public_download_id,
     match_public_download_id,
@@ -646,6 +647,8 @@ def register_activity_routes(
             user_id=actor.owner_scope,
         )
         emit_request_updates(updated_requests)
+        # Plain wording for what the list shows, after the sync above has used the real text.
+        explain_buckets(status)
         request_rows = _list_visible_requests(
             user_db,
             is_admin=actor.is_admin,
@@ -659,6 +662,7 @@ def register_activity_routes(
             if f"request:{request_id}" in hidden_item_keys:
                 continue
             visible_request_rows.append(row)
+        visible_request_rows = explain_request_rows(visible_request_rows)
 
         if not actor.is_admin:
             # Redacted only now: the delivery-state sync above matches on real task ids.
