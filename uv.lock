@@ -488,7 +488,7 @@ wheels = [
 
 [[package]]
 name = "flask-socketio"
-version = "5.7.1"
+version = "5.7.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "blinker" },
@@ -498,9 +498,9 @@ dependencies = [
     { name = "python-socketio" },
     { name = "werkzeug" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b8/61/274be8577d923abb1c358c6bd9ed0e0278d4cab8b2e1d9d6d8f3d294fd92/flask_socketio-5.7.1.tar.gz", hash = "sha256:6dcbae88b40f2ae99d0f106c751ca2e119b7ccf4a8df95cbda64f56262db99c1", size = 38602, upload-time = "2026-11-01T21:03:58.013Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/39/11/ee1cb9153537ffa0342eb9c3f2d393c4db8ccce0085503081080139a0db1/flask_socketio-5.7.2.tar.gz", hash = "sha256:6b2f967f24f693f2316d108b2d2125642db856b2681c12e60ded9bff1b8035e0", size = 38636, upload-time = "2026-11-02T19:42:42.829Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/12/93/53d31a5776f67b26607aebfea38b629245298905073036772caee5259482/flask_socketio-5.7.1-py3-none-any.whl", hash = "sha256:88ecce64485585df37d94c021aed1f1e557eb04a44e7cb8640ff34c4c7beb8b1", size = 18890, upload-time = "2026-11-01T21:03:56.502Z" },
+    { url = "https://files.pythonhosted.org/packages/0f/a5/26d8bf83ffa31cb884c9fe28855507cd87c2eb3131ccd9066df9ea9399ff/flask_socketio-5.7.2-py3-none-any.whl", hash = "sha256:c2b3fc4e7313f3a60ad8555526afb7221b270946a29aa7ffcda47a4521a542a2", size = 18921, upload-time = "2026-11-02T19:42:41.543Z" },
 ]
 
 [[package]]
