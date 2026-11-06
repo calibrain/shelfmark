@@ -1,4 +1,5 @@
 import type { DeliveryPreferencesResponse } from '../../../services/api';
+import { SECRET_PLACEHOLDER } from '../../../utils/settingsValues';
 import { toComparableValue } from './fieldHelpers';
 import type { PerUserSettings } from './types';
 
@@ -32,6 +33,13 @@ export const buildUserSettingsPayload = (
     }
 
     const userValue = userSettings[typedKey];
+    // A masked secret cannot be compared with the global value, which is masked
+    // too. Sending the placeholder back tells the backend to keep what is stored.
+    if (userValue === SECRET_PLACEHOLDER) {
+      payload[key] = userValue;
+      return payload;
+    }
+
     const matchingPreferences = preferenceGroups.find((preferences) =>
       preferences?.keys?.includes(key),
     );

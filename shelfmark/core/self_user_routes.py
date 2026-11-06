@@ -29,6 +29,10 @@ from shelfmark.core.user_settings_overrides import (
 from shelfmark.core.user_settings_overrides import (
     get_ordered_user_overridable_fields as _get_ordered_user_overridable_fields,
 )
+from shelfmark.core.user_settings_overrides import (
+    is_secret_setting,
+    mask_secret_settings,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable, Mapping
@@ -56,10 +60,12 @@ _VISIBLE_SELF_SETTINGS_SECTIONS_KEY = "VISIBLE_SELF_SETTINGS_SECTIONS"
 _SELF_SETTINGS_SECTION_DELIVERY = "delivery"
 _SELF_SETTINGS_SECTION_SEARCH = "search"
 _SELF_SETTINGS_SECTION_NOTIFICATIONS = "notifications"
+_SELF_SETTINGS_SECTION_HARDCOVER = "hardcover"
 _VALID_SELF_SETTINGS_SECTIONS = (
     _SELF_SETTINGS_SECTION_DELIVERY,
     _SELF_SETTINGS_SECTION_SEARCH,
     _SELF_SETTINGS_SECTION_NOTIFICATIONS,
+    _SELF_SETTINGS_SECTION_HARDCOVER,
 )
 _DEFAULT_VISIBLE_SELF_SETTINGS_SECTIONS = list(_VALID_SELF_SETTINGS_SECTIONS)
 _USER_PREFERENCES_FALLBACK_ERRORS = (ImportError, OSError, RuntimeError, TypeError, sqlite3.Error)
@@ -206,6 +212,11 @@ def _get_allowed_self_settings_keys(visible_sections: list[str]) -> set[str]:
             key for key, _field in _get_ordered_user_overridable_fields("notifications")
         }
 
+    if _SELF_SETTINGS_SECTION_HARDCOVER in visible_sections_set:
+        allowed_keys |= {
+            key for key, _field in _get_ordered_user_overridable_fields("hardcover_sync")
+        }
+
     return allowed_keys
 
 
@@ -286,7 +297,7 @@ def register_self_user_routes(
             return jsonify({"error": "User not found"}), 404
 
         serialized_user = _serialize_self_user(user, g.auth_mode)
-        serialized_user["settings"] = user_db.get_user_settings(user_id)
+        serialized_user["settings"] = mask_secret_settings(user_db.get_user_settings(user_id))
         visible_self_settings_sections = _get_visible_self_settings_sections()
 
         delivery_preferences = None
@@ -327,10 +338,23 @@ def register_self_user_routes(
             if notification_preferences is not None:
                 notification_preferences["adminDefaultRoutesSet"] = _admin_default_routes_set()
 
+        hardcover_preferences = None
+        if _SELF_SETTINGS_SECTION_HARDCOVER in visible_self_settings_sections:
+            hardcover_preferences, error_response = _build_optional_user_preferences(
+                user_db,
+                user_id=user_id,
+                tab_name="hardcover_sync",
+                missing_tab_error="Hardcover sync settings tab not found",
+                preference_label="hardcover",
+            )
+            if error_response:
+                return error_response
+
         user_overridable_keys = sorted(
             set(delivery_preferences.get("keys", []) if delivery_preferences else [])
             | set(search_preferences.get("keys", []) if search_preferences else [])
             | set(notification_preferences.get("keys", []) if notification_preferences else [])
+            | set(hardcover_preferences.get("keys", []) if hardcover_preferences else [])
         )
 
         return jsonify(
@@ -339,10 +363,36 @@ def register_self_user_routes(
                 "deliveryPreferences": delivery_preferences,
                 "searchPreferences": search_preferences,
                 "notificationPreferences": notification_preferences,
+                "hardcoverPreferences": hardcover_preferences,
                 "userOverridableKeys": user_overridable_keys,
                 "visibleUserSettingsSections": visible_self_settings_sections,
             }
         )
+
+    @app.route("/api/users/me/secrets/<key>", methods=["GET"])
+    @_require_authenticated_user
+    def users_me_reveal_secret(key: str) -> Response | tuple[Response, int]:
+        """Return the caller's own stored value for one PasswordField setting.
+
+        Listing payloads carry only a placeholder for secrets. This is the one
+        place a user can read the secret back, and it is strictly their own
+        override: the global value is never returned here, whatever the role.
+        """
+        user_id, _user, user_error = _get_current_user(user_db)
+        if user_error:
+            return user_error
+        if user_id is None:
+            return jsonify({"error": "User not found"}), 404
+
+        allowed_keys = _get_allowed_self_settings_keys(_get_visible_self_settings_sections())
+        if key not in allowed_keys or not is_secret_setting(key):
+            return jsonify({"error": "Not a user secret setting"}), 404
+
+        value = user_db.get_user_settings(user_id).get(key)
+        logger.info("User %s revealed their own %s", user_id, key)
+        response = jsonify({"key": key, "value": "" if value is None else str(value)})
+        response.headers["Cache-Control"] = "no-store"
+        return response
 
     @app.route("/api/users/me/notification-preferences/test", methods=["POST"])
     @_require_authenticated_user
@@ -504,6 +554,6 @@ def register_self_user_routes(
             return jsonify({"error": "User not found"}), 404
 
         result = _serialize_self_user(updated, g.auth_mode)
-        result["settings"] = user_db.get_user_settings(user_id)
+        result["settings"] = mask_secret_settings(user_db.get_user_settings(user_id))
         logger.info("User %s updated their own account", user_id)
         return jsonify(result)
