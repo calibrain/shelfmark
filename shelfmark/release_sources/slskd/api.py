@@ -427,6 +427,36 @@ class SlskdClient:
             raise
         return True
 
+    # ── private messages ──────────────────────────────────────────────────────
+
+    def list_conversations(self) -> list[dict[str, Any]]:
+        """Return slskd's private-message conversations (no message bodies)."""
+        data = self._json(self._request("GET", "conversations"))
+        return [c for c in data if isinstance(c, dict)] if isinstance(data, list) else []
+
+    def get_conversation(self, username: str) -> dict[str, Any] | None:
+        """Return one conversation with its messages, or None when slskd has none."""
+        try:
+            response = self._request(
+                "GET",
+                f"conversations/{quote(username, safe='')}",
+                params={"includeMessages": "true"},
+            )
+        except requests.exceptions.HTTPError as e:
+            if e.response is not None and e.response.status_code == _HTTP_NOT_FOUND:
+                return None
+            raise
+        data = self._json(response)
+        return data if isinstance(data, dict) else None
+
+    def send_private_message(self, username: str, message: str) -> None:
+        """Send a private message; slskd takes the body as a bare JSON string."""
+        self._request("POST", f"conversations/{quote(username, safe='')}", json=message)
+
+    def acknowledge_conversation(self, username: str) -> None:
+        """Mark every message in a conversation as read."""
+        self._request("PUT", f"conversations/{quote(username, safe='')}")
+
 
 def _flatten_transfers(data: Any) -> list[dict[str, Any]]:
     """Flatten slskd's ``{username, directories: [{directory, files: [...]}]}`` shape."""

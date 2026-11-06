@@ -554,3 +554,41 @@ class TestBatchDownloads:
         client = self._client()
         with patch.object(client._session, "request", return_value=_make_response(status=404)):
             assert client.get_events() == []
+
+
+# ── private messages ───────────────────────────────────────────────────────────
+
+
+def test_list_conversations_returns_dicts():
+    client = SlskdClient("http://slskd:5030", "key")
+    with patch.object(client._session, "request") as req:
+        req.return_value = _make_response([{"username": "a"}, "junk"])
+        assert client.list_conversations() == [{"username": "a"}]
+    assert req.call_args.args == ("GET", "http://slskd:5030/api/v0/conversations")
+
+
+def test_get_conversation_quotes_username_and_tolerates_404():
+    client = SlskdClient("http://slskd:5030", "key")
+    with patch.object(client._session, "request") as req:
+        req.return_value = _make_response({"username": "a/b", "messages": []})
+        assert client.get_conversation("a/b") == {"username": "a/b", "messages": []}
+        assert req.call_args.args[1].endswith("/conversations/a%2Fb")
+        req.return_value = _make_response(status=404)
+        assert client.get_conversation("gone") is None
+
+
+def test_send_private_message_posts_a_bare_json_string():
+    client = SlskdClient("http://slskd:5030", "key")
+    with patch.object(client._session, "request") as req:
+        req.return_value = _make_response(status=201)
+        client.send_private_message("peer", "download")
+    assert req.call_args.args == ("POST", "http://slskd:5030/api/v0/conversations/peer")
+    assert req.call_args.kwargs["json"] == "download"
+
+
+def test_acknowledge_conversation_puts():
+    client = SlskdClient("http://slskd:5030", "key")
+    with patch.object(client._session, "request") as req:
+        req.return_value = _make_response(status=204)
+        client.acknowledge_conversation("peer")
+    assert req.call_args.args == ("PUT", "http://slskd:5030/api/v0/conversations/peer")
