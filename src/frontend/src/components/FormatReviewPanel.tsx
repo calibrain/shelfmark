@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import { t } from '../i18n';
 import type { Release } from '../types';
 import { formatBytes, ignoredForFormats, type FormatGroup } from '../utils/formatReview';
 import { ToggleSwitch } from './shared/ToggleSwitch';
@@ -42,10 +43,12 @@ export const FormatReviewPanel = ({
   return (
     <div className="flex flex-col gap-4 px-5 py-4" data-testid="format-review-panel">
       <div>
-        <h3 className="text-base font-semibold text-(--text)">Choose formats to download</h3>
+        <h3 className="text-base font-semibold text-(--text)">{t('Choose formats to download')}</h3>
         <p className="mt-1 text-sm text-zinc-500 dark:text-zinc-400">
-          <span className="font-medium text-(--text)">{release.title}</span> comes in several
-          formats. Switch off any you don&rsquo;t want; they won&rsquo;t be filed.
+          {t(
+            '{title} comes in several formats. Switch off any you don’t want; they won’t be filed.',
+            { title: release.title },
+          )}
         </p>
       </div>
 
@@ -95,7 +98,7 @@ export const FormatReviewPanel = ({
           disabled={isSubmitting}
           className="hover-surface rounded-lg px-3 py-1.5 text-sm font-medium text-(--text) transition-colors disabled:opacity-50"
         >
-          &larr; Back
+          &larr; {t('Back')}
         </button>
         <button
           type="button"

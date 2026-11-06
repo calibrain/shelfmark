@@ -10,6 +10,29 @@
     "perf": "error"
   },
   "rules": {
+    "react/jsx-no-literals": [
+      "error",
+      {
+        "allowedStrings": [
+          "•",
+          "-",
+          "#",
+          "·",
+          "=",
+          ":",
+          "/",
+          "—",
+          "(",
+          ")",
+          "*",
+          "@",
+          "+",
+          "←",
+          "&larr;",
+          "Shelfmark"
+        ]
+      }
+    ],
     "react/react-in-jsx-scope": "off",
     "no-console": "off",
     "unicorn/no-null": "off",
