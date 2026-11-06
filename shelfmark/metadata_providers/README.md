@@ -16,6 +16,7 @@ Metadata providers allow searching for books and retrieving detailed metadata (t
 | **DNB** | No | Deutsche Nationalbibliothek, the German national library catalog. Best coverage for German-language editions |
 | **Databáze knih** | No | Czech and Slovak book catalog. It has no public API, so Shelfmark reads the web pages |
 | **Moly.hu** | No | Hungarian book catalog, read from the web pages. No API key required |
+| **Lubimyczytać.pl** | No | Polish book catalog, read from the web pages. No API key required |
 
 
 ## Core Components

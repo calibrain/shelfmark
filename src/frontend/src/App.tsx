@@ -69,6 +69,7 @@ import type {
   AppConfig,
   ContentType,
   ButtonStateInfo,
+  DisplayField,
   RequestPolicyMode,
   CreateRequestPayload,
   ActingAsUserSelection,
@@ -112,6 +113,33 @@ import {
 } from './utils/requestPolicyUi';
 import { getSearchByPreference, setSearchByPreference } from './utils/searchByPreference';
 import { buildUrlSearchHash } from './utils/urlSearchHash';
+
+const mergeDisplayFields = (
+  searchFields: DisplayField[] = [],
+  fullFields: DisplayField[] = [],
+): DisplayField[] => {
+  const translatorFields = fullFields.some((field) => field.label === 'Translator')
+    ? fullFields.filter((field) => field.label === 'Translator')
+    : searchFields.filter((field) => field.label === 'Translator');
+  const fieldsByLabel = new Map(
+    searchFields
+      .filter((field) => field.label !== 'Translator')
+      .map((field) => [field.label, field]),
+  );
+  for (const field of fullFields) {
+    if (field.label !== 'Translator') {
+      fieldsByLabel.set(field.label, field);
+    }
+  }
+  if (translatorFields.length > 0) {
+    const lastTranslator = translatorFields[translatorFields.length - 1];
+    fieldsByLabel.set('Translator', {
+      ...lastTranslator,
+      value: Array.from(new Set(translatorFields.map((field) => field.value))).join(', '),
+    });
+  }
+  return Array.from(fieldsByLabel.values());
+};
 
 // eslint-disable-next-line import/no-unassigned-import -- global app stylesheet is loaded for side effects
 import './styles.css';
@@ -988,7 +1016,11 @@ function App() {
         const fullBook = await getMetadataBookInfo(metadataBook.provider, metadataBook.provider_id);
         setSelectedBook({
           ...metadataBook,
+          year: fullBook.year || metadataBook.year,
+          isbn_10: fullBook.isbn_10 || metadataBook.isbn_10,
+          isbn_13: fullBook.isbn_13 || metadataBook.isbn_13,
           description: fullBook.description || metadataBook.description,
+          display_fields: mergeDisplayFields(metadataBook.display_fields, fullBook.display_fields),
           series_id: fullBook.series_id || metadataBook.series_id,
           series_name: fullBook.series_name,
           series_position: fullBook.series_position,
@@ -1610,7 +1642,11 @@ function App() {
         const fullBook = await getMetadataBookInfo(book.provider, book.provider_id);
         setReleaseBook({
           ...book,
+          year: fullBook.year || book.year,
+          isbn_10: fullBook.isbn_10 || book.isbn_10,
+          isbn_13: fullBook.isbn_13 || book.isbn_13,
           description: fullBook.description || book.description,
+          display_fields: mergeDisplayFields(book.display_fields, fullBook.display_fields),
           series_id: fullBook.series_id || book.series_id,
           series_name: fullBook.series_name,
           series_position: fullBook.series_position,
