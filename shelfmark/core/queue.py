@@ -8,6 +8,7 @@ from threading import Event, Lock
 from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.config import config as app_config
+from shelfmark.core.delivered_files import file_identity
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import (
     TERMINAL_QUEUE_STATUSES,
@@ -205,10 +206,26 @@ class BookQueue:
             hook(book_id, status, hook_task)
 
     def update_download_path(self, task_id: str, download_path: str) -> None:
-        """Update the download path of a task in the queue."""
+        """Record where a finished download was delivered, and the identity of each file."""
         with self._lock:
-            if task_id in self._task_data:
-                self._task_data[task_id].download_path = download_path
+            task = self._task_data.get(task_id)
+            if task is None:
+                return
+            delivered = list(dict.fromkeys([download_path, *task.download_paths]))
+
+        # Outside the lock: a stat on a slow mount must not hold up every other download.
+        identities = {path: identity for path in delivered if (identity := file_identity(path))}
+
+        with self._lock:
+            task = self._task_data.get(task_id)
+            if task is None:
+                return
+            task.download_path = download_path
+            if list(dict.fromkeys([download_path, *task.download_paths])) == delivered:
+                task.download_identities = identities
+            else:
+                # The file list changed meanwhile, so none of these can be trusted.
+                task.download_identities = {}
 
     def update_progress(self, task_id: str, progress: float) -> None:
         """Update download progress for a task."""

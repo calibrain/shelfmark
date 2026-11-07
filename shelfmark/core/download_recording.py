@@ -107,6 +107,16 @@ def _notify_admin_for_terminal_download_status(
         )
 
 
+def _delivered_identity(task: Any) -> str | None:
+    """The identity recorded for the task's download_path when it finished, if any."""
+    path = getattr(task, "download_path", None)
+    identities = getattr(task, "download_identities", None)
+    if not isinstance(path, str) or not isinstance(identities, dict):
+        return None
+    identity = identities.get(path)
+    return identity if isinstance(identity, str) else None
+
+
 def register_download_recording(
     *,
     get_user_db: Callable[[], UserDB | None],
@@ -226,6 +236,7 @@ def register_download_recording(
                     final_status=final_status,
                     status_message=normalize_optional_text(getattr(task, "status_message", None)),
                     download_path=normalize_optional_text(getattr(task, "download_path", None)),
+                    download_identity=_delivered_identity(task),
                     retry_payload=backend.serialize_task_for_retry(task),
                 )
                 finalized_download = True
