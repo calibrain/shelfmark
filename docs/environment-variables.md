@@ -2311,7 +2311,7 @@ How long to keep cached search results before they expire.
 | `QBITTORRENT_DOWNLOAD_DIR_BOOK` | Server-side directory where book torrents are downloaded (optional, uses qBittorrent default if not specified) | string | _none_ |
 | `QBITTORRENT_DOWNLOAD_DIR_AUDIOBOOK` | Server-side directory where audiobook torrents are downloaded (optional, uses qBittorrent default if not specified) | string | _none_ |
 | `QBITTORRENT_TAG` | Tag(s) to assign to qBittorrent downloads. Leave empty for no tags. | string (comma-separated) | _empty list_ |
-| `TRANSMISSION_URL` | URL of your Transmission instance (use https:// for TLS) | string | _none_ |
+| `TRANSMISSION_URL` | URL of your Transmission instance (use https:// for TLS). Without a port, https uses 443 and http uses 9091, so add :9091 to an https URL served on 9091 | string | _none_ |
 | `TRANSMISSION_USERNAME` | Transmission RPC username (if authentication enabled) | string | _none_ |
 | `TRANSMISSION_PASSWORD` | Transmission RPC password | string (secret) | _none_ |
 | `TRANSMISSION_CATEGORY` | Label to assign to book downloads in Transmission | string | `books` |
@@ -2516,7 +2516,7 @@ Tag(s) to assign to qBittorrent downloads. Leave empty for no tags.
 
 **Transmission URL**
 
-URL of your Transmission instance (use https:// for TLS)
+URL of your Transmission instance (use https:// for TLS). Without a port, https uses 443 and http uses 9091, so add :9091 to an https URL served on 9091
 
 - **Type:** string
 - **Default:** _none_
