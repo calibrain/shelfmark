@@ -382,7 +382,9 @@ def parse_transmission_url(url: str) -> tuple[str, str, int, str]:
     if protocol not in ("http", "https"):
         protocol = "http"
     host = parsed.hostname or "localhost"
-    port = parsed.port or 9091
+    # An omitted port is scheme-specific: HTTPS behind a reverse proxy is 443,
+    # while HTTP (including the empty-URL default) stays on Transmission's RPC port.
+    port = parsed.port if parsed.port is not None else (443 if protocol == "https" else 9091)
     path = parsed.path or "/transmission/rpc"
 
     # Ensure path ends with /rpc
