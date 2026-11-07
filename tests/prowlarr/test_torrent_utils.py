@@ -87,6 +87,14 @@ class TestParseTransmissionUrl:
         assert port == 9091
         assert path == "/transmission/rpc"
 
+    def test_parse_https_url_without_port_uses_443(self):
+        """Test an HTTPS URL with no port uses the implicit HTTPS port."""
+        protocol, host, port, path = parse_transmission_url("https://transmission.myserver.org")
+        assert protocol == "https"
+        assert host == "transmission.myserver.org"
+        assert port == 443
+        assert path == "/transmission/rpc"
+
     def test_parse_url_with_ip_address(self):
         """Test parsing URL with IP address."""
         protocol, host, port, path = parse_transmission_url("http://192.168.1.100:9091")
