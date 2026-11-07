@@ -13,6 +13,7 @@ from unittest.mock import ANY, patch
 
 import pytest
 
+from shelfmark.core.delivered_files import file_identity
 from shelfmark.core.models import DownloadTask, QueueStatus
 from shelfmark.core.viewer_redaction import public_download_id
 from tests.core.sessions import forge_session, sign_in, skip_session_check
@@ -80,6 +81,7 @@ def _record_terminal_download(
         final_status=final_status,
         status_message=status_message,
         download_path=download_path,
+        download_identity=file_identity(download_path) if download_path else None,
     )
 
 
@@ -343,6 +345,7 @@ class TestActivityRoutes:
         assert main_module.backend.book_queue.add(task) is True
 
         try:
+            main_module.backend.book_queue.update_download_path(task_id, task.download_path)
             main_module.backend.book_queue.update_status(task_id, QueueStatus.COMPLETE)
             with patch.object(main_module, "get_auth_mode", return_value="builtin"):
                 response = client.get(f"/api/localdownload?id={task_id}")
@@ -376,6 +379,7 @@ class TestActivityRoutes:
 
         failure = FileNotFoundError(2, "No such file or directory", str(file_path))
         try:
+            main_module.backend.book_queue.update_download_path(task_id, str(file_path))
             main_module.backend.book_queue.update_status(task_id, QueueStatus.COMPLETE)
             with (
                 patch.object(main_module, "get_auth_mode", return_value="builtin"),
@@ -414,6 +418,7 @@ class TestActivityRoutes:
         assert main_module.backend.book_queue.add(task) is True
 
         try:
+            main_module.backend.book_queue.update_download_path(task_id, task.download_path)
             main_module.backend.book_queue.update_status(task_id, QueueStatus.COMPLETE)
             with patch.object(main_module, "get_auth_mode", return_value="builtin"):
                 response = client.get(f"/api/localdownload?id={task_id}")
@@ -453,6 +458,7 @@ class TestActivityRoutes:
         assert main_module.backend.book_queue.add(task) is True
 
         try:
+            main_module.backend.book_queue.update_download_path(task_id, task.download_path)
             main_module.backend.book_queue.update_status(task_id, QueueStatus.COMPLETE)
             with patch.object(main_module, "get_auth_mode", return_value="builtin"):
                 response = client.get(f"/api/localdownload?id={task_id}")

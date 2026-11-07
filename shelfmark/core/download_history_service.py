@@ -328,6 +328,7 @@ class DownloadHistoryService:
                     final_status = 'active',
                     status_message = NULL,
                     download_path = NULL,
+                    download_identity = NULL,
                     retry_payload = excluded.retry_payload,
                     terminal_at = ?,
                     downloads = excluded.downloads,
@@ -375,6 +376,7 @@ class DownloadHistoryService:
         final_status: str,
         status_message: str | None = None,
         download_path: str | None = None,
+        download_identity: str | None = None,
         retry_payload: dict[str, Any] | None = None,
     ) -> None:
         """Update an existing download row to its terminal state."""
@@ -394,6 +396,7 @@ class DownloadHistoryService:
                     SET final_status = ?,
                         status_message = ?,
                         download_path = ?,
+                        download_identity = ?,
                         retry_payload = COALESCE(?, retry_payload),
                         terminal_at = ?
                     WHERE task_id = ? AND final_status = 'active'
@@ -402,6 +405,9 @@ class DownloadHistoryService:
                         normalized_final_status,
                         normalized_status_message,
                         normalized_download_path,
+                        normalize_optional_text(download_identity)
+                        if normalized_download_path
+                        else None,
                         normalized_retry_payload,
                         effective_terminal_at,
                         normalized_task_id,
