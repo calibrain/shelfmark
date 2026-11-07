@@ -815,7 +815,10 @@ def prowlarr_clients_settings() -> list[SettingsField]:
         TextField(
             key="TRANSMISSION_URL",
             label="Transmission URL",
-            description="URL of your Transmission instance (use https:// for TLS)",
+            description=(
+                "URL of your Transmission instance (use https:// for TLS). Without a port, "
+                "https uses 443 and http uses 9091, so add :9091 to an https URL served on 9091"
+            ),
             placeholder="http://transmission:9091",
             show_when={"field": "PROWLARR_TORRENT_CLIENT", "value": "transmission"},
         ),
