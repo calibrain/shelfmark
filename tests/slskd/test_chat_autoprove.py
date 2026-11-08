@@ -204,6 +204,7 @@ def test_reply_is_logged():
 
 
 def test_prover_scans_at_most_once_per_interval():
+    """A second call inside the interval does not scan; one after it does."""
     client = _client([], {})
     prover = ChatAutoProver(interval=60)
     clock = iter([0.0, 30.0, 61.0])

@@ -589,6 +589,10 @@ class SlskdHandler(DownloadHandler):
         progress_callback: Callable[[float], None],
         status_callback: Callable[[str, str | None], None],
     ) -> _TransferSnapshot | None:
+        """Follow a transfer until it finishes, fails, is cancelled or times out in the queue.
+
+        Answers chat challenges on the way when that is switched on.
+        """
         poll_interval = self._poll_interval()
         queue_timeout = self._queue_timeout_seconds()
         started = self._clock()
@@ -939,6 +943,10 @@ class SlskdHandler(DownloadHandler):
         progress_callback: Callable[[float], None],
         status_callback: Callable[[str, str | None], None],
     ) -> str | None:
+        """Follow an isolated download's files until they are all in its folder.
+
+        Returns None on success, else the reason it failed.
+        """
         poll_interval = self._poll_interval()
         queue_timeout = self._queue_timeout_seconds()
         started = self._clock()

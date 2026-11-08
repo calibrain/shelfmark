@@ -65,6 +65,7 @@ def extract_token(text: object) -> str | None:
 
 
 def _is_unread_inbound(message: Any) -> bool:
+    """Whether a chat message came from the peer and has not been acknowledged yet."""
     if not isinstance(message, dict):
         return False
     if str(message.get("direction") or "").lower() != "in":
@@ -73,6 +74,7 @@ def _is_unread_inbound(message: Any) -> bool:
 
 
 def _has_unread(conversation: dict[str, Any]) -> bool:
+    """Whether slskd marks a conversation as having unread messages, by flag or by count."""
     count = conversation.get("unAcknowledgedMessageCount")
     return bool(conversation.get("hasUnAcknowledgedMessages")) or (
         isinstance(count, int) and count > 0
