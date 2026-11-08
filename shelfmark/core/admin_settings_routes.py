@@ -359,6 +359,7 @@ def register_admin_settings_routes(
     @app.route("/api/admin/settings/overrides-summary", methods=["GET"])
     @require_admin
     def admin_settings_overrides_summary() -> ResponseReturnValue:
+        """Which users override each overridable setting on one tab, for the admin view."""
         settings_registry = _get_settings_registry()
 
         tab_name = (request.args.get("tab") or "downloads").strip()
@@ -393,6 +394,7 @@ def register_admin_settings_routes(
     @app.route("/api/admin/users/<int:user_id>/effective-settings", methods=["GET"])
     @require_admin
     def admin_get_effective_settings(user_id: int) -> ResponseReturnValue:
+        """A user's effective value and its source for every user-overridable setting."""
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404

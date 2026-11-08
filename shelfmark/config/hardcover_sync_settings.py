@@ -63,6 +63,10 @@ def _ebook_source_options() -> list[dict[str, Any]]:
 
 
 def _start_sync(scope: SyncScope, started_message: str) -> dict[str, Any]:
+    """Start a forced sync of the given scope in the background.
+
+    Reports busy when a run is already going.
+    """
     from shelfmark.core import hardcover_scheduler
 
     started = hardcover_scheduler.trigger_async(force=True, scope=scope)

@@ -288,6 +288,7 @@ def test_build_user_preferences_payload_masks_password_fields(monkeypatch):
     )
 
     def fake_get(key, default=None, user_id=None):
+        """Config.get stand-in: the user's own token with a user id, the global one without."""
         if key == "HARDCOVER_SYNC_TOKEN":
             return "user-token-value" if user_id is not None else "global-token-value"
         return default

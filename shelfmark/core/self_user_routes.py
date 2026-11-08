@@ -210,6 +210,7 @@ def _get_visible_self_settings_sections() -> list[str]:
 
 
 def _get_allowed_self_settings_keys(visible_sections: list[str]) -> set[str]:
+    """The setting keys a user may read and save themselves, from the sections they can see."""
     allowed_keys: set[str] = set()
     visible_sections_set = set(visible_sections)
 
@@ -302,6 +303,7 @@ def register_self_user_routes(
     @app.route("/api/users/me/edit-context", methods=["GET"])
     @_require_authenticated_user
     def users_me_edit_context() -> Response | tuple[Response, int]:
+        """What My Account needs for the signed-in user: their settings and visible sections."""
         user_id, user, user_error = _get_current_user(user_db)
         if user_error:
             return user_error
@@ -425,6 +427,7 @@ def register_self_user_routes(
     @app.route("/api/users/me", methods=["PUT"])
     @_require_authenticated_user
     def users_me_update() -> Response | tuple[Response, int]:
+        """Save the signed-in user's own profile and the settings their visible sections allow."""
         user_id, user, user_error = _get_current_user(user_db)
         if user_error:
             return user_error

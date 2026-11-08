@@ -501,6 +501,7 @@ class TestSyncWishlist:
     def test_a_blocked_formats_library_being_down_does_not_stop_the_permitted_one(
         self, user_db, db_path, monkeypatch
     ):
+        """A blocked format's unavailable library does not stop the permitted format's requests."""
         user = user_db.create_user(username="reader", role="user")
         user_db.set_user_settings(user["id"], {"REQUEST_POLICY_DEFAULT_AUDIOBOOK": "blocked"})
         _configure(monkeypatch, HARDCOVER_SYNC_STATUSES="1", HARDCOVER_SYNC_CONTENT_TYPE="both")
@@ -508,6 +509,7 @@ class TestSyncWishlist:
         checked: list[str] = []
 
         def _ready(content_type):
+            """Record each readiness check; the audiobook library is down."""
             checked.append(content_type)
             if content_type == "audiobook":
                 raise library_index.LibraryUnavailableError("Audiobookshelf is unavailable")
@@ -523,6 +525,7 @@ class TestSyncWishlist:
     def test_a_user_whose_own_token_is_gone_is_skipped_not_given_the_shared_one(
         self, user_db, db_path, monkeypatch
     ):
+        """A user whose own token is gone is skipped, never synced on the shared token."""
         user = user_db.create_user(username="reader", role="user")
         monkeypatch.setattr(hardcover_sync, "_user_token", lambda _user_id: "")
         built: list[object] = []
@@ -586,9 +589,11 @@ class TestResolveRequestOwner:
 
 class TestPerUserTokens:
     def test_a_users_own_token_is_used_for_their_sync(self, monkeypatch):
+        """A user's own token is the one their sync resolves."""
         seen: list[int | None] = []
 
         def _get(key, default=None, user_id=None):
+            """Config.get stand-in: user 5 has an own token, everyone else reads the app token."""
             seen.append(user_id)
             if key == "HARDCOVER_SYNC_TOKEN" and user_id == 5:
                 return "user-token"
@@ -603,7 +608,10 @@ class TestPerUserTokens:
 
     def test_the_app_level_token_is_the_fallback(self, monkeypatch):
         # Like the real Config.get: a user with no override of their own reads the global value.
+        """Without an own token a user resolves to the app-level token."""
+
         def _get(key, default=None, user_id=None):
+            """Config.get stand-in: user 7 has an own token, everyone else reads the app token."""
             if key == "HARDCOVER_SYNC_TOKEN":
                 return "user-token" if user_id == 7 else "app-token"
             if key == "HARDCOVER_API_KEY":
@@ -618,7 +626,10 @@ class TestPerUserTokens:
         assert hardcover_sync._configured_token(7) == "user-token"
 
     def test_provider_api_key_remains_the_last_resort(self, monkeypatch):
+        """With no sync token anywhere, the metadata provider's API key is used."""
+
         def _get(key, default=None, user_id=None):
+            """Config.get stand-in that only knows the provider API key."""
             return "provider-key" if key == "HARDCOVER_API_KEY" else ""
 
         monkeypatch.setattr(hardcover_sync.app_config, "get", _get)
@@ -626,6 +637,7 @@ class TestPerUserTokens:
         assert hardcover_sync._configured_token() == "provider-key"
 
     def test_only_users_who_connected_a_token_are_listed(self, user_db, monkeypatch):
+        """Only users with a token of their own are listed for a per-user sync."""
         monkeypatch.setattr(hardcover_sync, "_user_token", _REAL_USER_TOKEN)
         reader = user_db.create_user(username="reader", role="user")
         admin = user_db.create_user(username="ops", role="admin")
@@ -711,6 +723,7 @@ class TestSyncBothFormats:
     def test_both_creates_an_ebook_and_an_audiobook_request_per_book(
         self, user_db, db_path, monkeypatch
     ):
+        """Both formats gives an ebook and an audiobook request per book, each checked alone."""
         admin = user_db.create_user(username="ops", role="admin")
         _configure(monkeypatch, HARDCOVER_SYNC_STATUSES="1", HARDCOVER_SYNC_CONTENT_TYPE="both")
         provider = _Provider({1: [[_book(1, "Dungeon Crawler Carl")]]})

@@ -148,6 +148,7 @@ const SelfSettingsModalSession = ({
     applyUserOverridesContext,
   } = useUserOverridesState({ preferenceGroups });
 
+  /** Load the user's edit context, or show an error in place of the form if that fails. */
   const loadEditContext = useCallback(async () => {
     setIsLoading(true);
     setLoadError(null);

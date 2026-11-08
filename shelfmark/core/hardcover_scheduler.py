@@ -70,6 +70,7 @@ SyncScope = Literal["all", "admin"]
 
 
 def _admin_ids(user_db: UserDB) -> set[int]:
+    """Ids of the users whose role is admin."""
     return {
         int(user["id"])
         for user in user_db.list_users()
@@ -101,6 +102,7 @@ def _sync_all_accounts(
         per_user_ids = [user_id for user_id in connected_ids if user_id in admins]
 
     def merge(summary: dict[str, int]) -> None:
+        """Add one account's sync summary to the running totals."""
         for key in ("added", "skipped", "in_library", "errors"):
             totals[key] += int(summary.get(key, 0))
 

@@ -81,6 +81,7 @@ class _FakeUserDB:
     """Only what the sweep needs: the user list it enumerates tokens over."""
 
     def __init__(self, users=None, pending=None):
+        """Hold the users the sweep lists and the requests it reads as pending."""
         self._users = users or []
         self._pending = pending or []
 
@@ -158,6 +159,7 @@ class TestRunOnce:
         assert calls["sync"] == [(user_db, {"db_path": None})]
 
     def test_every_connected_account_syncs_before_the_app_level_token(self, monkeypatch, calls):
+        """Connected accounts sync lowest id first, then the app-level token."""
         _configure(monkeypatch, HARDCOVER_SYNC_ENABLED=True)
         user_db = _FakeUserDB([{"id": 7}, {"id": 3}, {"id": 9}])
         monkeypatch.setattr(
@@ -193,6 +195,7 @@ class TestRunOnce:
     def test_admin_scope_with_only_user_tokens_and_no_app_token_is_not_an_error(
         self, monkeypatch, calls
     ):
+        """Sync (admin) with only users' tokens and no app token counts no error."""
         user_db = _FakeUserDB([{"id": 1, "role": "admin"}, {"id": 3, "role": "user"}])
         monkeypatch.setattr(
             "shelfmark.core.hardcover_sync._user_token",
@@ -244,12 +247,14 @@ class TestRunOnce:
         assert result["sync"]["accounts"] == 1
 
     def test_one_failing_account_does_not_stop_the_sweep(self, monkeypatch, calls):
+        """An account whose sync raises is counted as an error and the rest still sync."""
         _configure(monkeypatch, HARDCOVER_SYNC_ENABLED=True)
         user_db = _FakeUserDB([{"id": 1}, {"id": 2}])
         monkeypatch.setattr("shelfmark.core.hardcover_sync._user_token", lambda _user_id: "token")
         monkeypatch.setattr("shelfmark.core.hardcover_sync.has_app_level_token", lambda: True)
 
         def _sync(user_db_arg, **kwargs):
+            """Fail user 1's sync and record every other call."""
             if kwargs.get("user_id") == 1:
                 raise RuntimeError("bad token")
             calls["sync"].append((user_db_arg, kwargs))

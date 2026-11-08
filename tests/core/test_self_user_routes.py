@@ -717,7 +717,13 @@ def _hardcover_config_get(
     sync_enabled: bool = True,
     visible_sections: object = ("delivery",),
 ):
+    """Config.get stand-in for the Hardcover section.
+
+    Sync on or off, and the stored visible sections.
+    """
+
     def _get(key: str, default: object = None, user_id: int | None = None) -> object:
+        """Answer the keys the self routes read; anything else gets its default."""
         del user_id
         if key == "VISIBLE_SELF_SETTINGS_SECTIONS":
             return (
@@ -922,6 +928,7 @@ def test_users_me_secret_returns_only_the_callers_own_override(app, user_db):
 
 
 def test_users_me_secret_rejects_anything_but_a_visible_password_field(app, user_db):
+    """The reveal route only returns a visible PasswordField, never another setting."""
     user = user_db.create_user(username="alice")
     user_db.set_user_settings(
         user["id"], {"HARDCOVER_SYNC_TOKEN": "alice-token-value", "DESTINATION": "/books/alice"}

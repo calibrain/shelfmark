@@ -42,6 +42,10 @@ export const PasswordField = ({
     onChange(nextValue);
   };
 
+  /**
+   * Show or hide the value. A saved secret is fetched on the first show; if that fails it stays
+   * hidden.
+   */
   const toggleVisibility = async () => {
     if (isShowing) {
       setShowPassword(false);
