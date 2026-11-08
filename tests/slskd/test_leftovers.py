@@ -28,6 +28,7 @@ def env(tmp_path):
 
 
 def _folder(base, task_id, *, sizes=(5, 7), age_days=0.0):
+    """Make a download folder named after task_id, holding one file per size."""
     folder = base / task_id.replace(":", "_")
     folder.mkdir()
     for n, size in enumerate(sizes):
@@ -36,6 +37,7 @@ def _folder(base, task_id, *, sizes=(5, 7), age_days=0.0):
 
 
 def _row(env, task_id, *, status, request_id=None, age_days=0.0, files=FILES):
+    """Record a Soulseek download in the history, with the files its retry payload asked for."""
     _user_db, history, db_path, _base = env
     history.record_download(
         task_id=task_id,
@@ -67,6 +69,7 @@ def _row(env, task_id, *, status, request_id=None, age_days=0.0, files=FILES):
 
 
 def _request(env, *, status="fulfilled", delivery="none"):
+    """Create a request for the test's one reader, creating that user the first time."""
     user_db = env[0]
     user = user_db.create_user(username="reader", role="user") if not user_db.list_users() else None
     user_id = user["id"] if user else user_db.list_users()[0]["id"]
@@ -81,6 +84,7 @@ def _request(env, *, status="fulfilled", delivery="none"):
 
 
 def _plan(env, folders, *, keep_completed=False, clean_days=7):
+    """Run leftovers.plan over folders with the test clock and the given clean-up setting."""
     user_db, history, _db, _base = env
     return leftovers.plan(
         folders,
@@ -94,6 +98,7 @@ def _plan(env, folders, *, keep_completed=False, clean_days=7):
 
 
 def _names(paths):
+    """Sorted folder names from a plan result, whose entries are paths or (path, row) pairs."""
     return sorted(p.name if hasattr(p, "name") else p[0].name for p in paths)
 
 
@@ -132,6 +137,7 @@ def test_a_whole_folder_of_a_request_that_already_has_its_book_is_not_imported_t
 
 @pytest.mark.parametrize("sizes", [None, (5,)], ids=["whole", "partial"])
 def test_a_delivered_requests_folder_stays_when_cleanup_is_off(env, sizes):
+    """With clean-up off, a delivered request's folder stays, whole or partial."""
     request = _request(env, delivery="complete")
     folder = (
         _folder(env[3], "slskd:ff") if sizes is None else _folder(env[3], "slskd:ff", sizes=sizes)
@@ -273,6 +279,7 @@ def test_run_queues_a_whole_folder_and_removes_an_old_partial_one(env, wired):
 
 
 def test_run_queues_at_most_a_few_folders_at_a_time(env, wired):
+    """Only MAX_ADOPTIONS_PER_RUN whole folders are queued in one run; the rest wait."""
     for n in range(leftovers.MAX_ADOPTIONS_PER_RUN + 2):
         _folder(env[3], f"slskd:t{n}")
         _row(env, f"slskd:t{n}", status="error")
@@ -334,6 +341,7 @@ def _transfer(name="@@s\\Book\\a.mp3", state="Queued, Remotely", peer="peer", ti
 
 
 def _plan_transfers(env, transfers, *, live=None):
+    """Run leftovers.plan_transfers against the test history. live maps task id to request id."""
     live = live or {}
     return leftovers.plan_transfers(
         transfers,

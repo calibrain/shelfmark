@@ -76,6 +76,10 @@ def run_once(
 
 
 def _loop() -> None:
+    """Run a housekeeping cycle every interval for the life of the process.
+
+    A failed cycle is logged and the loop carries on.
+    """
     logger.info("Housekeeping thread started")
     time.sleep(STARTUP_DELAY_SECONDS)
     while True:

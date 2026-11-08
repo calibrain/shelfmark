@@ -88,6 +88,7 @@ def test_start_is_idempotent(monkeypatch):
 
 
 def test_loop_survives_a_failing_cycle(monkeypatch):
+    """A cycle that raises is logged and the loop goes on to the next one."""
     calls = []
 
     def fake_run_once(*_args):
@@ -98,6 +99,7 @@ def test_loop_survives_a_failing_cycle(monkeypatch):
         pass
 
     def fake_sleep(seconds):
+        """Stop the loop once two failing cycles have run."""
         if seconds == mod.INTERVAL_SECONDS and len(calls) >= 2:
             raise Stop
 

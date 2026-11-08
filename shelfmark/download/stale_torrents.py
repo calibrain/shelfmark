@@ -147,6 +147,7 @@ def run_for_shelfmark(*, now: float | None = None) -> StaleReport:
         return report
 
     def running_task_ids() -> set[str]:
+        """Ids of the tasks the queue is running now, whose torrents the sweep leaves alone."""
         ids: set[str] = set()
         for bucket, tasks in backend.queue_status().items():
             if bucket in _RUNNING_BUCKETS:

@@ -32,6 +32,7 @@ def _ledger_file(tmp_path, monkeypatch):
 
 
 def _find(torrents, *, ledger=None, running=(), hours=6.0):
+    """Run find_stale with a default ledger entry for h1 and the test clock."""
     ledger = {"h1": "task-1"} if ledger is None else ledger
     return mod.find_stale(
         list(torrents), ledger=ledger, running_task_ids=set(running), idle_hours=hours, now=NOW
@@ -210,12 +211,14 @@ def test_the_limit_is_held_to_3_through_72_hours_and_zero_means_off(monkeypatch,
 
 
 def test_the_qbittorrent_client_lists_a_category_and_returns_nothing_on_failure():
+    """list_torrents returns a category's torrents, and nothing when qBittorrent is unreachable."""
     from shelfmark.download.clients.qbittorrent import QBittorrentClient
 
     client = object.__new__(QBittorrentClient)
     seen = []
 
     def listing(category):
+        """Stand in for qBittorrent: category ok lists one torrent, any other fails to connect."""
         seen.append(category)
         return ([_torrent()], None) if category == "ok" else ([], "Cannot connect")
 
@@ -227,6 +230,7 @@ def test_the_qbittorrent_client_lists_a_category_and_returns_nothing_on_failure(
 
 
 def test_the_setting_defaults_to_six_hours_in_the_app_and_in_the_settings_form(monkeypatch):
+    """STALE_TORRENT_HOURS is 6 both where the sweep reads it and in the settings form."""
     from shelfmark.download.clients.settings import prowlarr_clients_settings
 
     field = next(

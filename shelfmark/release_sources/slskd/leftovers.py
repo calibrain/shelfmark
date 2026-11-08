@@ -58,6 +58,10 @@ def _task_id_for_folder(name: str) -> str | None:
 
 
 def _parse_stamp(value: object) -> datetime | None:
+    """Parse a stored ISO timestamp, reading one without a zone as UTC.
+
+    None when it is missing or unreadable.
+    """
     if not value:
         return None
     try:
@@ -68,6 +72,10 @@ def _parse_stamp(value: object) -> datetime | None:
 
 
 def _expected_files(row: dict[str, Any]) -> list[dict[str, Any]]:
+    """The files a Soulseek download asked for, from its retry payload.
+
+    Empty when the payload is missing or malformed.
+    """
     payload = row.get("retry_payload")
     if isinstance(payload, str):
         try:
@@ -80,6 +88,10 @@ def _expected_files(row: dict[str, Any]) -> list[dict[str, Any]]:
 
 
 def _folder_age(folder: Path, row: dict[str, Any] | None, now: datetime) -> timedelta:
+    """How old a download folder is.
+
+    Counted from the download's end, else its start, else the folder's own mtime.
+    """
     stamp = _parse_stamp((row or {}).get("terminal_at")) or _parse_stamp(
         (row or {}).get("queued_at")
     )
@@ -241,6 +253,10 @@ def plan_transfers(
 
 
 def _is_inside(folder: Path, root: Path) -> bool:
+    """Whether folder is strictly inside root.
+
+    Both are resolved first, so a link cannot lead the sweep elsewhere.
+    """
     try:
         folder.resolve().relative_to(root.resolve())
     except OSError, ValueError:
@@ -393,6 +409,7 @@ def run_with_backend(
         )
 
     def live_tasks() -> dict[str, Any]:
+        """Task id to request id for every task the queue is still working on."""
         return {
             str(task_id): payload.get("request_id")
             for bucket, tasks in backend.queue_status().items()
