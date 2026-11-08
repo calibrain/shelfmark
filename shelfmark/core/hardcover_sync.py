@@ -99,9 +99,14 @@ def _configured_content_types() -> list[str]:
 
 
 def _build_provider(user_id: int | None = None) -> Any | None:
+    """Provider for one pass: a user's own token only, or the app-level token without an id.
+
+    A per-user pass never falls back to the app-level token, so a user who removed theirs
+    while a cycle was running is not given requests from the shared account's shelf.
+    """
     from shelfmark.metadata_providers import get_provider
 
-    token = _configured_token(user_id)
+    token = _user_token(user_id) if user_id is not None else _configured_token()
     if not token:
         logger.warning("hardcover-sync: no Hardcover token configured")
         return None
@@ -329,23 +334,29 @@ def sync_wishlist(
         summary["errors"] += 1
         return summary
 
+    if per_user and not _user_token(user_id):
+        # Their token went between the account list being read and this pass.
+        logger.info("hardcover-sync: user %s no longer has a token of their own; skipped", user_id)
+        return summary
+
     provider = _build_provider(user_id if per_user else None)
     if provider is None:
         summary["errors"] += 1
         return summary
 
     content_types = _configured_content_types()
+    blocked_types = _blocked_content_types(user_db, user_id) if per_user else set()
 
     try:
         for content_type in content_types:
-            library_index.require_ready(content_type)
+            if content_type not in blocked_types:
+                library_index.require_ready(content_type)
     except library_index.LibraryUnavailableError as exc:
         # Requesting now would queue books the library may already hold.
         logger.warning("hardcover-sync: %s; skipping this sync", exc)
         summary["errors"] += 1
         return summary
     known_requests = _existing_request_keys(user_db, user_id if per_user else None)
-    blocked_types = _blocked_content_types(user_db, user_id) if per_user else set()
 
     from shelfmark.core.requests_service import RequestServiceError, create_request
 

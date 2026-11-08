@@ -205,10 +205,19 @@ const SelfSettingsModalSession = ({
     return testSelfNotificationPreferences(routes);
   }, []);
 
-  const handleRevealSecret = useCallback(async (key: string) => {
-    const secret = await getSelfUserSecret(key);
-    return secret.value;
-  }, []);
+  const handleRevealSecret = useCallback(
+    async (key: string) => {
+      try {
+        const secret = await getSelfUserSecret(key);
+        return secret.value;
+      } catch (error) {
+        // PasswordField keeps the value hidden; say why the eye did nothing.
+        onShowToast?.(getErrorMessage(error, 'Could not load the saved value'), 'error');
+        throw error;
+      }
+    },
+    [onShowToast],
+  );
 
   const handleSave = useCallback(async () => {
     if (!editingUser || !originalUser) {
