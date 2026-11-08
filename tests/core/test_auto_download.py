@@ -3631,6 +3631,10 @@ class TestOwnerPolicyGate:
 
     @staticmethod
     def _setup(monkeypatch, *, policy, auth_mode="builtin", searched=None):
+        """Turn auto-download on with two sources, the given policy and auth mode.
+
+        Every source has a match.
+        """
         monkeypatch.setattr(auto_download, "app_config", _Config(AUTO_DOWNLOAD_ENABLED=True))
         monkeypatch.setattr(
             auto_download, "_configured_source_priority", lambda _ct: ["first", "second"]
@@ -3645,6 +3649,7 @@ class TestOwnerPolicyGate:
         _stub_provider(monkeypatch, _book())
 
         def _search(source_name, *_args, **_kwargs):
+            """Return one matching release from any source asked, recording its name."""
             if searched is not None:
                 searched.append(source_name)
             return None, [_release(source=source_name)], None
@@ -3762,6 +3767,7 @@ class TestOwnerPolicyGate:
     def test_a_failed_download_is_only_reopened_when_the_pass_could_fulfil_it(
         self, user_db, monkeypatch, policy, reopened
     ):
+        """A failed download is reopened only when its owner's policy lets the pass fulfil it."""
         self._setup(monkeypatch, policy=policy)
         reader = user_db.create_user(username="reader", role="user")
         row = TestRetryAfterCooldown._request(user_db, reader["id"], provider_id="1")

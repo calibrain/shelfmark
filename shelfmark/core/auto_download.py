@@ -1343,6 +1343,10 @@ class OwnerPolicy:
     """
 
     def __init__(self, user_db: UserDB, *, auth_mode: str | None = None) -> None:
+        """Read nothing yet.
+
+        The policy settings and each owner are loaded on first use and kept for the pass.
+        """
         from shelfmark.core.auth_modes import AUTH_MODE_NONE, load_active_auth_mode
 
         self._user_db = user_db
