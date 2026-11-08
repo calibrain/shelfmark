@@ -197,7 +197,9 @@ def plan_transfers(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Split the unfinished transfers nothing is watching into (reattach, cancel).
 
-    Reads only. A transfer is watched when a running task owns it. slskd keeps working on a
+    Reads only. Only transfers a Shelfmark download asked for are considered; anything else on
+    the slskd instance belongs to someone else and is left alone. A transfer is watched when a
+    running task owns it. slskd keeps working on a
     transfer after the task that queued it is gone (a restart, a timeout), so these go on
     queueing at peers and writing into a folder nobody imports. One whose request still waits
     for that download is picked up again; the rest are dropped. A request that is pending is
@@ -213,7 +215,7 @@ def plan_transfers(
         if row is not None and row.get("task_id") in live_task_ids:
             continue  # a running task owns it
         if row is None:
-            cancel.append(transfer)
+            # Not one Shelfmark asked for: slskd may be shared with other apps or used by hand.
             continue
         request_id = row.get("request_id")
         if not request_id:
@@ -299,7 +301,7 @@ def run(
     else:
         report.kept.extend(f.name for f, _ in to_finish)
 
-    if live_tasks is not None:
+    if finish and live_tasks is not None:
         _settle_transfers(
             client,
             history_service=history_service,

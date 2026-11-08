@@ -404,11 +404,13 @@ def test_a_transfer_of_a_request_that_is_done_or_dropped_is_cancelled(env, statu
     assert len(cancel) == 1
 
 
-def test_a_transfer_no_download_ever_asked_for_is_cancelled(env):
+def test_a_transfer_shelfmark_never_asked_for_is_left_alone(env):
+    """slskd can be shared with other apps or used by hand; their transfers are not ours."""
+    _row(env, "slskd:aa", status="error")
+
     reattach, cancel = _plan_transfers(env, [_transfer(name="@@s\\Other\\z.mp3")])
 
-    assert reattach == []
-    assert len(cancel) == 1
+    assert (reattach, cancel) == ([], [])
 
 
 class _FakeSlskd:
@@ -428,10 +430,12 @@ def test_run_cancels_an_unwatched_transfer_and_picks_up_a_waiting_one(env, wired
     monkeypatch.setattr(leftovers.time, "sleep", lambda _s: None)
     waiting = _request(env, delivery="queued")
     _row(env, "slskd:aa", status="error", request_id=waiting["id"])
+    _row(env, "slskd:bb", status="error", files=[{"filename": "@@s\\Old\\q.mp3", "size": 5}])
     fake = _FakeSlskd(
         [
             _transfer(tid="keep"),
-            _transfer(name="@@s\\Stranger\\q.mp3", tid="drop"),
+            _transfer(name="@@s\\Old\\q.mp3", tid="drop"),
+            _transfer(name="@@s\\Stranger\\q.mp3", tid="theirs"),
         ]
     )
     monkeypatch.setattr(handler_mod, "build_client_from_config", lambda: fake)
@@ -496,3 +500,21 @@ def test_run_with_backend_reads_the_running_tasks_and_requeues_through_the_retry
 
     assert report.reattached == ["slskd:aa"]
     assert retried == [("error", True)]
+
+
+def test_run_leaves_transfers_alone_when_finishing_is_switched_off(env, wired, monkeypatch):
+    _row(env, "slskd:bb", status="error", files=[{"filename": "@@s\\Old\\q.mp3", "size": 5}])
+    fake = _FakeSlskd([_transfer(name="@@s\\Old\\q.mp3", tid="drop")])
+    monkeypatch.setattr(handler_mod, "build_client_from_config", lambda: fake)
+    wired["SLSKD_FINISH_LEFTOVERS"] = False
+
+    report = leftovers.run(
+        history_service=env[1],
+        user_db=env[0],
+        requeue=lambda *a, **k: (True, None),
+        live_tasks=lambda: {},
+        now=NOW,
+    )
+
+    assert fake.cancelled == []
+    assert report.cancelled == []

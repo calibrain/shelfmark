@@ -156,7 +156,10 @@ def slskd_config_settings() -> list[SettingsField]:
                 "A restart can land after the last file arrives and before it is copied to "
                 "your library. Checked every 15 minutes, independent of the Hardcover sync, "
                 "a download folder that holds every file asked for, whose download never "
-                "completed, is imported without downloading anything again."
+                "completed, is imported without downloading anything again. A transfer "
+                "Shelfmark queued that no download is watching any more is picked up again "
+                "if its request still needs it, and cancelled otherwise. Transfers queued by "
+                "other apps or by hand in slskd are never touched."
             ),
             show_when={"field": "SLSKD_ISOLATE_DOWNLOADS", "value": True},
         ),
