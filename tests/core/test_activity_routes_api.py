@@ -1404,7 +1404,8 @@ class TestActivityRoutes:
         assert response.status_code == 200
         assert "stale-active-task" in response.json["status"]["error"]
         assert (
-            response.json["status"]["error"]["stale-active-task"]["status_message"] == "Interrupted"
+            response.json["status"]["error"]["stale-active-task"]["status_message"]
+            == "Interrupted by a restart. Use Retry to run it again."
         )
 
     def test_snapshot_preserves_retry_for_stale_active_requested_download(
@@ -1453,7 +1454,9 @@ class TestActivityRoutes:
 
         assert response.status_code == 200
         viewer_id = public_download_id(task_id)
-        assert response.json["status"]["error"][viewer_id]["status_message"] == "Interrupted"
+        assert response.json["status"]["error"][viewer_id]["status_message"].startswith(
+            "Interrupted by a restart"
+        )
         assert response.json["status"]["error"][viewer_id]["retry_available"] is True
 
     def test_snapshot_includes_retry_available_for_live_terminal_downloads(
