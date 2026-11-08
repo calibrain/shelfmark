@@ -225,7 +225,6 @@ def test_users_me_edit_context_falls_back_to_default_sections_for_invalid_config
         "delivery",
         "search",
         "notifications",
-        "hardcover",
     ]
     assert resp.json["deliveryPreferences"] is not None
     assert resp.json["searchPreferences"] is not None
@@ -712,16 +711,81 @@ def test_the_right_current_password_clears_the_failures(limited_app, user_db):
     assert attempts.cleared == ["alice"]
 
 
-def _hardcover_config_get(global_token: str = "global-token-value"):
+def _hardcover_config_get(
+    global_token: str = "global-token-value",
+    *,
+    sync_enabled: bool = True,
+    visible_sections: object = ("delivery",),
+):
     def _get(key: str, default: object = None, user_id: int | None = None) -> object:
         del user_id
         if key == "VISIBLE_SELF_SETTINGS_SECTIONS":
-            return ["delivery", "hardcover"]
+            return (
+                list(visible_sections) if isinstance(visible_sections, tuple) else visible_sections
+            )
+        if key == "HARDCOVER_SYNC_ENABLED":
+            return sync_enabled
         if key == "HARDCOVER_SYNC_TOKEN":
             return global_token
         return default
 
     return _get
+
+
+@pytest.mark.parametrize(
+    ("visible_sections", "sync_enabled", "expected"),
+    [
+        (("delivery",), True, ["delivery", "hardcover"]),
+        (("delivery",), False, ["delivery"]),
+        # Saved by a build that listed the section: ignored, never a reason to show it.
+        (("delivery", "hardcover"), False, ["delivery"]),
+        # Not an invalid list either, so it does not fall back to every section.
+        (("hardcover",), False, []),
+        ((), True, ["hardcover"]),
+    ],
+)
+def test_the_hardcover_section_follows_hardcover_sync(
+    app, user_db, visible_sections, sync_enabled, expected
+):
+    user = user_db.create_user(username="alice")
+    client = _authed_client_for_user(app, user)
+
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
+        with patch(
+            "shelfmark.core.self_user_routes.app_config.get",
+            side_effect=_hardcover_config_get(
+                sync_enabled=sync_enabled, visible_sections=visible_sections
+            ),
+        ):
+            resp = client.get("/api/users/me/edit-context")
+
+    assert resp.status_code == 200
+    assert resp.json["visibleUserSettingsSections"] == expected
+    assert (resp.json["hardcoverPreferences"] is not None) == ("hardcover" in expected)
+
+
+def test_with_hardcover_sync_off_the_token_cannot_be_saved_or_revealed(app, user_db):
+    user = user_db.create_user(username="alice")
+    user_db.set_user_settings(user["id"], {"HARDCOVER_SYNC_TOKEN": "alice-token-value"})
+    client = _authed_client_for_user(app, user)
+
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
+        with patch(
+            "shelfmark.core.self_user_routes.app_config.get",
+            side_effect=_hardcover_config_get(
+                sync_enabled=False, visible_sections=("delivery", "hardcover")
+            ),
+        ):
+            saved = client.put(
+                "/api/users/me", json={"settings": {"HARDCOVER_SYNC_TOKEN": "other-token"}}
+            )
+            revealed = client.get("/api/users/me/secrets/HARDCOVER_SYNC_TOKEN")
+
+    assert saved.status_code == 400
+    assert revealed.status_code == 404
+    assert "alice-token-value" not in revealed.get_data(as_text=True)
+    # Hidden, not deleted: it is there again when sync is turned back on.
+    assert user_db.get_user_settings(user["id"])["HARDCOVER_SYNC_TOKEN"] == "alice-token-value"
 
 
 def test_users_me_edit_context_masks_secret_settings(app, user_db, monkeypatch):

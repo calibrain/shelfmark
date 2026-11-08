@@ -61,11 +61,11 @@ _SELF_SETTINGS_SECTION_DELIVERY = "delivery"
 _SELF_SETTINGS_SECTION_SEARCH = "search"
 _SELF_SETTINGS_SECTION_NOTIFICATIONS = "notifications"
 _SELF_SETTINGS_SECTION_HARDCOVER = "hardcover"
+# The sections an admin picks in VISIBLE_SELF_SETTINGS_SECTIONS.
 _VALID_SELF_SETTINGS_SECTIONS = (
     _SELF_SETTINGS_SECTION_DELIVERY,
     _SELF_SETTINGS_SECTION_SEARCH,
     _SELF_SETTINGS_SECTION_NOTIFICATIONS,
-    _SELF_SETTINGS_SECTION_HARDCOVER,
 )
 _DEFAULT_VISIBLE_SELF_SETTINGS_SECTIONS = list(_VALID_SELF_SETTINGS_SECTIONS)
 _USER_PREFERENCES_FALLBACK_ERRORS = (ImportError, OSError, RuntimeError, TypeError, sqlite3.Error)
@@ -177,6 +177,10 @@ def _normalize_visible_self_settings_sections(raw_sections: object) -> list[str]
     else:
         return list(_DEFAULT_VISIBLE_SELF_SETTINGS_SECTIONS)
 
+    # The Hardcover section follows HARDCOVER_SYNC_ENABLED, not this list. A list saved by a
+    # build that offered it may still name it; that entry is ignored, not treated as invalid.
+    candidate_sections = [s for s in candidate_sections if s != _SELF_SETTINGS_SECTION_HARDCOVER]
+
     normalized_sections: list[str] = []
     for section in candidate_sections:
         if section in _VALID_SELF_SETTINGS_SECTIONS and section not in normalized_sections:
@@ -190,11 +194,19 @@ def _normalize_visible_self_settings_sections(raw_sections: object) -> list[str]
 
 
 def _get_visible_self_settings_sections() -> list[str]:
+    """The My Account sections the caller may see and save.
+
+    The admin picks delivery, search and notifications. The Hardcover account section is
+    shown exactly when Hardcover sync is on: a user's token does nothing while it is off.
+    """
     raw_sections = app_config.get(
         _VISIBLE_SELF_SETTINGS_SECTIONS_KEY,
         list(_DEFAULT_VISIBLE_SELF_SETTINGS_SECTIONS),
     )
-    return _normalize_visible_self_settings_sections(raw_sections)
+    sections = _normalize_visible_self_settings_sections(raw_sections)
+    if bool(app_config.get("HARDCOVER_SYNC_ENABLED", False)):
+        sections.append(_SELF_SETTINGS_SECTION_HARDCOVER)
+    return sections
 
 
 def _get_allowed_self_settings_keys(visible_sections: list[str]) -> set[str]:

@@ -69,9 +69,11 @@ The check **fails closed** here: if an enabled library cannot be read and has no
 ## Per-user accounts
 
 Every user can connect their own Hardcover account instead of sharing one. The token
-field is user overridable, so it appears under **Settings, Hardcover Account** for each
-user. Admins choose whether that section is shown at all with **Visible self settings
-sections** on the Users tab.
+field is user overridable, so it appears under **My Account, Hardcover Account** for each
+user. The section is shown exactly when **Enable scheduled sync** is on; it is not one of
+the **Visible Self-Settings Sections** on the Users tab. While sync is off the section is
+hidden and a token a user already saved is kept. Scheduled runs don't sync while it is off,
+but an admin's **Sync now** still syncs every connected account.
 
 When a user connects a token, each scheduled run syncs their shelf on their own token and
 the requests it creates are owned by them, deduplicated against their own requests rather
