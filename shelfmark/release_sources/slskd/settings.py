@@ -189,7 +189,9 @@ def slskd_config_settings() -> list[SettingsField]:
                 "Some uploaders block downloads until you type a word in a private message "
                 "(\"please type 'download' in this chat\"). Shelfmark replies with the word "
                 "the message asks for, at most once per user every 12 hours, and logs each "
-                "reply. Checked while a download is running."
+                "reply. It reads every unread private message in slskd, not only those from "
+                "the peer of a running download, and marks a conversation it answered as read "
+                "in slskd. Checked while a download is running."
             ),
             show_when={"field": "SLSKD_ENABLED", "value": True},
         ),

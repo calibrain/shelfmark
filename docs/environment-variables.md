@@ -1907,7 +1907,7 @@ Automatically retry search without category filtering if no results are found
 | `SLSKD_SEARCH_TIMEOUT` | How long a Soulseek search collects peer responses. Longer waits find more peers but make every search slower. | number | `15` |
 | `SLSKD_RESPONSE_LIMIT` | Stop a search early once this many peers have answered | number | `100` |
 | `SLSKD_QUEUE_TIMEOUT_MINUTES` | Give up when the peer has not started sending within this long. Set to 0 to wait indefinitely. | number | `60` |
-| `SLSKD_CHAT_AUTOPROVE` | Some uploaders block downloads until you type a word in a private message ("please type 'download' in this chat"). Shelfmark replies with the word the message asks for, at most once per user every 12 hours, and logs each reply. Checked while a download is running. | boolean | `false` |
+| `SLSKD_CHAT_AUTOPROVE` | Some uploaders block downloads until you type a word in a private message ("please type 'download' in this chat"). Shelfmark replies with the word the message asks for, at most once per user every 12 hours, and logs each reply. It reads every unread private message in slskd, not only those from the peer of a running download, and marks a conversation it answered as read in slskd. Checked while a download is running. | boolean | `false` |
 | `SLSKD_REMOVE_COMPLETED` | Clear the transfer from slskd's download list after Shelfmark imports it. Applies when each download does not get its own folder. | boolean | `true` |
 
 <details>
@@ -2010,7 +2010,7 @@ Give up when the peer has not started sending within this long. Set to 0 to wait
 
 **Answer anti-leech chat challenges**
 
-Some uploaders block downloads until you type a word in a private message ("please type 'download' in this chat"). Shelfmark replies with the word the message asks for, at most once per user every 12 hours, and logs each reply. Checked while a download is running.
+Some uploaders block downloads until you type a word in a private message ("please type 'download' in this chat"). Shelfmark replies with the word the message asks for, at most once per user every 12 hours, and logs each reply. It reads every unread private message in slskd, not only those from the peer of a running download, and marks a conversation it answered as read in slskd. Checked while a download is running.
 
 - **Type:** boolean
 - **Default:** `false`
