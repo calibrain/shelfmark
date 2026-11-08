@@ -17,6 +17,8 @@ FAILURE_RETRY_MINUTES_SETTING = "AUTO_DOWNLOAD_FAILURE_RETRY_MINUTES"
 _SHOWN_FOR = frozenset({"error", "cancelled"})
 
 # What a download records when its client could not be reached or refused Shelfmark's login.
+# Bare "forbidden" or "unauthorized" is not on the list: a dead .torrent link fails that way too,
+# and that one is the release's fault. A client's login failure is reworded to say so.
 # Neither says anything about the release: the same one is fine once the client is back or its
 # settings are fixed, and it may already be downloading there.
 _CLIENT_PROBLEM_MARKERS = (
@@ -25,8 +27,6 @@ _CLIENT_PROBLEM_MARKERS = (
     "connection refused",
     "connection aborted",
     "authentication failed",
-    "unauthorized",
-    "forbidden",
 )
 
 

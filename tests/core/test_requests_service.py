@@ -839,8 +839,8 @@ def test_sync_delivery_states_does_not_blame_the_release_when_the_client_was_unr
     "message",
     [
         "Failed to add to qbittorrent: qBittorrent authentication failed (HTTP 403)",
-        "Failed to add to qbittorrent: Forbidden",
-        "Failed to add to qbittorrent: Unauthorized",
+        "Failed to add to qbittorrent: qBittorrent authentication failed (HTTP 401)",
+        "Failed to add to qbittorrent: qBittorrent authentication failed (login rejected)",
         "Failed to add to deluge: Deluge Web UI authentication failed",
     ],
 )
@@ -878,6 +878,41 @@ def test_sync_delivery_states_does_not_blame_the_release_when_the_client_refused
     refreshed = user_db.get_request(fulfilled_request["id"])
     assert refreshed["status"] == "pending"
     assert "failed_releases" not in refreshed["book_data"]
+
+
+def test_sync_delivery_states_still_blames_a_release_whose_link_is_forbidden(user_db):
+    """A tracker's 403 on the .torrent link is the release's fault, so it is remembered."""
+    user = user_db.create_user(username="alice")
+    fulfilled_request = user_db.create_request(
+        user_id=user["id"],
+        source_hint="prowlarr",
+        content_type="audiobook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data={"source": "prowlarr", "source_id": "dead-link", "title": "Dead"},
+        status="fulfilled",
+        delivery_state="queued",
+    )
+
+    sync_delivery_states_from_queue_status(
+        user_db,
+        queue_status={
+            "error": {
+                "dead-link": {
+                    "id": "dead-link",
+                    "request_id": fulfilled_request["id"],
+                    "retry_available": False,
+                    "status_message": "403 Client Error: Forbidden for url: https://tracker.example/t/1",
+                },
+            },
+        },
+        user_id=user["id"],
+    )
+
+    refreshed = user_db.get_request(fulfilled_request["id"])
+    assert refreshed["status"] == "pending"
+    assert [r.get("source_id") for r in refreshed["book_data"]["failed_releases"]] == ["dead-link"]
 
 
 def test_sync_delivery_states_preserves_retryable_error_state(user_db):

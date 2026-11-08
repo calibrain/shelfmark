@@ -2622,7 +2622,7 @@ class TestRetryAfterCooldown:
             "Cannot connect to qBittorrent at http://x",
             "Connection refused",
             "Failed to add to qbittorrent: qBittorrent authentication failed (HTTP 403)",
-            "Failed to add to qbittorrent: Unauthorized",
+            "Failed to add to qbittorrent: qBittorrent authentication failed (HTTP 401)",
             "Failed to add to deluge: Deluge Web UI authentication failed",
         ],
     )
