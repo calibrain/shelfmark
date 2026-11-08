@@ -2678,6 +2678,7 @@ function App() {
                   isAdmin: requestRoleIsAdmin,
                   requestsEnabled: requestsPolicyEnabled,
                   allowBookRequestWithDownload,
+                  bookRequestMode: getSourceMode('*', activeReleaseContentType),
                 })
                   ? handleReleaseBookRequest
                   : undefined

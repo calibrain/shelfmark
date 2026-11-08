@@ -2,23 +2,27 @@ import type { ButtonStateInfo, RequestPolicyMode } from '../types';
 
 /**
  * Whether the release modal offers a book-level request ("Add to requests"). Admins always get
- * it. Anyone else gets it only when requests are on and the setting lets users who can download
- * also ask for a book without choosing a release.
+ * it. Anyone else gets it only when requests are on, the setting lets users who can download
+ * also ask for a book without choosing a release, and their policy for this content type is
+ * Download. The server turns a book-level request into a pending one only in Download mode, so
+ * the action would be refused (Blocked) or mean something else (Request Release) otherwise.
  */
 export const canRequestBookFromReleaseModal = ({
   isBrowseFulfilMode,
   isAdmin,
   requestsEnabled,
   allowBookRequestWithDownload,
+  bookRequestMode,
 }: {
   isBrowseFulfilMode: boolean;
   isAdmin: boolean;
   requestsEnabled: boolean;
   allowBookRequestWithDownload: boolean;
+  bookRequestMode: RequestPolicyMode;
 }): boolean => {
   if (isBrowseFulfilMode) return false;
   if (isAdmin) return true;
-  return requestsEnabled && allowBookRequestWithDownload;
+  return requestsEnabled && allowBookRequestWithDownload && bookRequestMode === 'download';
 };
 
 export const applyDirectPolicyModeToButtonState = (

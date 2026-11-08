@@ -13,6 +13,7 @@ describe('canRequestBookFromReleaseModal', () => {
     isAdmin: false,
     requestsEnabled: true,
     allowBookRequestWithDownload: false,
+    bookRequestMode: 'download' as const,
   };
 
   it('is always on for an admin', () => {
@@ -27,6 +28,23 @@ describe('canRequestBookFromReleaseModal', () => {
     expect(canRequestBookFromReleaseModal({ ...base, allowBookRequestWithDownload: true })).toBe(
       true,
     );
+  });
+
+  it('is off for a user whose policy for this content type is not Download', () => {
+    const allowed = { ...base, allowBookRequestWithDownload: true };
+    expect(canRequestBookFromReleaseModal({ ...allowed, bookRequestMode: 'request_release' })).toBe(
+      false,
+    );
+    expect(canRequestBookFromReleaseModal({ ...allowed, bookRequestMode: 'request_book' })).toBe(
+      false,
+    );
+    expect(canRequestBookFromReleaseModal({ ...allowed, bookRequestMode: 'blocked' })).toBe(false);
+  });
+
+  it('does not depend on the policy mode for an admin', () => {
+    expect(
+      canRequestBookFromReleaseModal({ ...base, isAdmin: true, bookRequestMode: 'blocked' }),
+    ).toBe(true);
   });
 
   it('needs requests to be on for a user', () => {
