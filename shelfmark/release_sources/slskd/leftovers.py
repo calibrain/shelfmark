@@ -38,6 +38,10 @@ CLEAN_DAYS_SETTING = "SLSKD_CLEAN_LEFTOVERS_DAYS"
 DELIVERED_GRACE = timedelta(days=1)
 # At most this many finished folders are queued per run, so a backlog does not flood the queue.
 MAX_ADOPTIONS_PER_RUN = 3
+# Left in a folder once it has been queued for import. Hidden, so it never counts as a file of the
+# download. An import that fails again is not retried every run: the folder waits for a person or
+# for clean-up.
+ADOPTED_MARKER = ".shelfmark-adopted"
 _TASK_PREFIX = "slskd_"
 
 
@@ -154,10 +158,19 @@ def plan(
             (to_remove if removable else to_keep).append(folder)
             continue
 
+        if status == "cancelled":
+            # Someone cancelled it: never imported automatically. The folder goes with clean-up.
+            (to_remove if clean_after is not None and age >= clean_after else to_keep).append(
+                folder
+            )
+            continue
+
         needs_it, done_with = _request_state(user_db, row)
         sizes = [int(f.get("size") or 0) for f in _expected_files(row)]
         whole = folder_complete(folder, sizes)
-        if whole and needs_it:
+        if whole and needs_it and (folder / ADOPTED_MARKER).exists():
+            to_keep.append(folder)  # queued once already; its import did not finish
+        elif whole and needs_it:
             to_finish.append((folder, row))
         elif done_with and clean_after is not None and age >= DELIVERED_GRACE:
             # The book is in the library, or the request was dropped: no need to wait the full
@@ -312,6 +325,10 @@ def run(
             if ok:
                 report.adopted.append(folder.name)
                 logger.info("slskd leftovers: importing the finished folder %s", folder.name)
+                try:
+                    (folder / ADOPTED_MARKER).touch()
+                except OSError as exc:
+                    logger.warning("slskd leftovers: could not mark %s: %s", folder.name, exc)
             else:
                 logger.warning("slskd leftovers: could not import %s: %s", folder.name, message)
                 report.kept.append(folder.name)

@@ -202,6 +202,9 @@ def test_a_row_whose_torrent_is_gone_is_dropped_but_an_empty_listing_drops_nothi
         (-3, 0.0),
         (None, 6.0),
         ("junk", 6.0),
+        ("nan", 6.0),
+        (float("nan"), 6.0),
+        ("inf", 6.0),
     ],
 )
 def test_the_limit_is_held_to_3_through_72_hours_and_zero_means_off(monkeypatch, raw, expected):

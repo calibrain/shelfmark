@@ -541,3 +541,50 @@ def test_run_leaves_transfers_alone_when_finishing_is_switched_off(env, wired, m
 
     assert fake.cancelled == []
     assert report.cancelled == []
+
+
+def test_a_cancelled_download_is_never_imported(env):
+    """A whole folder of a download someone cancelled stays put until clean-up removes it."""
+    young = _folder(env[3], "slskd:cx")
+    old = _folder(env[3], "slskd:co")
+    _row(env, "slskd:cx", status="cancelled", age_days=1)
+    _row(env, "slskd:co", status="cancelled", age_days=30)
+
+    finish, remove, keep = _plan(env, [young, old])
+
+    assert not finish
+    assert _names(remove) == ["slskd_co"]
+    assert _names(keep) == ["slskd_cx"]
+
+
+def test_a_folder_queued_once_is_not_queued_again(env):
+    """The marker from an earlier run keeps a folder whose import failed out of the next ones."""
+    folder = _folder(env[3], "slskd:aa")
+    (folder / leftovers.ADOPTED_MARKER).touch()
+    _row(env, "slskd:aa", status="error")
+
+    finish, remove, keep = _plan(env, [folder])
+
+    assert not finish
+    assert not remove
+    assert _names(keep) == ["slskd_aa"]
+
+
+def test_run_marks_a_folder_it_queues_and_leaves_it_on_the_next_run(env, wired):
+    """A folder is queued once; a failed import does not bring it back every run."""
+    folder = _folder(env[3], "slskd:aa")
+    _row(env, "slskd:aa", status="error")
+    queued = []
+
+    def requeue(payload, final_status):
+        """Accept every requeue and count it."""
+        queued.append(final_status)
+        return True, None
+
+    first = _run(env, requeue)
+    second = _run(env, requeue)
+
+    assert first.adopted == ["slskd_aa"]
+    assert (folder / leftovers.ADOPTED_MARKER).exists()
+    assert second.adopted == []
+    assert queued == ["error"]

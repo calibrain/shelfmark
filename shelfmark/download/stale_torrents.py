@@ -13,6 +13,7 @@ touched.
 
 from __future__ import annotations
 
+import math
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any
@@ -50,6 +51,9 @@ def stale_hours() -> float:
     try:
         hours = float(raw) if isinstance(raw, (int, float, str)) else STALE_HOURS_DEFAULT
     except ValueError:
+        return STALE_HOURS_DEFAULT
+    if not math.isfinite(hours):
+        # nan would pass every comparison below and turn the idle test off.
         return STALE_HOURS_DEFAULT
     if hours <= 0:
         return 0.0
