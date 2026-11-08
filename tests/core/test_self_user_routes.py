@@ -788,6 +788,32 @@ def test_with_hardcover_sync_off_the_token_cannot_be_saved_or_revealed(app, user
     assert user_db.get_user_settings(user["id"])["HARDCOVER_SYNC_TOKEN"] == "alice-token-value"
 
 
+@pytest.mark.parametrize("bad", [12345, ["a"], {"token": "a"}, True])
+def test_a_secret_that_is_not_a_string_is_refused(app, user_db, bad):
+    user = user_db.create_user(username="alice")
+    user_db.set_user_settings(user["id"], {"HARDCOVER_SYNC_TOKEN": "alice-token-value"})
+    client = _authed_client_for_user(app, user)
+
+    with patch("shelfmark.core.self_user_routes.load_active_auth_mode", return_value="builtin"):
+        with patch(
+            "shelfmark.core.self_user_routes.app_config.get",
+            side_effect=_hardcover_config_get(),
+        ):
+            saved = client.put("/api/users/me", json={"settings": {"HARDCOVER_SYNC_TOKEN": bad}})
+
+    assert saved.status_code == 400
+    assert user_db.get_user_settings(user["id"])["HARDCOVER_SYNC_TOKEN"] == "alice-token-value"
+
+
+def test_an_admin_save_of_a_secret_that_is_not_a_string_is_refused():
+    from shelfmark.core.admin_settings_routes import validate_user_settings
+
+    valid, errors = validate_user_settings({"HARDCOVER_SYNC_TOKEN": 12345})
+
+    assert valid == {}
+    assert errors == ["Invalid value for HARDCOVER_SYNC_TOKEN: must be a string"]
+
+
 def test_users_me_edit_context_masks_secret_settings(app, user_db, monkeypatch):
     from shelfmark.core.user_settings_overrides import SECRET_PLACEHOLDER
 

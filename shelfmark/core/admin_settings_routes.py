@@ -20,6 +20,7 @@ from shelfmark.core.request_helpers import coerce_int, is_plain_email_address
 from shelfmark.core.request_policy import parse_policy_mode, validate_policy_rules
 from shelfmark.core.settings_registry import (
     FieldBase,
+    PasswordField,
     SelectField,
     TextField,
     load_config_file,
@@ -144,6 +145,11 @@ def validate_user_settings(
             # The masked placeholder came back from a listing untouched: the stored
             # secret stays as it is rather than being replaced by the placeholder.
             if is_masked_secret(field_map[key][0], value):
+                continue
+
+            # A secret is a string; anything else would be stored as is and break its readers.
+            if isinstance(field_map[key][0], PasswordField) and not isinstance(value, str):
+                errors.append(f"Invalid value for {key}: must be a string")
                 continue
 
             if self_service_user is not None:

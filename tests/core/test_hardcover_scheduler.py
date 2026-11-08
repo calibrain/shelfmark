@@ -190,6 +190,23 @@ class TestRunOnce:
         assert result["sync"]["accounts"] == 2
         assert calls["auto"][0][1]["only_request_ids"] == frozenset({10})
 
+    def test_admin_scope_with_only_user_tokens_and_no_app_token_is_not_an_error(
+        self, monkeypatch, calls
+    ):
+        user_db = _FakeUserDB([{"id": 1, "role": "admin"}, {"id": 3, "role": "user"}])
+        monkeypatch.setattr(
+            "shelfmark.core.hardcover_sync._user_token",
+            lambda user_id: "token" if user_id == 3 else "",
+        )
+        monkeypatch.setattr("shelfmark.core.hardcover_sync.has_app_level_token", lambda: False)
+        scheduler.configure(user_db, object(), "/data/users.db")
+
+        result = scheduler.run_once(force=True, scope="admin")
+
+        assert calls["sync"] == []
+        assert result["sync"]["errors"] == 0
+        assert result["sync"]["accounts"] == 0
+
     def test_all_scope_does_not_limit_auto_download(self, monkeypatch, calls):
         user_db = _FakeUserDB([{"id": 1, "role": "admin"}, {"id": 3, "role": "user"}])
         monkeypatch.setattr("shelfmark.core.hardcover_sync._user_token", lambda _user_id: "token")

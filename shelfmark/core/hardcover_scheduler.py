@@ -94,10 +94,11 @@ def _sync_all_accounts(
     )
 
     totals: dict[str, Any] = {"added": 0, "skipped": 0, "in_library": 0, "errors": 0}
-    per_user_ids = users_with_hardcover_token(user_db)
+    connected_ids = users_with_hardcover_token(user_db)
+    per_user_ids = connected_ids
     if scope == "admin":
         admins = _admin_ids(user_db)
-        per_user_ids = [user_id for user_id in per_user_ids if user_id in admins]
+        per_user_ids = [user_id for user_id in connected_ids if user_id in admins]
 
     def merge(summary: dict[str, int]) -> None:
         for key in ("added", "skipped", "in_library", "errors"):
@@ -113,7 +114,7 @@ def _sync_all_accounts(
     # The app-level token still runs, for instances where nobody connected their own. When
     # accounts are connected and no app-level token is set there is nothing for it to do, and
     # running it would only log "no token" and count an error every cycle.
-    run_app_level = not per_user_ids or has_app_level_token()
+    run_app_level = not connected_ids or has_app_level_token()
     if run_app_level:
         try:
             merge(sync_wishlist(user_db, db_path=db_path))

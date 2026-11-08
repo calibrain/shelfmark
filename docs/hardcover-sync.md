@@ -8,7 +8,7 @@ Hardcover Sync pulls books from your [Hardcover](https://hardcover.app) reading 
 
 ### Shelf sync
 
-On a schedule, Shelfmark reads the selected Hardcover shelf (by default **Want to Read**) through the Hardcover metadata provider and creates a **pending** request for each book that is not already known. Requests carry Hardcover's metadata, including the cover, and are owned by the lowest-id admin account.
+On a schedule, Shelfmark reads the selected Hardcover shelf (by default **Want to Read**) through the Hardcover metadata provider and creates a **pending** request for each book that is not already known. Requests carry Hardcover's metadata, including the cover. Requests from the token on this tab are owned by the lowest-id admin account; requests from a user's own token are theirs (see [Per-user accounts](#per-user-accounts)).
 
 A book is skipped when:
 
@@ -132,4 +132,4 @@ Only one run happens at a time. If a scheduled cycle is in progress, either sync
 
 **Books you own keep being added** — enable the library check for the format you request (see [Library Check](library-check.md)) and use its test button. A library that cannot be read shows up in the log as a skipped cycle.
 
-**Too many requests at once** — the first sync of a large shelf creates one request per book, and the per-user pending limit from **Users & Requests** does not apply to synced requests. Start with a shelf you are happy to see in the queue in full.
+**Too many requests at once** — the first sync of a large shelf creates one request per book, and the per-user pending limit from **Users & Requests** does not apply to synced requests, including those from a user's own account. Start with a shelf you are happy to see in the queue in full.
