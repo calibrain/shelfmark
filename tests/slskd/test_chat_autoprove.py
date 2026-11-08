@@ -9,6 +9,7 @@ from shelfmark.release_sources.slskd import handler as handler_module
 from shelfmark.release_sources.slskd.api import SlskdClient, SlskdError
 from shelfmark.release_sources.slskd.chat_autoprove import (
     COOLDOWN_SECONDS,
+    SCAN_BUDGET_SECONDS,
     ChatAutoProver,
     extract_token,
     scan_and_respond,
@@ -167,6 +168,30 @@ def test_one_failing_conversation_does_not_stop_the_others():
     assert scan_and_respond(client, {}, now=0.0) == [("b", "download")]
 
 
+def test_slskd_timing_out_ends_the_pass():
+    client = _client(
+        [_convo("a"), _convo("b")],
+        {"a": [_msg(CHALLENGE)], "b": [_msg(CHALLENGE)]},
+    )
+    client.get_conversation.side_effect = requests.exceptions.Timeout()
+
+    assert scan_and_respond(client, {}, now=0.0) == []
+    assert client.get_conversation.call_count == 1
+
+
+def test_scan_stops_reading_conversations_once_its_budget_is_spent():
+    client = _client(
+        [_convo("a"), _convo("b"), _convo("c")],
+        {"a": [_msg(CHALLENGE)], "b": [_msg(CHALLENGE)], "c": [_msg(CHALLENGE)]},
+    )
+    ticks = iter([1.0, 11.0])
+
+    replies = scan_and_respond(client, {}, now=0.0, clock=lambda: next(ticks), budget=10.0)
+
+    assert replies == [("a", "download")]
+    assert client.get_conversation.call_count == 1
+
+
 def test_reply_is_logged():
     client = _client([_convo()], {"peer": [_msg(CHALLENGE)]})
     with patch("shelfmark.release_sources.slskd.chat_autoprove.logger") as log:
@@ -187,6 +212,30 @@ def test_prover_scans_at_most_once_per_interval():
         prover.maybe_scan(lambda: client, lambda: next(clock))
 
     assert client.list_conversations.call_count == 2
+
+
+def test_prover_runs_one_scan_at_a_time():
+    prover = ChatAutoProver(interval=60)
+    inner = MagicMock(spec=SlskdClient)
+    inner.list_conversations.return_value = []
+
+    def get_client_mid_scan():
+        # Another download thread polls while this scan is still running, past the interval.
+        assert prover.maybe_scan(lambda: inner, lambda: 120.0) == []
+        return inner
+
+    prover.maybe_scan(get_client_mid_scan, lambda: 0.0)
+
+    assert inner.list_conversations.call_count == 1
+
+
+def test_prover_gives_each_scan_a_budget():
+    prover = ChatAutoProver()
+    with patch(
+        "shelfmark.release_sources.slskd.chat_autoprove.scan_and_respond", return_value=[]
+    ) as scan:
+        prover.maybe_scan(lambda: MagicMock(spec=SlskdClient), lambda: 0.0)
+    assert scan.call_args.kwargs["budget"] == SCAN_BUDGET_SECONDS
 
 
 def test_prover_is_quiet_when_slskd_is_unreachable():

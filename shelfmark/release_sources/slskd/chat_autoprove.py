@@ -36,6 +36,9 @@ if TYPE_CHECKING:
 logger = setup_logger(__name__)
 
 SCAN_INTERVAL_SECONDS = 60.0
+# A scan runs inside a download's poll loop, so it stops reading conversations after this long
+# and leaves the rest for the next pass.
+SCAN_BUDGET_SECONDS = 10.0
 COOLDOWN_SECONDS = 12 * 3600.0
 
 _ERRORS = (SlskdError, requests.exceptions.RequestException)
@@ -82,11 +85,15 @@ def scan_and_respond(
     *,
     now: float,
     cooldown: float = COOLDOWN_SECONDS,
+    clock: Callable[[], float] | None = None,
+    budget: float | None = None,
 ) -> list[tuple[str, str]]:
     """Run one pass and return the ``(username, token)`` replies sent.
 
     ``state`` maps a username to the time of the last reply and is owned by the
-    caller. A failure on one conversation does not stop the others.
+    caller. A failure on one conversation does not stop the others, but slskd timing
+    out or refusing the connection ends the pass, and with ``clock`` and ``budget`` no
+    further conversation is read once ``budget`` seconds have passed since ``now``.
     """
     replies: list[tuple[str, str]] = []
     for conversation in client.list_conversations():
@@ -96,6 +103,9 @@ def scan_and_respond(
         last = state.get(username)
         if last is not None and now - last < cooldown:
             continue
+        if clock is not None and budget is not None and clock() - now >= budget:
+            logger.debug("slskd chat challenge: scan budget spent, the rest waits a pass")
+            break
 
         try:
             detail = client.get_conversation(username) or {}
@@ -108,6 +118,9 @@ def scan_and_respond(
             if not token:
                 continue
             client.send_private_message(username, token)
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            logger.warning("slskd chat challenge: slskd did not answer, scan stopped: %s", e)
+            break
         except _ERRORS as e:
             logger.warning("slskd chat challenge: reply to %s failed: %s", username, e)
             continue
@@ -126,7 +139,8 @@ class ChatAutoProver:
     """Runs ``scan_and_respond`` at most once per interval, from whoever calls it.
 
     The slskd handler already loops while a download is queued, so it calls
-    ``maybe_scan`` each iteration; no thread or scheduler of its own.
+    ``maybe_scan`` each iteration; no thread or scheduler of its own. Only one scan runs
+    at a time: a caller that arrives while another thread is scanning returns at once.
     """
 
     def __init__(
@@ -139,6 +153,7 @@ class ChatAutoProver:
         self._cooldown = cooldown
         self._lock = threading.Lock()
         self._last_scan: float | None = None
+        self._scanning = False
         self._state: dict[str, float] = {}
 
     def maybe_scan(
@@ -149,14 +164,27 @@ class ChatAutoProver:
         """Scan when the interval has passed; never raises, quiet when slskd is down."""
         now = clock()
         with self._lock:
+            if self._scanning:
+                return []
             if self._last_scan is not None and now - self._last_scan < self._interval:
                 return []
             self._last_scan = now
+            self._scanning = True
         try:
             client = get_client()
             if client is None:
                 return []
-            return scan_and_respond(client, self._state, now=now, cooldown=self._cooldown)
+            return scan_and_respond(
+                client,
+                self._state,
+                now=now,
+                cooldown=self._cooldown,
+                clock=clock,
+                budget=SCAN_BUDGET_SECONDS,
+            )
         except _ERRORS as e:
             logger.debug("slskd chat challenge: scan skipped: %s", e)
             return []
+        finally:
+            with self._lock:
+                self._scanning = False
