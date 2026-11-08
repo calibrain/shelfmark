@@ -21,6 +21,8 @@ A book is skipped when:
 
 When enabled, each pending request that came from Hardcover is searched across your release sources in the priority order configured for its content type (audiobook requests use the audiobook list, ebook requests the ebook list). The first source that yields a **strict match** wins, and the best candidate from that source is queued through the normal request fulfilment path, so it appears in the activity view and download history exactly like a request an admin approved.
 
+Automatic downloads act for an admin, so they only approve what the request's owner could have downloaded without asking. Synced requests belong to an admin and are always searched. A request another user made is searched only on the release sources where their request policy (including any per-user override) resolves to **Download**, and only while requests are turned on for them; with requests off they download directly anyway. A request whose policy needs approval, or blocks that content type, is left pending for an admin, untouched, like any other request awaiting review. A failed download is only reopened for a retry on the same terms.
+
 A release is a strict match only when all of the following hold:
 
 - at least 85% of the significant words in the book's title appear in the release title. Numbers from 1 to 20 count as the same word however they are written, so *Part II*, *Part Two* and *Part 2* agree, while *Part One* never stands in for *Part Two*;

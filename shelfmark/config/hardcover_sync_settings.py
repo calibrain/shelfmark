@@ -151,7 +151,11 @@ def hardcover_sync_settings() -> list[SettingsField]:
         CheckboxField(
             key="AUTO_DOWNLOAD_ENABLED",
             label="Enable automatic downloads",
-            description="Auto-approve and auto-download matching releases for Hardcover requests.",
+            description=(
+                "Auto-approve and auto-download matching releases for Hardcover requests. "
+                "Another user's request is only approved this way where their request "
+                "policy already lets them download directly; the rest wait for an admin."
+            ),
             default=False,
         ),
         OrderableListField(

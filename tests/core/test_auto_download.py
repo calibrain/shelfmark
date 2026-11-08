@@ -3620,3 +3620,160 @@ class TestHistoryOrder:
             == 1
         )
         assert suite._state(user_db, rid) == "cancelled"
+
+
+class TestOwnerPolicyGate:
+    """Auto-download fulfils a request only where its owner could have downloaded it directly.
+
+    It runs as an admin, so without this a request made under an approval policy would be
+    approved by the pass instead of waiting for an admin.
+    """
+
+    @staticmethod
+    def _setup(monkeypatch, *, policy, auth_mode="builtin", searched=None):
+        monkeypatch.setattr(auto_download, "app_config", _Config(AUTO_DOWNLOAD_ENABLED=True))
+        monkeypatch.setattr(
+            auto_download, "_configured_source_priority", lambda _ct: ["first", "second"]
+        )
+        monkeypatch.setattr("shelfmark.core.auth_modes.load_active_auth_mode", lambda: auth_mode)
+        monkeypatch.setattr(
+            auto_download, "load_users_request_policy_settings", lambda: dict(policy)
+        )
+        monkeypatch.setattr(
+            "shelfmark.core.library_index.is_in_library", lambda *_args, **_kwargs: False
+        )
+        _stub_provider(monkeypatch, _book())
+
+        def _search(source_name, *_args, **_kwargs):
+            if searched is not None:
+                searched.append(source_name)
+            return None, [_release(source=source_name)], None
+
+        monkeypatch.setattr(auto_download, "search_source_releases", _search)
+
+    @staticmethod
+    def _queue(release_data, priority, *, user_id, username):
+        return True, None
+
+    def _run(self, user_db, admin):
+        return auto_download.auto_download_pending(
+            user_db, queue_release=self._queue, admin_user_id=admin["id"]
+        )
+
+    APPROVAL = {"REQUESTS_ENABLED": True, "REQUEST_POLICY_DEFAULT_AUDIOBOOK": "request_book"}
+    DIRECT = {"REQUESTS_ENABLED": True, "REQUEST_POLICY_DEFAULT_AUDIOBOOK": "download"}
+
+    def test_a_request_awaiting_approval_is_left_exactly_as_it_was(self, user_db, monkeypatch):
+        searched: list[str] = []
+        self._setup(monkeypatch, policy=self.APPROVAL, searched=searched)
+        admin = user_db.create_user(username="admin", role="admin")
+        reader = user_db.create_user(username="reader", role="user")
+        row = _pending_request(user_db, reader["id"])
+
+        summary = self._run(user_db, admin)
+
+        assert summary["queued"] == 0
+        assert summary["awaiting_approval"] == 1
+        assert searched == []
+        # No backoff state, note or review: the same as a manual request awaiting review.
+        assert user_db.get_request(row["id"]) == row
+
+    def test_a_request_the_owner_could_download_directly_is_fulfilled(self, user_db, monkeypatch):
+        self._setup(monkeypatch, policy=self.DIRECT)
+        admin = user_db.create_user(username="admin", role="admin")
+        reader = user_db.create_user(username="reader", role="user")
+        row = _pending_request(user_db, reader["id"])
+
+        summary = self._run(user_db, admin)
+
+        assert summary["queued"] == 1
+        assert user_db.get_request(row["id"])["status"] == "fulfilled"
+
+    def test_an_admins_synced_request_is_fulfilled_whatever_the_policy(self, user_db, monkeypatch):
+        self._setup(monkeypatch, policy=self.APPROVAL)
+        admin = user_db.create_user(username="admin", role="admin")
+        row = _pending_request(user_db, admin["id"])
+
+        summary = self._run(user_db, admin)
+
+        assert summary["queued"] == 1
+        assert user_db.get_request(row["id"])["status"] == "fulfilled"
+
+    def test_a_blocked_content_type_is_left_untouched(self, user_db, monkeypatch):
+        self._setup(
+            monkeypatch,
+            policy={"REQUESTS_ENABLED": True, "REQUEST_POLICY_DEFAULT_AUDIOBOOK": "blocked"},
+        )
+        admin = user_db.create_user(username="admin", role="admin")
+        reader = user_db.create_user(username="reader", role="user")
+        row = _pending_request(user_db, reader["id"])
+
+        summary = self._run(user_db, admin)
+
+        assert summary["awaiting_approval"] == 1
+        assert user_db.get_request(row["id"]) == row
+
+    def test_only_the_sources_the_owner_may_download_from_are_searched(self, user_db, monkeypatch):
+        searched: list[str] = []
+        policy = {
+            **self.DIRECT,
+            "REQUEST_POLICY_RULES": [
+                {"source": "first", "content_type": "audiobook", "mode": "request_release"}
+            ],
+        }
+        self._setup(monkeypatch, policy=policy, searched=searched)
+        admin = user_db.create_user(username="admin", role="admin")
+        reader = user_db.create_user(username="reader", role="user")
+        _pending_request(user_db, reader["id"])
+
+        summary = self._run(user_db, admin)
+
+        assert summary["queued"] == 1
+        assert searched == ["second"]
+
+    def test_a_per_user_override_counts(self, user_db, monkeypatch):
+        self._setup(monkeypatch, policy=self.APPROVAL)
+        admin = user_db.create_user(username="admin", role="admin")
+        reader = user_db.create_user(username="reader", role="user")
+        user_db.set_user_settings(reader["id"], {"REQUEST_POLICY_DEFAULT_AUDIOBOOK": "download"})
+        _pending_request(user_db, reader["id"])
+
+        assert self._run(user_db, admin)["queued"] == 1
+
+    def test_with_requests_off_the_owner_downloads_directly_so_the_pass_fulfils(
+        self, user_db, monkeypatch
+    ):
+        self._setup(monkeypatch, policy={**self.APPROVAL, "REQUESTS_ENABLED": False})
+        admin = user_db.create_user(username="admin", role="admin")
+        reader = user_db.create_user(username="reader", role="user")
+        _pending_request(user_db, reader["id"])
+
+        assert self._run(user_db, admin)["queued"] == 1
+
+    def test_without_login_there_is_no_policy_to_apply(self, user_db, monkeypatch):
+        self._setup(monkeypatch, policy=self.APPROVAL, auth_mode="none")
+        admin = user_db.create_user(username="admin", role="admin")
+        reader = user_db.create_user(username="reader", role="user")
+        _pending_request(user_db, reader["id"])
+
+        assert self._run(user_db, admin)["queued"] == 1
+
+    @pytest.mark.parametrize(("policy", "reopened"), [(APPROVAL, 0), (DIRECT, 1)])
+    def test_a_failed_download_is_only_reopened_when_the_pass_could_fulfil_it(
+        self, user_db, monkeypatch, policy, reopened
+    ):
+        self._setup(monkeypatch, policy=policy)
+        reader = user_db.create_user(username="reader", role="user")
+        row = TestRetryAfterCooldown._request(user_db, reader["id"], provider_id="1")
+
+        assert (
+            auto_download.reopen_stale_failures(
+                user_db,
+                cooldown_days=7,
+                db_path=user_db._db_path,
+                now=TestRetryAfterCooldown.NOW,
+            )
+            == reopened
+        )
+        expected = "pending" if reopened else "fulfilled"
+        assert user_db.get_request(row["id"])["status"] == expected
