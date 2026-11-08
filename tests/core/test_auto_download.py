@@ -2621,6 +2621,9 @@ class TestRetryAfterCooldown:
             "Failed to add to qbittorrent: Failed to connect to qBittorrent. This i",
             "Cannot connect to qBittorrent at http://x",
             "Connection refused",
+            "Failed to add to qbittorrent: qBittorrent authentication failed (HTTP 403)",
+            "Failed to add to qbittorrent: Unauthorized",
+            "Failed to add to deluge: Deluge Web UI authentication failed",
         ],
     )
     def test_a_download_whose_client_was_down_is_not_held_against_its_release(

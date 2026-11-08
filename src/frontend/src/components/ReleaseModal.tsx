@@ -26,6 +26,7 @@ import type {
 import { isMetadataBook } from '../types';
 import { bookSupportsTargets } from '../utils/bookTargetLoader';
 import { getColorStyleFromHint } from '../utils/colorMaps';
+import { failedDownloadButtonState } from '../utils/failedDownloadButton';
 import { groupFilesByFormat, type FormatGroup } from '../utils/formatReview';
 import {
   LANGUAGE_OPTION_DEFAULT,
@@ -1195,9 +1196,7 @@ const ReleaseModalSession = ({
         if (mode === 'blocked' || mode === 'request_book') {
           return { text: 'Unavailable', state: 'blocked' };
         }
-        return currentStatus.error[releaseId].retry_available === true
-          ? { text: 'Retry', state: 'download' }
-          : { text: 'Failed', state: 'error' };
+        return failedDownloadButtonState(currentStatus.error[releaseId]);
       }
       // Check completed
       if (currentStatus.complete && currentStatus.complete[releaseId]) {

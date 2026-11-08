@@ -34,6 +34,7 @@ from shelfmark.download.network import get_ssl_verify
 try:
     import qbittorrentapi as _qbittorrentapi
 except ImportError:
+    _qbittorrentapi = None
     _ImportedQBittorrentApiError = RuntimeError
     _ImportedQBittorrentLoginFailed = RuntimeError
 else:
@@ -103,6 +104,22 @@ def _resolve_qbittorrent_exception_type(candidate: object) -> type[Exception]:
 
 _QBittorrentApiError = _resolve_qbittorrent_exception_type(_ImportedQBittorrentApiError)
 _QBittorrentLoginFailed = _resolve_qbittorrent_exception_type(_ImportedQBittorrentLoginFailed)
+
+
+def _qbittorrent_auth_errors(module: object) -> tuple[type[Exception], ...]:
+    """The qbittorrent-api errors that mean qBittorrent refused Shelfmark's login.
+
+    Empty when the library is missing, so nothing is mistaken for a refused login.
+    """
+    found = (
+        getattr(module, name, None) for name in ("LoginFailed", "HTTP401Error", "HTTP403Error")
+    )
+    return tuple(
+        error for error in found if isinstance(error, type) and issubclass(error, Exception)
+    )
+
+
+_QBITTORRENT_AUTH_ERRORS = _qbittorrent_auth_errors(_qbittorrentapi)
 _QBITTORRENT_CLIENT_ERRORS = (
     _QBittorrentLoginFailed,
     _QBittorrentApiError,
@@ -608,6 +625,15 @@ class QBittorrentClient(DownloadClient):
                 expected_hash,
                 _METADATA_WAIT_POLLS * _METADATA_WAIT_INTERVAL_SECONDS,
             )
+        except _QBITTORRENT_AUTH_ERRORS as e:
+            # qbittorrent-api says nothing for a wrong password and only "Forbidden" or
+            # "Unauthorized" for a bad session or API key, which reads like a problem with the
+            # torrent. Say what it is, so the failure is not held against the release.
+            status = getattr(e, "http_status_code", None)
+            detail = f"HTTP {status}" if status else "login rejected"
+            msg = f"qBittorrent authentication failed ({detail})"
+            logger.warning(msg)
+            raise RuntimeError(msg) from e
         except _QBITTORRENT_CLIENT_ERRORS:
             logger.exception("qBittorrent add failed")
             raise

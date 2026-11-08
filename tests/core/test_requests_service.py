@@ -835,6 +835,51 @@ def test_sync_delivery_states_does_not_blame_the_release_when_the_client_was_unr
     assert "failed_releases" not in refreshed["book_data"]  # but the release is not held against
 
 
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Failed to add to qbittorrent: qBittorrent authentication failed (HTTP 403)",
+        "Failed to add to qbittorrent: Forbidden",
+        "Failed to add to qbittorrent: Unauthorized",
+        "Failed to add to deluge: Deluge Web UI authentication failed",
+    ],
+)
+def test_sync_delivery_states_does_not_blame_the_release_when_the_client_refused_the_login(
+    user_db, message
+):
+    user = user_db.create_user(username="alice")
+    fulfilled_request = user_db.create_request(
+        user_id=user["id"],
+        source_hint="prowlarr",
+        content_type="audiobook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data={"source": "prowlarr", "source_id": "fine-rel", "title": "Fine"},
+        status="fulfilled",
+        delivery_state="queued",
+    )
+
+    sync_delivery_states_from_queue_status(
+        user_db,
+        queue_status={
+            "error": {
+                "fine-rel": {
+                    "id": "fine-rel",
+                    "request_id": fulfilled_request["id"],
+                    "retry_available": False,
+                    "status_message": message,
+                },
+            },
+        },
+        user_id=user["id"],
+    )
+
+    refreshed = user_db.get_request(fulfilled_request["id"])
+    assert refreshed["status"] == "pending"
+    assert "failed_releases" not in refreshed["book_data"]
+
+
 def test_sync_delivery_states_preserves_retryable_error_state(user_db):
     user = user_db.create_user(username="alice")
     fulfilled_request = user_db.create_request(

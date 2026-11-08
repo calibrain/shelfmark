@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 
 import type { StatusData, ButtonStateInfo } from '../types';
+import { failedDownloadButtonState } from '../utils/failedDownloadButton';
 
 interface UseDownloadTrackingReturn {
   bookToReleaseMap: Record<string, string[]>;
@@ -12,6 +13,12 @@ interface UseDownloadTrackingReturn {
   getUniversalButtonState: (bookId: string) => ButtonStateInfo;
 }
 
+/**
+ * Download button state for books and releases, from the queue status and this session's picks.
+ *
+ * In universal mode a book's button follows the releases downloaded for it, so the hook keeps
+ * which releases belong to which book and which books finished during this session.
+ */
 export function useDownloadTracking(currentStatus: StatusData): UseDownloadTrackingReturn {
   // Track mapping of metadata book IDs to release source IDs for universal mode
   const [bookToReleaseMap, setBookToReleaseMap] = useState<Record<string, string[]>>({});
@@ -38,9 +45,7 @@ export function useDownloadTracking(currentStatus: StatusData): UseDownloadTrack
   const getButtonState = useCallback(
     (bookId: string): ButtonStateInfo => {
       if (currentStatus.error && currentStatus.error[bookId]) {
-        return currentStatus.error[bookId].retry_available === true
-          ? { text: 'Retry', state: 'download' }
-          : { text: 'Failed', state: 'error' };
+        return failedDownloadButtonState(currentStatus.error[bookId]);
       }
       if (currentStatus.complete && currentStatus.complete[bookId]) {
         return { text: 'Downloaded', state: 'complete' };
@@ -112,10 +117,7 @@ export function useDownloadTracking(currentStatus: StatusData): UseDownloadTrack
             foundActiveState = true;
           } else if (currentStatus.error && currentStatus.error[releaseId]) {
             if (bestState.state === 'download') {
-              bestState =
-                currentStatus.error[releaseId].retry_available === true
-                  ? { text: 'Retry', state: 'download' }
-                  : { text: 'Failed', state: 'error' };
+              bestState = failedDownloadButtonState(currentStatus.error[releaseId]);
             }
           }
         }

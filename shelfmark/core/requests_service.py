@@ -18,6 +18,7 @@ from shelfmark.core.request_validation import (
     normalize_policy_mode,
     validate_request_level_payload,
 )
+from shelfmark.core.status_messages import client_problem
 
 MAX_REQUEST_NOTE_LENGTH = 1000
 MAX_REQUEST_JSON_BLOB_BYTES = 10 * 1024
@@ -197,21 +198,6 @@ _DELIVERY_PRECEDENCE: dict[str, int] = {
 }
 
 
-# A download that failed because its client could not be reached says nothing about the release:
-# the same one is fine once the client is back, and it may already be downloading there.
-_CLIENT_UNREACHABLE_MARKERS = (
-    "failed to connect",
-    "cannot connect",
-    "connection refused",
-    "connection aborted",
-)
-
-
-def _client_unreachable(message: object) -> bool:
-    text = str(message or "").lower()
-    return any(marker in text for marker in _CLIENT_UNREACHABLE_MARKERS)
-
-
 def sync_delivery_states_from_queue_status(
     user_db: UserDB,
     *,
@@ -291,7 +277,7 @@ def sync_delivery_states_from_queue_status(
             reopened = user_db.reopen_failed_request(
                 request_id,
                 failure_reason=failure_reason,
-                remember_failed_release=not _client_unreachable(failure_reason),
+                remember_failed_release=not client_problem(failure_reason),
             )
             if reopened is not None:
                 updated.append(reopened)
@@ -721,10 +707,11 @@ def reopen_failed_request(
     """Reopen a failed fulfilled request so admins can re-approve with a new release.
 
     The release that failed is noted on the request, so the next search does not pick it again,
-    unless the failure was the client being unreachable, which says nothing about the release.
+    unless the failure was the client being unreachable or refusing the login, which says nothing
+    about the release.
     """
     return user_db.reopen_failed_request(
         request_id,
         failure_reason=failure_reason,
-        remember_failed_release=not _client_unreachable(failure_reason),
+        remember_failed_release=not client_problem(failure_reason),
     )
