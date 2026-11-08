@@ -130,6 +130,21 @@ def test_a_whole_folder_of_a_request_that_already_has_its_book_is_not_imported_t
     assert _names(remove) == ["slskd_cc"]
 
 
+@pytest.mark.parametrize("sizes", [None, (5,)], ids=["whole", "partial"])
+def test_a_delivered_requests_folder_stays_when_cleanup_is_off(env, sizes):
+    request = _request(env, delivery="complete")
+    folder = (
+        _folder(env[3], "slskd:ff") if sizes is None else _folder(env[3], "slskd:ff", sizes=sizes)
+    )
+    _row(env, "slskd:ff", status="error", request_id=request["id"], age_days=30)
+
+    finish, remove, keep = _plan(env, [folder], clean_days=0)
+
+    assert not finish
+    assert not remove
+    assert _names(keep) == ["slskd_ff"]
+
+
 def test_a_whole_folder_of_a_pending_request_is_kept(env):
     request = _request(env, status="pending")
     folder = _folder(env[3], "slskd:dd")

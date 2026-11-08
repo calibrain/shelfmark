@@ -147,8 +147,10 @@ def plan(
         whole = folder_complete(folder, sizes)
         if whole and needs_it:
             to_finish.append((folder, row))
-        elif done_with and age >= DELIVERED_GRACE:
-            to_remove.append(folder)  # the book is in the library, or the request was dropped
+        elif done_with and clean_after is not None and age >= DELIVERED_GRACE:
+            # The book is in the library, or the request was dropped: no need to wait the full
+            # clean-up period, but only while clean-up is on (0 keeps every folder).
+            to_remove.append(folder)
         elif not whole and clean_after is not None and age >= clean_after:
             to_remove.append(folder)  # partial and old: nothing will resume it
         else:
