@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.settings_registry import (
     ActionButton,
@@ -15,6 +15,9 @@ from shelfmark.core.settings_registry import (
     SettingsField,
     register_settings,
 )
+
+if TYPE_CHECKING:
+    from shelfmark.core.hardcover_scheduler import SyncScope
 
 _CONTENT_TYPE_OPTIONS = [
     {"value": "audiobook", "label": "Audiobooks"},
@@ -59,18 +62,31 @@ def _ebook_source_options() -> list[dict[str, Any]]:
     return _source_options("ebook")
 
 
-def _sync_now(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Action-button callback: trigger an immediate sync + auto-download pass."""
+def _start_sync(scope: SyncScope, started_message: str) -> dict[str, Any]:
     from shelfmark.core import hardcover_scheduler
 
-    started = hardcover_scheduler.trigger_async(force=True)
+    started = hardcover_scheduler.trigger_async(force=True, scope=scope)
     if not started:
         return {"success": False, "message": "A sync is already running. Try again shortly."}
-    return {
-        "success": True,
-        "message": "Sync started. New wishlist books will appear as requests; "
-        "matching audiobooks auto-download if enabled.",
-    }
+    return {"success": True, "message": started_message}
+
+
+def _sync_now_admin(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Action-button callback: sync the admins' accounts and download their requests."""
+    return _start_sync(
+        "admin",
+        "Sync started for the admin accounts. New wishlist books will appear as requests; "
+        "matching books auto-download if enabled.",
+    )
+
+
+def _sync_now(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Action-button callback: sync every connected account and run auto-download."""
+    return _start_sync(
+        "all",
+        "Sync started for every connected account. New wishlist books will appear as "
+        "requests; matching books auto-download if enabled.",
+    )
 
 
 @register_settings("hardcover_sync", "Hardcover Sync", icon="book", order=8)
@@ -241,8 +257,8 @@ def hardcover_sync_settings() -> list[SettingsField]:
             description=(
                 "A request that no source has a match for is searched every cycle at first. "
                 "After three passes in a row with no match it is searched once a day, then "
-                "every two days, and at most this often apart. A match, or Sync now, starts it "
-                "over. 0 searches every unmatched request every cycle."
+                "every two days, and at most this often apart. A match, or either sync "
+                "button, starts it over. 0 searches every unmatched request every cycle."
             ),
             default=3,
             min_value=0,
@@ -286,10 +302,22 @@ def hardcover_sync_settings() -> list[SettingsField]:
             max_value=100,
         ),
         ActionButton(
-            key="sync_now",
-            label="Sync now",
-            description="Run a sync + auto-download pass immediately (uses saved settings).",
+            key="sync_now_admin",
+            label="Sync (admin)",
+            description=(
+                "Sync the admins' Hardcover accounts (and the token above) now, then "
+                "auto-download the requests an admin owns. Users' accounts are left alone."
+            ),
             style="primary",
+            callback=_sync_now_admin,
+        ),
+        ActionButton(
+            key="sync_now",
+            label="Sync (all)",
+            description=(
+                "Sync every connected account now, admins' and users', then run "
+                "auto-download for all pending Hardcover requests."
+            ),
             callback=_sync_now,
         ),
     ]

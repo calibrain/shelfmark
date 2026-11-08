@@ -80,11 +80,16 @@ def test_run_once_reports_busy_while_another_run_holds_the_lock():
 class _FakeUserDB:
     """Only what the sweep needs: the user list it enumerates tokens over."""
 
-    def __init__(self, users=None):
+    def __init__(self, users=None, pending=None):
         self._users = users or []
+        self._pending = pending or []
 
     def list_users(self):
         return list(self._users)
+
+    def list_requests(self, *, status):
+        assert status == "pending"
+        return list(self._pending)
 
 
 class TestRunOnce:
@@ -169,6 +174,33 @@ class TestRunOnce:
         assert result["sync"]["added"] == 3
         assert result["sync"]["accounts"] == 3
 
+    def test_admin_scope_syncs_only_admin_accounts_and_their_requests(self, monkeypatch, calls):
+        user_db = _FakeUserDB(
+            [{"id": 1, "role": "admin"}, {"id": 3, "role": "user"}, {"id": 7, "role": "user"}],
+            pending=[{"id": 10, "user_id": 1}, {"id": 11, "user_id": 3}, {"id": 12, "user_id": 7}],
+        )
+        monkeypatch.setattr("shelfmark.core.hardcover_sync._user_token", lambda _user_id: "token")
+        monkeypatch.setattr("shelfmark.core.hardcover_sync.has_app_level_token", lambda: True)
+        scheduler.configure(user_db, object(), "/data/users.db")
+
+        result = scheduler.run_once(force=True, scope="admin")
+
+        # The admin's own account, then the app-level pass; users 3 and 7 are not synced.
+        assert [kwargs.get("user_id") for _db, kwargs in calls["sync"]] == [1, None]
+        assert result["sync"]["accounts"] == 2
+        assert calls["auto"][0][1]["only_request_ids"] == frozenset({10})
+
+    def test_all_scope_does_not_limit_auto_download(self, monkeypatch, calls):
+        user_db = _FakeUserDB([{"id": 1, "role": "admin"}, {"id": 3, "role": "user"}])
+        monkeypatch.setattr("shelfmark.core.hardcover_sync._user_token", lambda _user_id: "token")
+        monkeypatch.setattr("shelfmark.core.hardcover_sync.has_app_level_token", lambda: True)
+        scheduler.configure(user_db, object(), "/data/users.db")
+
+        scheduler.run_once(force=True, scope="all")
+
+        assert [kwargs.get("user_id") for _db, kwargs in calls["sync"]] == [1, 3, None]
+        assert "only_request_ids" not in calls["auto"][0][1]
+
     def test_app_level_pass_is_skipped_when_only_accounts_are_connected(self, monkeypatch, calls):
         _configure(monkeypatch, HARDCOVER_SYNC_ENABLED=True)
         user_db = _FakeUserDB([{"id": 7}, {"id": 3}])
@@ -247,7 +279,7 @@ class TestTriggerAsync:
 
         assert scheduler.trigger_async(force=force) is True
         assert finished.wait(timeout=5)
-        assert seen == [{"force": force}]
+        assert seen == [{"force": force, "scope": "all"}]
 
 
 class _Clock:
