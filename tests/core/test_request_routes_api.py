@@ -51,6 +51,7 @@ def _policy(
     allow_book_request_with_download: bool = False,
     rules: list[dict] | None = None,
 ) -> dict:
+    """A request-policy settings dict with the given values, for patching the policy loader."""
     return {
         "REQUESTS_ALLOW_BOOK_REQUEST_WITH_DOWNLOAD": allow_book_request_with_download,
         "REQUESTS_ENABLED": requests_enabled,

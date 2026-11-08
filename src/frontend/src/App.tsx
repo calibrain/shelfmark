@@ -265,6 +265,7 @@ const AdminSettingsWarmupMount = () => {
   return null;
 };
 
+/** The application shell: search, results, the release modal, activity and settings. */
 function App() {
   const location = useLocation();
   const { toasts, showToast, removeToast } = useToast();

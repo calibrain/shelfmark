@@ -304,6 +304,10 @@ def _prepare_request_create_arguments(
     user_db: UserDB,
     data: dict[str, Any],
 ) -> dict[str, Any]:
+    """Check a request payload against the policy and build create_request's arguments.
+
+    A book-level request in Download mode becomes a pending one when the actor may ask for it.
+    """
     db_user_id, db_gate = _require_db_user_id()
     if db_gate is not None or db_user_id is None:
         msg = "User identity is unavailable for request workflow"
@@ -586,6 +590,7 @@ def register_request_routes(
 
     @app.route("/api/request-policy", methods=["GET"])
     def api_request_policy() -> ResponseReturnValue:
+        """The signed-in user's request policy, as the frontend needs it to label actions."""
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate

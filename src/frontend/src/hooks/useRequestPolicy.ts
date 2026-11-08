@@ -28,6 +28,9 @@ interface UseRequestPolicyReturn {
   refresh: (options?: { force?: boolean }) => Promise<RequestPolicyResponse | null>;
 }
 
+/**
+ * Fetch and cache the user's request policy, and resolve the mode for a source and content type.
+ */
 export function useRequestPolicy({
   enabled,
   isAdmin,
