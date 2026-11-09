@@ -187,6 +187,9 @@ class ChatAutoProver:
         except _ERRORS as e:
             logger.debug("slskd chat challenge: scan skipped: %s", e)
             return []
+        except Exception:  # a side feature must never stop the download polling it
+            logger.exception("slskd chat challenge: unexpected scan error")
+            return []
         finally:
             with self._lock:
                 self._scanning = False

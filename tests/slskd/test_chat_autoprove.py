@@ -239,6 +239,19 @@ def test_prover_gives_each_scan_a_budget():
     assert scan.call_args.kwargs["budget"] == SCAN_BUDGET_SECONDS
 
 
+def test_prover_survives_a_malformed_reply_from_slskd():
+    """A reply the scan cannot read is logged, never raised into the download polling it."""
+    client = _client([_convo()], {})
+    client.get_conversation.side_effect = lambda _u: {"messages": 5}
+    prover = ChatAutoProver()
+
+    with patch("shelfmark.release_sources.slskd.chat_autoprove.logger") as log:
+        assert prover.maybe_scan(lambda: client, lambda: 0.0) == []
+    log.exception.assert_called_once()
+    assert prover.maybe_scan(lambda: client, lambda: 120.0) == []  # and the next scan still runs
+    assert client.list_conversations.call_count == 2
+
+
 def test_prover_is_quiet_when_slskd_is_unreachable():
     client = MagicMock(spec=SlskdClient)
     client.list_conversations.side_effect = requests.exceptions.ConnectionError()
