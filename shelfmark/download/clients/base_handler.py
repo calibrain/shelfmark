@@ -1149,6 +1149,9 @@ class ExternalClientHandler(DownloadHandler, ABC):
             status_callback("resolving", f"Checking {client.name}")
             category = self._get_category_for_task(client, task)
             existing = client.find_existing(request.url, category=category)
+            # A torrent the client already had is joined, not added again; the card says so.
+            # Set here so every path below, including a copy of a finished download, carries it.
+            task.reattached = existing is not None
 
             if existing:
                 download_id, existing_status = existing
@@ -1264,9 +1267,6 @@ class ExternalClientHandler(DownloadHandler, ABC):
                         path=download_id,
                         message=f"Torrent file saved to {download_id}",
                     )
-
-            # A torrent the client already had is joined, not added again; the card says so.
-            task.reattached = existing is not None
 
             # Poll for progress
             return self._poll_and_complete(
