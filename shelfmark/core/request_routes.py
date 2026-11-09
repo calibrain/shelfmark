@@ -939,6 +939,7 @@ def register_request_routes(
 
     @app.route("/api/admin/requests", methods=["GET"])
     def api_admin_list_requests() -> ResponseReturnValue:
+        """List requests for an admin, filtered by ?status and paged by ?limit and ?offset."""
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -1107,6 +1108,7 @@ def register_request_routes(
 
     @app.route("/api/admin/requests/rejected-hidden", methods=["GET"])
     def api_admin_list_hidden_rejected() -> ResponseReturnValue:
+        """Ids of the rejected requests an admin hid from the Rejected view."""
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -1116,6 +1118,7 @@ def register_request_routes(
 
     @app.route("/api/admin/requests/<int:request_id>/rejected-hidden", methods=["POST"])
     def api_admin_set_rejected_hidden(request_id: int) -> ResponseReturnValue:
+        """Hide or show a rejected request in the Rejected view; 409 if it is not rejected."""
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate

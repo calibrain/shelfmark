@@ -15,15 +15,18 @@ interface UseRejectedRequestsResult {
   setRejectedHidden: (requestId: number, hidden: boolean) => Promise<void>;
 }
 
-// Rejected requests for the admin Rejected view. Unlike the activity snapshot this
-// includes requests that were cleared from the list, which is where most of them are.
-// Each item says whether the admin hid it from this view (its own state, not the
-// activity list's clear). Loaded from the events that change it, like History.
+/**
+ * Rejected requests for the admin Rejected view. Unlike the activity snapshot this includes
+ * requests that were cleared from the list, which is where most of them are. Each item says
+ * whether the admin hid it from this view (its own state, not the activity list's clear).
+ * Loaded from the events that change it, like History.
+ */
 export const useRejectedRequests = (): UseRejectedRequestsResult => {
   const [rejectedItems, setRejectedItems] = useState<ActivityItem[]>([]);
   const [rejectedLoading, setRejectedLoading] = useState(false);
   const latestLoad = useRef(0);
 
+  /** Fetch the rejected requests and hidden ids; a stale load is dropped and an error empties the list. */
   const loadRejected = useCallback(async () => {
     latestLoad.current += 1;
     const loadId = latestLoad.current;
@@ -56,6 +59,7 @@ export const useRejectedRequests = (): UseRejectedRequestsResult => {
     }
   }, []);
 
+  /** Hide or show one request in the view; the item is left as it was when the call fails. */
   const setRejectedHidden = useCallback(async (requestId: number, hidden: boolean) => {
     try {
       await setRejectedRequestHidden(requestId, hidden);

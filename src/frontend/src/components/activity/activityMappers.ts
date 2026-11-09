@@ -118,6 +118,7 @@ const buildFormatPill = (
   return { label, kind };
 };
 
+/** A download from the status payload as a card item, with its format pill and timing text. */
 export const downloadToActivityItem = (book: Book, statusKey: DownloadStatusKey): ActivityItem => {
   const visualStatus = statusKeyToVisualStatus(statusKey);
   const requestId =

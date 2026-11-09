@@ -10,6 +10,7 @@ export type ActivityCategoryKey =
 
 export type ActivityTabKey = 'all' | 'downloads' | 'requests' | 'history' | 'rejected';
 
+/** The section header for a category; the no-match one reads differently for admins. */
 export const getCategoryLabel = (key: ActivityCategoryKey, isAdmin: boolean): string => {
   if (key === 'needs_review') {
     // Fork: nothing here is waiting for a person; the automatic search found no match it trusts.
@@ -41,6 +42,7 @@ export const getCategoryHint = (key: ActivityCategoryKey, isAdmin: boolean): str
   return undefined;
 };
 
+/** The categories a tab shows, in order. History and Rejected are flat lists. */
 export const getVisibleCategoryOrder = (tab: ActivityTabKey): ActivityCategoryKey[] => {
   if (tab === 'downloads') {
     return ['in_progress', 'complete', 'failed'];
@@ -51,6 +53,7 @@ export const getVisibleCategoryOrder = (tab: ActivityTabKey): ActivityCategoryKe
   return ['needs_review', 'auto_retry', 'in_progress', 'complete', 'failed'];
 };
 
+/** Which section an item belongs under, by whether it is a download or a request and its state. */
 export const getActivityCategory = (item: ActivityItem): ActivityCategoryKey => {
   if (item.kind === 'download') {
     if (

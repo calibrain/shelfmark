@@ -4,6 +4,7 @@
 
 const AUTO_PREFIX = /^\s*\[auto\]\s*/i;
 
+/** Whether an admin note starts with the "[auto] " marker that scripts and passes write. */
 export const isAutomaticNote = (note: string | null | undefined): boolean =>
   typeof note === 'string' && AUTO_PREFIX.test(note);
 

@@ -337,6 +337,7 @@ def _request_row_log_context(row: dict[str, Any]) -> dict[str, Any]:
 def _list_visible_requests(
     user_db: UserDB, *, is_admin: bool, db_user_id: int | None
 ) -> list[dict[str, Any]]:
+    """Every request with requester and reviewer names for an admin; a user's own, or none."""
     if is_admin:
         request_rows = user_db.list_requests()
         populate_request_usernames(request_rows, user_db)

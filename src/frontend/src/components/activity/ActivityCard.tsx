@@ -82,6 +82,7 @@ const REATTACHED_PILL_CLASSES = 'bg-sky-100 text-sky-800 dark:bg-sky-900/50 dark
 
 type ActionIconName = 'cross' | 'check' | 'stop' | 'retry' | 'eye' | 'eye-off';
 
+/** A React key for an action button: its kind plus the download or request it acts on. */
 const actionKey = (action: ActivityCardAction): string => {
   switch (action.kind) {
     case 'download-remove':
@@ -183,6 +184,7 @@ const actionUiConfig = (
   }
 };
 
+/** The small inline SVG for an action button. */
 const ActionIcon = ({ icon }: { icon: ActionIconName }) => {
   if (icon === 'eye' || icon === 'eye-off') {
     return (
@@ -630,6 +632,7 @@ export const ActivityCard = ({
   const reviewApproveHandler = onRequestReviewApprove || onRequestApprove;
   const isDetailsExpanded = isRequestDetailsOpen || isRequestRejectOpen;
 
+  /** Call the handler the parent passed for this action; approve may open the details instead. */
   const runAction = (action: ActivityCardAction) => {
     switch (action.kind) {
       case 'download-remove':
@@ -678,6 +681,7 @@ export const ActivityCard = ({
     }
   };
 
+  /** Whether the parent passed a handler for this action, so the button is worth showing. */
   const hasActionHandler = (action: ActivityCardAction): boolean => {
     switch (action.kind) {
       case 'download-remove':

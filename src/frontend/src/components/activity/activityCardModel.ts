@@ -62,11 +62,15 @@ const toRequestVisualStatus = (status: RequestRecord['status']): ActivityVisualS
   return 'cancelled';
 };
 
+/** The badge text for a pending request. The requester is named on the meta line, not here. */
 const getPendingRequestText = (_item: ActivityItem, isAdmin: boolean): string => {
-  // Fork: the requester is named once, on the card's meta line, not again in the badge.
   return isAdmin ? 'No match yet' : 'Awaiting review';
 };
 
+/**
+ * The status badge for a request card. A failure reason on a pending request shows as an error,
+ * an automatic retry says so, and a linked download in flight shows as approved.
+ */
 const getRequestBadge = (item: ActivityItem, isAdmin: boolean): ActivityCardBadge => {
   const requestVisualStatus = item.requestRecord
     ? toRequestVisualStatus(item.requestRecord.status)
@@ -128,6 +132,7 @@ const getDownloadBadge = (item: ActivityItem): ActivityCardBadge => {
   };
 };
 
+/** The badges on a card: a download linked to a request shows both, once it is complete only its own. */
 const buildBadges = (item: ActivityItem, isAdmin: boolean): ActivityCardBadge[] => {
   if (item.kind === 'download' && item.visualStatus === 'complete') {
     return [getDownloadBadge(item)];
@@ -144,6 +149,7 @@ const buildBadges = (item: ActivityItem, isAdmin: boolean): ActivityCardBadge[] 
   return [getDownloadBadge(item)];
 };
 
+/** A review stamp as "Mar 1", or undefined when it is missing or unreadable. */
 const formatReviewDate = (value: string | null | undefined): string | undefined => {
   if (!value) {
     return undefined;
@@ -159,7 +165,10 @@ const formatReviewDate = (value: string | null | undefined): string | undefined 
 const formatAdminNote = (note: string): string =>
   isAutomaticNote(note) ? stripAutomaticMarker(note) : note;
 
-// Who declined it and when, for admins. The reviewer is only sent to admin views.
+/**
+ * Who declined a rejected request and when, with the note, for admins. The reviewer is only sent
+ * to admin views; a decline the automation made says so instead of naming the account.
+ */
 const buildDeclinedLine = (item: ActivityItem): string | undefined => {
   const record = item.requestRecord;
   if (!record || record.status !== 'rejected') {
@@ -182,6 +191,10 @@ const buildDeclinedLine = (item: ActivityItem): string | undefined => {
   return item.adminNote ? `${line}: "${formatAdminNote(item.adminNote)}"` : line;
 };
 
+/**
+ * The quoted note under a request card: the declined line for admins, the user's note while it is
+ * pending, or the admin note once it is decided. Undefined when there is nothing to say.
+ */
 const buildRequestNoteLine = (item: ActivityItem, isAdmin: boolean): string | undefined => {
   const requestStatus = item.requestRecord?.status;
   if (isAdmin && requestStatus === 'rejected') {
@@ -204,6 +217,7 @@ const buildRequestNoteLine = (item: ActivityItem, isAdmin: boolean): string | un
   return undefined;
 };
 
+/** The action buttons a card offers, by what the item is, its status and who is looking. */
 const buildActions = (item: ActivityItem, isAdmin: boolean): ActivityCardAction[] => {
   if (item.kind === 'download' && item.downloadBookId) {
     const canRetry = item.downloadRetryAvailable === true;

@@ -713,6 +713,7 @@ export const listRejectedAdminRequests = async (): Promise<RequestRecord[]> => {
   return fetchJSON<RequestRecord[]>(`${API.adminRequests}?status=rejected`);
 };
 
+/** Ids of the rejected requests hidden from the admin Rejected view; empty when the field is missing. */
 export const listHiddenRejectedRequestIds = async (): Promise<number[]> => {
   const response = await fetchJSON<{ request_ids: number[] }>(
     `${API.adminRequests}/rejected-hidden`,
