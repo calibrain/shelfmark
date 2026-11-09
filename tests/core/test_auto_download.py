@@ -2544,6 +2544,13 @@ class TestRetryAfterCooldown:
                 )
         return row
 
+    @pytest.fixture(autouse=True)
+    def _a_source_is_configured(self, monkeypatch):
+        """A reopen needs a source to search, so every case here has one unless it removes it."""
+        monkeypatch.setattr(
+            auto_download, "_configured_source_priority", lambda _ct: ["audiobookbay"]
+        )
+
     def _reopen(self, user_db, **kwargs):
         kwargs.setdefault("cooldown_days", 7)
         kwargs.setdefault("db_path", user_db._db_path)
@@ -2552,6 +2559,32 @@ class TestRetryAfterCooldown:
     @staticmethod
     def _user(user_db):
         return user_db.create_user(username="reader", role="user")
+
+    @pytest.mark.parametrize(
+        ("role", "auth_mode"),
+        [("admin", "builtin"), ("user", "none")],
+        ids=["admin-owned", "no-login"],
+    )
+    def test_a_request_with_no_usable_source_is_left_as_it_is(
+        self, user_db, monkeypatch, role, auth_mode
+    ):
+        """An exempt owner still needs a source, or the reopened request would sit unsearched."""
+        monkeypatch.setattr(auto_download, "_configured_source_priority", lambda _ct: [])
+        owner = user_db.create_user(username="owner", role=role)
+        row = self._request(user_db, owner["id"], provider_id="1", history="error")
+        policy = auto_download.OwnerPolicy(user_db, auth_mode=auth_mode)
+
+        assert self._reopen(user_db, owner_policy=policy) == 0
+
+        stored = user_db.get_request(row["id"])
+        assert stored["status"] == "fulfilled"
+        assert stored["delivery_state"] == "error"
+
+    def test_an_admin_owned_request_with_a_source_is_still_reopened(self, user_db):
+        admin = user_db.create_user(username="ops", role="admin")
+        self._request(user_db, admin["id"], provider_id="1", history="active")
+
+        assert self._reopen(user_db) == 1
 
     def test_an_interrupted_download_is_reopened_and_may_use_the_same_release(self, user_db):
         row = self._request(user_db, self._user(user_db)["id"], provider_id="1", history="active")
@@ -3565,7 +3598,11 @@ class TestSettleDeliveryStatesFromHistory:
         )
         assert self._state(user_db, rid) == "queued"
 
-    def test_the_stale_sweep_then_reopens_a_stalled_download(self, user_db):
+    def test_the_stale_sweep_then_reopens_a_stalled_download(self, user_db, monkeypatch):
+        """Once settled, a stalled download is reopened when a source can search it again."""
+        monkeypatch.setattr(
+            auto_download, "_configured_source_priority", lambda _ct: ["audiobookbay"]
+        )
         rid = self._fulfilled(
             user_db, state="downloading", delivery_updated_at="2026-10-16T20:56:38+00:00"
         )
