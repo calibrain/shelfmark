@@ -2230,6 +2230,10 @@ def test_reopen_request_reopens_a_fulfilled_request_whose_download_failed(user_d
     assert reopened["release_data"] is None
     assert reopened["admin_note"] == "[auto] retry"
     assert reopened["last_failure_reason"] == "[auto] retry"
+    # The next automatic search skips the release that failed, as when the queue reopens it.
+    assert reopened["book_data"]["failed_releases"] == [
+        {"source": "prowlarr", "source_id": "release-123"}
+    ]
 
 
 @pytest.mark.parametrize("delivery_state", ["complete", "queued"])
