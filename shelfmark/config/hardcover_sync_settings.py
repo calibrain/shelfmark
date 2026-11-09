@@ -141,7 +141,8 @@ def hardcover_sync_settings() -> list[SettingsField]:
             title="Automatic Downloads",
             description=(
                 "When enabled, pending Hardcover requests (synced from a shelf, or made by a "
-                "user with Request Book) are auto-approved and downloaded from the "
+                "user whose request policy lets them download directly) are auto-approved and "
+                "downloaded from the "
                 "first source in the matching list below that yields a strict title/author/"
                 "format match for the request's content type (ebook formats for ebook "
                 "requests, audiobook formats for audiobook requests). If no confident match "
