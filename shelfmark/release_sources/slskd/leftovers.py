@@ -22,6 +22,7 @@ from typing import TYPE_CHECKING, Any
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import coerce_int
+from shelfmark.download.fs import run_blocking_io
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -101,7 +102,7 @@ def _folder_age(folder: Path, row: dict[str, Any] | None, now: datetime) -> time
     )
     if stamp is None:
         try:
-            stamp = datetime.fromtimestamp(folder.stat().st_mtime, tz=UTC)
+            stamp = datetime.fromtimestamp(run_blocking_io(folder.stat).st_mtime, tz=UTC)
         except OSError:
             return timedelta(0)
     return now - stamp
@@ -168,7 +169,7 @@ def plan(
         needs_it, done_with = _request_state(user_db, row)
         sizes = [int(f.get("size") or 0) for f in _expected_files(row)]
         whole = folder_complete(folder, sizes)
-        if whole and needs_it and (folder / ADOPTED_MARKER).exists():
+        if whole and needs_it and run_blocking_io((folder / ADOPTED_MARKER).exists):
             to_keep.append(folder)  # queued once already; its import did not finish
         elif whole and needs_it:
             to_finish.append((folder, row))
@@ -268,16 +269,21 @@ def plan_transfers(
     return list(reattach.values()), cancel
 
 
+def _subfolders(base: Path) -> list[Path]:
+    """The folders directly inside base, sorted; run off the event loop by the caller."""
+    return sorted(p for p in base.iterdir() if p.is_dir())
+
+
 def _is_inside(folder: Path, root: Path) -> bool:
     """Whether folder is strictly inside root.
 
     Both are resolved first, so a link cannot lead the sweep elsewhere.
     """
     try:
-        folder.resolve().relative_to(root.resolve())
+        run_blocking_io(folder.resolve).relative_to(run_blocking_io(root.resolve))
     except OSError, ValueError:
         return False
-    return folder.resolve() != root.resolve()
+    return run_blocking_io(folder.resolve) != run_blocking_io(root.resolve)
 
 
 def run(
@@ -302,7 +308,7 @@ def run(
     prefix = slskd_handler.destination_prefix()
     base = root.joinpath(*prefix.split("/"))
     try:
-        folders = sorted(p for p in base.iterdir() if p.is_dir())
+        folders = run_blocking_io(_subfolders, base)
     except OSError:
         return report
 
@@ -329,7 +335,7 @@ def run(
                 report.adopted.append(folder.name)
                 logger.info("slskd leftovers: importing the finished folder %s", folder.name)
                 try:
-                    (folder / ADOPTED_MARKER).touch()
+                    run_blocking_io((folder / ADOPTED_MARKER).touch)
                 except OSError as exc:
                     logger.warning("slskd leftovers: could not mark %s: %s", folder.name, exc)
             else:
@@ -361,7 +367,7 @@ def run(
             report.kept.append(folder.name)
             continue
         try:
-            shutil.rmtree(folder)
+            run_blocking_io(shutil.rmtree, folder)
         except OSError as exc:
             logger.warning("slskd leftovers: could not remove %s: %s", folder, exc)
             report.kept.append(folder.name)
