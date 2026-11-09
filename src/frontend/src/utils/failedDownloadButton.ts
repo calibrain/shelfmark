@@ -1,5 +1,8 @@
 import type { Book, ButtonStateInfo } from '../types';
 
+const RETRY: ButtonStateInfo = { text: 'Retry', state: 'download' };
+const FAILED: ButtonStateInfo = { text: 'Failed', state: 'error' };
+
 /**
  * The button for a release whose last download failed.
  *
@@ -10,6 +13,20 @@ import type { Book, ButtonStateInfo } from '../types';
  */
 export function failedDownloadButtonState(entry: Book): ButtonStateInfo {
   return entry.retry_available === true || (entry.request_id ?? 0) > 0
-    ? { text: 'Retry', state: 'download' }
-    : { text: 'Failed', state: 'error' };
+    ? { ...RETRY }
+    : { ...FAILED };
+}
+
+/**
+ * The button for a book with several tracked releases once another of them is found failed.
+ *
+ * A failure that can be retried wins over one that can't, in whichever order they are found, so
+ * the book keeps Retry while any of its failed releases can be tried again.
+ */
+export function addFailedRelease(best: ButtonStateInfo, entry: Book): ButtonStateInfo {
+  if (best.state === RETRY.state && best.text === RETRY.text) {
+    return best;
+  }
+  const failed = failedDownloadButtonState(entry);
+  return failed.text === RETRY.text || best.state === 'download' ? failed : best;
 }
