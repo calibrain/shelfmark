@@ -304,6 +304,10 @@ def _prepare_request_create_arguments(
     user_db: UserDB,
     data: dict[str, Any],
 ) -> dict[str, Any]:
+    """Check a request payload against the policy and build create_request's arguments.
+
+    A book-level request in Download mode becomes a pending one when the actor may ask for it.
+    """
     db_user_id, db_gate = _require_db_user_id()
     if db_gate is not None or db_user_id is None:
         msg = "User identity is unavailable for request workflow"
@@ -404,6 +408,21 @@ def _prepare_request_create_arguments(
         )
 
     requested_level = str(request_level).strip().lower() if isinstance(request_level, str) else ""
+    if (
+        resolved_mode == PolicyMode.DOWNLOAD
+        and requested_level == "book"
+        and release_data is None
+        and (
+            bool(session.get("is_admin", False))
+            or coerce_bool(
+                effective.get("REQUESTS_ALLOW_BOOK_REQUEST_WITH_DOWNLOAD"), default=False
+            )
+        )
+    ):
+        # Everything can be downloaded here, but the user asked for the book itself (nothing to
+        # download yet, or no source has it): leave it for an admin instead of refusing it.
+        resolved_mode = PolicyMode.REQUEST_BOOK
+
     if resolved_mode == PolicyMode.REQUEST_BOOK and requested_level != "book":
         msg = "Policy requires book-level requests"
         raise RequestServiceError(
@@ -571,6 +590,7 @@ def register_request_routes(
 
     @app.route("/api/request-policy", methods=["GET"])
     def api_request_policy() -> ResponseReturnValue:
+        """The signed-in user's request policy, as the frontend needs it to label actions."""
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -624,6 +644,9 @@ def register_request_routes(
                 "requests_enabled": requests_enabled,
                 "is_admin": is_admin,
                 "allow_notes": coerce_bool(effective.get("REQUESTS_ALLOW_NOTES"), default=True),
+                "allow_book_request_with_download": coerce_bool(
+                    effective.get("REQUESTS_ALLOW_BOOK_REQUEST_WITH_DOWNLOAD"), default=False
+                ),
                 "defaults": {
                     "ebook": (
                         default_ebook_mode.value

@@ -109,6 +109,8 @@ import {
 import {
   applyDirectPolicyModeToButtonState,
   applyUniversalPolicyModeToButtonState,
+  canRequestBookFromReleaseModal,
+  shouldShowRequestsTab,
 } from './utils/requestPolicyUi';
 import { getSearchByPreference, setSearchByPreference } from './utils/searchByPreference';
 import { buildUrlSearchHash } from './utils/urlSearchHash';
@@ -264,6 +266,7 @@ const AdminSettingsWarmupMount = () => {
   return null;
 };
 
+/** The application shell: search, results, the release modal, activity and settings. */
 function App() {
   const location = useLocation();
   const { toasts, showToast, removeToast } = useToast();
@@ -322,6 +325,7 @@ function App() {
     getSourceMode,
     requestsEnabled: requestsPolicyEnabled,
     allowNotes: allowRequestNotes,
+    allowBookRequestWithDownload,
     refresh: refreshRequestPolicy,
   } = useRequestPolicy({
     enabled: isAuthenticated,
@@ -455,20 +459,23 @@ function App() {
     };
   }, [activityStatus, currentStatus, dismissedDownloadTaskIds]);
 
-  const showRequestsTab = useMemo(() => {
-    if (requestRoleIsAdmin) {
-      return true;
-    }
-    if (!isAuthenticated || !requestsPolicyEnabled) {
-      return false;
-    }
-    if (!requestPolicy) {
-      return false;
-    }
-    return !(
-      requestPolicy.defaults.ebook === 'download' && requestPolicy.defaults.audiobook === 'download'
-    );
-  }, [requestRoleIsAdmin, isAuthenticated, requestsPolicyEnabled, requestPolicy]);
+  const showRequestsTab = useMemo(
+    () =>
+      shouldShowRequestsTab({
+        isAdmin: requestRoleIsAdmin,
+        isAuthenticated,
+        requestsEnabled: requestsPolicyEnabled,
+        defaults: requestPolicy?.defaults ?? null,
+        allowBookRequestWithDownload,
+      }),
+    [
+      requestRoleIsAdmin,
+      isAuthenticated,
+      requestsPolicyEnabled,
+      requestPolicy,
+      allowBookRequestWithDownload,
+    ],
+  );
 
   // Search state and handlers
   const {
@@ -2671,7 +2678,15 @@ function App() {
               onDownload={isBrowseFulfilMode ? handleBrowseFulfilDownload : handleReleaseDownload}
               onRequestRelease={isBrowseFulfilMode ? undefined : handleReleaseRequest}
               onRequestBook={
-                isBrowseFulfilMode || !requestRoleIsAdmin ? undefined : handleReleaseBookRequest
+                canRequestBookFromReleaseModal({
+                  isBrowseFulfilMode,
+                  isAdmin: requestRoleIsAdmin,
+                  requestsEnabled: requestsPolicyEnabled,
+                  allowBookRequestWithDownload,
+                  bookRequestMode: getSourceMode('*', activeReleaseContentType),
+                })
+                  ? handleReleaseBookRequest
+                  : undefined
               }
               getPolicyModeForSource={
                 isBrowseFulfilMode ? () => 'download' : (source, ct) => getSourceMode(source, ct)
@@ -2776,7 +2791,7 @@ function App() {
         pendingRequestCount={pendingRequestCount}
         showRequestsTab={showRequestsTab}
         isRequestsLoading={isActivitySnapshotLoading}
-        onRequestCancel={showRequestsTab ? handleRequestCancel : undefined}
+        onRequestCancel={handleRequestCancel}
         onRequestApprove={requestRoleIsAdmin ? handleRequestApprove : undefined}
         onRequestReject={requestRoleIsAdmin ? handleRequestReject : undefined}
         onRequestReopen={requestRoleIsAdmin ? handleRequestReopen : undefined}

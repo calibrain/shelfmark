@@ -22,11 +22,15 @@ interface UseRequestPolicyReturn {
   isAdmin: boolean;
   requestsEnabled: boolean;
   allowNotes: boolean;
+  allowBookRequestWithDownload: boolean;
   getDefaultMode: (contentType: string) => RequestPolicyMode;
   getSourceMode: (source: string, contentType: string) => RequestPolicyMode;
   refresh: (options?: { force?: boolean }) => Promise<RequestPolicyResponse | null>;
 }
 
+/**
+ * Fetch and cache the user's request policy, and resolve the mode for a source and content type.
+ */
 export function useRequestPolicy({
   enabled,
   isAdmin,
@@ -102,6 +106,9 @@ export function useRequestPolicy({
     isAdmin: enabled && policy ? policy.is_admin : isAdmin,
     requestsEnabled: enabled ? (policy?.requests_enabled ?? false) : false,
     allowNotes: enabled ? (policy?.allow_notes ?? true) : true,
+    allowBookRequestWithDownload: enabled
+      ? (policy?.allow_book_request_with_download ?? false)
+      : false,
     getDefaultMode,
     getSourceMode,
     refresh,
