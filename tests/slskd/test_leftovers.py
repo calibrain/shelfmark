@@ -373,7 +373,7 @@ def test_an_interrupted_manual_download_is_picked_up_again(env):
 
     reattach, cancel = _plan_transfers(env, [_transfer()])
 
-    assert [r["task_id"] for r in reattach] == ["slskd:aa"]
+    assert [row["task_id"] for row, _owned in reattach] == ["slskd:aa"]
     assert cancel == []
 
 
@@ -392,7 +392,7 @@ def test_a_transfer_of_a_request_still_waiting_for_it_is_picked_up_again(env):
 
     reattach, cancel = _plan_transfers(env, [_transfer()])
 
-    assert [r["task_id"] for r in reattach] == ["slskd:aa"]
+    assert [row["task_id"] for row, _owned in reattach] == ["slskd:aa"]
     assert cancel == []
 
 
@@ -741,3 +741,113 @@ def test_a_folder_of_an_older_attempt_is_kept_while_a_newer_one_runs(env):
     assert not finish
     assert not remove
     assert _names(keep) == ["slskd_aa"]
+
+
+def test_a_download_with_several_transfers_is_picked_up_once_with_all_of_them(env):
+    """One requeue per download, and every one of its transfers is listed under it."""
+    _row(env, "slskd:aa", status="active")
+
+    reattach, cancel = _plan_transfers(
+        env, [_transfer(tid="t1"), _transfer(name="@@s\\Book\\b.mp3", tid="t2")]
+    )
+
+    assert [(row["task_id"], sorted(t["id"] for t in owned)) for row, owned in reattach] == [
+        ("slskd:aa", ["t1", "t2"])
+    ]
+    assert cancel == []
+
+
+def _settle(env, fake, requeue, monkeypatch):
+    """Run the sweep against a fake slskd with no running tasks, and no waits between cancels."""
+    monkeypatch.setattr(leftovers.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(handler_mod, "build_client_from_config", lambda: fake)
+    return leftovers.run(
+        history_service=env[1],
+        user_db=env[0],
+        requeue=requeue,
+        live_tasks=lambda: {},
+        now=NOW,
+    )
+
+
+def test_a_download_that_cannot_be_picked_up_has_its_transfers_dropped(env, wired, monkeypatch):
+    """Nothing will ever watch a transfer whose download was refused, so it goes; the refusal
+    does not use up the run's pick-ups, and a second run has nothing left to retry."""
+    waiting = _request(env, delivery="queued")
+    _row(env, "slskd:bad", status="error", request_id=waiting["id"])
+    _row(
+        env,
+        "slskd:good",
+        status="error",
+        request_id=waiting["id"],
+        files=[{"filename": "@@s\\Other\\z.mp3", "size": 5}],
+    )
+    fake = _FakeSlskd(
+        [
+            _transfer(tid="bad1"),
+            _transfer(name="@@s\\Book\\b.mp3", tid="bad2"),
+            _transfer(name="@@s\\Other\\z.mp3", tid="good1"),
+        ]
+    )
+
+    def requeue(payload, final_status):
+        """Refuse the download whose files are the Book ones; accept the other."""
+        files = payload["retry_source_context"]["files"]
+        return (False, "refused") if files == FILES else (True, None)
+
+    report = _settle(env, fake, requeue, monkeypatch)
+
+    assert report.reattached == ["slskd:good"]
+    assert sorted({c[1] for c in fake.cancelled}) == ["bad1", "bad2"]
+    assert len(report.cancelled) == 2
+
+
+def test_refused_pick_ups_do_not_use_up_the_runs_cap(env, wired, monkeypatch):
+    """Only downloads that were queued count towards the cap, as with finished folders."""
+    cap = leftovers.MAX_ADOPTIONS_PER_RUN
+    waiting = _request(env, delivery="queued")
+    transfers = []
+    for n in range(cap + 1):
+        name = f"@@s\\Book{n}\\a.mp3"
+        _row(
+            env,
+            f"slskd:t{n}",
+            status="error",
+            request_id=waiting["id"],
+            files=[{"filename": name, "size": 5}],
+        )
+        transfers.append(_transfer(name=name, tid=f"t{n}"))
+    calls = []
+
+    def requeue(payload, final_status):
+        """Refuse the first `cap` downloads and accept the rest."""
+        calls.append(payload["retry_source_context"]["files"][0]["filename"])
+        return (False, "refused") if len(calls) <= cap else (True, None)
+
+    report = _settle(env, _FakeSlskd(transfers), requeue, monkeypatch)
+
+    assert len(report.reattached) == 1
+    assert len(report.cancelled) == cap
+
+
+def test_downloads_past_the_cap_keep_their_transfers_for_the_next_run(env, wired, monkeypatch):
+    """A backlog is picked up a few per run; the rest are neither queued nor dropped."""
+    cap = leftovers.MAX_ADOPTIONS_PER_RUN
+    waiting = _request(env, delivery="queued")
+    transfers = []
+    for n in range(cap + 2):
+        name = f"@@s\\Book{n}\\a.mp3"
+        _row(
+            env,
+            f"slskd:t{n}",
+            status="error",
+            request_id=waiting["id"],
+            files=[{"filename": name, "size": 5}],
+        )
+        transfers.append(_transfer(name=name, tid=f"t{n}"))
+    fake = _FakeSlskd(transfers)
+
+    report = _settle(env, fake, lambda payload, final_status: (True, None), monkeypatch)
+
+    assert len(report.reattached) == cap
+    assert fake.cancelled == []

@@ -41,7 +41,8 @@ CLEAN_DAYS_SETTING = "SLSKD_CLEAN_LEFTOVERS_DAYS"
 
 # Folders of a request that already has its book, or that was given up on, go after this long.
 DELIVERED_GRACE = timedelta(days=1)
-# At most this many finished folders are queued per run, so a backlog does not flood the queue.
+# At most this many downloads are queued per run by each loop (finished folders, transfers picked
+# up again), counting only the ones that were queued, so a backlog does not flood the queue.
 MAX_ADOPTIONS_PER_RUN = 3
 # Left in a folder once it has been tried for import, queued or not. Hidden, so it never counts as
 # a file of the download. A folder is not tried again every run: it waits for a person to retry
@@ -250,8 +251,11 @@ def plan_transfers(
     live_task_ids: set[str],
     live_request_ids: set[int],
     user_db: UserDB,
-) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[list[tuple[dict[str, Any], list[dict[str, Any]]]], list[dict[str, Any]]]:
     """Split the unfinished transfers nothing is watching into (reattach, cancel).
+
+    ``reattach`` holds one (history row, its transfers) pair per download to pick up again, so
+    a download that cannot be picked up can have its transfers dropped instead.
 
     Reads only. Only transfers a Shelfmark download asked for are considered; anything else on
     the slskd instance belongs to someone else and is left alone. A transfer is watched when a
@@ -262,8 +266,13 @@ def plan_transfers(
     deciding what to fetch next, and may well choose this very release, so its transfers wait.
     """
     index = _rows_by_file(rows)
-    reattach: dict[str, dict[str, Any]] = {}
+    reattach: dict[str, tuple[dict[str, Any], list[dict[str, Any]]]] = {}
     cancel: list[dict[str, Any]] = []
+
+    def pick_up(row: dict[str, Any], transfer: dict[str, Any]) -> None:
+        """Note the transfer under its download, which is picked up once however many it has."""
+        reattach.setdefault(str(row["task_id"]), (row, []))[1].append(transfer)
+
     for transfer in transfers:
         if not _is_unfinished(transfer):
             continue
@@ -282,7 +291,7 @@ def plan_transfers(
         request_id = row.get("request_id")
         if not request_id:
             if row.get("final_status") == "active":
-                reattach.setdefault(str(row["task_id"]), row)  # interrupted, not abandoned
+                pick_up(row, transfer)  # interrupted, not abandoned
             else:
                 cancel.append(transfer)
             continue
@@ -294,7 +303,7 @@ def plan_transfers(
         elif int(request_id) in live_request_ids:
             cancel.append(transfer)  # a newer attempt is running; this is an old one
         elif request.get("status") == "fulfilled" and request.get("delivery_state") != "complete":
-            reattach.setdefault(str(row["task_id"]), row)
+            pick_up(row, transfer)
         else:
             cancel.append(transfer)
     return list(reattach.values()), cancel
@@ -390,7 +399,6 @@ def run(
             user_db=user_db,
             requeue=requeue,
             live_tasks=live_tasks,
-            finish=finish,
             report=report,
         )
 
@@ -422,10 +430,14 @@ def _settle_transfers(
     user_db: UserDB,
     requeue: Any,
     live_tasks: Any,
-    finish: bool,
     report: LeftoverReport,
 ) -> None:
-    """Pick up or drop the unfinished slskd transfers no running task owns."""
+    """Pick up or drop the unfinished slskd transfers no running task owns.
+
+    As with folders, only downloads that were queued count towards the per-run cap; the rest
+    wait for the next run, their transfers untouched. One that cannot be queued has its
+    transfers dropped, since nothing is ever going to watch them.
+    """
     try:
         transfers = client.list_all_downloads()
     except Exception as exc:  # noqa: BLE001 - slskd being down is not this sweep's problem
@@ -439,29 +451,45 @@ def _settle_transfers(
         live_request_ids={int(r) for r in live.values() if r},
         user_db=user_db,
     )
-    if finish:
-        for row in reattach[:MAX_ADOPTIONS_PER_RUN]:
-            ok, message = requeue(row.get("retry_payload"), final_status=row.get("final_status"))
-            if ok:
-                report.reattached.append(str(row["task_id"]))
-                logger.info("slskd leftovers: picked %s up again", row["task_id"])
-            else:
-                logger.warning("slskd leftovers: could not pick up %s: %s", row["task_id"], message)
-    for transfer in cancel:
-        label = f"{transfer.get('username')}: {transfer.get('filename')}"
-        for attempt in range(2):  # a live transfer needs a second pass once the cancel lands
-            try:
-                client.cancel_transfer(
-                    str(transfer.get("username")), str(transfer.get("id")), remove=True
-                )
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("slskd leftovers: could not cancel %s: %s", label, exc)
-                break
-            if attempt == 0:
-                time.sleep(2.0)
+    picked_up = 0
+    for row, owned in reattach:
+        if picked_up >= MAX_ADOPTIONS_PER_RUN:
+            break  # the next run takes the rest
+        ok, message = requeue(row.get("retry_payload"), final_status=row.get("final_status"))
+        if ok:
+            picked_up += 1
+            report.reattached.append(str(row["task_id"]))
+            logger.info("slskd leftovers: picked %s up again", row["task_id"])
         else:
-            report.cancelled.append(label)
-            logger.info("slskd leftovers: dropped an unwatched transfer, %s", label)
+            logger.warning(
+                "slskd leftovers: could not pick up %s, dropping its transfers: %s",
+                row["task_id"],
+                message,
+            )
+            cancel.extend(owned)
+    for transfer in cancel:
+        _drop_transfer(client, transfer, report)
+
+
+def _drop_transfer(client: Any, transfer: dict[str, Any], report: LeftoverReport) -> None:
+    """Cancel one transfer and remove its record, noting it in the report when both land.
+
+    A live transfer needs a second pass once the cancel lands; a failure is logged and the
+    transfer is left for the next run.
+    """
+    label = f"{transfer.get('username')}: {transfer.get('filename')}"
+    for attempt in range(2):
+        try:
+            client.cancel_transfer(
+                str(transfer.get("username")), str(transfer.get("id")), remove=True
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("slskd leftovers: could not cancel %s: %s", label, exc)
+            return
+        if attempt == 0:
+            time.sleep(2.0)
+    report.cancelled.append(label)
+    logger.info("slskd leftovers: dropped an unwatched transfer, %s", label)
 
 
 def _clean_days() -> int:
