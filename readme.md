@@ -276,18 +276,6 @@ Pull requests are welcome and all of them get reviewed, new features included. I
 
 Feature requests that fall outside the project scope (library integration, automation, collection management) will be closed, and PRs implementing them won't be merged. If you're unsure whether something fits, open a discussion first.
 
-## Sponsors
-
-Code review on Shelfmark's pull requests is sponsored by [CodeRabbit](https://coderabbit.link/calibrain).
-
-<a href="https://coderabbit.link/calibrain">
-  <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://www.coderabbit.ai/content/assets/white-typemark.svg">
-    <source media="(prefers-color-scheme: light)" srcset="https://www.coderabbit.ai/content/assets/orange-typemark.svg">
-    <img src="https://www.coderabbit.ai/content/assets/orange-typemark.svg" alt="CodeRabbit" width="240">
-  </picture>
-</a>
-
 ## Health Monitoring
 
 The application exposes a health endpoint at `/api/health` (no authentication required). Add a health check to your compose:
@@ -335,6 +323,20 @@ make restart     # Restart container
 ```
 
 The frontend dev server proxies to the backend on port 8084.
+
+
+## Sponsors
+
+Code review on Shelfmark's pull requests is sponsored by [CodeRabbit](https://coderabbit.link/calibrain).
+
+<a href="https://coderabbit.link/calibrain">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://www.coderabbit.ai/content/assets/white-typemark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://www.coderabbit.ai/content/assets/orange-typemark.svg">
+    <img src="https://www.coderabbit.ai/content/assets/orange-typemark.svg" alt="CodeRabbit" width="240">
+  </picture>
+</a>
+
 
 ## License
 
