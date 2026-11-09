@@ -686,3 +686,19 @@ def test_a_folder_that_could_not_be_queued_is_not_tried_every_run(env, wired):
 
     assert calls == ["error"]
     assert folder.exists()
+
+
+def test_a_folder_tried_once_goes_with_clean_up_once_it_is_old_enough(env):
+    """The marker keeps a folder out of imports, not out of clean-up."""
+    old = _folder(env[3], "slskd:aa")
+    (old / leftovers.ADOPTED_MARKER).touch()
+    _row(env, "slskd:aa", status="error", age_days=30)
+    young = _folder(env[3], "slskd:bb")
+    (young / leftovers.ADOPTED_MARKER).touch()
+    _row(env, "slskd:bb", status="error", age_days=1)
+
+    finish, remove, keep = _plan(env, [old, young])
+
+    assert not finish
+    assert _names(remove) == ["slskd_aa"]
+    assert _names(keep) == ["slskd_bb"]

@@ -170,7 +170,10 @@ def plan(
         sizes = [int(f.get("size") or 0) for f in _expected_files(row)]
         whole = folder_complete(folder, sizes)
         if whole and needs_it and run_blocking_io((folder / ADOPTED_MARKER).exists):
-            to_keep.append(folder)  # queued once already; its import did not finish
+            # Tried once already and its import did not finish: it waits for a person, or goes
+            # with clean-up once it is old enough.
+            old_enough = clean_after is not None and age >= clean_after
+            (to_remove if old_enough else to_keep).append(folder)
         elif whole and needs_it:
             to_finish.append((folder, row))
         elif done_with and clean_after is not None and age >= DELIVERED_GRACE:
