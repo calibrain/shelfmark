@@ -588,3 +588,14 @@ def test_run_marks_a_folder_it_queues_and_leaves_it_on_the_next_run(env, wired):
     assert (folder / leftovers.ADOPTED_MARKER).exists()
     assert second.adopted == []
     assert queued == ["error"]
+
+
+def test_a_transfer_of_a_cancelled_download_is_cancelled_not_picked_up(env):
+    """A download someone cancelled is not brought back, even while its request still waits."""
+    waiting = _request(env, delivery="queued")
+    _row(env, "slskd:aa", status="cancelled", request_id=waiting["id"])
+
+    reattach, cancel = _plan_transfers(env, [_transfer()])
+
+    assert reattach == []
+    assert len(cancel) == 1

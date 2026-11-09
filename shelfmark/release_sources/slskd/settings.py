@@ -166,15 +166,16 @@ def slskd_config_settings() -> list[SettingsField]:
         ),
         NumberField(
             key="SLSKD_CLEAN_LEFTOVERS_DAYS",
-            label="Remove partial download folders after (days)",
+            label="Remove leftover download folders after (days)",
             default=0,
             min_value=0,
             max_value=365,
             description=(
-                "Remove the folder of a failed or abandoned download, once the download is "
-                "this old (one day when its request already has the book or was given up on). "
-                "Folders holding every file, and the folders of running downloads, are never "
-                "removed. 0 keeps them."
+                "Remove the folder of a failed, cancelled or abandoned download once the "
+                "download is this old, or one day old when its request already has the book or "
+                "was given up on, whether or not the folder holds every file. A whole folder that "
+                "is still waiting to be imported, and the folder of a running download, are "
+                "never removed. 0 keeps them all."
             ),
             show_when={"field": "SLSKD_ISOLATE_DOWNLOADS", "value": True},
         ),

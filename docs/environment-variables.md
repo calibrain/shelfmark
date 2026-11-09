@@ -1905,7 +1905,7 @@ Automatically retry search without category filtering if no results are found
 | `SLSKD_DESTINATION_PREFIX` | The folder, inside slskd's downloads folder, that holds one folder per download. It must not climb out of slskd's downloads folder. | string | `shelfmark` |
 | `SLSKD_KEEP_COMPLETED` | Leave the finished files (and their transfer records) in slskd after Shelfmark copies them to your library, so they stay shared with other Soulseek users. Turn off to delete them once imported. | boolean | `true` |
 | `SLSKD_FINISH_LEFTOVERS` | A restart can land after the last file arrives and before it is copied to your library. Checked every 15 minutes, independent of the Hardcover sync, a download folder that holds every file asked for, whose download never completed, is imported once without downloading anything again (never one someone cancelled). A transfer Shelfmark queued that no download is watching any more is picked up again if its request still needs it, and cancelled otherwise. Transfers queued by other apps or by hand in slskd are never touched. | boolean | `true` |
-| `SLSKD_CLEAN_LEFTOVERS_DAYS` | Remove the folder of a failed or abandoned download, once the download is this old (one day when its request already has the book or was given up on). Folders holding every file, and the folders of running downloads, are never removed. 0 keeps them. | number | `0` |
+| `SLSKD_CLEAN_LEFTOVERS_DAYS` | Remove the folder of a failed, cancelled or abandoned download once the download is this old, or one day old when its request already has the book or was given up on, whether or not the folder holds every file. A whole folder that is still waiting to be imported, and the folder of a running download, are never removed. 0 keeps them all. | number | `0` |
 | `SLSKD_SEARCH_TIMEOUT` | How long a Soulseek search collects peer responses. Longer waits find more peers but make every search slower. | number | `15` |
 | `SLSKD_RESPONSE_LIMIT` | Stop a search early once this many peers have answered | number | `100` |
 | `SLSKD_QUEUE_TIMEOUT_MINUTES` | Give up when the peer has not started sending within this long. Set to 0 to wait indefinitely. | number | `60` |
@@ -1989,9 +1989,9 @@ A restart can land after the last file arrives and before it is copied to your l
 
 #### `SLSKD_CLEAN_LEFTOVERS_DAYS`
 
-**Remove partial download folders after (days)**
+**Remove leftover download folders after (days)**
 
-Remove the folder of a failed or abandoned download, once the download is this old (one day when its request already has the book or was given up on). Folders holding every file, and the folders of running downloads, are never removed. 0 keeps them.
+Remove the folder of a failed, cancelled or abandoned download once the download is this old, or one day old when its request already has the book or was given up on, whether or not the folder holds every file. A whole folder that is still waiting to be imported, and the folder of a running download, are never removed. 0 keeps them all.
 
 - **Type:** number
 - **Default:** `0`

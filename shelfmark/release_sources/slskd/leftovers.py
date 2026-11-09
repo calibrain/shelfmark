@@ -244,6 +244,9 @@ def plan_transfers(
         if row is None:
             # Not one Shelfmark asked for: slskd may be shared with other apps or used by hand.
             continue
+        if row.get("final_status") == "cancelled":
+            cancel.append(transfer)  # someone cancelled this download; slskd should stop too
+            continue
         request_id = row.get("request_id")
         if not request_id:
             if row.get("final_status") == "active":
