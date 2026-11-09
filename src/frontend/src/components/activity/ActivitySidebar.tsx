@@ -208,11 +208,12 @@ export const ActivitySidebar = ({
 
   useEscapeKey(isOpen && !isPinnedOpen, onClose);
 
+  /** Reopen a rejected request, then reload the list whether or not the call succeeded. */
   const handleRejectedReopen = useCallback(
-    async (requestId: number) => {
-      await onRequestReopen?.(requestId);
-      void loadRejected();
-    },
+    (requestId: number) =>
+      Promise.resolve(onRequestReopen?.(requestId)).finally(() => {
+        void loadRejected();
+      }),
     [loadRejected, onRequestReopen],
   );
 
