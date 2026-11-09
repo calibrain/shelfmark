@@ -840,7 +840,12 @@ def _fetch_download_count_inline(book_id: str) -> int | None:
         return cached
     try:
         url = f"{network.get_aa_base_url()}/dyn/md5/inline_info/{book_id}"
-        resp = _inline_info_session.get(url, timeout=5, headers={"Accept": "application/json"})
+        resp = _inline_info_session.get(
+            url,
+            timeout=5,
+            headers={"Accept": "application/json"},
+            proxies=network.get_proxies(url),
+        )
         if resp.status_code == 200:
             data = resp.json()
             count = data.get("downloads_total")
