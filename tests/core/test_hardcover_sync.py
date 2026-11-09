@@ -409,13 +409,29 @@ class TestSyncWishlist:
         self, user_db, db_path, monkeypatch
     ):
         user = user_db.create_user(username="reader", role="user")
-        user_db.set_user_settings(user["id"], {"REQUEST_POLICY_DEFAULT_AUDIOBOOK": "blocked"})
+        user_db.set_user_settings(
+            user["id"], {"REQUESTS_ENABLED": True, "REQUEST_POLICY_DEFAULT_AUDIOBOOK": "blocked"}
+        )
         self._use_provider(monkeypatch, _Provider({1: [[_book(1, "Dungeon Crawler Carl")]]}))
 
         summary = hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=user["id"])
 
         assert summary == {"added": 0, "skipped": 1, "in_library": 0, "errors": 0}
         assert user_db.list_requests() == []
+
+    def test_a_blocked_type_is_still_synced_while_requests_are_off(
+        self, user_db, db_path, monkeypatch
+    ):
+        """With requests off the user downloads directly, so a leftover blocked default is ignored."""
+        user = user_db.create_user(username="reader", role="user")
+        user_db.set_user_settings(
+            user["id"], {"REQUESTS_ENABLED": False, "REQUEST_POLICY_DEFAULT_AUDIOBOOK": "blocked"}
+        )
+        self._use_provider(monkeypatch, _Provider({1: [[_book(1, "Dungeon Crawler Carl")]]}))
+
+        summary = hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=user["id"])
+
+        assert summary["added"] == 1
 
     def test_an_admin_is_not_held_to_the_request_policy(self, user_db, db_path, monkeypatch):
         admin = user_db.create_user(username="ops", role="admin")
@@ -503,7 +519,9 @@ class TestSyncWishlist:
     ):
         """A blocked format's unavailable library does not stop the permitted format's requests."""
         user = user_db.create_user(username="reader", role="user")
-        user_db.set_user_settings(user["id"], {"REQUEST_POLICY_DEFAULT_AUDIOBOOK": "blocked"})
+        user_db.set_user_settings(
+            user["id"], {"REQUESTS_ENABLED": True, "REQUEST_POLICY_DEFAULT_AUDIOBOOK": "blocked"}
+        )
         _configure(monkeypatch, HARDCOVER_SYNC_STATUSES="1", HARDCOVER_SYNC_CONTENT_TYPE="both")
         self._use_provider(monkeypatch, _Provider({1: [[_book(1, "Dungeon Crawler Carl")]]}))
         checked: list[str] = []

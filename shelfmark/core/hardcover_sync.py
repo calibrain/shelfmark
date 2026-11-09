@@ -120,17 +120,26 @@ def _build_provider(user_id: int | None = None) -> Any | None:
 def _blocked_content_types(user_db: UserDB, user_id: int) -> set[str]:
     """Content types this user's request policy blocks, so their sync does not queue them.
 
-    An admin is not held to the policy. Requests created here skip the request routes, and
-    auto-download later approves them, so a blocked type has to be left out at this point.
+    An admin is not held to the policy, and neither is a user with requests turned off, who
+    downloads directly as the download routes and auto-download already treat them.
+    Requests created here skip the request routes, and auto-download later approves them,
+    so a blocked type has to be left out at this point.
     """
-    from shelfmark.core.request_helpers import load_users_request_policy_settings
-    from shelfmark.core.request_policy import PolicyMode, resolve_policy_mode
+    from shelfmark.core.request_helpers import coerce_bool, load_users_request_policy_settings
+    from shelfmark.core.request_policy import (
+        PolicyMode,
+        merge_request_policy_settings,
+        resolve_policy_mode,
+    )
 
     user = user_db.get_user(user_id=user_id)
     if user is None or user.get("role") == "admin":
         return set()
     global_settings = load_users_request_policy_settings()
     user_settings = user_db.get_user_settings(user_id)
+    effective = merge_request_policy_settings(global_settings, user_settings)
+    if not coerce_bool(effective.get("REQUESTS_ENABLED"), default=False):
+        return set()
     return {
         content_type
         for content_type in ("ebook", "audiobook")
