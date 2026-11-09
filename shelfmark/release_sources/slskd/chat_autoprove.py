@@ -1,0 +1,219 @@
+"""Answer anti-leech challenges that Soulseek uploaders send as private messages.
+
+Some uploaders run bots that block your downloads until you type a token in a
+private message ("please type 'download' in this chat to be added to my
+whitelist"). The downloads then sit queued until someone answers.
+
+The challenge patterns and the one-reply-per-cooldown idea come from SoulSync's
+``core/chat_autoprove.py`` (https://github.com/Nezreka/SoulSync, commit 445473b, MIT license,
+by Nezreka), reworked here for slskd's client and Shelfmark's download handler.
+
+Deliberately conservative:
+  - private messages only; only inbound, unacknowledged messages can trigger a reply
+  - the token comes from the message itself and must match ``[A-Za-z0-9_-]{1,24}``
+  - only the known phrasings below match; anything else is ignored
+  - one reply per user per cooldown window (bots repeat their challenge)
+  - the cooldown is recorded only after the reply was actually sent
+  - every reply is logged at INFO so the operator can see it
+"""
+
+from __future__ import annotations
+
+import re
+import threading
+from typing import TYPE_CHECKING, Any
+
+import requests
+
+from shelfmark.core.logger import setup_logger
+from shelfmark.release_sources.slskd.api import SlskdError
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from shelfmark.release_sources.slskd.api import SlskdClient
+
+logger = setup_logger(__name__)
+
+SCAN_INTERVAL_SECONDS = 60.0
+# A scan runs inside a download's poll loop, so it stops reading conversations after this long
+# and leaves the rest for the next pass.
+SCAN_BUDGET_SECONDS = 10.0
+COOLDOWN_SECONDS = 12 * 3600.0
+
+_ERRORS = (SlskdError, requests.exceptions.RequestException)
+
+_WORD = r"[A-Za-z0-9_-]{1,24}"
+_PATTERNS = (
+    # please type "human" in this chat
+    re.compile(rf"""type\s+["']?({_WORD})["']?\s+in\s+(?:this\s+)?chat""", re.IGNORECASE),
+    # reply with "human" to be whitelisted
+    re.compile(rf"""reply\s+(?:with\s+)?["']?({_WORD})["']?\s+to\s+(?:be|get)""", re.IGNORECASE),
+    # say "human" in chat / say human to be added (not "I'd say thanks to everyone")
+    re.compile(
+        rf"""say\s+["']?({_WORD})["']?\s+(?:in\s+(?:this\s+|the\s+)?chat|to\s+(?:be|get))\b""",
+        re.IGNORECASE,
+    ),
+)
+
+
+def extract_token(text: object) -> str | None:
+    """Return the token a challenge message demands, or None when it is not one."""
+    body = str(text or "")
+    for pattern in _PATTERNS:
+        match = pattern.search(body)
+        if match:
+            return match.group(1)
+    return None
+
+
+def _is_unread_inbound(message: Any) -> bool:
+    """Whether a chat message came from the peer and has not been acknowledged yet."""
+    if not isinstance(message, dict):
+        return False
+    if str(message.get("direction") or "").lower() != "in":
+        return False
+    return not message.get("acknowledged", message.get("isAcknowledged", False))
+
+
+def _has_unread(conversation: dict[str, Any]) -> bool:
+    """Whether slskd marks a conversation as having unread messages, by flag or by count."""
+    count = conversation.get("unAcknowledgedMessageCount")
+    return bool(conversation.get("hasUnAcknowledgedMessages")) or (
+        isinstance(count, int) and count > 0
+    )
+
+
+def _resume_order(
+    conversations: list[dict[str, Any]], progress: dict[str, str] | None
+) -> list[dict[str, Any]]:
+    """The conversations, starting after the one the last pass read last and wrapping round."""
+    last = (progress or {}).get("last")
+    names = [str(c.get("username") or "") for c in conversations]
+    if not last or last not in names:
+        return list(conversations)
+    start = names.index(last) + 1
+    return list(conversations[start:]) + list(conversations[:start])
+
+
+def scan_and_respond(
+    client: SlskdClient,
+    state: dict[str, float],
+    *,
+    now: float,
+    cooldown: float = COOLDOWN_SECONDS,
+    clock: Callable[[], float] | None = None,
+    budget: float | None = None,
+    progress: dict[str, str] | None = None,
+) -> list[tuple[str, str]]:
+    """Run one pass and return the ``(username, token)`` replies sent.
+
+    ``state`` maps a username to the time of the last reply and is owned by the
+    caller. A failure on one conversation does not stop the others, but slskd timing
+    out or refusing the connection ends the pass, and with ``clock`` and ``budget`` no
+    further conversation is read once ``budget`` seconds have passed since ``now``.
+
+    ``progress`` (owned by the caller) remembers the last conversation read, and the next pass
+    starts after it and wraps round, so unread conversations that are not challenges cannot
+    use up every pass's budget ahead of one that is.
+    """
+    replies: list[tuple[str, str]] = []
+    for conversation in _resume_order(client.list_conversations(), progress):
+        username = str(conversation.get("username") or "")
+        if not username or not _has_unread(conversation):
+            continue
+        last = state.get(username)
+        if last is not None and now - last < cooldown:
+            continue
+        if clock is not None and budget is not None and clock() - now >= budget:
+            logger.debug("slskd chat challenge: scan budget spent, the rest waits a pass")
+            break
+
+        if progress is not None:
+            progress["last"] = username
+        try:
+            detail = client.get_conversation(username) or {}
+            token = None
+            for message in detail.get("messages") or []:
+                if _is_unread_inbound(message):
+                    token = extract_token(message.get("message"))
+                    if token:
+                        break
+            if not token:
+                continue
+            client.send_private_message(username, token)
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as e:
+            logger.warning("slskd chat challenge: slskd did not answer, scan stopped: %s", e)
+            break
+        except _ERRORS as e:
+            logger.warning("slskd chat challenge: reply to %s failed: %s", username, e)
+            continue
+
+        state[username] = now
+        logger.info("slskd chat challenge: answered %r to %s", token, username)
+        replies.append((username, token))
+        try:
+            client.acknowledge_conversation(username)
+        except _ERRORS as e:
+            logger.debug("slskd chat challenge: acknowledge for %s failed: %s", username, e)
+    return replies
+
+
+class ChatAutoProver:
+    """Runs ``scan_and_respond`` at most once per interval, from whoever calls it.
+
+    The slskd handler already loops while a download is queued, so it calls
+    ``maybe_scan`` each iteration; no thread or scheduler of its own. Only one scan runs
+    at a time: a caller that arrives while another thread is scanning returns at once.
+    """
+
+    def __init__(
+        self,
+        *,
+        interval: float = SCAN_INTERVAL_SECONDS,
+        cooldown: float = COOLDOWN_SECONDS,
+    ) -> None:
+        self._interval = interval
+        self._cooldown = cooldown
+        self._lock = threading.Lock()
+        self._last_scan: float | None = None
+        self._scanning = False
+        self._state: dict[str, float] = {}
+        self._progress: dict[str, str] = {}
+
+    def maybe_scan(
+        self,
+        get_client: Callable[[], SlskdClient | None],
+        clock: Callable[[], float],
+    ) -> list[tuple[str, str]]:
+        """Scan when the interval has passed; never raises, quiet when slskd is down."""
+        now = clock()
+        with self._lock:
+            if self._scanning:
+                return []
+            if self._last_scan is not None and now - self._last_scan < self._interval:
+                return []
+            self._last_scan = now
+            self._scanning = True
+        try:
+            client = get_client()
+            if client is None:
+                return []
+            return scan_and_respond(
+                client,
+                self._state,
+                now=now,
+                cooldown=self._cooldown,
+                clock=clock,
+                budget=SCAN_BUDGET_SECONDS,
+                progress=self._progress,
+            )
+        except _ERRORS as e:
+            logger.debug("slskd chat challenge: scan skipped: %s", e)
+            return []
+        except Exception:  # a side feature must never stop the download polling it
+            logger.exception("slskd chat challenge: unexpected scan error")
+            return []
+        finally:
+            with self._lock:
+                self._scanning = False
