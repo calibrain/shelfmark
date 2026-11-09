@@ -156,11 +156,12 @@ def slskd_config_settings() -> list[SettingsField]:
                 "A restart can land after the last file arrives and before it is copied to "
                 "your library. Checked every 15 minutes, independent of the Hardcover sync, "
                 "a download folder that holds every file asked for, whose download never "
-                "completed, is imported once without downloading anything again (never one "
-                "someone cancelled). A transfer "
-                "Shelfmark queued that no download is watching any more is picked up again "
-                "if its request still needs it, and cancelled otherwise. Transfers queued by "
-                "other apps or by hand in slskd are never touched."
+                "completed and is still wanted, is imported once without downloading anything "
+                "again (never one someone cancelled). If that import fails, the folder stays "
+                "until you retry the download. A transfer Shelfmark queued that no download is "
+                "watching any more is picked up again if its request still needs it, a few per "
+                "check, and cancelled otherwise, or when it cannot be picked up. Transfers "
+                "queued by other apps or by hand in slskd are never touched."
             ),
             show_when={"field": "SLSKD_ISOLATE_DOWNLOADS", "value": True},
         ),
@@ -171,11 +172,14 @@ def slskd_config_settings() -> list[SettingsField]:
             min_value=0,
             max_value=365,
             description=(
-                "Remove the folder of a failed, cancelled or abandoned download once the "
-                "download is this old, or one day old when its request already has the book or "
-                "was given up on, whether or not the folder holds every file. A whole folder that "
-                "is still waiting to be imported, and the folder of a running download, are "
-                "never removed. 0 keeps them all."
+                "Remove the folder of a failed or cancelled download, or one nothing records, "
+                "once the download is this old, or one day old when its request already has "
+                "the book or was given up on. A folder that holds every file asked for is "
+                "never removed while the download is still wanted (you started it yourself, "
+                "or its request is still open): it is imported once, and after that it waits "
+                "for you to retry the download. The folder of a running download is never "
+                "removed. 0 keeps every leftover folder. Folders already imported follow "
+                "Keep finished files in slskd, not this setting."
             ),
             show_when={"field": "SLSKD_ISOLATE_DOWNLOADS", "value": True},
         ),

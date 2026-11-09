@@ -688,20 +688,36 @@ def test_a_folder_that_could_not_be_queued_is_not_tried_every_run(env, wired):
     assert folder.exists()
 
 
-def test_a_folder_tried_once_goes_with_clean_up_once_it_is_old_enough(env):
-    """The marker keeps a folder out of imports, not out of clean-up."""
-    old = _folder(env[3], "slskd:aa")
-    (old / leftovers.ADOPTED_MARKER).touch()
-    _row(env, "slskd:aa", status="error", age_days=30)
-    young = _folder(env[3], "slskd:bb")
-    (young / leftovers.ADOPTED_MARKER).touch()
-    _row(env, "slskd:bb", status="error", age_days=1)
+def test_a_whole_folder_tried_once_stays_however_old_while_still_wanted(env):
+    """A failed import is not a reason to delete the files: clean-up never takes a whole folder
+    of a direct download, or of a request that is still open, whatever its age."""
+    direct = _folder(env[3], "slskd:aa")
+    (direct / leftovers.ADOPTED_MARKER).touch()
+    _row(env, "slskd:aa", status="error", age_days=400)
+    waiting = _request(env, delivery="queued")
+    requested = _folder(env[3], "slskd:bb")
+    (requested / leftovers.ADOPTED_MARKER).touch()
+    _row(env, "slskd:bb", status="error", request_id=waiting["id"], age_days=400)
 
-    finish, remove, keep = _plan(env, [old, young])
+    finish, remove, keep = _plan(env, [direct, requested], clean_days=7)
+
+    assert not finish
+    assert not remove
+    assert _names(keep) == ["slskd_aa", "slskd_bb"]
+
+
+def test_a_whole_folder_tried_once_goes_a_day_after_its_request_is_done_with(env):
+    """Once the request has its book another way, or was dropped, the marked folder is dead
+    weight and goes like any other folder of a finished request."""
+    delivered = _request(env, delivery="complete")
+    folder = _folder(env[3], "slskd:aa")
+    (folder / leftovers.ADOPTED_MARKER).touch()
+    _row(env, "slskd:aa", status="error", request_id=delivered["id"], age_days=2)
+
+    finish, remove, _keep = _plan(env, [folder], clean_days=7)
 
     assert not finish
     assert _names(remove) == ["slskd_aa"]
-    assert _names(keep) == ["slskd_bb"]
 
 
 def test_a_folder_of_an_older_attempt_is_kept_while_a_newer_one_runs(env):

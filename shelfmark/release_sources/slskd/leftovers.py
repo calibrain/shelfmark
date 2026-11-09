@@ -6,8 +6,12 @@ import, and a failed or abandoned download leaves a partial one. Both sit in sls
 (and are shared with other Soulseek users) until someone looks.
 
 A whole folder whose download never completed is queued again through the ordinary retry; the
-handler sees the files are already there and goes straight to the import. A partial folder is
-removed once its download is old enough that nothing is going to resume it.
+handler sees the files are already there and goes straight to the import. It is queued once:
+if that import fails too, the folder stays, since the files may not be had again, until a
+person retries the download or its request is done with (delivered another way, or dropped).
+A partial folder, or the folder of a cancelled download, is removed once its download is old
+enough that nothing is going to resume it. Running downloads keep their folders, and nothing
+is removed while clean-up is off.
 """
 
 from __future__ import annotations
@@ -40,8 +44,8 @@ DELIVERED_GRACE = timedelta(days=1)
 # At most this many finished folders are queued per run, so a backlog does not flood the queue.
 MAX_ADOPTIONS_PER_RUN = 3
 # Left in a folder once it has been tried for import, queued or not. Hidden, so it never counts as
-# a file of the download. A folder is not tried again every run: it waits for a person or for
-# clean-up.
+# a file of the download. A folder is not tried again every run: it waits for a person to retry
+# the download, or for its request to be done with.
 ADOPTED_MARKER = ".shelfmark-adopted"
 _TASK_PREFIX = "slskd_"
 
@@ -135,6 +139,15 @@ def plan(
 ) -> tuple[list[tuple[Path, dict[str, Any]]], list[Path], list[Path]]:
     """Sort folders into (to finish, to remove, to keep). Reads only, changes nothing.
 
+    What goes where, with ``clean_after`` the clean-up age (None while clean-up is off):
+
+    - not named after a task, or a running download: kept.
+    - imported: removed a day on, unless ``keep_completed``. Clean-up has no say here.
+    - every file asked for is there and its request is still open (or it was a direct
+      download): queued for import once, when the request waits for it; kept otherwise.
+    - the request has its book from elsewhere, or was dropped: removed a day on.
+    - cancelled, partial, or nothing records it: removed at ``clean_after``.
+
     ``live_request_ids`` are the requests a running task is downloading for now; a folder of an
     older attempt for one of them is kept, not imported next to the new attempt.
     """
@@ -178,13 +191,16 @@ def plan(
             continue
         sizes = [int(f.get("size") or 0) for f in _expected_files(row)]
         whole = folder_complete(folder, sizes)
-        if whole and needs_it and run_blocking_io((folder / ADOPTED_MARKER).exists):
-            # Tried once already and its import did not finish: it waits for a person, or goes
-            # with clean-up once it is old enough.
-            old_enough = clean_after is not None and age >= clean_after
-            (to_remove if old_enough else to_keep).append(folder)
-        elif whole and needs_it:
-            to_finish.append((folder, row))
+        if whole and not done_with:
+            # Every file asked for is here, and someone may still want it: a download a person
+            # started, or a request that is still open. Never removed, whatever its age: the
+            # files may not be had again, and a later attempt at the same release (the task id
+            # is the release) lands in this folder and imports it without downloading. Queued
+            # for import once; after that it waits for a person to retry the download.
+            if needs_it and not run_blocking_io((folder / ADOPTED_MARKER).exists):
+                to_finish.append((folder, row))
+            else:
+                to_keep.append(folder)
         elif done_with and clean_after is not None and age >= DELIVERED_GRACE:
             # The book is in the library, or the request was dropped: no need to wait the full
             # clean-up period, but only while clean-up is on (0 keeps every folder).
