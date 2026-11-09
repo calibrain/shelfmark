@@ -851,3 +851,35 @@ def test_downloads_past_the_cap_keep_their_transfers_for_the_next_run(env, wired
 
     assert len(report.reattached) == cap
     assert fake.cancelled == []
+
+
+def test_dropping_many_transfers_waits_once_not_once_per_transfer(env, wired, monkeypatch):
+    """Every transfer is cancelled, then one wait covers them all before the second pass."""
+    waiting = _request(env, status="rejected")
+    transfers = []
+    for n in range(5):
+        name = f"@@s\\Book{n}\\a.mp3"
+        _row(
+            env,
+            f"slskd:t{n}",
+            status="error",
+            request_id=waiting["id"],
+            files=[{"filename": name, "size": 5}],
+        )
+        transfers.append(_transfer(name=name, tid=f"t{n}"))
+    fake = _FakeSlskd(transfers)
+    waits = []
+    monkeypatch.setattr(leftovers.time, "sleep", lambda s: waits.append(s))
+    monkeypatch.setattr(handler_mod, "build_client_from_config", lambda: fake)
+
+    report = leftovers.run(
+        history_service=env[1],
+        user_db=env[0],
+        requeue=lambda *a, **k: (True, None),
+        live_tasks=lambda: {},
+        now=NOW,
+    )
+
+    assert len(report.cancelled) == 5
+    assert len(waits) == 1
+    assert [c[1] for c in fake.cancelled] == [f"t{n}" for n in range(5)] * 2

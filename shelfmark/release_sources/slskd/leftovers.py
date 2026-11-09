@@ -467,29 +467,38 @@ def _settle_transfers(
                 message,
             )
             cancel.extend(owned)
-    for transfer in cancel:
-        _drop_transfer(client, transfer, report)
+    _drop_transfers(client, cancel, report)
 
 
-def _drop_transfer(client: Any, transfer: dict[str, Any], report: LeftoverReport) -> None:
-    """Cancel one transfer and remove its record, noting it in the report when both land.
+def _cancel_once(client: Any, transfer: dict[str, Any]) -> bool:
+    """Ask slskd to cancel one transfer and remove its record. False when slskd refused."""
+    try:
+        client.cancel_transfer(str(transfer.get("username")), str(transfer.get("id")), remove=True)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("slskd leftovers: could not cancel %s: %s", _label(transfer), exc)
+        return False
+    return True
 
-    A live transfer needs a second pass once the cancel lands; a failure is logged and the
-    transfer is left for the next run.
+
+def _drop_transfers(client: Any, transfers: list[dict[str, Any]], report: LeftoverReport) -> None:
+    """Cancel the transfers and remove their records, noting each in the report when both land.
+
+    A live transfer needs a second pass once the cancel lands, so every transfer is cancelled
+    first, then one wait covers them all before the second pass. One slskd refuses is left for
+    the next run.
     """
-    label = f"{transfer.get('username')}: {transfer.get('filename')}"
-    for attempt in range(2):
-        try:
-            client.cancel_transfer(
-                str(transfer.get("username")), str(transfer.get("id")), remove=True
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("slskd leftovers: could not cancel %s: %s", label, exc)
-            return
-        if attempt == 0:
-            time.sleep(2.0)
-    report.cancelled.append(label)
-    logger.info("slskd leftovers: dropped an unwatched transfer, %s", label)
+    pending = [t for t in transfers if _cancel_once(client, t)]
+    if pending:
+        time.sleep(2.0)
+    for transfer in pending:
+        if _cancel_once(client, transfer):
+            report.cancelled.append(_label(transfer))
+            logger.info("slskd leftovers: dropped an unwatched transfer, %s", _label(transfer))
+
+
+def _label(transfer: dict[str, Any]) -> str:
+    """'<peer>: <file>', as the report and the log name a transfer."""
+    return f"{transfer.get('username')}: {transfer.get('filename')}"
 
 
 def _clean_days() -> int:
