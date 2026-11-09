@@ -110,7 +110,7 @@ Only one run happens at a time. If a scheduled cycle is in progress, **Sync now*
 
 **Sync adds nothing and the log says "no Hardcover token configured"** — set **Hardcover API Token** on this tab, or configure the token on the Hardcover metadata provider. A sync without a usable token counts as an error and creates no requests.
 
-**Requests appear but nothing downloads** — check **Enable automatic downloads** is on, that the source-priority list for the request's content type contains at least one configured source, and look for `no strict match` lines in the log. A request from a user whose policy needs approval is left pending for an admin and never searched. Lowering **Minimum seeders** helps on quiet trackers; loosening the title or author match is deliberately not an option.
+**Requests appear but nothing downloads** — check **Enable automatic downloads** is on, that the source-priority list for the request's content type contains at least one configured source, and look for `no strict match` lines in the log. A request from another user is only searched on the sources where their policy allows a direct download (or, with requests turned off for them, on every source); with no such source it stays pending for an admin and is not searched. Lowering **Minimum seeders** helps on quiet trackers; loosening the title or author match is deliberately not an option.
 
 **Books you own keep being added** — enable the library check for the format you request (see [Library Check](library-check.md)) and use its test button. A library that cannot be read shows up in the log as a skipped cycle.
 
