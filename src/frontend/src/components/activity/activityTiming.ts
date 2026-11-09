@@ -27,18 +27,21 @@ export const formatDuration = (ms: number): string => {
   if (!Number.isFinite(ms) || ms < 0) {
     return '';
   }
-  if (ms < MINUTE) {
-    return `${Math.max(Math.round(ms / SECOND), 1)}s`;
+  // Round first, then pick the unit, so 59.6s is "1m" and not "60s".
+  const seconds = Math.max(Math.round(ms / SECOND), 1);
+  if (seconds < 60) {
+    return `${seconds}s`;
   }
-  if (ms < HOUR) {
-    return `${Math.round(ms / MINUTE)}m`;
+  const totalMinutes = Math.round(ms / MINUTE);
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m`;
   }
-  if (ms < DAY) {
-    const hours = Math.floor(ms / HOUR);
-    const minutes = Math.round((ms % HOUR) / MINUTE);
+  if (totalMinutes < 24 * 60) {
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
     return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
   }
-  return `${Math.floor(ms / DAY)}d`;
+  return `${Math.max(Math.floor(ms / DAY), 1)}d`;
 };
 
 /** "just now", "12m ago", "3h ago", "2d ago". */

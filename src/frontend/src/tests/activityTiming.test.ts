@@ -22,6 +22,13 @@ describe('formatDuration', () => {
     expect(formatDuration(3 * DAY + 5 * HOUR)).toBe('3d');
   });
 
+  it('rounds before picking the unit, so it never says 60 of anything', () => {
+    expect(formatDuration(59.6 * SECOND)).toBe('1m');
+    expect(formatDuration(59.6 * MINUTE)).toBe('1h');
+    expect(formatDuration(HOUR + 59 * MINUTE + 45 * SECOND)).toBe('2h');
+    expect(formatDuration(23 * HOUR + 59 * MINUTE + 45 * SECOND)).toBe('1d');
+  });
+
   it('says nothing for a value that makes no sense', () => {
     expect(formatDuration(-1)).toBe('');
     expect(formatDuration(Number.NaN)).toBe('');
