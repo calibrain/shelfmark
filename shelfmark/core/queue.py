@@ -78,6 +78,7 @@ class BookQueue:
             # Ensure added_time is set
             if task.added_time == 0:
                 task.added_time = time.time()
+            task.finished_at = None
 
             queue_item = QueueItem(task_id, task.priority, task.added_time)
             self._queue.put(queue_item)
@@ -178,15 +179,15 @@ class BookQueue:
             return None, None
         self._update_status(book_id, status)
 
-        if (
-            status in TERMINAL_QUEUE_STATUSES
-            and previous_status != status
-            and self._terminal_status_hook is not None
-        ):
+        if status in TERMINAL_QUEUE_STATUSES and previous_status != status:
             current_task = self._task_data.get(book_id)
             if current_task is not None:
-                hook = self._terminal_status_hook
-                hook_task = current_task
+                # Stamped before the hook runs, so a snapshot taken while history is still
+                # being finalized already knows when the download ended.
+                current_task.finished_at = time.time()
+                if self._terminal_status_hook is not None:
+                    hook = self._terminal_status_hook
+                    hook_task = current_task
 
         # Clean up active download tracking when finished
         if status in TERMINAL_QUEUE_STATUSES:
@@ -339,6 +340,7 @@ class BookQueue:
 
             if priority is not None:
                 task.priority = priority
+            task.finished_at = None
 
             # Ensure task doesn't appear active while waiting for retry.
             self._active_downloads.pop(task_id, None)
