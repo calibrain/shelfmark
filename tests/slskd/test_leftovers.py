@@ -599,3 +599,43 @@ def test_a_transfer_of_a_cancelled_download_is_cancelled_not_picked_up(env):
 
     assert reattach == []
     assert len(cancel) == 1
+
+
+def test_run_does_not_remove_a_folder_whose_download_it_just_picked_up(env, wired, monkeypatch):
+    """An old partial folder stays when the same run restarts the download writing into it."""
+    monkeypatch.setattr(leftovers.time, "sleep", lambda _s: None)
+    waiting = _request(env, delivery="queued")
+    folder = _folder(env[3], "slskd:aa", sizes=(5,))
+    _row(env, "slskd:aa", status="error", request_id=waiting["id"], age_days=30)
+    fake = _FakeSlskd([_transfer()])
+    monkeypatch.setattr(handler_mod, "build_client_from_config", lambda: fake)
+
+    report = leftovers.run(
+        history_service=env[1],
+        user_db=env[0],
+        requeue=lambda payload, final_status: (True, None),
+        live_tasks=lambda: {},
+        now=NOW,
+    )
+
+    assert report.reattached == ["slskd:aa"]
+    assert folder.exists()
+    assert "slskd_aa" in report.kept
+
+
+def test_run_does_not_remove_the_folder_of_a_running_download(env, wired, monkeypatch):
+    """A task that is running now owns its folder, however old the history says it is."""
+    folder = _folder(env[3], "slskd:bb", sizes=(5,))
+    _row(env, "slskd:bb", status="error", age_days=30)
+    monkeypatch.setattr(handler_mod, "build_client_from_config", lambda: _FakeSlskd([]))
+
+    report = leftovers.run(
+        history_service=env[1],
+        user_db=env[0],
+        requeue=lambda payload, final_status: (True, None),
+        live_tasks=lambda: {"slskd:bb": None},
+        now=NOW,
+    )
+
+    assert folder.exists()
+    assert "slskd_bb" in report.kept

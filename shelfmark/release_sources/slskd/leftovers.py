@@ -350,8 +350,15 @@ def run(
             report=report,
         )
 
+    # A folder whose download this run picked up again, or that a task is using now, is in use.
+    busy = set(report.reattached)
+    if live_tasks is not None:
+        busy |= set(live_tasks())
     for folder in to_remove:
         if not _is_inside(folder, base):
+            continue
+        if _task_id_for_folder(folder.name) in busy:
+            report.kept.append(folder.name)
             continue
         try:
             shutil.rmtree(folder)
