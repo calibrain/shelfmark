@@ -210,6 +210,7 @@ class TestHappyPath:
     def test_a_failure_to_name_a_safe_folder_never_escapes_the_downloads_root(
         self, handler, cfg, tmp_path
     ):
+        """A path-like id is refused before slskd is asked, and its folder name stays inside."""
         fake = FakeSlskd(tmp_path)
 
         result, _, rec = _run(handler, fake, task=_task(task_id="../../etc/passwd"))
@@ -239,6 +240,7 @@ class TestTaskIdsThatCannotNameTheirFolder:
     def test_an_id_whose_folder_reads_back_as_another_is_refused(
         self, handler, cfg, tmp_path, task_id
     ):
+        """An id whose folder the sweep would read as another id never gets a folder."""
         fake = FakeSlskd(tmp_path)
 
         result, _, rec = _run(handler, fake, task=_task(task_id=task_id))
