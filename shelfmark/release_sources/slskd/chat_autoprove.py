@@ -49,8 +49,11 @@ _PATTERNS = (
     re.compile(rf"""type\s+["']?({_WORD})["']?\s+in\s+(?:this\s+)?chat""", re.IGNORECASE),
     # reply with "human" to be whitelisted
     re.compile(rf"""reply\s+(?:with\s+)?["']?({_WORD})["']?\s+to\s+(?:be|get)""", re.IGNORECASE),
-    # say "human" in chat
-    re.compile(rf"""say\s+["']?({_WORD})["']?\s+(?:in|to)\b""", re.IGNORECASE),
+    # say "human" in chat / say human to be added (not "I'd say thanks to everyone")
+    re.compile(
+        rf"""say\s+["']?({_WORD})["']?\s+(?:in\s+(?:this\s+|the\s+)?chat|to\s+(?:be|get))\b""",
+        re.IGNORECASE,
+    ),
 )
 
 

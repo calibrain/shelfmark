@@ -49,7 +49,8 @@ CHALLENGE = "ProveIt: To prove you are human, please type 'download' in this cha
         ('Please reply with "human" to be added to my whitelist', "human"),
         ("reply open_sesame to get access", "open_sesame"),
         ('say "ok-1" in chat', "ok-1"),
-        ("SAY hello TO me", "hello"),
+        ("SAY hello TO be added", "hello"),
+        ("say human in the chat", "human"),
     ],
 )
 def test_extract_token_known_phrasings(text, token):
@@ -67,6 +68,9 @@ def test_extract_token_known_phrasings(text, token):
         "please type 'rm -rf /' in this chat",
         "please type 'bad;word' in this chat",
         "reply with 'x y' to be added",
+        "I would say thanks to everyone",
+        "say hello to me",
+        "just say yes to the next one",
     ],
 )
 def test_extract_token_ignores_non_challenges(text):
