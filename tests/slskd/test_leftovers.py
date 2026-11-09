@@ -245,7 +245,7 @@ class _Client:
 @pytest.fixture
 def wired(env, monkeypatch):
     base = env[3]
-    values = {"SLSKD_CLEAN_LEFTOVERS_DAYS": 7, "SLSKD_KEEP_COMPLETED": False}
+    values = {"SLSKD_ENABLED": True, "SLSKD_CLEAN_LEFTOVERS_DAYS": 7, "SLSKD_KEEP_COMPLETED": False}
     monkeypatch.setattr(leftovers.config, "get", lambda k, d=None: values.get(k, d))
     monkeypatch.setattr(handler_mod.config, "get", lambda k, d=None: values.get(k, d))
     monkeypatch.setattr(handler_mod, "build_client_from_config", lambda: _Client())
@@ -309,6 +309,17 @@ def test_run_keeps_a_folder_whose_import_could_not_be_queued(env, wired):
     assert folder.exists()
 
 
+def test_run_does_nothing_while_soulseek_is_switched_off(env, wired):
+    folder = _folder(env[3], "slskd:aa")
+    _row(env, "slskd:aa", status="error")
+    wired["SLSKD_ENABLED"] = False
+
+    report = _run(env, lambda payload, final_status: (_ for _ in ()).throw(AssertionError()))
+
+    assert (report.adopted, report.removed, report.cancelled) == ([], [], [])
+    assert not (folder / leftovers.ADOPTED_MARKER).exists()  # still imported once it is back on
+
+
 def test_run_does_nothing_without_a_downloads_folder(env, wired, monkeypatch):
     monkeypatch.setattr(handler_mod, "resolve_local_download_root", lambda _c: (None, "no path"))
     _folder(env[3], "slskd:aa")
@@ -339,6 +350,7 @@ def test_the_payload_files_are_read_whether_stored_as_text_or_dict():
 def _transfer(
     name="@@s\\Book\\a.mp3", state="Queued, Remotely", peer="peer", tid="x1", requested=None
 ):
+    """An slskd transfer record; requested is its requestedAt stamp, left out when None."""
     transfer = {"username": peer, "filename": name, "state": state, "id": tid, "size": 5}
     if requested is not None:
         transfer["requestedAt"] = requested

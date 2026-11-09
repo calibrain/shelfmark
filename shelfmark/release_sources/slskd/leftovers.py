@@ -357,10 +357,18 @@ def run(
     live_tasks: Any = None,
     now: datetime | None = None,
 ) -> LeftoverReport:
-    """Finish and clean up the folders under Shelfmark's slskd downloads folder."""
+    """Finish and clean up the folders under Shelfmark's slskd downloads folder.
+
+    Does nothing while the Soulseek source is switched off, or without a client, isolated
+    downloads or a readable downloads folder.
+    """
     from shelfmark.release_sources.slskd import handler as slskd_handler
 
     report = LeftoverReport()
+    if not config.get("SLSKD_ENABLED", False):
+        # Soulseek is switched off: an import queued now would be refused and still mark the
+        # folder as tried, so it would not be imported when Soulseek is switched back on.
+        return report
     client = slskd_handler.build_client_from_config()
     if client is None or not slskd_handler.isolation_enabled():
         return report
