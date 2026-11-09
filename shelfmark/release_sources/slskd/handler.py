@@ -336,6 +336,19 @@ def _safe_name(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", value or "").strip("._") or "download"
 
 
+def folder_maps_back(task_id: str) -> bool:
+    """Whether a task's own folder name leads back to this task id and no other.
+
+    The folder is ``_safe_name(task_id)``, and the leftovers sweep reads the id back by turning
+    the ``slskd_`` prefix into ``slskd:``. Search ids (``slskd:`` and hex) always map back. An id
+    sent in a queued payload may not: ``slskd:ab+cd`` would land in ``slskd_ab_cd``, which the
+    sweep would read as ``slskd:ab_cd``, find nothing recorded, and remove.
+    """
+    if not task_id.startswith("slskd:"):
+        return False
+    return _safe_name(task_id) == "slskd_" + task_id[len("slskd:") :]
+
+
 def _clean_prefix(raw: object) -> str:
     """The folder, relative to slskd's downloads folder, that holds Shelfmark's downloads."""
     text = str(raw or "").strip().replace("\\", "/").strip("/")
@@ -527,6 +540,11 @@ class SlskdHandler(DownloadHandler):
             return None
 
         if self._isolate_enabled():
+            if not folder_maps_back(task.task_id):
+                # Its folder would read back as another id, and the sweep could remove it.
+                status_callback("error", "This release's id cannot name its own download folder")
+                logger.warning("slskd task id %r does not map back from its folder", task.task_id)
+                return None
             outcome = self._download_isolated(
                 task, spec, client, cancel_flag, progress_callback, status_callback
             )

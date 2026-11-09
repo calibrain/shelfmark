@@ -19,7 +19,7 @@ import shelfmark.release_sources.slskd.handler as mod
 from shelfmark.core.models import DownloadTask
 from shelfmark.download.activity import ACTIVITY_GRACE_STATUS
 from shelfmark.release_sources.slskd.api import SlskdBatchUnsupportedError
-from shelfmark.release_sources.slskd.handler import SlskdHandler
+from shelfmark.release_sources.slskd.handler import SlskdHandler, folder_maps_back
 
 REMOTE_DIR = "@@share\\Books\\Author"
 FILE_A = f"{REMOTE_DIR}\\Book One.epub"
@@ -212,9 +212,11 @@ class TestHappyPath:
     ):
         fake = FakeSlskd(tmp_path)
 
-        _run(handler, fake, task=_task(task_id="../../etc/passwd"))
+        result, _, rec = _run(handler, fake, task=_task(task_id="../../etc/passwd"))
 
-        destination = fake.batches[0]["destination"]
+        assert result is None and rec.real[-1][0] == "error"
+        assert not fake.batches  # refused before slskd is asked for anything
+        destination = handler._destination_for(_task(task_id="../../etc/passwd"))
         assert ".." not in destination and not destination.startswith("/")
         assert destination.startswith("shelfmark/")
 
@@ -230,6 +232,35 @@ class TestHappyPath:
         fake2 = FakeSlskd(tmp_path)
         _run(handler, fake2, task=_task(task_id="slskd:def"))
         assert fake2.batches[0]["destination"] == "shelfmark/slskd_def"
+
+
+class TestTaskIdsThatCannotNameTheirFolder:
+    @pytest.mark.parametrize("task_id", ["slskd:ab+cd", "slskd:+ab", "slskd:ab_", "other:ab", "ab"])
+    def test_an_id_whose_folder_reads_back_as_another_is_refused(
+        self, handler, cfg, tmp_path, task_id
+    ):
+        fake = FakeSlskd(tmp_path)
+
+        result, _, rec = _run(handler, fake, task=_task(task_id=task_id))
+
+        assert result is None
+        assert rec.real[-1][0] == "error"
+        assert not (tmp_path / "shelfmark").exists() or not any((tmp_path / "shelfmark").iterdir())
+
+    @pytest.mark.parametrize(
+        ("task_id", "maps_back"),
+        [
+            ("slskd:0123456789abcdef01234567", True),
+            ("slskd:a_b", True),
+            ("slskd:ab+cd", False),
+            ("slskd:+ab", False),
+            ("slskd:ab.", False),
+            ("slskd:", False),
+            ("prowlarr:ab", False),
+        ],
+    )
+    def test_folder_maps_back(self, task_id, maps_back):
+        assert folder_maps_back(task_id) is maps_back
 
 
 class TestAnotherAppClearsSlskdsList:

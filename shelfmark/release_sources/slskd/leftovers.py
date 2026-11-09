@@ -61,7 +61,11 @@ class LeftoverReport:
 
 
 def _task_id_for_folder(name: str) -> str | None:
-    """The task id a folder is named after ('slskd_ab12' is 'slskd:ab12'), or None."""
+    """The task id a folder is named after ('slskd_ab12' is 'slskd:ab12'), or None.
+
+    One-to-one because the handler only gives a task its own folder when the name maps back
+    (``handler.folder_maps_back``); any other folder here was not made for a task.
+    """
     if not name.startswith(_TASK_PREFIX) or len(name) == len(_TASK_PREFIX):
         return None
     return "slskd:" + name[len(_TASK_PREFIX) :]
