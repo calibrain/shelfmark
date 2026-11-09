@@ -581,14 +581,14 @@ def reopen_request(
     if delivery_failed:
         # The chosen release is cleared, so the next pass searches again; the failure
         # reason says who asked for it. The release that failed is remembered so the next
-        # automatic search skips it; an admin can still pick it by hand.
+        # automatic search skips it; an admin can still pick it by hand. The note lands in
+        # the same write, so a reopened request is never left without it.
         reopened = user_db.reopen_failed_request(
             request_id,
             failure_reason=normalized_admin_note or "Reopened by an admin after a failed download",
             remember_failed_release=True,
+            admin_note=normalized_admin_note,
         )
-        if reopened is not None and normalized_admin_note is not None:
-            reopened = user_db.update_request(request_id, admin_note=normalized_admin_note)
     else:
         reopened = user_db.reopen_rejected_request(request_id, admin_note=normalized_admin_note)
     if reopened is None:

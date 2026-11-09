@@ -952,16 +952,21 @@ class UserDB:
         *,
         failure_reason: str | None = None,
         remember_failed_release: bool = False,
+        admin_note: str | None = None,
     ) -> dict[str, Any] | None:
         """Reopen a failed fulfilled request so admins can re-approve it.
 
         With ``remember_failed_release``, the release it was fulfilled with is added to
         ``book_data["failed_releases"]`` in the same write that reopens it, so a search that
-        picks the request up as soon as it is pending already skips that release.
+        picks the request up as soon as it is pending already skips that release. An
+        ``admin_note`` is written in that same write; None leaves the current note alone.
         """
         normalized_failure_reason = None
         if isinstance(failure_reason, str):
             normalized_failure_reason = failure_reason.strip() or None
+        normalized_admin_note = None
+        if isinstance(admin_note, str):
+            normalized_admin_note = admin_note.strip() or None
 
         with self._lock:
             conn = self._connect()
@@ -1008,11 +1013,12 @@ class UserDB:
                         release_data = NULL,
                         book_data = COALESCE(?, book_data),
                         last_failure_reason = ?,
+                        admin_note = COALESCE(?, admin_note),
                         reviewed_by = NULL,
                         reviewed_at = NULL
                     WHERE id = ?
                     """,
-                    (book_data_json, normalized_failure_reason, request_id),
+                    (book_data_json, normalized_failure_reason, normalized_admin_note, request_id),
                 )
                 updated_row = conn.execute(
                     "SELECT * FROM download_requests WHERE id = ?",

@@ -1028,6 +1028,29 @@ class TestDownloadRequests:
         assert reopened["status"] == "pending"
         assert reopened["last_failure_reason"] is None
 
+    def test_reopen_failed_request_writes_the_admin_note_and_keeps_it_when_not_given(self, user_db):
+        user = user_db.create_user(username="alice")
+        created = user_db.create_request(
+            user_id=user["id"],
+            content_type="ebook",
+            request_level="release",
+            policy_mode="request_release",
+            book_data=self._book_data(),
+            release_data=self._release_data(),
+            status="fulfilled",
+            delivery_state="error",
+            admin_note="Approved from browse mode",
+        )
+
+        kept = user_db.reopen_failed_request(created["id"])
+        assert kept is not None
+        assert kept["admin_note"] == "Approved from browse mode"
+
+        user_db.update_request(created["id"], status="fulfilled", delivery_state="error")
+        noted = user_db.reopen_failed_request(created["id"], admin_note="  Try again  ")
+        assert noted is not None
+        assert noted["admin_note"] == "Try again"
+
     def test_count_pending_requests(self, user_db):
         alice = user_db.create_user(username="alice")
         bob = user_db.create_user(username="bob")

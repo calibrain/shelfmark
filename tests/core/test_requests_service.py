@@ -2236,6 +2236,23 @@ def test_reopen_request_reopens_a_fulfilled_request_whose_download_failed(user_d
     ]
 
 
+def test_reopen_request_writes_the_note_in_the_reopening_write(user_db, monkeypatch):
+    """A failed-download reopen never lands without its note: there is no second update."""
+    request_id, admin = _fulfilled_request(user_db, delivery_state="error")
+
+    def no_second_write(*_args, **_kwargs):
+        msg = "admin_note must be written by reopen_failed_request"
+        raise AssertionError(msg)
+
+    monkeypatch.setattr(user_db, "update_request", no_second_write)
+    reopened = reopen_request(
+        user_db, request_id=request_id, admin_user_id=admin["id"], admin_note="Try again"
+    )
+
+    assert reopened["status"] == "pending"
+    assert reopened["admin_note"] == "Try again"
+
+
 @pytest.mark.parametrize("delivery_state", ["complete", "queued"])
 def test_reopen_request_refuses_a_fulfilled_request_that_is_delivered_or_in_flight(
     user_db, delivery_state
