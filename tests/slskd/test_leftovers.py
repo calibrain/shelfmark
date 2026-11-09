@@ -702,3 +702,26 @@ def test_a_folder_tried_once_goes_with_clean_up_once_it_is_old_enough(env):
     assert not finish
     assert _names(remove) == ["slskd_aa"]
     assert _names(keep) == ["slskd_bb"]
+
+
+def test_a_folder_of_an_older_attempt_is_kept_while_a_newer_one_runs(env):
+    """A request already downloading another release does not get the old folder imported too."""
+    waiting = _request(env, delivery="queued")
+    folder = _folder(env[3], "slskd:aa")
+    _row(env, "slskd:aa", status="error", request_id=waiting["id"])
+    user_db, history, _db, _base = env
+
+    finish, remove, keep = leftovers.plan(
+        [folder],
+        history_service=history,
+        user_db=user_db,
+        folder_complete=handler_mod.folder_complete,
+        keep_completed=False,
+        clean_after=timedelta(days=7),
+        now=NOW,
+        live_request_ids={waiting["id"]},
+    )
+
+    assert not finish
+    assert not remove
+    assert _names(keep) == ["slskd_aa"]

@@ -131,8 +131,13 @@ def plan(
     keep_completed: bool,
     clean_after: timedelta | None,
     now: datetime | None = None,
+    live_request_ids: set[int] | None = None,
 ) -> tuple[list[tuple[Path, dict[str, Any]]], list[Path], list[Path]]:
-    """Sort folders into (to finish, to remove, to keep). Reads only, changes nothing."""
+    """Sort folders into (to finish, to remove, to keep). Reads only, changes nothing.
+
+    ``live_request_ids`` are the requests a running task is downloading for now; a folder of an
+    older attempt for one of them is kept, not imported next to the new attempt.
+    """
     now = now or datetime.now(UTC)
     to_finish: list[tuple[Path, dict[str, Any]]] = []
     to_remove: list[Path] = []
@@ -167,6 +172,10 @@ def plan(
             continue
 
         needs_it, done_with = _request_state(user_db, row)
+        request_id = coerce_int(row.get("request_id"), 0)
+        if needs_it and request_id and request_id in (live_request_ids or set()):
+            to_keep.append(folder)  # a newer attempt for this request is running
+            continue
         sizes = [int(f.get("size") or 0) for f in _expected_files(row)]
         whole = folder_complete(folder, sizes)
         if whole and needs_it and run_blocking_io((folder / ADOPTED_MARKER).exists):
@@ -323,6 +332,7 @@ def run(
     clean_after = timedelta(days=clean_days) if clean_days > 0 else None
     keep_completed = slskd_handler.bool_setting("SLSKD_KEEP_COMPLETED", True)
 
+    live_now = live_tasks() if live_tasks is not None else {}
     to_finish, to_remove, to_keep = plan(
         folders,
         history_service=history_service,
@@ -331,6 +341,7 @@ def run(
         keep_completed=keep_completed,
         clean_after=clean_after,
         now=now,
+        live_request_ids={coerce_int(r, 0) for r in live_now.values() if r},
     )
     report.kept = [f.name for f in to_keep]
 
