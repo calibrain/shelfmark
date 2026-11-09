@@ -324,6 +324,20 @@ make restart     # Restart container
 
 The frontend dev server proxies to the backend on port 8084.
 
+
+## Sponsors
+
+Code review on Shelfmark's pull requests is sponsored by [CodeRabbit](https://coderabbit.link/calibrain).
+
+<a href="https://coderabbit.link/calibrain">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://www.coderabbit.ai/content/assets/white-typemark.svg">
+    <source media="(prefers-color-scheme: light)" srcset="https://www.coderabbit.ai/content/assets/orange-typemark.svg">
+    <img src="https://www.coderabbit.ai/content/assets/orange-typemark.svg" alt="CodeRabbit" width="240">
+  </picture>
+</a>
+
+
 ## License
 
 MIT License - see [LICENSE](LICENSE) for details.
