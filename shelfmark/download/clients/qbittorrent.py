@@ -34,6 +34,7 @@ from shelfmark.download.network import get_ssl_verify
 try:
     import qbittorrentapi as _qbittorrentapi
 except ImportError:
+    _qbittorrentapi = None
     _ImportedQBittorrentApiError = RuntimeError
     _ImportedQBittorrentLoginFailed = RuntimeError
 else:
@@ -45,6 +46,7 @@ logger = setup_logger(__name__)
 _HASH_LENGTH_40 = 40
 _HASH_LENGTH_ED2K = 32
 _HTTP_STATUS_FORBIDDEN = HTTPStatus.FORBIDDEN
+_HTTP_STATUS_UNAUTHORIZED = HTTPStatus.UNAUTHORIZED
 _HTTP_STATUS_NOT_FOUND = HTTPStatus.NOT_FOUND
 _METADATA_DOWNLOAD_STATES = {"forcedMetaDL", "metaDL"}
 # How long add_download waits for magnet metadata before falling back to the info
@@ -103,6 +105,35 @@ def _resolve_qbittorrent_exception_type(candidate: object) -> type[Exception]:
 
 _QBittorrentApiError = _resolve_qbittorrent_exception_type(_ImportedQBittorrentApiError)
 _QBittorrentLoginFailed = _resolve_qbittorrent_exception_type(_ImportedQBittorrentLoginFailed)
+
+
+def _qbittorrent_auth_errors(module: object) -> tuple[type[Exception], ...]:
+    """The qbittorrent-api errors that mean qBittorrent refused Shelfmark's login.
+
+    Empty when the library is missing, so nothing is mistaken for a refused login.
+    """
+    found = (
+        getattr(module, name, None) for name in ("LoginFailed", "HTTP401Error", "HTTP403Error")
+    )
+    return tuple(
+        error for error in found if isinstance(error, type) and issubclass(error, Exception)
+    )
+
+
+_QBITTORRENT_AUTH_ERRORS = _qbittorrent_auth_errors(_qbittorrentapi)
+
+
+def _auth_failure_message(error: Exception | None = None, *, status: int | None = None) -> str:
+    """Name a refused login as one, so the failure is not held against the release.
+
+    qbittorrent-api says nothing for a wrong password and only "Forbidden" or "Unauthorized"
+    for a bad session or API key, which reads like a problem with the torrent.
+    """
+    code = status if status is not None else getattr(error, "http_status_code", None)
+    detail = f"HTTP {code}" if code else "login rejected"
+    return f"qBittorrent authentication failed ({detail})"
+
+
 _QBITTORRENT_CLIENT_ERRORS = (
     _QBittorrentLoginFailed,
     _QBittorrentApiError,
@@ -302,6 +333,10 @@ class QBittorrentClient(DownloadClient):
             return [SimpleNamespace(**t) for t in torrents], None
         except requests.exceptions.HTTPError as e:
             status = getattr(getattr(e, "response", None), "status_code", None)
+            if status == _HTTP_STATUS_UNAUTHORIZED:
+                msg = _auth_failure_message(status=status)
+                logger.warning(msg)
+                return [], msg
             if status:
                 logger.warning("qBittorrent API error (HTTP %s): %s", status, e)
                 return [], f"qBittorrent API request failed (HTTP {status})"
@@ -321,6 +356,10 @@ class QBittorrentClient(DownloadClient):
                 "qBittorrent URL is invalid (missing http:// or https://). "
                 f"Configured: {self._base_url}",
             )
+        except _QBITTORRENT_AUTH_ERRORS as e:
+            msg = _auth_failure_message(e)
+            logger.warning(msg)
+            return [], msg
         except _QBITTORRENT_CLIENT_ERRORS as e:
             logger.debug("Failed to get torrents info: %s", e)
             return [], f"qBittorrent API error: {type(e).__name__}: {e}"
@@ -608,6 +647,10 @@ class QBittorrentClient(DownloadClient):
                 expected_hash,
                 _METADATA_WAIT_POLLS * _METADATA_WAIT_INTERVAL_SECONDS,
             )
+        except _QBITTORRENT_AUTH_ERRORS as e:
+            msg = _auth_failure_message(e)
+            logger.warning(msg)
+            raise RuntimeError(msg) from e
         except _QBITTORRENT_CLIENT_ERRORS:
             logger.exception("qBittorrent add failed")
             raise

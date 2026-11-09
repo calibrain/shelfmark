@@ -1617,6 +1617,120 @@ class TestQBittorrentClientAddDownload:
             with pytest.raises(RuntimeError, match="Failed to add torrent: Fails\\."):
                 client.add_download(magnet, "Test")
 
+    @pytest.mark.parametrize(
+        ("error_name", "error_text", "expected"),
+        [
+            ("LoginFailed", "", "qBittorrent authentication failed (login rejected)"),
+            ("Forbidden403Error", "Forbidden", "qBittorrent authentication failed (HTTP 403)"),
+            (
+                "Unauthorized401Error",
+                "Unauthorized",
+                "qBittorrent authentication failed (HTTP 401)",
+            ),
+        ],
+    )
+    def test_add_download_names_a_rejected_login(
+        self, monkeypatch, error_name, error_text, expected
+    ):
+        """A login qBittorrent refuses is reported as an authentication failure, not bare text."""
+        import qbittorrentapi as real_qbittorrentapi
+
+        config_values = {
+            "QBITTORRENT_URL": "http://localhost:8080",
+            "QBITTORRENT_USERNAME": "admin",
+            "QBITTORRENT_PASSWORD": "wrong",
+            "QBITTORRENT_CATEGORY": "books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.qbittorrent.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+
+        valid_hash = "a1b2c3d4e5f6a1b2c3d4e5f6a1b2c3d4e5f6a1b2"
+        mock_client_instance = MagicMock()
+        error_type = getattr(real_qbittorrentapi, error_name)
+        mock_client_instance.torrents_add.side_effect = error_type(error_text)
+        fake_module = MagicMock(
+            Client=MagicMock(return_value=mock_client_instance),
+            APIError=real_qbittorrentapi.APIError,
+            LoginFailed=real_qbittorrentapi.LoginFailed,
+            HTTP401Error=real_qbittorrentapi.HTTP401Error,
+            HTTP403Error=real_qbittorrentapi.HTTP403Error,
+        )
+
+        with patch.dict("sys.modules", {"qbittorrentapi": fake_module}):
+            import importlib
+
+            import shelfmark.download.clients.qbittorrent as qb_module
+
+            importlib.reload(qb_module)
+
+            client = qb_module.QBittorrentClient()
+            magnet = f"magnet:?xt=urn:btih:{valid_hash}&dn=test"
+
+            with pytest.raises(RuntimeError) as raised:
+                client.add_download(magnet, "Test")
+
+        assert str(raised.value) == expected
+
+    @staticmethod
+    def _client_with_real_errors(monkeypatch, mock_client_instance):
+        """A QBittorrentClient over a mock session, with qbittorrent-api's real error types."""
+        import importlib
+
+        import qbittorrentapi as real_qbittorrentapi
+
+        config_values = {
+            "QBITTORRENT_URL": "http://localhost:8080",
+            "QBITTORRENT_USERNAME": "admin",
+            "QBITTORRENT_PASSWORD": "wrong",
+            "QBITTORRENT_CATEGORY": "books",
+        }
+        monkeypatch.setattr(
+            "shelfmark.download.clients.qbittorrent.config.get",
+            lambda key, default="": config_values.get(key, default),
+        )
+        fake_module = MagicMock(
+            Client=MagicMock(return_value=mock_client_instance),
+            APIError=real_qbittorrentapi.APIError,
+            LoginFailed=real_qbittorrentapi.LoginFailed,
+            HTTP401Error=real_qbittorrentapi.HTTP401Error,
+            HTTP403Error=real_qbittorrentapi.HTTP403Error,
+        )
+        with patch.dict("sys.modules", {"qbittorrentapi": fake_module}):
+            import shelfmark.download.clients.qbittorrent as qb_module
+
+            importlib.reload(qb_module)
+            return qb_module.QBittorrentClient()
+
+    def test_a_refused_login_while_checking_a_torrent_is_named_as_one(self, monkeypatch):
+        """A status check whose login is refused reports an authentication failure."""
+        import qbittorrentapi as real_qbittorrentapi
+
+        mock_client_instance = MagicMock()
+        mock_client_instance.auth_log_in.side_effect = real_qbittorrentapi.LoginFailed("")
+        client = self._client_with_real_errors(monkeypatch, mock_client_instance)
+
+        torrents, error = client._request_torrent_info_records({"hashes": "abc"})
+
+        assert torrents == []
+        assert error == "qBittorrent authentication failed (login rejected)"
+
+    def test_a_401_while_checking_a_torrent_is_an_authentication_failure(self, monkeypatch):
+        """HTTP 401 on the info call is the client's login, not the torrent."""
+        import requests
+
+        response = MagicMock(status_code=401)
+        response.raise_for_status.side_effect = requests.exceptions.HTTPError(response=response)
+        mock_client_instance = MagicMock()
+        mock_client_instance._session.get.return_value = response
+        client = self._client_with_real_errors(monkeypatch, mock_client_instance)
+
+        torrents, error = client._request_torrent_info_records({"hashes": "abc"})
+
+        assert torrents == []
+        assert error == "qBittorrent authentication failed (HTTP 401)"
+
     def test_add_download_omits_empty_category(self, monkeypatch):
         """Avoid sending empty category values to qBittorrent-compatible clients."""
         config_values = {

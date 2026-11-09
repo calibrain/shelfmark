@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 
 import type { StatusData, ButtonStateInfo } from '../types';
+import { addFailedRelease, failedDownloadButtonState } from '../utils/failedDownloadButton';
 
 interface UseDownloadTrackingReturn {
   bookToReleaseMap: Record<string, string[]>;
@@ -12,6 +13,12 @@ interface UseDownloadTrackingReturn {
   getUniversalButtonState: (bookId: string) => ButtonStateInfo;
 }
 
+/**
+ * Download button state for books and releases, from the queue status and this session's picks.
+ *
+ * In universal mode a book's button follows the releases downloaded for it, so the hook keeps
+ * which releases belong to which book and which books finished during this session.
+ */
 export function useDownloadTracking(currentStatus: StatusData): UseDownloadTrackingReturn {
   // Track mapping of metadata book IDs to release source IDs for universal mode
   const [bookToReleaseMap, setBookToReleaseMap] = useState<Record<string, string[]>>({});
@@ -38,9 +45,7 @@ export function useDownloadTracking(currentStatus: StatusData): UseDownloadTrack
   const getButtonState = useCallback(
     (bookId: string): ButtonStateInfo => {
       if (currentStatus.error && currentStatus.error[bookId]) {
-        return currentStatus.error[bookId].retry_available === true
-          ? { text: 'Retry', state: 'download' }
-          : { text: 'Failed', state: 'error' };
+        return failedDownloadButtonState(currentStatus.error[bookId]);
       }
       if (currentStatus.complete && currentStatus.complete[bookId]) {
         return { text: 'Downloaded', state: 'complete' };
@@ -67,7 +72,11 @@ export function useDownloadTracking(currentStatus: StatusData): UseDownloadTrack
     [currentStatus],
   );
 
-  // Get button state for a metadata book in universal mode
+  /**
+   * The button for a metadata book in universal mode, from every release tracked for it. An
+   * active download wins, then a finished one, then a failure that can be retried, then any
+   * other failure.
+   */
   const getUniversalButtonState = useCallback(
     (bookId: string): ButtonStateInfo => {
       const releaseIds = bookToReleaseMap[bookId] || [];
@@ -111,12 +120,7 @@ export function useDownloadTracking(currentStatus: StatusData): UseDownloadTrack
             bestState = { text: 'Downloaded', state: 'complete' };
             foundActiveState = true;
           } else if (currentStatus.error && currentStatus.error[releaseId]) {
-            if (bestState.state === 'download') {
-              bestState =
-                currentStatus.error[releaseId].retry_available === true
-                  ? { text: 'Retry', state: 'download' }
-                  : { text: 'Failed', state: 'error' };
-            }
+            bestState = addFailedRelease(bestState, currentStatus.error[releaseId]);
           }
         }
       }
