@@ -10,6 +10,7 @@ import pytest
 
 import shelfmark.release_sources.slskd.handler as handler_mod
 from shelfmark.core.download_history_service import DownloadHistoryService
+from shelfmark.core.startup_reconcile import INTERRUPTED_MESSAGE
 from shelfmark.core.user_db import UserDB
 from shelfmark.release_sources.slskd import leftovers
 
@@ -36,7 +37,7 @@ def _folder(base, task_id, *, sizes=(5, 7), age_days=0.0):
     return folder
 
 
-def _row(env, task_id, *, status, request_id=None, age_days=0.0, files=FILES):
+def _row(env, task_id, *, status, request_id=None, age_days=0.0, files=FILES, message="x"):
     """Record a Soulseek download in the history, with the files its retry payload asked for."""
     _user_db, history, db_path, _base = env
     history.record_download(
@@ -57,7 +58,7 @@ def _row(env, task_id, *, status, request_id=None, age_days=0.0, files=FILES):
         retry_payload={"retry_source_context": {"username": "peer", "files": files}},
     )
     if status != "active":
-        history.finalize_download(task_id=task_id, final_status=status, status_message="x")
+        history.finalize_download(task_id=task_id, final_status=status, status_message=message)
     stamp = (NOW - timedelta(days=age_days)).isoformat(timespec="seconds")
     conn = sqlite3.connect(db_path)
     conn.execute(
@@ -387,6 +388,15 @@ def test_a_transfer_a_running_task_owns_is_left_alone(env):
 
 def test_an_interrupted_manual_download_is_picked_up_again(env):
     _row(env, "slskd:aa", status="active")
+
+    reattach, cancel = _plan_transfers(env, [_transfer()])
+
+    assert [row["task_id"] for row, _owned in reattach] == ["slskd:aa"]
+    assert cancel == []
+
+
+def test_a_manual_download_a_restart_cut_short_is_picked_up_again(env):
+    _row(env, "slskd:aa", status="error", message=INTERRUPTED_MESSAGE)
 
     reattach, cancel = _plan_transfers(env, [_transfer()])
 

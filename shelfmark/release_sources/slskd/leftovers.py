@@ -26,6 +26,7 @@ from typing import TYPE_CHECKING, Any
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import coerce_int
+from shelfmark.core.startup_reconcile import INTERRUPTED_MESSAGE
 from shelfmark.download.fs import run_blocking_io
 
 if TYPE_CHECKING:
@@ -248,6 +249,17 @@ def _rows_by_file(rows: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str,
     return index
 
 
+def _interrupted(row: dict[str, Any]) -> bool:
+    """Whether a download stopped without anyone giving up on it.
+
+    Either its row is still active with no task behind it, or startup marked it as cut short
+    by a restart (an error with the "Interrupted" message). Any other ending was a real one.
+    """
+    if row.get("final_status") == "active":
+        return True
+    return row.get("final_status") == "error" and row.get("status_message") == INTERRUPTED_MESSAGE
+
+
 def _queued_after_it_ended(transfer: dict[str, Any], row: dict[str, Any]) -> bool:
     """Whether slskd queued this transfer after the Shelfmark download it matches had ended.
 
@@ -313,7 +325,7 @@ def plan_transfers(
             continue
         request_id = row.get("request_id")
         if not request_id:
-            if row.get("final_status") == "active":
+            if _interrupted(row):
                 pick_up(row, transfer)  # interrupted, not abandoned
             else:
                 cancel.append(transfer)
