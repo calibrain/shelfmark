@@ -336,8 +336,13 @@ def test_the_payload_files_are_read_whether_stored_as_text_or_dict():
 # --- transfers nothing is watching -------------------------------------------------------
 
 
-def _transfer(name="@@s\\Book\\a.mp3", state="Queued, Remotely", peer="peer", tid="x1"):
-    return {"username": peer, "filename": name, "state": state, "id": tid, "size": 5}
+def _transfer(
+    name="@@s\\Book\\a.mp3", state="Queued, Remotely", peer="peer", tid="x1", requested=None
+):
+    transfer = {"username": peer, "filename": name, "state": state, "id": tid, "size": 5}
+    if requested is not None:
+        transfer["requestedAt"] = requested
+    return transfer
 
 
 def _plan_transfers(env, transfers, *, live=None):
@@ -883,3 +888,48 @@ def test_dropping_many_transfers_waits_once_not_once_per_transfer(env, wired, mo
     assert len(report.cancelled) == 5
     assert len(waits) == 1
     assert [c[1] for c in fake.cancelled] == [f"t{n}" for n in range(5)] * 2
+
+
+def _slskd_stamp(when):
+    """A time as slskd writes requestedAt: UTC, seven fractional digits, no zone."""
+    return when.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f") + "0"
+
+
+@pytest.mark.parametrize("status", ["error", "cancelled"])
+def test_the_same_file_queued_again_after_the_download_ended_is_left_alone(env, status):
+    _row(env, "slskd:aa", status=status, age_days=1)
+
+    later = _transfer(requested=_slskd_stamp(NOW - timedelta(hours=1)))
+
+    assert _plan_transfers(env, [later]) == ([], [])
+
+
+def test_a_transfer_queued_before_the_download_ended_is_still_cancelled(env):
+    _row(env, "slskd:aa", status="cancelled", age_days=1)
+
+    earlier = _transfer(requested=_slskd_stamp(NOW - timedelta(days=2)))
+
+    reattach, cancel = _plan_transfers(env, [earlier])
+
+    assert reattach == []
+    assert cancel == [earlier]
+
+
+def test_a_request_waiting_for_its_file_does_not_take_one_queued_after_its_download_ended(env):
+    request = _request(env, delivery="queued")
+    _row(env, "slskd:aa", status="error", request_id=request["id"], age_days=1)
+
+    later = _transfer(requested=_slskd_stamp(NOW - timedelta(hours=1)))
+
+    assert _plan_transfers(env, [later]) == ([], [])
+
+
+def test_a_running_download_keeps_its_transfers_whatever_their_stamp(env):
+    _row(env, "slskd:aa", status="active")
+
+    later = _transfer(requested=_slskd_stamp(NOW + timedelta(hours=1)))
+
+    reattach, cancel = _plan_transfers(env, [later])
+
+    assert [row["task_id"] for row, _owned in reattach] == ["slskd:aa"]
+    assert cancel == []

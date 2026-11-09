@@ -163,7 +163,8 @@ def slskd_config_settings() -> list[SettingsField]:
                 "no download is "
                 "watching any more is picked up again if its request still needs it, a few per "
                 "check, and cancelled otherwise, or when it cannot be picked up. Transfers "
-                "queued by other apps or by hand in slskd are never touched."
+                "queued by other apps or by hand in slskd are never touched, including the same "
+                "file queued again after Shelfmark's download of it ended."
             ),
             show_when={"field": "SLSKD_ISOLATE_DOWNLOADS", "value": True},
         ),

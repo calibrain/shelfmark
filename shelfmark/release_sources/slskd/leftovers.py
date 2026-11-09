@@ -248,6 +248,22 @@ def _rows_by_file(rows: list[dict[str, Any]]) -> dict[tuple[str, str], dict[str,
     return index
 
 
+def _queued_after_it_ended(transfer: dict[str, Any], row: dict[str, Any]) -> bool:
+    """Whether slskd queued this transfer after the Shelfmark download it matches had ended.
+
+    slskd will not queue a second transfer of a file from a peer while one is unfinished, and
+    stamps each with ``requestedAt`` when it is queued. So a transfer asked for after the
+    download ended is not one Shelfmark queued: another app or a person queued that file
+    again. A running download has not ended, and a transfer with no readable stamp cannot be
+    told apart, so both answer False.
+    """
+    if row.get("final_status") == "active":
+        return False
+    ended = _parse_stamp(row.get("terminal_at"))
+    requested = _parse_stamp(transfer.get("requestedAt"))
+    return ended is not None and requested is not None and requested > ended
+
+
 def plan_transfers(
     transfers: list[dict[str, Any]],
     *,
@@ -261,8 +277,9 @@ def plan_transfers(
     ``reattach`` holds one (history row, its transfers) pair per download to pick up again, so
     a download that cannot be picked up can have its transfers dropped instead.
 
-    Reads only. Only transfers a Shelfmark download asked for are considered; anything else on
-    the slskd instance belongs to someone else and is left alone. A transfer is watched when a
+    Reads only. Only transfers a Shelfmark download asked for are considered, and only those
+    slskd queued before that download ended; anything else on the slskd instance belongs to
+    someone else and is left alone. A transfer is watched when a
     running task owns it. slskd keeps working on a
     transfer after the task that queued it is gone (a restart, a timeout), so these go on
     queueing at peers and writing into a folder nobody imports. One whose request still waits
@@ -286,6 +303,8 @@ def plan_transfers(
         if row is None:
             # Not one Shelfmark asked for: slskd may be shared with other apps or used by hand.
             continue
+        if _queued_after_it_ended(transfer, row):
+            continue  # the same file queued again, by another app or by hand
         if row.get("final_status") == "complete":
             # That download finished; an unfinished transfer of the same file is someone else's.
             continue
