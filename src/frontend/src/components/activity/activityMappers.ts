@@ -1,7 +1,7 @@
 import type { Book, RequestRecord, StatusData } from '../../types';
 import { getDownloadsCount } from '../../types';
 import { STATUS_LABELS, isActiveDownloadStatus } from './activityStyles.js';
-import { buildTimingText } from './activityTiming';
+import { buildTimingText, parseBackendTimestamp } from './activityTiming';
 import type { ActivityItem, FormatPill, ActivityVisualStatus } from './activityTypes';
 
 export type DownloadStatusKey = Extract<
@@ -194,8 +194,9 @@ const buildRequestMetaLine = (
   releaseData: Record<string, unknown>,
   viewerRole: 'user' | 'admin',
 ): string => {
-  // Fork: a request that has been delivered says how long ago.
-  const deliveredMs = Date.parse(record.delivery_updated_at ?? '');
+  // Fork: a request that has been delivered says how long ago. The migration backfills this
+  // stamp from SQLite's zone-free UTC created_at, so it is parsed as UTC, not local time.
+  const deliveredMs = parseBackendTimestamp(record.delivery_updated_at);
   const delivered =
     record.status === 'fulfilled' && record.delivery_state === 'complete' && deliveredMs > 0
       ? buildTimingText({ finishedMs: deliveredMs, showDuration: false, agoPrefix: 'delivered' })

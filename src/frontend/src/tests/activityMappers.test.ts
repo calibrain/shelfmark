@@ -329,6 +329,16 @@ describe('activityMappers timing', () => {
     expect(item.metaLine).toContain('delivered 3h ago');
   });
 
+  it('reads a migrated zone-free delivery stamp as UTC', () => {
+    const delivered = new Date(Date.now() - 3 * 3600 * 1000);
+    const stamp = delivered.toISOString().slice(0, 19).replace('T', ' ');
+    const item = requestToActivityItem(
+      makeRequest({ status: 'fulfilled', delivery_state: 'complete', delivery_updated_at: stamp }),
+      'admin',
+    );
+    expect(item.metaLine).toContain('delivered 3h ago');
+  });
+
   it('says nothing about delivery for a request that is still waiting', () => {
     const item = requestToActivityItem(makeRequest({ status: 'pending' }), 'admin');
     expect(item.metaLine).not.toContain('delivered');

@@ -6,6 +6,22 @@ const MINUTE = 60 * SECOND;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
+// "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DDTHH:MM:SS" with no zone: SQLite's CURRENT_TIMESTAMP shape.
+const ZONE_FREE_TIMESTAMP = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/;
+
+/**
+ * Epoch ms for a backend timestamp, or 0 when it is missing or unreadable. A value with no
+ * zone is UTC (SQLite's CURRENT_TIMESTAMP writes those); an explicit zone or offset is kept.
+ */
+export const parseBackendTimestamp = (value: string | null | undefined): number => {
+  if (!value) {
+    return 0;
+  }
+  const text = value.trim();
+  const parsed = Date.parse(ZONE_FREE_TIMESTAMP.test(text) ? `${text.replace(' ', 'T')}Z` : text);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
 /** "45s", "4m", "1h 20m", "3d": the two most useful units, never more. */
 export const formatDuration = (ms: number): string => {
   if (!Number.isFinite(ms) || ms < 0) {

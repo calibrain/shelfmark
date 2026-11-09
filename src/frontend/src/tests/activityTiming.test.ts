@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildTimingText, formatAgo, formatDuration } from '../components/activity/activityTiming';
+import {
+  buildTimingText,
+  formatAgo,
+  formatDuration,
+  parseBackendTimestamp,
+} from '../components/activity/activityTiming';
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
@@ -83,5 +88,24 @@ describe('buildTimingText', () => {
   it('says nothing without a finish time', () => {
     expect(buildTimingText({ startedMs: now - HOUR, showDuration: true, now })).toBeUndefined();
     expect(buildTimingText({ finishedMs: 0, showDuration: true, now })).toBeUndefined();
+  });
+});
+
+describe('parseBackendTimestamp', () => {
+  it('reads a zone-free SQLite stamp as UTC', () => {
+    expect(parseBackendTimestamp('2026-03-01 12:00:00')).toBe(Date.UTC(2026, 2, 1, 12));
+    expect(parseBackendTimestamp('2026-03-01T12:00:00')).toBe(Date.UTC(2026, 2, 1, 12));
+  });
+
+  it('keeps an explicit zone or offset', () => {
+    expect(parseBackendTimestamp('2026-03-01T12:00:00Z')).toBe(Date.UTC(2026, 2, 1, 12));
+    expect(parseBackendTimestamp('2026-03-01T12:00:00+02:00')).toBe(Date.UTC(2026, 2, 1, 10));
+  });
+
+  it('is 0 for nothing or nonsense', () => {
+    expect(parseBackendTimestamp(undefined)).toBe(0);
+    expect(parseBackendTimestamp(null)).toBe(0);
+    expect(parseBackendTimestamp('')).toBe(0);
+    expect(parseBackendTimestamp('yesterday')).toBe(0);
   });
 });
