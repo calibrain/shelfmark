@@ -115,10 +115,12 @@ def run(
     if not ledger:
         return report
     torrents = client.list_torrents()
-    # A listing that came back empty may be a failed read, so it never prunes the ledger.
-    if torrents:
-        listed = {_ledger_hash(t, ledger) for t in torrents}
-        torrent_ledger.forget(*(known for known in ledger if known not in listed))
+    if torrents is None:
+        return report  # qBittorrent did not answer: nothing is judged, nothing forgotten
+    # A torrent qBittorrent no longer lists is forgotten, even when it lists none at all, so
+    # the same torrent added later by someone else is never taken for one Shelfmark added.
+    listed = {_ledger_hash(t, ledger) for t in torrents}
+    torrent_ledger.forget(*(known for known in ledger if known not in listed))
     for known, torrent in find_stale(
         torrents,
         ledger=ledger,

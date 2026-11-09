@@ -102,9 +102,10 @@ def test_switched_off_finds_nothing():
     assert _find([_torrent()], hours=0) == []
 
 
-def _client(*torrents, removed=True):
+def _client(*torrents, removed=True, failed=False):
+    """A qBittorrent stand-in listing torrents, or failing to list when failed is set."""
     client = MagicMock()
-    client.list_torrents.return_value = list(torrents)
+    client.list_torrents.return_value = None if failed else list(torrents)
     client.remove.return_value = removed
     return client
 
@@ -196,16 +197,34 @@ def test_a_failed_removal_is_not_reported_and_keeps_the_row(monkeypatch):
     assert torrent_ledger.entries() == {"h1": "task-1"}
 
 
-def test_a_row_whose_torrent_is_gone_is_dropped_but_an_empty_listing_drops_nothing(monkeypatch):
+def test_a_row_whose_torrent_is_gone_is_dropped_but_a_failed_listing_drops_nothing(monkeypatch):
     monkeypatch.setattr(mod, "stale_hours", lambda: 6.0)
     torrent_ledger.record("gone", "task-9")
     torrent_ledger.record("h1", "task-1")
 
-    mod.run(_client(), running_task_ids=lambda: set(), now=NOW)  # qBittorrent failed to answer
+    mod.run(_client(failed=True), running_task_ids=lambda: set(), now=NOW)
     assert set(torrent_ledger.entries()) == {"gone", "h1"}
 
     mod.run(_client(_torrent(idle=1.0)), running_task_ids=lambda: set(), now=NOW)
     assert set(torrent_ledger.entries()) == {"h1"}
+
+
+def test_an_empty_listing_forgets_every_row_so_a_later_torrent_with_its_hash_is_not_taken(
+    monkeypatch,
+):
+    """qBittorrent answered with no torrents: the ledger is emptied, and the same hash added
+    later by someone else is not removed as one of Shelfmark's."""
+    monkeypatch.setattr(mod, "stale_hours", lambda: 6.0)
+    torrent_ledger.record("h1", "task-1")
+
+    mod.run(_client(), running_task_ids=lambda: set(), now=NOW)
+    assert torrent_ledger.entries() == {}
+
+    client = _client(_torrent("Someone else's", h="h1"))
+    report = mod.run(client, running_task_ids=lambda: set(), now=NOW)
+
+    assert report.removed == []
+    client.remove.assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -234,7 +253,8 @@ def test_the_limit_is_held_to_3_through_72_hours_and_zero_means_off(monkeypatch,
 
 
 def test_the_qbittorrent_client_lists_a_category_and_returns_nothing_on_failure():
-    """list_torrents returns a category's torrents, and nothing when qBittorrent is unreachable."""
+    """list_torrents returns a category's torrents, an empty list when it holds none, and None
+    when qBittorrent is unreachable."""
     from shelfmark.download.clients.qbittorrent import QBittorrentClient
 
     client = object.__new__(QBittorrentClient)
@@ -243,13 +263,16 @@ def test_the_qbittorrent_client_lists_a_category_and_returns_nothing_on_failure(
     def listing(category):
         """Stand in for qBittorrent: category ok lists one torrent, any other fails to connect."""
         seen.append(category)
-        return ([_torrent()], None) if category == "ok" else ([], "Cannot connect")
+        if category == "ok":
+            return [_torrent()], None
+        return ([], None) if category == "empty" else ([], "Cannot connect")
 
     client._list_torrents_by_category = listing  # type: ignore[method-assign]
 
     assert [t.name for t in client.list_torrents("ok")] == ["Book"]
-    assert client.list_torrents("down") == []
-    assert seen == ["ok", "down"]
+    assert client.list_torrents("empty") == []
+    assert client.list_torrents("down") is None
+    assert seen == ["ok", "empty", "down"]
 
 
 def test_the_setting_defaults_to_six_hours_in_the_app_and_in_the_settings_form(monkeypatch):
