@@ -84,6 +84,18 @@ def _has_unread(conversation: dict[str, Any]) -> bool:
     )
 
 
+def _resume_order(
+    conversations: list[dict[str, Any]], progress: dict[str, str] | None
+) -> list[dict[str, Any]]:
+    """The conversations, starting after the one the last pass read last and wrapping round."""
+    last = (progress or {}).get("last")
+    names = [str(c.get("username") or "") for c in conversations]
+    if not last or last not in names:
+        return list(conversations)
+    start = names.index(last) + 1
+    return list(conversations[start:]) + list(conversations[:start])
+
+
 def scan_and_respond(
     client: SlskdClient,
     state: dict[str, float],
@@ -92,6 +104,7 @@ def scan_and_respond(
     cooldown: float = COOLDOWN_SECONDS,
     clock: Callable[[], float] | None = None,
     budget: float | None = None,
+    progress: dict[str, str] | None = None,
 ) -> list[tuple[str, str]]:
     """Run one pass and return the ``(username, token)`` replies sent.
 
@@ -99,9 +112,13 @@ def scan_and_respond(
     caller. A failure on one conversation does not stop the others, but slskd timing
     out or refusing the connection ends the pass, and with ``clock`` and ``budget`` no
     further conversation is read once ``budget`` seconds have passed since ``now``.
+
+    ``progress`` (owned by the caller) remembers the last conversation read, and the next pass
+    starts after it and wraps round, so unread conversations that are not challenges cannot
+    use up every pass's budget ahead of one that is.
     """
     replies: list[tuple[str, str]] = []
-    for conversation in client.list_conversations():
+    for conversation in _resume_order(client.list_conversations(), progress):
         username = str(conversation.get("username") or "")
         if not username or not _has_unread(conversation):
             continue
@@ -112,6 +129,8 @@ def scan_and_respond(
             logger.debug("slskd chat challenge: scan budget spent, the rest waits a pass")
             break
 
+        if progress is not None:
+            progress["last"] = username
         try:
             detail = client.get_conversation(username) or {}
             token = None
@@ -160,6 +179,7 @@ class ChatAutoProver:
         self._last_scan: float | None = None
         self._scanning = False
         self._state: dict[str, float] = {}
+        self._progress: dict[str, str] = {}
 
     def maybe_scan(
         self,
@@ -186,6 +206,7 @@ class ChatAutoProver:
                 cooldown=self._cooldown,
                 clock=clock,
                 budget=SCAN_BUDGET_SECONDS,
+                progress=self._progress,
             )
         except _ERRORS as e:
             logger.debug("slskd chat challenge: scan skipped: %s", e)

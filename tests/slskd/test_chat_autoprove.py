@@ -196,6 +196,40 @@ def test_scan_stops_reading_conversations_once_its_budget_is_spent():
     assert client.get_conversation.call_count == 1
 
 
+def test_a_later_pass_resumes_after_the_last_conversation_read():
+    """Unread chats that are not challenges cannot crowd out a challenge further down."""
+    conversations = [_convo("a"), _convo("b"), _convo("c")]
+    client = _client(conversations, {"a": [_msg("hi")], "b": [_msg("hey")], "c": [_msg(CHALLENGE)]})
+    progress: dict[str, str] = {}
+
+    def one_read_per_pass(ticks):
+        """A clock that spends the budget after the first conversation of a pass."""
+        values = iter(ticks)
+        return lambda: next(values)
+
+    first = scan_and_respond(
+        client, {}, now=0.0, clock=one_read_per_pass([0.0, 11.0]), budget=10.0, progress=progress
+    )
+    second = scan_and_respond(
+        client, {}, now=0.0, clock=one_read_per_pass([0.0, 11.0]), budget=10.0, progress=progress
+    )
+    third = scan_and_respond(
+        client, {}, now=0.0, clock=one_read_per_pass([0.0, 11.0]), budget=10.0, progress=progress
+    )
+
+    assert (first, second) == ([], [])
+    assert third == [("c", "download")]
+
+
+def test_the_pass_order_wraps_round():
+    """After the last conversation, the next pass starts again at the first."""
+    client = _client([_convo("a"), _convo("b")], {"a": [_msg(CHALLENGE)]})
+
+    replies = scan_and_respond(client, {}, now=0.0, progress={"last": "b"})
+
+    assert replies == [("a", "download")]
+
+
 def test_reply_is_logged():
     client = _client([_convo()], {"peer": [_msg(CHALLENGE)]})
     with patch("shelfmark.release_sources.slskd.chat_autoprove.logger") as log:
