@@ -21,6 +21,7 @@ from shelfmark.core.request_helpers import (
     load_users_request_policy_settings,
     normalize_optional_text,
     normalize_positive_int,
+    populate_request_reviewers,
     populate_request_usernames,
 )
 from shelfmark.core.request_policy import (
@@ -938,6 +939,7 @@ def register_request_routes(
 
     @app.route("/api/admin/requests", methods=["GET"])
     def api_admin_list_requests() -> ResponseReturnValue:
+        """List requests for an admin, filtered by ?status and paged by ?limit and ?offset."""
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -954,6 +956,7 @@ def register_request_routes(
             return jsonify({"error": str(exc)}), 400
 
         populate_request_usernames(rows, user_db)
+        populate_request_reviewers(rows, user_db)
 
         return jsonify(rows)
 
@@ -1102,6 +1105,36 @@ def register_request_routes(
         )
 
         return jsonify(updated)
+
+    @app.route("/api/admin/requests/rejected-hidden", methods=["GET"])
+    def api_admin_list_hidden_rejected() -> ResponseReturnValue:
+        """Ids of the rejected requests an admin hid from the Rejected view."""
+        auth_gate = _require_request_endpoints_available(resolve_auth_mode)
+        if auth_gate is not None:
+            return auth_gate
+        if not session.get("is_admin", False):
+            return jsonify({"error": "Admin access required"}), 403
+        return jsonify({"request_ids": user_db.list_hidden_rejected_request_ids()})
+
+    @app.route("/api/admin/requests/<int:request_id>/rejected-hidden", methods=["POST"])
+    def api_admin_set_rejected_hidden(request_id: int) -> ResponseReturnValue:
+        """Hide or show a rejected request in the Rejected view; 409 if it is not rejected."""
+        auth_gate = _require_request_endpoints_available(resolve_auth_mode)
+        if auth_gate is not None:
+            return auth_gate
+        _admin_user_id, admin_gate = _require_admin_user_id()
+        if admin_gate is not None:
+            return admin_gate
+
+        data = request.get_json(silent=True) or {}
+        hidden = data.get("hidden") if isinstance(data, dict) else None
+        if not isinstance(hidden, bool):
+            return jsonify({"error": "hidden must be true or false"}), 400
+        if not user_db.set_rejected_request_hidden(request_id, hidden=hidden):
+            return _error_response(
+                "Only a rejected request can be hidden", 409, code="stale_transition"
+            )
+        return jsonify({"request_id": request_id, "hidden": hidden})
 
     @app.route("/api/admin/requests/<int:request_id>/reopen", methods=["POST"])
     def api_admin_reopen_request(request_id: int) -> ResponseReturnValue:

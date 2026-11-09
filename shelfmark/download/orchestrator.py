@@ -740,6 +740,8 @@ def _task_to_dict(
         "username": task.username,
         "request_id": task.request_id,
         "retry_available": can_retry_download_task(task, retry_status),
+        "reattached": bool(task.reattached),
+        "finished_at": task.finished_at,
     }
 
 

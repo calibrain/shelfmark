@@ -155,6 +155,10 @@ class DownloadTask:
     # Hardlinking support
     original_download_path: str | None = None  # Path in download client (for hardlinking)
 
+    # True when the task picked up work that was already under way (a torrent the client had,
+    # files already on disk) instead of starting it. The activity card shows it as a pill.
+    reattached: bool = False
+
     # Search mode - determines post-download processing behavior
     # See SearchMode enum for behavioral differences
     search_mode: SearchMode | None = None
@@ -186,6 +190,9 @@ class DownloadTask:
     progress: float = 0.0
     status: QueueStatus = QueueStatus.QUEUED
     status_message: str | None = None
+    # When the task first reached a terminal status (epoch seconds, like added_time); None
+    # while it is running or queued again. Mirrors history's terminal_at for a live entry.
+    finished_at: float | None = None
     download_path: str | None = None
     # Every file the output step produced, download_path among them. Kept in memory
     # only: history persists download_path alone.

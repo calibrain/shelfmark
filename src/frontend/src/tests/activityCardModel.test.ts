@@ -16,6 +16,18 @@ const makeItem = (overrides: Partial<ActivityItem> = {}): ActivityItem => ({
   ...overrides,
 });
 
+const rejectedActionKinds = (hiddenInRejected?: boolean) =>
+  buildActivityCardModel(
+    makeItem({
+      kind: 'request',
+      visualStatus: 'rejected',
+      requestId: 47,
+      downloadBookId: undefined,
+      hiddenInRejected,
+    }),
+    true,
+  ).actions.map((action) => action.kind);
+
 describe('activityCardModel', () => {
   it('shows ownership in badge text for admin pending requests', () => {
     const model = buildActivityCardModel(
@@ -30,7 +42,7 @@ describe('activityCardModel', () => {
     );
 
     expect(model.badges.length).toBe(1);
-    expect(model.badges[0]?.text).toBe('Needs review · testuser');
+    expect(model.badges[0]?.text).toBe('No match yet');
   });
 
   it('keeps pending label for requester-side pending requests', () => {
@@ -272,5 +284,153 @@ describe('activityCardModel', () => {
     );
 
     expect(model.actions.map((action) => action.kind)).toEqual(['request-dismiss']);
+  });
+
+  it('tells an admin who declined a request and when', () => {
+    const record = {
+      id: 45,
+      user_id: 7,
+      status: 'rejected' as const,
+      source_hint: null,
+      content_type: 'ebook' as const,
+      request_level: 'book' as const,
+      policy_mode: 'request_book' as const,
+      book_data: { title: 'My Dog Thinks It Is a Cat' },
+      release_data: null,
+      note: null,
+      admin_note: 'already in the library',
+      reviewed_by: 1,
+      reviewed_at: '2026-09-22T05:31:12Z',
+      created_at: '2026-09-20T03:37:29Z',
+      updated_at: '2026-09-22T05:31:12Z',
+      username: 'reader',
+      reviewer_username: 'admin@example.com',
+    };
+    const item = makeItem({
+      kind: 'request',
+      visualStatus: 'rejected',
+      requestId: 45,
+      downloadBookId: undefined,
+      adminNote: record.admin_note,
+      requestRecord: record,
+    });
+
+    const adminLine = buildActivityCardModel(item, true).noteLine;
+    expect(adminLine).toMatch(/^Declined by admin@example\.com · .+: "already in the library"$/);
+
+    const requesterLine = buildActivityCardModel(item, false).noteLine;
+    expect(requesterLine).toBe('"already in the library"');
+  });
+
+  it("says a decline the automation made was automatic, not a person's", () => {
+    const record = {
+      id: 46,
+      user_id: 7,
+      status: 'rejected' as const,
+      source_hint: null,
+      content_type: 'audiobook' as const,
+      request_level: 'book' as const,
+      policy_mode: 'request_book' as const,
+      book_data: { title: 'Sauron Defeated' },
+      release_data: null,
+      note: null,
+      admin_note: '[auto] No audiobook found on Audible (US/UK) or our sources, 2026-10-11.',
+      reviewed_by: 1,
+      reviewed_at: '2026-10-11T22:40:00Z',
+      created_at: '2026-10-01T03:37:29Z',
+      updated_at: '2026-10-11T22:40:00Z',
+      username: 'reader',
+      reviewer_username: 'rob@martin-up.com',
+    };
+    const item = makeItem({
+      kind: 'request',
+      visualStatus: 'rejected',
+      requestId: 46,
+      downloadBookId: undefined,
+      adminNote: record.admin_note,
+      requestRecord: record,
+    });
+
+    const adminLine = buildActivityCardModel(item, true).noteLine;
+    expect(adminLine).toMatch(/^Declined automatically · .+: "No audiobook found on Audible/);
+    expect(adminLine).not.toContain('rob@martin-up.com');
+    expect(adminLine).not.toContain('[auto]');
+
+    expect(buildActivityCardModel(item, false).noteLine).toBe(
+      'Automatic: No audiobook found on Audible (US/UK) or our sources, 2026-10-11.',
+    );
+  });
+
+  it('says an approval the automation made was automatic', () => {
+    const item = makeItem({
+      kind: 'request',
+      visualStatus: 'fulfilled',
+      requestId: 47,
+      downloadBookId: undefined,
+      adminNote: '[auto] Already in the library.',
+      requestRecord: {
+        id: 47,
+        user_id: 7,
+        status: 'fulfilled' as const,
+        source_hint: null,
+        content_type: 'ebook' as const,
+        request_level: 'book' as const,
+        policy_mode: 'request_book' as const,
+        book_data: { title: 'X' },
+        release_data: null,
+        note: null,
+        admin_note: '[auto] Already in the library.',
+        reviewed_by: 1,
+        reviewed_at: '2026-10-11T22:40:00Z',
+        created_at: '2026-10-01T03:37:29Z',
+        updated_at: '2026-10-11T22:40:00Z',
+        username: 'reader',
+      },
+    });
+
+    expect(buildActivityCardModel(item, true).noteLine).toBe('Automatic: Already in the library.');
+  });
+
+  it('says a pending request the automation reopened is retrying automatically', () => {
+    const record = {
+      id: 48,
+      user_id: 7,
+      status: 'pending' as const,
+      source_hint: null,
+      content_type: 'audiobook' as const,
+      request_level: 'book' as const,
+      policy_mode: 'request_book' as const,
+      book_data: { title: 'The Big Bad Wolf' },
+      release_data: null,
+      note: null,
+      admin_note: '[auto] retry batch 5 of 7 after the cancelled-download reopen',
+      reviewed_by: null,
+      reviewed_at: null,
+      created_at: '2026-10-01T03:37:29Z',
+      updated_at: '2026-10-16T22:40:00Z',
+      username: 'reader',
+      last_failure_reason: 'Peer transfer failed',
+    };
+    const model = buildActivityCardModel(
+      makeItem({ kind: 'request', visualStatus: 'pending', requestId: 48, requestRecord: record }),
+      true,
+    );
+
+    expect(model.badges[0]?.text).toBe('Retrying automatically');
+    expect(model.badges[0]?.visualStatus).not.toBe('error');
+  });
+
+  it('offers hide or unhide on rejected cards only in the Rejected view', () => {
+    expect(rejectedActionKinds()).toEqual(['request-reopen', 'request-dismiss']);
+    expect(rejectedActionKinds(false)).toEqual([
+      'request-reopen',
+      'request-hide',
+      'request-dismiss',
+    ]);
+    expect(rejectedActionKinds(true)).toEqual([
+      'request-reopen',
+      'request-unhide',
+      'request-dismiss',
+    ]);
   });
 });

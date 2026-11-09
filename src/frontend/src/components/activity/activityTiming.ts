@@ -1,0 +1,99 @@
+// Fork: how long a finished download took and how long ago it ended, as short text for the end of
+// a card's meta line ("took 4m · 2h ago"). Text only, so the cards stay as quiet as they are.
+
+const SECOND = 1000;
+const MINUTE = 60 * SECOND;
+const HOUR = 60 * MINUTE;
+const DAY = 24 * HOUR;
+
+// "YYYY-MM-DD HH:MM:SS" or "YYYY-MM-DDTHH:MM:SS" with no zone: SQLite's CURRENT_TIMESTAMP shape.
+const ZONE_FREE_TIMESTAMP = /^\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?$/;
+
+/**
+ * Epoch ms for a backend timestamp, or 0 when it is missing or unreadable. A value with no
+ * zone is UTC (SQLite's CURRENT_TIMESTAMP writes those); an explicit zone or offset is kept.
+ */
+export const parseBackendTimestamp = (value: string | null | undefined): number => {
+  if (!value) {
+    return 0;
+  }
+  const text = value.trim();
+  const parsed = Date.parse(ZONE_FREE_TIMESTAMP.test(text) ? `${text.replace(' ', 'T')}Z` : text);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+/** "45s", "4m", "1h 20m", "3d": the two most useful units, never more. */
+export const formatDuration = (ms: number): string => {
+  if (!Number.isFinite(ms) || ms < 0) {
+    return '';
+  }
+  // Round first, then pick the unit, so 59.6s is "1m" and not "60s".
+  const seconds = Math.max(Math.round(ms / SECOND), 1);
+  if (seconds < 60) {
+    return `${seconds}s`;
+  }
+  const totalMinutes = Math.round(ms / MINUTE);
+  if (totalMinutes < 60) {
+    return `${totalMinutes}m`;
+  }
+  if (totalMinutes < 24 * 60) {
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    return minutes > 0 ? `${hours}h ${minutes}m` : `${hours}h`;
+  }
+  return `${Math.max(Math.floor(ms / DAY), 1)}d`;
+};
+
+/** "just now", "12m ago", "3h ago", "2d ago". */
+export const formatAgo = (ms: number): string => {
+  if (!Number.isFinite(ms) || ms < 0) {
+    return '';
+  }
+  if (ms < MINUTE) {
+    return 'just now';
+  }
+  if (ms < HOUR) {
+    return `${Math.floor(ms / MINUTE)}m ago`;
+  }
+  if (ms < DAY) {
+    return `${Math.floor(ms / HOUR)}h ago`;
+  }
+  return `${Math.floor(ms / DAY)}d ago`;
+};
+
+interface TimingInput {
+  /** When it started, epoch ms. 0 or missing when unknown. */
+  startedMs?: number;
+  /** When it ended, epoch ms. 0 or missing when unknown. */
+  finishedMs?: number;
+  /** Say how long it took (a completed download); an error or cancel only says how long ago. */
+  showDuration: boolean;
+  /** Lead the ago text, e.g. "delivered" for a request. */
+  agoPrefix?: string;
+  now?: number;
+}
+
+/** The text for the end of the meta line, or undefined when nothing is known. */
+export const buildTimingText = ({
+  startedMs = 0,
+  finishedMs = 0,
+  showDuration,
+  agoPrefix,
+  now = Date.now(),
+}: TimingInput): string | undefined => {
+  if (finishedMs <= 0) {
+    return undefined;
+  }
+  const parts: string[] = [];
+  if (showDuration && startedMs > 0 && finishedMs >= startedMs) {
+    const took = formatDuration(finishedMs - startedMs);
+    if (took) {
+      parts.push(`took ${took}`);
+    }
+  }
+  const ago = formatAgo(now - finishedMs);
+  if (ago) {
+    parts.push(agoPrefix ? `${agoPrefix} ${ago}` : ago);
+  }
+  return parts.length > 0 ? parts.join(' · ') : undefined;
+};
