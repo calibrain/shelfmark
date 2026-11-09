@@ -21,10 +21,10 @@ dependencies = [
     "rarfile",
     "qbittorrent-api>=2026.10.1",
     "transmission-rpc",
-    "authlib>=1.9.2,<1.10",
+    "authlib>=1.9.5,<1.10",
     # Authlib validates ID tokens with joserfc and raises its errors, so the OIDC routes
     # catch joserfc's InvalidClaimError. authlib.jose is deprecated and goes in Authlib 2.0.
-    "joserfc>=1.6.8",
+    "joserfc>=1.8.0",
     "apprise>=2.1.0",
     # HTTP/2 client for RFC 8484 DoH: quad9 rejects HTTP/1.1 outright (505), which
     # requests cannot speak. See shelfmark/download/doh_wireformat.py.
@@ -36,7 +36,7 @@ dependencies = [
 browser = [
     "pyvirtualdisplay",
     "pyautogui",
-    "seleniumbase==4.56.5",
+    "seleniumbase==4.57.1",
     "python-xlib",
 ]
 
@@ -47,7 +47,7 @@ dev = [
     "pytest",
     "pytest-cov",
     "pytest-xdist>=3.8.0",
-    "ruff==0.17.3",
+    "ruff==0.17.4",
     "vulture>=2.14",
 ]
 
