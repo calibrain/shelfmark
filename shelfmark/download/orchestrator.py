@@ -699,11 +699,12 @@ def retry_persisted_download(
         return False, "Request-linked downloads must be retried from requests"
 
     if (
-        task.request_id is None
+        (task.request_id is None or allow_request_linked)
         and normalized_status == "error"
         and not has_staged_retry_source
         and not has_fresh_retry_context
     ):
+        # The flag lifts the "retry it from the request" rule, never "nothing to restart from".
         return False, "Download cannot be retried"
 
     task.priority = priority

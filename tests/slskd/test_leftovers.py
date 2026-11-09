@@ -639,3 +639,50 @@ def test_run_does_not_remove_the_folder_of_a_running_download(env, wired, monkey
 
     assert folder.exists()
     assert "slskd_bb" in report.kept
+
+
+def test_a_transfer_matching_a_finished_download_is_someone_elses(env):
+    """A finished download has no unfinished transfers, so a match is another app's or a person's."""
+    _row(env, "slskd:aa", status="complete")
+
+    reattach, cancel = _plan_transfers(env, [_transfer()])
+
+    assert (reattach, cancel) == ([], [])
+
+
+def test_folders_that_cannot_be_queued_do_not_use_up_the_runs_imports(env, wired):
+    """Only successful imports count towards the cap, so failing folders do not block the rest."""
+    for n in range(leftovers.MAX_ADOPTIONS_PER_RUN):
+        _folder(env[3], f"slskd:bad{n}")
+        _row(env, f"slskd:bad{n}", status="error")
+    _folder(env[3], "slskd:good")
+    _row(env, "slskd:good", status="error")
+
+    calls = []
+
+    def requeue(payload, final_status):
+        """Refuse the first folders (the bad ones, by name order) and accept the rest."""
+        calls.append(final_status)
+        return (False, "refused") if len(calls) <= leftovers.MAX_ADOPTIONS_PER_RUN else (True, None)
+
+    report = _run(env, requeue)
+
+    assert report.adopted == ["slskd_good"]
+
+
+def test_a_folder_that_could_not_be_queued_is_not_tried_every_run(env, wired):
+    """A failed import is tried once; the next run leaves the folder for a person or clean-up."""
+    folder = _folder(env[3], "slskd:aa")
+    _row(env, "slskd:aa", status="error")
+    calls = []
+
+    def requeue(payload, final_status):
+        """Refuse, counting each attempt."""
+        calls.append(final_status)
+        return False, "refused"
+
+    _run(env, requeue)
+    _run(env, requeue)
+
+    assert calls == ["error"]
+    assert folder.exists()

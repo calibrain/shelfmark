@@ -39,9 +39,9 @@ CLEAN_DAYS_SETTING = "SLSKD_CLEAN_LEFTOVERS_DAYS"
 DELIVERED_GRACE = timedelta(days=1)
 # At most this many finished folders are queued per run, so a backlog does not flood the queue.
 MAX_ADOPTIONS_PER_RUN = 3
-# Left in a folder once it has been queued for import. Hidden, so it never counts as a file of the
-# download. An import that fails again is not retried every run: the folder waits for a person or
-# for clean-up.
+# Left in a folder once it has been tried for import, queued or not. Hidden, so it never counts as
+# a file of the download. A folder is not tried again every run: it waits for a person or for
+# clean-up.
 ADOPTED_MARKER = ".shelfmark-adopted"
 _TASK_PREFIX = "slskd_"
 
@@ -245,6 +245,9 @@ def plan_transfers(
         if row is None:
             # Not one Shelfmark asked for: slskd may be shared with other apps or used by hand.
             continue
+        if row.get("final_status") == "complete":
+            # That download finished; an unfinished transfer of the same file is someone else's.
+            continue
         if row.get("final_status") == "cancelled":
             cancel.append(transfer)  # someone cancelled this download; slskd should stop too
             continue
@@ -329,19 +332,24 @@ def run(
     report.kept = [f.name for f in to_keep]
 
     if finish:
-        for folder, row in to_finish[:MAX_ADOPTIONS_PER_RUN]:
+        adopted_now = 0
+        for folder, row in to_finish:
+            if adopted_now >= MAX_ADOPTIONS_PER_RUN:
+                report.kept.append(folder.name)  # the next run takes it
+                continue
             ok, message = requeue(row.get("retry_payload"), final_status=row.get("final_status"))
             if ok:
+                adopted_now += 1
                 report.adopted.append(folder.name)
                 logger.info("slskd leftovers: importing the finished folder %s", folder.name)
-                try:
-                    run_blocking_io((folder / ADOPTED_MARKER).touch)
-                except OSError as exc:
-                    logger.warning("slskd leftovers: could not mark %s: %s", folder.name, exc)
             else:
                 logger.warning("slskd leftovers: could not import %s: %s", folder.name, message)
                 report.kept.append(folder.name)
-        report.kept.extend(f.name for f, _ in to_finish[MAX_ADOPTIONS_PER_RUN:])
+            # Tried once either way: a folder that cannot be queued is not retried every run.
+            try:
+                run_blocking_io((folder / ADOPTED_MARKER).touch)
+            except OSError as exc:
+                logger.warning("slskd leftovers: could not mark %s: %s", folder.name, exc)
     else:
         report.kept.extend(f.name for f, _ in to_finish)
 
