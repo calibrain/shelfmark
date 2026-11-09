@@ -7,7 +7,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from shelfmark.core.models import DownloadTask
+from shelfmark.core.models import DownloadTask, QueueStatus
 from shelfmark.download.clients import DownloadState, DownloadStatus
 from shelfmark.download.orchestrator import _task_to_dict
 from shelfmark.release_sources.prowlarr.handler import ProwlarrHandler
@@ -18,6 +18,7 @@ _STATUS = DownloadStatus(
 
 
 def _run(*, existing: bool) -> DownloadTask:
+    """Run one Prowlarr download against a mocked client that may already hold the torrent."""
     client = MagicMock()
     client.name = "qbittorrent"
     client.find_existing.return_value = ("dl", _STATUS) if existing else None
@@ -57,4 +58,4 @@ def test_a_task_that_adds_its_own_torrent_is_not() -> None:
 def test_the_flag_reaches_the_status_payload(flag: bool) -> None:
     task = DownloadTask(task_id="t", source="prowlarr", title="Book", reattached=flag)
 
-    assert _task_to_dict(task, current_status="downloading")["reattached"] is flag
+    assert _task_to_dict(task, current_status=QueueStatus.DOWNLOADING)["reattached"] is flag
