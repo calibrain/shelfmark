@@ -74,7 +74,6 @@ RUN apt-get update && \
     gosu \
     # --- Tor support (activated via USING_TOR=true) ---
     tor \
-    supervisor \
     iptables \
     # --- WireGuard support (activated via USING_WIREGUARD=true) ---
     wireguard-tools \
@@ -111,6 +110,13 @@ COPY pyproject.toml uv.lock ./
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
     uv sync --locked --no-default-groups
+
+# supervisor comes from PyPI (pinned in pyproject.toml, so Dependabot sees it) and not from
+# apt, where it drags in Debian's Python 3.13. tor.sh and wireguard.sh call it by the Debian
+# paths and write their config under /etc/supervisor, so keep both.
+RUN mkdir -p /etc/supervisor && \
+    ln -s /app/.venv/bin/supervisord /usr/bin/supervisord && \
+    ln -s /app/.venv/bin/supervisorctl /usr/bin/supervisorctl
 
 # Runtime dependencies are installed into /app/.venv during the build. Remove the
 # base image's system pip so stale installer CVEs do not ship in the final image.
@@ -154,8 +160,9 @@ RUN apt-get update -o Acquire::Retries=5 && \
     # For dumb display
     xvfb \
     chromium \
-    # For tkinter (pyautogui)
-    python3-tk \
+    # For tkinter (pyautogui): the libraries this image's own _tkinter links against.
+    # Debian's python3-tk would pull in Debian's Python 3.13.
+    libtk8.6 libtcl8.6 \
     # For RAR extraction
     unrar-free && \
     # Create symlink so rarfile library can find unrar
