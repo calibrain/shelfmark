@@ -5,6 +5,7 @@ import {
   applyDirectPolicyModeToButtonState,
   applyUniversalPolicyModeToButtonState,
   canRequestBookFromReleaseModal,
+  shouldShowRequestsTab,
 } from '../utils/requestPolicyUi';
 
 describe('canRequestBookFromReleaseModal', () => {
@@ -61,6 +62,42 @@ describe('canRequestBookFromReleaseModal', () => {
     expect(
       canRequestBookFromReleaseModal({ ...base, isAdmin: true, isBrowseFulfilMode: true }),
     ).toBe(false);
+  });
+});
+
+describe('shouldShowRequestsTab', () => {
+  const allDownload = { ebook: 'download' as const, audiobook: 'download' as const };
+  const base = {
+    isAdmin: false,
+    isAuthenticated: true,
+    requestsEnabled: true,
+    defaults: allDownload,
+    allowBookRequestWithDownload: false,
+  };
+
+  it('is hidden for a user who can only download', () => {
+    expect(shouldShowRequestsTab(base)).toBe(false);
+  });
+
+  it('shows for a user who may request a book alongside downloads', () => {
+    expect(shouldShowRequestsTab({ ...base, allowBookRequestWithDownload: true })).toBe(true);
+  });
+
+  it('shows when either default asks for requests', () => {
+    expect(
+      shouldShowRequestsTab({
+        ...base,
+        defaults: { ebook: 'download', audiobook: 'request_book' },
+      }),
+    ).toBe(true);
+  });
+
+  it('is hidden with requests off or no policy, and always shown to an admin', () => {
+    const allowed = { ...base, allowBookRequestWithDownload: true };
+    expect(shouldShowRequestsTab({ ...allowed, requestsEnabled: false })).toBe(false);
+    expect(shouldShowRequestsTab({ ...allowed, defaults: null })).toBe(false);
+    expect(shouldShowRequestsTab({ ...allowed, isAuthenticated: false })).toBe(false);
+    expect(shouldShowRequestsTab({ ...base, isAdmin: true, requestsEnabled: false })).toBe(true);
   });
 });
 

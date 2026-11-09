@@ -25,6 +25,30 @@ export const canRequestBookFromReleaseModal = ({
   return requestsEnabled && allowBookRequestWithDownload && bookRequestMode === 'download';
 };
 
+/**
+ * Whether the activity sidebar shows a Requests tab. Admins always see it. A user sees it when
+ * requests are on and either default asks for requests, or when they may request a book
+ * alongside downloads, since those requests then need a place to be followed and cancelled.
+ */
+export const shouldShowRequestsTab = ({
+  isAdmin,
+  isAuthenticated,
+  requestsEnabled,
+  defaults,
+  allowBookRequestWithDownload,
+}: {
+  isAdmin: boolean;
+  isAuthenticated: boolean;
+  requestsEnabled: boolean;
+  defaults: { ebook: RequestPolicyMode; audiobook: RequestPolicyMode } | null;
+  allowBookRequestWithDownload: boolean;
+}): boolean => {
+  if (isAdmin) return true;
+  if (!isAuthenticated || !requestsEnabled || !defaults) return false;
+  if (allowBookRequestWithDownload) return true;
+  return !(defaults.ebook === 'download' && defaults.audiobook === 'download');
+};
+
 export const applyDirectPolicyModeToButtonState = (
   baseState: ButtonStateInfo,
   mode: RequestPolicyMode,

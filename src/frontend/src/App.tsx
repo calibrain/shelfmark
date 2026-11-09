@@ -110,6 +110,7 @@ import {
   applyDirectPolicyModeToButtonState,
   applyUniversalPolicyModeToButtonState,
   canRequestBookFromReleaseModal,
+  shouldShowRequestsTab,
 } from './utils/requestPolicyUi';
 import { getSearchByPreference, setSearchByPreference } from './utils/searchByPreference';
 import { buildUrlSearchHash } from './utils/urlSearchHash';
@@ -458,20 +459,23 @@ function App() {
     };
   }, [activityStatus, currentStatus, dismissedDownloadTaskIds]);
 
-  const showRequestsTab = useMemo(() => {
-    if (requestRoleIsAdmin) {
-      return true;
-    }
-    if (!isAuthenticated || !requestsPolicyEnabled) {
-      return false;
-    }
-    if (!requestPolicy) {
-      return false;
-    }
-    return !(
-      requestPolicy.defaults.ebook === 'download' && requestPolicy.defaults.audiobook === 'download'
-    );
-  }, [requestRoleIsAdmin, isAuthenticated, requestsPolicyEnabled, requestPolicy]);
+  const showRequestsTab = useMemo(
+    () =>
+      shouldShowRequestsTab({
+        isAdmin: requestRoleIsAdmin,
+        isAuthenticated,
+        requestsEnabled: requestsPolicyEnabled,
+        defaults: requestPolicy?.defaults ?? null,
+        allowBookRequestWithDownload,
+      }),
+    [
+      requestRoleIsAdmin,
+      isAuthenticated,
+      requestsPolicyEnabled,
+      requestPolicy,
+      allowBookRequestWithDownload,
+    ],
+  );
 
   // Search state and handlers
   const {
@@ -2787,7 +2791,7 @@ function App() {
         pendingRequestCount={pendingRequestCount}
         showRequestsTab={showRequestsTab}
         isRequestsLoading={isActivitySnapshotLoading}
-        onRequestCancel={showRequestsTab ? handleRequestCancel : undefined}
+        onRequestCancel={handleRequestCancel}
         onRequestApprove={requestRoleIsAdmin ? handleRequestApprove : undefined}
         onRequestReject={requestRoleIsAdmin ? handleRequestReject : undefined}
         onRequestReopen={requestRoleIsAdmin ? handleRequestReopen : undefined}
