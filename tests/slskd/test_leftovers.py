@@ -1,0 +1,957 @@
+"""Finished and abandoned folders under Shelfmark's slskd downloads folder."""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+from datetime import UTC, datetime, timedelta
+
+import pytest
+
+import shelfmark.release_sources.slskd.handler as handler_mod
+from shelfmark.core.download_history_service import DownloadHistoryService
+from shelfmark.core.startup_reconcile import INTERRUPTED_MESSAGE
+from shelfmark.core.user_db import UserDB
+from shelfmark.release_sources.slskd import leftovers
+
+NOW = datetime(2026, 10, 16, 18, 0, tzinfo=UTC)
+FILES = [{"filename": "@@s\\Book\\a.mp3", "size": 5}, {"filename": "@@s\\Book\\b.mp3", "size": 7}]
+
+
+@pytest.fixture
+def env(tmp_path):
+    db_path = str(tmp_path / "users.db")
+    user_db = UserDB(db_path)
+    user_db.initialize()
+    base = tmp_path / "complete" / "shelfmark"
+    base.mkdir(parents=True)
+    return user_db, DownloadHistoryService(db_path), db_path, base
+
+
+def _folder(base, task_id, *, sizes=(5, 7), age_days=0.0):
+    """Make a download folder named after task_id, holding one file per size."""
+    folder = base / task_id.replace(":", "_")
+    folder.mkdir()
+    for n, size in enumerate(sizes):
+        (folder / f"f{n}.mp3").write_bytes(b"x" * size)
+    return folder
+
+
+def _row(env, task_id, *, status, request_id=None, age_days=0.0, files=FILES, message="x"):
+    """Record a Soulseek download in the history, with the files its retry payload asked for."""
+    _user_db, history, db_path, _base = env
+    history.record_download(
+        task_id=task_id,
+        user_id=None,
+        username=None,
+        request_id=request_id,
+        source="slskd",
+        source_display_name=None,
+        title="Book",
+        author=None,
+        file_format=None,
+        size=None,
+        preview=None,
+        content_type="audiobook",
+        downloads=None,
+        origin="requested" if request_id else "direct",
+        retry_payload={"retry_source_context": {"username": "peer", "files": files}},
+    )
+    if status != "active":
+        history.finalize_download(task_id=task_id, final_status=status, status_message=message)
+    stamp = (NOW - timedelta(days=age_days)).isoformat(timespec="seconds")
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        "UPDATE download_history SET queued_at = ?, terminal_at = ? WHERE task_id = ?",
+        (stamp, stamp, task_id),
+    )
+    conn.commit()
+    conn.close()
+
+
+def _request(env, *, status="fulfilled", delivery="none"):
+    """Create a request for the test's one reader, creating that user the first time."""
+    user_db = env[0]
+    user = user_db.create_user(username="reader", role="user") if not user_db.list_users() else None
+    user_id = user["id"] if user else user_db.list_users()[0]["id"]
+    row = user_db.create_request(
+        user_id=user_id,
+        content_type="audiobook",
+        request_level="book",
+        policy_mode="request_book",
+        book_data={"title": "T", "author": "A", "provider": "hardcover", "provider_id": "1"},
+    )
+    return user_db.update_request(row["id"], status=status, delivery_state=delivery)
+
+
+def _plan(env, folders, *, keep_completed=False, clean_days=7):
+    """Run leftovers.plan over folders with the test clock and the given clean-up setting."""
+    user_db, history, _db, _base = env
+    return leftovers.plan(
+        folders,
+        history_service=history,
+        user_db=user_db,
+        folder_complete=handler_mod.folder_complete,
+        keep_completed=keep_completed,
+        clean_after=timedelta(days=clean_days) if clean_days else None,
+        now=NOW,
+    )
+
+
+def _names(paths):
+    """Sorted folder names from a plan result, whose entries are paths or (path, row) pairs."""
+    return sorted(p.name if hasattr(p, "name") else p[0].name for p in paths)
+
+
+def test_a_whole_folder_whose_download_never_completed_is_finished(env):
+    base = env[3]
+    folder = _folder(base, "slskd:aa")
+    _row(env, "slskd:aa", status="error")
+
+    finish, remove, keep = _plan(env, [folder])
+
+    assert _names(finish) == ["slskd_aa"]
+    assert not remove
+    assert not keep
+
+
+def test_a_whole_folder_of_a_request_that_still_waits_for_it_is_finished(env):
+    request = _request(env, delivery="cancelled")
+    folder = _folder(env[3], "slskd:bb")
+    _row(env, "slskd:bb", status="error", request_id=request["id"])
+
+    finish, _remove, _keep = _plan(env, [folder])
+
+    assert _names(finish) == ["slskd_bb"]
+
+
+def test_a_whole_folder_of_a_request_that_already_has_its_book_is_not_imported_twice(env):
+    request = _request(env, delivery="complete")
+    folder = _folder(env[3], "slskd:cc")
+    _row(env, "slskd:cc", status="error", request_id=request["id"], age_days=2)
+
+    finish, remove, _keep = _plan(env, [folder])
+
+    assert not finish
+    assert _names(remove) == ["slskd_cc"]
+
+
+@pytest.mark.parametrize("sizes", [None, (5,)], ids=["whole", "partial"])
+def test_a_delivered_requests_folder_stays_when_cleanup_is_off(env, sizes):
+    """With clean-up off, a delivered request's folder stays, whole or partial."""
+    request = _request(env, delivery="complete")
+    folder = (
+        _folder(env[3], "slskd:ff") if sizes is None else _folder(env[3], "slskd:ff", sizes=sizes)
+    )
+    _row(env, "slskd:ff", status="error", request_id=request["id"], age_days=30)
+
+    finish, remove, keep = _plan(env, [folder], clean_days=0)
+
+    assert not finish
+    assert not remove
+    assert _names(keep) == ["slskd_ff"]
+
+
+def test_a_whole_folder_of_a_pending_request_is_kept(env):
+    request = _request(env, status="pending")
+    folder = _folder(env[3], "slskd:dd")
+    _row(env, "slskd:dd", status="error", request_id=request["id"], age_days=30)
+
+    finish, remove, keep = _plan(env, [folder])
+
+    assert not finish
+    assert not remove
+    assert _names(keep) == ["slskd_dd"]
+
+
+def test_a_partial_folder_goes_once_it_is_old_enough(env):
+    old = _folder(env[3], "slskd:old", sizes=(5,))
+    young = _folder(env[3], "slskd:new", sizes=(5,))
+    _row(env, "slskd:old", status="error", age_days=10)
+    _row(env, "slskd:new", status="error", age_days=3)
+
+    _finish, remove, keep = _plan(env, [old, young])
+
+    assert _names(remove) == ["slskd_old"]
+    assert _names(keep) == ["slskd_new"]
+
+
+def test_a_partial_folder_stays_when_cleanup_is_off(env):
+    folder = _folder(env[3], "slskd:old", sizes=(5,))
+    _row(env, "slskd:old", status="error", age_days=400)
+
+    _finish, remove, keep = _plan(env, [folder], clean_days=0)
+
+    assert not remove
+    assert _names(keep) == ["slskd_old"]
+
+
+def test_a_partial_folder_of_a_delivered_request_goes_after_a_day_not_a_week(env):
+    request = _request(env, delivery="complete")
+    folder = _folder(env[3], "slskd:ee", sizes=(5,))
+    _row(env, "slskd:ee", status="error", request_id=request["id"], age_days=2)
+
+    _finish, remove, _keep = _plan(env, [folder])
+
+    assert _names(remove) == ["slskd_ee"]
+
+
+def test_the_folder_of_a_running_download_is_never_touched(env):
+    folder = _folder(env[3], "slskd:run", sizes=(5,))
+    _row(env, "slskd:run", status="active", age_days=100)
+
+    finish, remove, keep = _plan(env, [folder])
+
+    assert not finish
+    assert not remove
+    assert _names(keep) == ["slskd_run"]
+
+
+@pytest.mark.parametrize(("keep_completed", "removed"), [(False, True), (True, False)])
+def test_an_imported_folder_is_removed_unless_finished_files_are_kept_shared(
+    env, keep_completed, removed
+):
+    folder = _folder(env[3], "slskd:done")
+    _row(env, "slskd:done", status="complete", age_days=3)
+
+    _finish, remove, _keep = _plan(env, [folder], keep_completed=keep_completed)
+
+    assert bool(remove) is removed
+
+
+def test_a_folder_nothing_records_is_removed_only_when_old(env):
+    folder = _folder(env[3], "slskd:mystery")
+
+    _finish, remove, keep = _plan(env, [folder])
+
+    assert _names(keep) == ["slskd_mystery"]  # its mtime is now
+    assert not remove
+
+
+def test_a_folder_that_is_not_named_after_a_task_is_left_alone(env):
+    other = env[3] / "something-else"
+    other.mkdir()
+
+    finish, remove, keep = _plan(env, [other])
+
+    assert not finish
+    assert not remove
+    assert _names(keep) == ["something-else"]
+
+
+class _Client:
+    pass
+
+
+@pytest.fixture
+def wired(env, monkeypatch):
+    base = env[3]
+    values = {"SLSKD_ENABLED": True, "SLSKD_CLEAN_LEFTOVERS_DAYS": 7, "SLSKD_KEEP_COMPLETED": False}
+    monkeypatch.setattr(leftovers.config, "get", lambda k, d=None: values.get(k, d))
+    monkeypatch.setattr(handler_mod.config, "get", lambda k, d=None: values.get(k, d))
+    monkeypatch.setattr(handler_mod, "build_client_from_config", lambda: _Client())
+    monkeypatch.setattr(handler_mod, "resolve_local_download_root", lambda _c: (base.parent, None))
+    return values
+
+
+def _run(env, requeue):
+    return leftovers.run(history_service=env[1], user_db=env[0], requeue=requeue, now=NOW)
+
+
+def test_run_queues_a_whole_folder_and_removes_an_old_partial_one(env, wired):
+    whole = _folder(env[3], "slskd:aa")
+    partial = _folder(env[3], "slskd:bb", sizes=(5,))
+    _row(env, "slskd:aa", status="error")
+    _row(env, "slskd:bb", status="error", age_days=10)
+    queued = []
+
+    def requeue(payload, final_status):
+        queued.append((payload, final_status))
+        return True, None
+
+    report = _run(env, requeue)
+
+    assert report.adopted == ["slskd_aa"]
+    assert report.removed == ["slskd_bb"]
+    assert len(queued) == 1
+    assert queued[0][1] == "error"
+    assert whole.exists()  # left for the import to read, and removed after it
+    assert not partial.exists()
+
+
+def test_run_queues_at_most_a_few_folders_at_a_time(env, wired):
+    """Only MAX_ADOPTIONS_PER_RUN whole folders are queued in one run; the rest wait."""
+    for n in range(leftovers.MAX_ADOPTIONS_PER_RUN + 2):
+        _folder(env[3], f"slskd:t{n}")
+        _row(env, f"slskd:t{n}", status="error")
+
+    report = _run(env, lambda payload, final_status: (True, None))
+
+    assert len(report.adopted) == leftovers.MAX_ADOPTIONS_PER_RUN
+
+
+def test_run_does_not_import_when_finishing_is_switched_off(env, wired):
+    _folder(env[3], "slskd:aa")
+    _row(env, "slskd:aa", status="error")
+    wired["SLSKD_FINISH_LEFTOVERS"] = False
+
+    report = _run(env, lambda payload, final_status: (_ for _ in ()).throw(AssertionError()))
+
+    assert report.adopted == []
+
+
+def test_run_keeps_a_folder_whose_import_could_not_be_queued(env, wired):
+    folder = _folder(env[3], "slskd:aa")
+    _row(env, "slskd:aa", status="error")
+
+    report = _run(env, lambda payload, final_status: (False, "Download cannot be retried"))
+
+    assert report.adopted == []
+    assert folder.exists()
+
+
+def test_run_does_nothing_while_soulseek_is_switched_off(env, wired):
+    folder = _folder(env[3], "slskd:aa")
+    _row(env, "slskd:aa", status="error")
+    wired["SLSKD_ENABLED"] = False
+
+    report = _run(env, lambda payload, final_status: (_ for _ in ()).throw(AssertionError()))
+
+    assert (report.adopted, report.removed, report.cancelled) == ([], [], [])
+    assert not (folder / leftovers.ADOPTED_MARKER).exists()  # still imported once it is back on
+
+
+def test_run_does_nothing_without_a_downloads_folder(env, wired, monkeypatch):
+    monkeypatch.setattr(handler_mod, "resolve_local_download_root", lambda _c: (None, "no path"))
+    _folder(env[3], "slskd:aa")
+    _row(env, "slskd:aa", status="error")
+
+    report = _run(env, lambda payload, final_status: (True, None))
+
+    assert (report.adopted, report.removed) == ([], [])
+
+
+def test_the_task_id_comes_back_from_a_folder_name():
+    assert leftovers._task_id_for_folder("slskd_ab12") == "slskd:ab12"
+    assert leftovers._task_id_for_folder("slskd_") is None
+    assert leftovers._task_id_for_folder("other") is None
+
+
+def test_the_payload_files_are_read_whether_stored_as_text_or_dict():
+    payload = {"retry_source_context": {"files": FILES}}
+
+    assert leftovers._expected_files({"retry_payload": payload}) == FILES
+    assert leftovers._expected_files({"retry_payload": json.dumps(payload)}) == FILES
+    assert leftovers._expected_files({"retry_payload": "not json"}) == []
+
+
+# --- transfers nothing is watching -------------------------------------------------------
+
+
+def _transfer(
+    name="@@s\\Book\\a.mp3", state="Queued, Remotely", peer="peer", tid="x1", requested=None
+):
+    """An slskd transfer record; requested is its requestedAt stamp, left out when None."""
+    transfer = {"username": peer, "filename": name, "state": state, "id": tid, "size": 5}
+    if requested is not None:
+        transfer["requestedAt"] = requested
+    return transfer
+
+
+def _plan_transfers(env, transfers, *, live=None):
+    """Run leftovers.plan_transfers against the test history. live maps task id to request id."""
+    live = live or {}
+    return leftovers.plan_transfers(
+        transfers,
+        rows=env[1].list_recent(user_id=None, limit=1000),
+        live_task_ids=set(live),
+        live_request_ids={r for r in live.values() if r},
+        user_db=env[0],
+    )
+
+
+def test_a_finished_transfer_is_only_a_record_and_is_left_alone(env):
+    _row(env, "slskd:aa", status="error")
+
+    reattach, cancel = _plan_transfers(env, [_transfer(state="Completed, Errored")])
+
+    assert (reattach, cancel) == ([], [])
+
+
+def test_a_transfer_a_running_task_owns_is_left_alone(env):
+    _row(env, "slskd:aa", status="active")
+
+    reattach, cancel = _plan_transfers(env, [_transfer()], live={"slskd:aa": None})
+
+    assert (reattach, cancel) == ([], [])
+
+
+def test_an_interrupted_manual_download_is_picked_up_again(env):
+    _row(env, "slskd:aa", status="active")
+
+    reattach, cancel = _plan_transfers(env, [_transfer()])
+
+    assert [row["task_id"] for row, _owned in reattach] == ["slskd:aa"]
+    assert cancel == []
+
+
+def test_a_manual_download_a_restart_cut_short_is_picked_up_again(env):
+    _row(env, "slskd:aa", status="error", message=INTERRUPTED_MESSAGE)
+
+    reattach, cancel = _plan_transfers(env, [_transfer()])
+
+    assert [row["task_id"] for row, _owned in reattach] == ["slskd:aa"]
+    assert cancel == []
+
+
+def test_a_manual_download_that_already_failed_is_not_brought_back(env):
+    _row(env, "slskd:aa", status="error")
+
+    reattach, cancel = _plan_transfers(env, [_transfer()])
+
+    assert reattach == []
+    assert len(cancel) == 1
+
+
+def test_a_transfer_of_a_request_still_waiting_for_it_is_picked_up_again(env):
+    request = _request(env, delivery="queued")
+    _row(env, "slskd:aa", status="error", request_id=request["id"])
+
+    reattach, cancel = _plan_transfers(env, [_transfer()])
+
+    assert [row["task_id"] for row, _owned in reattach] == ["slskd:aa"]
+    assert cancel == []
+
+
+def test_an_older_attempt_is_dropped_when_a_newer_one_is_running(env):
+    request = _request(env, delivery="queued")
+    _row(env, "slskd:old", status="error", request_id=request["id"])
+
+    reattach, cancel = _plan_transfers(env, [_transfer()], live={"slskd:new": request["id"]})
+
+    assert reattach == []
+    assert len(cancel) == 1
+
+
+def test_a_pending_request_may_still_choose_the_same_release_so_its_transfer_waits(env):
+    request = _request(env, status="pending")
+    _row(env, "slskd:aa", status="error", request_id=request["id"])
+
+    assert _plan_transfers(env, [_transfer()]) == ([], [])
+
+
+@pytest.mark.parametrize(
+    ("status", "delivery"),
+    [("fulfilled", "complete"), ("rejected", "none"), ("cancelled", "none")],
+)
+def test_a_transfer_of_a_request_that_is_done_or_dropped_is_cancelled(env, status, delivery):
+    request = _request(env, status=status, delivery=delivery)
+    _row(env, "slskd:aa", status="error", request_id=request["id"])
+
+    reattach, cancel = _plan_transfers(env, [_transfer()])
+
+    assert reattach == []
+    assert len(cancel) == 1
+
+
+def test_a_transfer_shelfmark_never_asked_for_is_left_alone(env):
+    """slskd can be shared with other apps or used by hand; their transfers are not ours."""
+    _row(env, "slskd:aa", status="error")
+
+    reattach, cancel = _plan_transfers(env, [_transfer(name="@@s\\Other\\z.mp3")])
+
+    assert (reattach, cancel) == ([], [])
+
+
+class _FakeSlskd:
+    def __init__(self, transfers):
+        self.transfers = transfers
+        self.cancelled = []
+
+    def list_all_downloads(self):
+        return self.transfers
+
+    def cancel_transfer(self, username, transfer_id, *, remove):
+        self.cancelled.append((username, transfer_id, remove))
+        return True
+
+
+def test_run_cancels_an_unwatched_transfer_and_picks_up_a_waiting_one(env, wired, monkeypatch):
+    monkeypatch.setattr(leftovers.time, "sleep", lambda _s: None)
+    waiting = _request(env, delivery="queued")
+    _row(env, "slskd:aa", status="error", request_id=waiting["id"])
+    _row(env, "slskd:bb", status="error", files=[{"filename": "@@s\\Old\\q.mp3", "size": 5}])
+    fake = _FakeSlskd(
+        [
+            _transfer(tid="keep"),
+            _transfer(name="@@s\\Old\\q.mp3", tid="drop"),
+            _transfer(name="@@s\\Stranger\\q.mp3", tid="theirs"),
+        ]
+    )
+    monkeypatch.setattr(handler_mod, "build_client_from_config", lambda: fake)
+    queued = []
+
+    def requeue(payload, final_status):
+        queued.append(final_status)
+        return True, None
+
+    report = leftovers.run(
+        history_service=env[1],
+        user_db=env[0],
+        requeue=requeue,
+        live_tasks=lambda: {},
+        now=NOW,
+    )
+
+    assert report.reattached == ["slskd:aa"]
+    assert queued == ["error"]
+    assert [c[1] for c in fake.cancelled] == ["drop", "drop"]  # cancel, then the second pass
+    assert all(c[2] is True for c in fake.cancelled)
+    assert len(report.cancelled) == 1
+
+
+def test_run_leaves_transfers_alone_when_it_is_not_given_the_running_tasks(env, wired, monkeypatch):
+    fake = _FakeSlskd([_transfer(name="@@s\\Stranger\\q.mp3", tid="drop")])
+    monkeypatch.setattr(handler_mod, "build_client_from_config", lambda: fake)
+
+    leftovers.run(
+        history_service=env[1],
+        user_db=env[0],
+        requeue=lambda *a, **k: (True, None),
+        now=NOW,
+    )
+
+    assert fake.cancelled == []
+
+
+def test_run_with_backend_reads_the_running_tasks_and_requeues_through_the_retry(
+    env, wired, monkeypatch
+):
+    from shelfmark.download import orchestrator as backend
+
+    request = _request(env, delivery="queued")
+    _row(env, "slskd:aa", status="error", request_id=request["id"])
+    fake = _FakeSlskd([_transfer(tid="t1")])
+    monkeypatch.setattr(handler_mod, "build_client_from_config", lambda: fake)
+    monkeypatch.setattr(
+        backend,
+        "queue_status",
+        lambda: {"downloading": {"slskd:other": {"request_id": None}}, "error": {}},
+    )
+    retried = []
+
+    def retry(payload, *, final_status, allow_request_linked):
+        retried.append((final_status, allow_request_linked))
+        return True, None
+
+    monkeypatch.setattr(backend, "retry_persisted_download", retry)
+
+    report = leftovers.run_with_backend(history_service=env[1], user_db=env[0], now=NOW)
+
+    assert report.reattached == ["slskd:aa"]
+    assert retried == [("error", True)]
+
+
+def test_run_leaves_transfers_alone_when_finishing_is_switched_off(env, wired, monkeypatch):
+    _row(env, "slskd:bb", status="error", files=[{"filename": "@@s\\Old\\q.mp3", "size": 5}])
+    fake = _FakeSlskd([_transfer(name="@@s\\Old\\q.mp3", tid="drop")])
+    monkeypatch.setattr(handler_mod, "build_client_from_config", lambda: fake)
+    wired["SLSKD_FINISH_LEFTOVERS"] = False
+
+    report = leftovers.run(
+        history_service=env[1],
+        user_db=env[0],
+        requeue=lambda *a, **k: (True, None),
+        live_tasks=lambda: {},
+        now=NOW,
+    )
+
+    assert fake.cancelled == []
+    assert report.cancelled == []
+
+
+def test_a_cancelled_download_is_never_imported(env):
+    """A whole folder of a download someone cancelled stays put until clean-up removes it."""
+    young = _folder(env[3], "slskd:cx")
+    old = _folder(env[3], "slskd:co")
+    _row(env, "slskd:cx", status="cancelled", age_days=1)
+    _row(env, "slskd:co", status="cancelled", age_days=30)
+
+    finish, remove, keep = _plan(env, [young, old])
+
+    assert not finish
+    assert _names(remove) == ["slskd_co"]
+    assert _names(keep) == ["slskd_cx"]
+
+
+def test_a_folder_queued_once_is_not_queued_again(env):
+    """The marker from an earlier run keeps a folder whose import failed out of the next ones."""
+    folder = _folder(env[3], "slskd:aa")
+    (folder / leftovers.ADOPTED_MARKER).touch()
+    _row(env, "slskd:aa", status="error")
+
+    finish, remove, keep = _plan(env, [folder])
+
+    assert not finish
+    assert not remove
+    assert _names(keep) == ["slskd_aa"]
+
+
+def test_run_marks_a_folder_it_queues_and_leaves_it_on_the_next_run(env, wired):
+    """A folder is queued once; a failed import does not bring it back every run."""
+    folder = _folder(env[3], "slskd:aa")
+    _row(env, "slskd:aa", status="error")
+    queued = []
+
+    def requeue(payload, final_status):
+        """Accept every requeue and count it."""
+        queued.append(final_status)
+        return True, None
+
+    first = _run(env, requeue)
+    second = _run(env, requeue)
+
+    assert first.adopted == ["slskd_aa"]
+    assert (folder / leftovers.ADOPTED_MARKER).exists()
+    assert second.adopted == []
+    assert queued == ["error"]
+
+
+def test_a_transfer_of_a_cancelled_download_is_cancelled_not_picked_up(env):
+    """A download someone cancelled is not brought back, even while its request still waits."""
+    waiting = _request(env, delivery="queued")
+    _row(env, "slskd:aa", status="cancelled", request_id=waiting["id"])
+
+    reattach, cancel = _plan_transfers(env, [_transfer()])
+
+    assert reattach == []
+    assert len(cancel) == 1
+
+
+def test_run_does_not_remove_a_folder_whose_download_it_just_picked_up(env, wired, monkeypatch):
+    """An old partial folder stays when the same run restarts the download writing into it."""
+    monkeypatch.setattr(leftovers.time, "sleep", lambda _s: None)
+    waiting = _request(env, delivery="queued")
+    folder = _folder(env[3], "slskd:aa", sizes=(5,))
+    _row(env, "slskd:aa", status="error", request_id=waiting["id"], age_days=30)
+    fake = _FakeSlskd([_transfer()])
+    monkeypatch.setattr(handler_mod, "build_client_from_config", lambda: fake)
+
+    report = leftovers.run(
+        history_service=env[1],
+        user_db=env[0],
+        requeue=lambda payload, final_status: (True, None),
+        live_tasks=lambda: {},
+        now=NOW,
+    )
+
+    assert report.reattached == ["slskd:aa"]
+    assert folder.exists()
+    assert "slskd_aa" in report.kept
+
+
+def test_run_does_not_remove_the_folder_of_a_running_download(env, wired, monkeypatch):
+    """A task that is running now owns its folder, however old the history says it is."""
+    folder = _folder(env[3], "slskd:bb", sizes=(5,))
+    _row(env, "slskd:bb", status="error", age_days=30)
+    monkeypatch.setattr(handler_mod, "build_client_from_config", lambda: _FakeSlskd([]))
+
+    report = leftovers.run(
+        history_service=env[1],
+        user_db=env[0],
+        requeue=lambda payload, final_status: (True, None),
+        live_tasks=lambda: {"slskd:bb": None},
+        now=NOW,
+    )
+
+    assert folder.exists()
+    assert "slskd_bb" in report.kept
+
+
+def test_a_transfer_matching_a_finished_download_is_someone_elses(env):
+    """A finished download has no unfinished transfers, so a match is another app's or a person's."""
+    _row(env, "slskd:aa", status="complete")
+
+    reattach, cancel = _plan_transfers(env, [_transfer()])
+
+    assert (reattach, cancel) == ([], [])
+
+
+def test_folders_that_cannot_be_queued_do_not_use_up_the_runs_imports(env, wired):
+    """Only successful imports count towards the cap, so failing folders do not block the rest."""
+    for n in range(leftovers.MAX_ADOPTIONS_PER_RUN):
+        _folder(env[3], f"slskd:bad{n}")
+        _row(env, f"slskd:bad{n}", status="error")
+    _folder(env[3], "slskd:good")
+    _row(env, "slskd:good", status="error")
+
+    calls = []
+
+    def requeue(payload, final_status):
+        """Refuse the first folders (the bad ones, by name order) and accept the rest."""
+        calls.append(final_status)
+        return (False, "refused") if len(calls) <= leftovers.MAX_ADOPTIONS_PER_RUN else (True, None)
+
+    report = _run(env, requeue)
+
+    assert report.adopted == ["slskd_good"]
+
+
+def test_a_folder_that_could_not_be_queued_is_not_tried_every_run(env, wired):
+    """A failed import is tried once; the next run leaves the folder for a person or clean-up."""
+    folder = _folder(env[3], "slskd:aa")
+    _row(env, "slskd:aa", status="error")
+    calls = []
+
+    def requeue(payload, final_status):
+        """Refuse, counting each attempt."""
+        calls.append(final_status)
+        return False, "refused"
+
+    _run(env, requeue)
+    _run(env, requeue)
+
+    assert calls == ["error"]
+    assert folder.exists()
+
+
+def test_a_whole_folder_tried_once_stays_however_old_while_still_wanted(env):
+    """A failed import is not a reason to delete the files: clean-up never takes a whole folder
+    of a direct download, or of a request that is still open, whatever its age."""
+    direct = _folder(env[3], "slskd:aa")
+    (direct / leftovers.ADOPTED_MARKER).touch()
+    _row(env, "slskd:aa", status="error", age_days=400)
+    waiting = _request(env, delivery="queued")
+    requested = _folder(env[3], "slskd:bb")
+    (requested / leftovers.ADOPTED_MARKER).touch()
+    _row(env, "slskd:bb", status="error", request_id=waiting["id"], age_days=400)
+
+    finish, remove, keep = _plan(env, [direct, requested], clean_days=7)
+
+    assert not finish
+    assert not remove
+    assert _names(keep) == ["slskd_aa", "slskd_bb"]
+
+
+def test_a_whole_folder_tried_once_goes_a_day_after_its_request_is_done_with(env):
+    """Once the request has its book another way, or was dropped, the marked folder is dead
+    weight and goes like any other folder of a finished request."""
+    delivered = _request(env, delivery="complete")
+    folder = _folder(env[3], "slskd:aa")
+    (folder / leftovers.ADOPTED_MARKER).touch()
+    _row(env, "slskd:aa", status="error", request_id=delivered["id"], age_days=2)
+
+    finish, remove, _keep = _plan(env, [folder], clean_days=7)
+
+    assert not finish
+    assert _names(remove) == ["slskd_aa"]
+
+
+def test_a_folder_of_an_older_attempt_is_kept_while_a_newer_one_runs(env):
+    """A request already downloading another release does not get the old folder imported too."""
+    waiting = _request(env, delivery="queued")
+    folder = _folder(env[3], "slskd:aa")
+    _row(env, "slskd:aa", status="error", request_id=waiting["id"])
+    user_db, history, _db, _base = env
+
+    finish, remove, keep = leftovers.plan(
+        [folder],
+        history_service=history,
+        user_db=user_db,
+        folder_complete=handler_mod.folder_complete,
+        keep_completed=False,
+        clean_after=timedelta(days=7),
+        now=NOW,
+        live_request_ids={waiting["id"]},
+    )
+
+    assert not finish
+    assert not remove
+    assert _names(keep) == ["slskd_aa"]
+
+
+def test_a_download_with_several_transfers_is_picked_up_once_with_all_of_them(env):
+    """One requeue per download, and every one of its transfers is listed under it."""
+    _row(env, "slskd:aa", status="active")
+
+    reattach, cancel = _plan_transfers(
+        env, [_transfer(tid="t1"), _transfer(name="@@s\\Book\\b.mp3", tid="t2")]
+    )
+
+    assert [(row["task_id"], sorted(t["id"] for t in owned)) for row, owned in reattach] == [
+        ("slskd:aa", ["t1", "t2"])
+    ]
+    assert cancel == []
+
+
+def _settle(env, fake, requeue, monkeypatch):
+    """Run the sweep against a fake slskd with no running tasks, and no waits between cancels."""
+    monkeypatch.setattr(leftovers.time, "sleep", lambda _s: None)
+    monkeypatch.setattr(handler_mod, "build_client_from_config", lambda: fake)
+    return leftovers.run(
+        history_service=env[1],
+        user_db=env[0],
+        requeue=requeue,
+        live_tasks=lambda: {},
+        now=NOW,
+    )
+
+
+def test_a_download_that_cannot_be_picked_up_has_its_transfers_dropped(env, wired, monkeypatch):
+    """Nothing will ever watch a transfer whose download was refused, so it goes; the refusal
+    does not use up the run's pick-ups, and a second run has nothing left to retry."""
+    waiting = _request(env, delivery="queued")
+    _row(env, "slskd:bad", status="error", request_id=waiting["id"])
+    _row(
+        env,
+        "slskd:good",
+        status="error",
+        request_id=waiting["id"],
+        files=[{"filename": "@@s\\Other\\z.mp3", "size": 5}],
+    )
+    fake = _FakeSlskd(
+        [
+            _transfer(tid="bad1"),
+            _transfer(name="@@s\\Book\\b.mp3", tid="bad2"),
+            _transfer(name="@@s\\Other\\z.mp3", tid="good1"),
+        ]
+    )
+
+    def requeue(payload, final_status):
+        """Refuse the download whose files are the Book ones; accept the other."""
+        files = payload["retry_source_context"]["files"]
+        return (False, "refused") if files == FILES else (True, None)
+
+    report = _settle(env, fake, requeue, monkeypatch)
+
+    assert report.reattached == ["slskd:good"]
+    assert sorted({c[1] for c in fake.cancelled}) == ["bad1", "bad2"]
+    assert len(report.cancelled) == 2
+
+
+def test_refused_pick_ups_do_not_use_up_the_runs_cap(env, wired, monkeypatch):
+    """Only downloads that were queued count towards the cap, as with finished folders."""
+    cap = leftovers.MAX_ADOPTIONS_PER_RUN
+    waiting = _request(env, delivery="queued")
+    transfers = []
+    for n in range(cap + 1):
+        name = f"@@s\\Book{n}\\a.mp3"
+        _row(
+            env,
+            f"slskd:t{n}",
+            status="error",
+            request_id=waiting["id"],
+            files=[{"filename": name, "size": 5}],
+        )
+        transfers.append(_transfer(name=name, tid=f"t{n}"))
+    calls = []
+
+    def requeue(payload, final_status):
+        """Refuse the first `cap` downloads and accept the rest."""
+        calls.append(payload["retry_source_context"]["files"][0]["filename"])
+        return (False, "refused") if len(calls) <= cap else (True, None)
+
+    report = _settle(env, _FakeSlskd(transfers), requeue, monkeypatch)
+
+    assert len(report.reattached) == 1
+    assert len(report.cancelled) == cap
+
+
+def test_downloads_past_the_cap_keep_their_transfers_for_the_next_run(env, wired, monkeypatch):
+    """A backlog is picked up a few per run; the rest are neither queued nor dropped."""
+    cap = leftovers.MAX_ADOPTIONS_PER_RUN
+    waiting = _request(env, delivery="queued")
+    transfers = []
+    for n in range(cap + 2):
+        name = f"@@s\\Book{n}\\a.mp3"
+        _row(
+            env,
+            f"slskd:t{n}",
+            status="error",
+            request_id=waiting["id"],
+            files=[{"filename": name, "size": 5}],
+        )
+        transfers.append(_transfer(name=name, tid=f"t{n}"))
+    fake = _FakeSlskd(transfers)
+
+    report = _settle(env, fake, lambda payload, final_status: (True, None), monkeypatch)
+
+    assert len(report.reattached) == cap
+    assert fake.cancelled == []
+
+
+def test_dropping_many_transfers_waits_once_not_once_per_transfer(env, wired, monkeypatch):
+    """Every transfer is cancelled, then one wait covers them all before the second pass."""
+    waiting = _request(env, status="rejected")
+    transfers = []
+    for n in range(5):
+        name = f"@@s\\Book{n}\\a.mp3"
+        _row(
+            env,
+            f"slskd:t{n}",
+            status="error",
+            request_id=waiting["id"],
+            files=[{"filename": name, "size": 5}],
+        )
+        transfers.append(_transfer(name=name, tid=f"t{n}"))
+    fake = _FakeSlskd(transfers)
+    waits = []
+    monkeypatch.setattr(leftovers.time, "sleep", lambda s: waits.append(s))
+    monkeypatch.setattr(handler_mod, "build_client_from_config", lambda: fake)
+
+    report = leftovers.run(
+        history_service=env[1],
+        user_db=env[0],
+        requeue=lambda *a, **k: (True, None),
+        live_tasks=lambda: {},
+        now=NOW,
+    )
+
+    assert len(report.cancelled) == 5
+    assert len(waits) == 1
+    assert [c[1] for c in fake.cancelled] == [f"t{n}" for n in range(5)] * 2
+
+
+def _slskd_stamp(when):
+    """A time as slskd writes requestedAt: UTC, seven fractional digits, no zone."""
+    return when.astimezone(UTC).strftime("%Y-%m-%dT%H:%M:%S.%f") + "0"
+
+
+@pytest.mark.parametrize("status", ["error", "cancelled"])
+def test_the_same_file_queued_again_after_the_download_ended_is_left_alone(env, status):
+    _row(env, "slskd:aa", status=status, age_days=1)
+
+    later = _transfer(requested=_slskd_stamp(NOW - timedelta(hours=1)))
+
+    assert _plan_transfers(env, [later]) == ([], [])
+
+
+def test_a_transfer_queued_before_the_download_ended_is_still_cancelled(env):
+    _row(env, "slskd:aa", status="cancelled", age_days=1)
+
+    earlier = _transfer(requested=_slskd_stamp(NOW - timedelta(days=2)))
+
+    reattach, cancel = _plan_transfers(env, [earlier])
+
+    assert reattach == []
+    assert cancel == [earlier]
+
+
+def test_a_request_waiting_for_its_file_does_not_take_one_queued_after_its_download_ended(env):
+    request = _request(env, delivery="queued")
+    _row(env, "slskd:aa", status="error", request_id=request["id"], age_days=1)
+
+    later = _transfer(requested=_slskd_stamp(NOW - timedelta(hours=1)))
+
+    assert _plan_transfers(env, [later]) == ([], [])
+
+
+def test_a_running_download_keeps_its_transfers_whatever_their_stamp(env):
+    _row(env, "slskd:aa", status="active")
+
+    later = _transfer(requested=_slskd_stamp(NOW + timedelta(hours=1)))
+
+    reattach, cancel = _plan_transfers(env, [later])
+
+    assert [row["task_id"] for row, _owned in reattach] == ["slskd:aa"]
+    assert cancel == []

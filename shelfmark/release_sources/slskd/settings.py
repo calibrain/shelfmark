@@ -148,6 +148,44 @@ def slskd_config_settings() -> list[SettingsField]:
             ),
             show_when={"field": "SLSKD_ISOLATE_DOWNLOADS", "value": True},
         ),
+        CheckboxField(
+            key="SLSKD_FINISH_LEFTOVERS",
+            label="Import finished folders an interruption left behind",
+            default=True,
+            description=(
+                "A restart can land after the last file arrives and before it is copied to "
+                "your library. Checked every 15 minutes, independent of the Hardcover sync, "
+                "a download folder that holds every file asked for, whose download never "
+                "completed and is still wanted, is imported once without downloading anything "
+                "again (never one someone cancelled). If that import fails, the folder stays "
+                "until you retry the download, or, with clean-up on, until it is a day old and "
+                "its request has the book or was given up on. A transfer Shelfmark queued that "
+                "no download is "
+                "watching any more is picked up again if its request still needs it, a few per "
+                "check, and cancelled otherwise, or when it cannot be picked up. Transfers "
+                "queued by other apps or by hand in slskd are never touched, including the same "
+                "file queued again after Shelfmark's download of it ended."
+            ),
+            show_when={"field": "SLSKD_ISOLATE_DOWNLOADS", "value": True},
+        ),
+        NumberField(
+            key="SLSKD_CLEAN_LEFTOVERS_DAYS",
+            label="Remove leftover download folders after (days)",
+            default=0,
+            min_value=0,
+            max_value=365,
+            description=(
+                "Remove the folder of a failed or cancelled download, or one nothing records, "
+                "once the download is this old, or one day old when its request already has "
+                "the book or was given up on. A folder that holds every file asked for is "
+                "never removed while the download is still wanted (you started it yourself, "
+                "or its request is still open): it is imported once, and after that it waits "
+                "for you to retry the download. The folder of a running download is never "
+                "removed. 0 keeps every leftover folder. Folders already imported follow "
+                "Keep finished files in slskd, not this setting."
+            ),
+            show_when={"field": "SLSKD_ISOLATE_DOWNLOADS", "value": True},
+        ),
         NumberField(
             key="SLSKD_SEARCH_TIMEOUT",
             label="Search Wait (seconds)",

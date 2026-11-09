@@ -336,6 +336,19 @@ def _safe_name(value: str) -> str:
     return re.sub(r"[^A-Za-z0-9._-]+", "_", value or "").strip("._") or "download"
 
 
+def folder_maps_back(task_id: str) -> bool:
+    """Whether a task's own folder name leads back to this task id and no other.
+
+    The folder is ``_safe_name(task_id)``, and the leftovers sweep reads the id back by turning
+    the ``slskd_`` prefix into ``slskd:``. Search ids (``slskd:`` and hex) always map back. An id
+    sent in a queued payload may not: ``slskd:ab+cd`` would land in ``slskd_ab_cd``, which the
+    sweep would read as ``slskd:ab_cd``, find nothing recorded, and remove.
+    """
+    if not task_id.startswith("slskd:"):
+        return False
+    return _safe_name(task_id) == "slskd_" + task_id[len("slskd:") :]
+
+
 def _clean_prefix(raw: object) -> str:
     """The folder, relative to slskd's downloads folder, that holds Shelfmark's downloads."""
     text = str(raw or "").strip().replace("\\", "/").strip("/")
@@ -393,6 +406,23 @@ def _discard_folder(folder: Path) -> None:
             run_blocking_io(lambda: shutil.rmtree(folder))
     except OSError as e:
         logger.debug("Could not remove slskd folder %s: %s", folder, e)
+
+
+# Public names for the leftovers sweep, which reads the same settings and folder rules.
+def isolation_enabled() -> bool:
+    return _bool_setting("SLSKD_ISOLATE_DOWNLOADS", True)
+
+
+def destination_prefix() -> str:
+    return _clean_prefix(config.get("SLSKD_DESTINATION_PREFIX", DEFAULT_DESTINATION_PREFIX))
+
+
+def bool_setting(key: str, default: bool) -> bool:
+    return _bool_setting(key, default)
+
+
+def folder_complete(folder: Path, expected_sizes: list[int]) -> bool:
+    return _folder_complete(folder, expected_sizes)
 
 
 def _completed_remote_files(events: list[dict[str, Any]]) -> set[str]:
@@ -510,6 +540,11 @@ class SlskdHandler(DownloadHandler):
             return None
 
         if self._isolate_enabled():
+            if not folder_maps_back(task.task_id):
+                # Its folder would read back as another id, and the sweep could remove it.
+                status_callback("error", "This release's id cannot name its own download folder")
+                logger.warning("slskd task id %r does not map back from its folder", task.task_id)
+                return None
             outcome = self._download_isolated(
                 task, spec, client, cancel_flag, progress_callback, status_callback
             )
