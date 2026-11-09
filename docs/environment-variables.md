@@ -1127,7 +1127,7 @@ Custom label for the OIDC sign-in button on the login page.
 | `HARDCOVER_SYNC_CONTENT_TYPE` | Content type for synced requests. "Ebooks and audiobooks" creates one request of each per shelf book; every request is checked against its own library and downloaded with its own format guard and source priority. | string (choice) | `audiobook` |
 | `HARDCOVER_SYNC_INTERVAL` | How often the scheduled sync runs (minimum 1 minute). | number | `6` |
 | `HARDCOVER_SYNC_INTERVAL_UNIT` | Whether the sync interval is measured in minutes or hours. | string (choice) | `hours` |
-| `AUTO_DOWNLOAD_ENABLED` | Auto-approve and auto-download matching releases for synced requests. | boolean | `false` |
+| `AUTO_DOWNLOAD_ENABLED` | Auto-approve and auto-download matching releases for Hardcover requests. Another user's request is only approved this way where their request policy already lets them download directly; the rest wait for an admin. | boolean | `false` |
 | `AUTO_DOWNLOAD_SOURCE_PRIORITY` | Drag to set which release sources are tried first for audiobook requests. The first source with a strict match wins. Disabled sources are skipped. | JSON array | _empty list_ |
 | `AUTO_DOWNLOAD_EBOOK_SOURCE_PRIORITY` | Drag to set which release sources are tried first for ebook requests. The first source with a strict match wins. Disabled sources are skipped. | JSON array | _empty list_ |
 | `AUTO_DOWNLOAD_MIN_SEEDERS` | Skip torrent releases with fewer seeders than this. | number | `1` |
@@ -1204,7 +1204,7 @@ Whether the sync interval is measured in minutes or hours.
 
 **Enable automatic downloads**
 
-Auto-approve and auto-download matching releases for synced requests.
+Auto-approve and auto-download matching releases for Hardcover requests. Another user's request is only approved this way where their request policy already lets them download directly; the rest wait for an admin.
 
 - **Type:** boolean
 - **Default:** `false`

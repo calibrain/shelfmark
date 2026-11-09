@@ -21,6 +21,8 @@ A book is skipped when:
 
 When enabled, each pending request that came from Hardcover is searched across your release sources in the priority order configured for its content type (audiobook requests use the audiobook list, ebook requests the ebook list). The first source that yields a **strict match** wins, and the best candidate from that source is queued through the normal request fulfilment path, so it appears in the activity view and download history exactly like a request an admin approved.
 
+Automatic downloads act for an admin, so they only approve what the request's owner could have downloaded without asking. Synced requests belong to an admin and are always searched. A request another user made is searched only on the release sources where their request policy (including any per-user override) resolves to **Download**, and only while requests are turned on for them; with requests off they download directly anyway. A request whose policy needs approval, or blocks that content type, is left pending for an admin, untouched, like any other request awaiting review. A failed download is only reopened for a retry on the same terms.
+
 A release is a strict match only when all of the following hold:
 
 - at least 85% of the significant words in the book's title appear in the release title. Numbers from 1 to 20 count as the same word however they are written, so *Part II*, *Part Two* and *Part 2* agree, while *Part One* never stands in for *Part Two*;
@@ -74,7 +76,7 @@ The check **fails closed** here: if an enabled library cannot be read and has no
 | `HARDCOVER_SYNC_CONTENT_TYPE` | Request as | Audiobooks | `Audiobooks`, `Ebooks`, or `Ebooks and audiobooks` — the last creates one request of each per shelf book, each checked against its own library |
 | `HARDCOVER_SYNC_INTERVAL` | Sync interval | 6 | Combined with the unit below |
 | `HARDCOVER_SYNC_INTERVAL_UNIT` | Interval unit | Hours | Minutes or hours. The effective interval never drops below 60 seconds |
-| `AUTO_DOWNLOAD_ENABLED` | Enable automatic downloads | Off | Auto-approve and queue strict matches for every pending Hardcover request, synced or made by a user with Request Book. The download belongs to the user who asked, and admins see every user's requests |
+| `AUTO_DOWNLOAD_ENABLED` | Enable automatic downloads | Off | Auto-approve and queue strict matches for pending Hardcover requests: synced ones, and a user's own only on the sources where their request policy already lets them download directly; the rest wait for an admin. The download belongs to the user who asked, and admins see every user's requests |
 | `AUTO_DOWNLOAD_SOURCE_PRIORITY` | Audiobook source priority | All usable sources | Drag to order; used for audiobook requests. Sources you disable here, or that are not configured, are skipped |
 | `AUTO_DOWNLOAD_EBOOK_SOURCE_PRIORITY` | Ebook source priority | All usable sources | Same, for ebook requests |
 | `AUTO_DOWNLOAD_MIN_SEEDERS` | Minimum seeders (torrents) | 1 | Torrent releases below this are ignored |
@@ -108,7 +110,7 @@ Only one run happens at a time. If a scheduled cycle is in progress, **Sync now*
 
 **Sync adds nothing and the log says "no Hardcover token configured"** — set **Hardcover API Token** on this tab, or configure the token on the Hardcover metadata provider. A sync without a usable token counts as an error and creates no requests.
 
-**Requests appear but nothing downloads** — check **Enable automatic downloads** is on, that the source-priority list for the request's content type contains at least one configured source, and look for `no strict match` lines in the log. Lowering **Minimum seeders** helps on quiet trackers; loosening the title or author match is deliberately not an option.
+**Requests appear but nothing downloads** — check **Enable automatic downloads** is on, that the source-priority list for the request's content type contains at least one configured source, and look for `no strict match` lines in the log. A request from another user is only searched on the sources where their policy allows a direct download (or, with requests turned off for them, on every source); with no such source it stays pending for an admin and is not searched. Lowering **Minimum seeders** helps on quiet trackers; loosening the title or author match is deliberately not an option.
 
 **Books you own keep being added** — enable the library check for the format you request (see [Library Check](library-check.md)) and use its test button. A library that cannot be read shows up in the log as a skipped cycle.
 

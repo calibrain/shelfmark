@@ -31,8 +31,17 @@ from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import QueueStatus
 from shelfmark.core.release_search import search_source_releases
-from shelfmark.core.request_helpers import coerce_int
-from shelfmark.core.request_policy import normalize_content_type
+from shelfmark.core.request_helpers import (
+    coerce_bool,
+    coerce_int,
+    load_users_request_policy_settings,
+)
+from shelfmark.core.request_policy import (
+    PolicyMode,
+    merge_request_policy_settings,
+    normalize_content_type,
+    resolve_policy_mode,
+)
 from shelfmark.core.request_validation import RequestStatus
 from shelfmark.core.text_match import (
     DEFAULT_TITLE_MATCH_THRESHOLD,
@@ -56,7 +65,7 @@ from shelfmark.download.postprocess.policy import (
 )
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Mapping
 
     from shelfmark.core.user_db import UserDB
     from shelfmark.metadata_providers import BookMetadata
@@ -1169,6 +1178,7 @@ def reopen_stale_failures(
     failure_cooldown: timedelta | None = None,
     only_kinds: frozenset[str] | None = None,
     reopened_ids: list[int] | None = None,
+    owner_policy: OwnerPolicy | None = None,
 ) -> int:
     """Return synced requests whose download never arrived to pending once the cooldown passes.
 
@@ -1188,6 +1198,9 @@ def reopen_stale_failures(
     skipped next time, and is given up on after ``MAX_FAILURE_RETRIES``. Other cancelled requests
     and rejected ones are decisions and are never touched. Returns how many were reopened; ``cooldown_days`` of 0 or less turns retries off,
     and without readable history nothing is retried, since guessing would be worse.
+
+    A request auto-download could not fulfil on its owner's behalf (see ``OwnerPolicy``) is
+    not reopened either: nothing would pick it up again without an admin.
     """
     if cooldown_days <= 0 and failure_cooldown is None:
         return 0
@@ -1222,11 +1235,14 @@ def reopen_stale_failures(
         return 0
 
     stale.sort(key=lambda item: item[0])
+    policy = owner_policy or OwnerPolicy(user_db)
     reopened = 0
     for _changed, row, state in stale:
         if reopened >= max_reopen:
             break
         request_id = int(row["id"])
+        if not policy.may_fulfil(row):
+            continue
         kind = _failure_kind(history.get(request_id))
         if kind is None or (state == _CANCELLED and kind != _STALLED):
             continue
@@ -1313,6 +1329,95 @@ def _configured_source_priority(content_type: str) -> list[str]:
         return []
     # Nothing configured yet: every usable source for this content type, registry order.
     return [src["name"] for src in available if src.get("enabled")]
+
+
+class OwnerPolicy:
+    """What a request's owner could download without asking, read once per pass.
+
+    Auto-download fulfils a request as an admin, so it may only do what the owner could have
+    done alone: the same check the download route makes before it queues a release. An admin,
+    an install without login, or a user for whom requests are turned off downloads directly
+    from any source. Anyone else may only use the sources whose resolved policy mode is
+    ``download``. A request with no such source is left exactly as it is, pending for an
+    admin, like any other request awaiting review.
+    """
+
+    def __init__(self, user_db: UserDB, *, auth_mode: str | None = None) -> None:
+        """Read nothing yet.
+
+        The policy settings and each owner are loaded on first use and kept for the pass.
+        """
+        from shelfmark.core.auth_modes import AUTH_MODE_NONE, load_active_auth_mode
+
+        self._user_db = user_db
+        self._bypass = (auth_mode or load_active_auth_mode()) == AUTH_MODE_NONE
+        self._global: Mapping[str, Any] | None = None
+        self._owners: dict[int, tuple[bool, dict[str, Any]] | None] = {}
+
+    def _owner(self, user_id: int) -> tuple[bool, dict[str, Any]] | None:
+        """(owner may skip the policy, their settings), or None when they cannot be read."""
+        if user_id not in self._owners:
+            try:
+                user = self._user_db.get_user(user_id=user_id)
+                settings = self._user_db.get_user_settings(user_id) if user else {}
+            except sqlite3.Error as exc:
+                logger.warning("auto-download: could not read user %s: %s", user_id, exc)
+                user, settings = None, {}
+            if user is None:
+                self._owners[user_id] = None
+            else:
+                if self._global is None:
+                    self._global = load_users_request_policy_settings()
+                effective = merge_request_policy_settings(self._global, settings)
+                exempt = user.get("role") == "admin" or not coerce_bool(
+                    effective.get("REQUESTS_ENABLED"), default=False
+                )
+                self._owners[user_id] = (exempt, settings)
+        return self._owners[user_id]
+
+    def download_sources(
+        self, row: dict[str, Any], content_type: str, sources: list[str]
+    ) -> list[str]:
+        """The sources in ``sources`` the owner of ``row`` may download from directly."""
+        if self._bypass:
+            return list(sources)
+        user_id = coerce_int(row.get("user_id"), 0)
+        owner = self._owner(user_id) if user_id > 0 else None
+        if owner is None:
+            return []
+        exempt, settings = owner
+        if exempt:
+            return list(sources)
+        return [
+            source
+            for source in sources
+            if resolve_policy_mode(
+                source=source,
+                content_type=content_type,
+                global_settings=self._global,
+                user_settings=settings,
+            )
+            == PolicyMode.DOWNLOAD
+        ]
+
+    def may_fulfil(self, row: dict[str, Any]) -> bool:
+        """True when auto-download could fulfil ``row`` from at least one configured source."""
+        if self._bypass:
+            return True
+        user_id = coerce_int(row.get("user_id"), 0)
+        owner = self._owner(user_id) if user_id > 0 else None
+        if owner is None:
+            return False
+        if owner[0]:
+            return True
+        book_data = row.get("book_data")
+        content_type = normalize_content_type(
+            row.get("content_type")
+            or (book_data.get("content_type") if isinstance(book_data, dict) else None)
+        )
+        return bool(
+            self.download_sources(row, content_type, _configured_source_priority(content_type))
+        )
 
 
 def _acted_on_since_listed(user_db: UserDB, request_id: int) -> bool:
@@ -1636,6 +1741,7 @@ def retry_failed_downloads(
     if minutes <= 0 or not bool(app_config.get("AUTO_DOWNLOAD_ENABLED", False)):
         return None
     reopened_ids: list[int] = []
+    owner_policy = OwnerPolicy(user_db)
     reopen_stale_failures(
         user_db,
         cooldown_days=0,
@@ -1644,6 +1750,7 @@ def retry_failed_downloads(
         failure_cooldown=timedelta(minutes=minutes),
         only_kinds=frozenset({_FAILED, _STALLED}),
         reopened_ids=reopened_ids,
+        owner_policy=owner_policy,
     )
     # A failed download the status poll already reopened is pending with no release; those
     # are searched here as well, so they are not left for the next full pass.
@@ -1692,6 +1799,10 @@ def auto_download_pending(
     priority list, format guard and library check all follow the request. Returns a summary
     count dict. No-ops (returns zeros) unless AUTO_DOWNLOAD_ENABLED. ``admin_user_id``
     defaults to the lowest-id admin, who fulfils the requests.
+
+    A request is only searched from the sources its owner could download from directly
+    (``OwnerPolicy``); one with none is left untouched for an admin to review and counted
+    under ``awaiting_approval``.
     """
     zeros = {"queued": 0, "no_match": 0, "in_library": 0, "skipped": 0, "error": 0}
     if not bool(app_config.get("AUTO_DOWNLOAD_ENABLED", False)):
@@ -1705,6 +1816,7 @@ def auto_download_pending(
         logger.warning("auto-download: no admin user exists to fulfil requests")
         return zeros
 
+    owner_policy = OwnerPolicy(user_db)
     retry_days = coerce_int(
         app_config.get(RETRY_DAYS_SETTING, DEFAULT_RETRY_DAYS), DEFAULT_RETRY_DAYS
     )
@@ -1712,7 +1824,11 @@ def auto_download_pending(
         0
         if only_request_ids is not None
         else reopen_stale_failures(
-            user_db, cooldown_days=retry_days, db_path=db_path, provider_filter=provider_filter
+            user_db,
+            cooldown_days=retry_days,
+            db_path=db_path,
+            provider_filter=provider_filter,
+            owner_policy=owner_policy,
         )
     )
     if reopened:
@@ -1763,6 +1879,15 @@ def auto_download_pending(
         sources = sources_by_type[content_type]
         if not sources:
             summary["skipped"] += 1
+            continue
+        # Only what the owner could download without asking; the rest waits for an admin.
+        sources = owner_policy.download_sources(row, content_type, sources)
+        if not sources:
+            logger.debug(
+                "auto-download: request %s needs an admin's approval under its owner's policy",
+                row.get("id"),
+            )
+            summary["awaiting_approval"] = summary.get("awaiting_approval", 0) + 1
             continue
 
         if not _search_is_due(book_data, datetime.now(UTC), backoff_days):
