@@ -126,6 +126,9 @@ def run(
         idle_hours=idle,
         now=now,
     ):
+        if torrent_ledger.entries().get(known) != ledger[known]:
+            # A task claimed the torrent after the ledger was read (a retry, say): it is live.
+            continue
         if client.remove(torrent.hash, delete_files=True):
             torrent_ledger.forget(known)
             report.removed.append(str(getattr(torrent, "name", torrent.hash)))

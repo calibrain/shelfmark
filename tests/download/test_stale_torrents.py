@@ -156,6 +156,26 @@ def test_a_task_that_joined_the_torrent_owns_it_now(monkeypatch):
     assert mod.run(client, running_task_ids=lambda: {"task-1"}, now=NOW).removed == ["Book"]
 
 
+def test_a_torrent_claimed_while_the_sweep_lists_the_client_is_left_alone(monkeypatch):
+    """A retry that claims the torrent mid-sweep owns it, so its files are not deleted."""
+    monkeypatch.setattr(mod, "stale_hours", lambda: 6.0)
+    torrent_ledger.record("h1", "task-1")
+    client = _client(_torrent())
+
+    def listing_while_a_retry_claims_it():
+        """The client listing, during which a retried task claims the torrent."""
+        torrent_ledger.claim("h1", "task-2")
+        return [_torrent()]
+
+    client.list_torrents.side_effect = listing_while_a_retry_claims_it
+
+    report = mod.run(client, running_task_ids=lambda: set(), now=NOW)
+
+    assert report.removed == []
+    client.remove.assert_not_called()
+    assert torrent_ledger.entries() == {"h1": "task-2"}
+
+
 def test_run_does_nothing_when_switched_off(monkeypatch):
     monkeypatch.setattr(mod, "stale_hours", lambda: 0.0)
     torrent_ledger.record("h1", "task-1")
