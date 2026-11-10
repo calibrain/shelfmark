@@ -554,35 +554,6 @@ def _plugin_label(plugin: object, fallback_scheme: str) -> str:
     return " ".join(parts)
 
 
-def _apprise_proxy_env() -> dict[str, str]:
-    """Proxy variables for Apprise, from the same rule as every other call.
-
-    Apprise runs in this process but reads the standard proxy variables rather than
-    calling ``get_proxies()``, so the proxies come from ``get_proxies()`` and ``NO_PROXY``
-    from ``no_proxy_for_environment()``: the private ranges and internal TLDs, then the
-    No Proxy setting. A single-label LAN name (a Docker service) still needs No Proxy.
-    Variables already set in the environment are left alone.
-    """
-    import os
-
-    from shelfmark.download.network import get_proxies, no_proxy_for_environment
-
-    proxies = get_proxies()
-    env: dict[str, str] = {}
-    for scheme in ("http", "https"):
-        value = str(proxies.get(scheme) or "").strip()
-        if value:
-            env[f"{scheme.upper()}_PROXY"] = value
-            env[f"{scheme}_proxy"] = value
-
-    if env:
-        no_proxy = no_proxy_for_environment()
-        env["NO_PROXY"] = no_proxy
-        env["no_proxy"] = no_proxy
-
-    return {k: v for k, v in env.items() if not os.environ.get(k)}
-
-
 def _dispatch_to_apprise(
     urls: Iterable[str],
     *,
@@ -590,8 +561,11 @@ def _dispatch_to_apprise(
     body: str,
     notify_type: object,
 ) -> dict[str, Any]:
-    import os
+    """Send one notification to each Apprise URL and report what was delivered.
 
+    The proxy comes from the environment, which network.apply_proxy_environment() keeps
+    in step with Settings → Network; this no longer sets it.
+    """
     normalized_urls = _normalize_urls(list(urls))
     url_schemes = _extract_url_schemes(normalized_urls)
     if not normalized_urls:
@@ -600,10 +574,8 @@ def _dispatch_to_apprise(
     if apprise is None:
         return {"success": False, "message": "Apprise is not installed"}
 
-    proxy_env = _apprise_proxy_env()
-    if proxy_env:
-        logger.debug("Applying proxy env for Apprise dispatch: %s", list(proxy_env.keys()))
-        os.environ.update(proxy_env)
+    # Apprise reads HTTP_PROXY/HTTPS_PROXY/NO_PROXY from the environment, which
+    # network.apply_proxy_environment() keeps in step with Settings → Network.
 
     valid_urls = 0
     invalid_urls = 0
