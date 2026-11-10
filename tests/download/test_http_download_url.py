@@ -359,6 +359,7 @@ def test_spooled_download_rolls_to_disk_and_retains_contents(monkeypatch):
 
 
 def test_spooled_download_closes_temporary_file_on_error(monkeypatch):
+    """A download that fails partway closes the temporary file it spooled to."""
     http = _prepare_download_test(monkeypatch)
     created = []
     factory = http.SpooledTemporaryFile

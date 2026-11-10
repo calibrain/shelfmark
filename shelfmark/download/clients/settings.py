@@ -313,6 +313,7 @@ def _test_deluge_connection(current_values: dict[str, Any] | None = None) -> dic
     rpc_url = f"{scheme}://{host}:{port}{base_path}/json"
 
     def rpc_call(session: requests.Session, rpc_id: int, method: str, *params: Any) -> Any:
+        """Call one Deluge Web JSON-RPC method and return its result, raising on an RPC error."""
         payload = {"id": rpc_id, "method": method, "params": list(params)}
         resp = session.post(rpc_url, json=payload, timeout=15)
         resp.raise_for_status()

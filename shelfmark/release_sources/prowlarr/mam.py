@@ -277,6 +277,7 @@ class MamClient:
         self._headers = {"Accept": "application/json", "Cookie": f"mam_id={mam_id.strip()}"}
 
     def _get(self, path: str, params: Mapping[str, str | list[str]] | None = None) -> object:
+        """GET a MyAnonamouse JSON endpoint; a 403 carries MAM's own reason, and redirects are not followed."""
         url = MAM_BASE_URL + path
         response = get_session().get(
             url,

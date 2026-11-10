@@ -607,6 +607,7 @@ class TestTorrentFetchHopCheck:
 
     @staticmethod
     def _setup(monkeypatch, resolutions, responses, config_values=None):
+        """Stub the config, the DNS answers and the HTTP replies; return the mock that serves them."""
         values = config_values or {"PROWLARR_URL": "https://prowlarr.example"}
         monkeypatch.setattr(
             "shelfmark.download.clients.torrent_utils.config.get",

@@ -126,6 +126,20 @@ def get_ssl_verify(url: str = "") -> bool:
     return True
 
 
+def _direct_if_bypassed(url: str) -> dict[str, None] | dict[str, str]:
+    """Proxies for a request ``get_proxies`` sent nowhere: direct when the host is bypassed.
+
+    An empty mapping lets requests fill in ``HTTP_PROXY``/``HTTPS_PROXY``/``ALL_PROXY`` from
+    the environment, which would send a local or No Proxy host to an environment proxy.
+    ``None`` for each scheme keeps requests from adding one; it drops the ``None`` entries
+    once merged, so the request goes direct. With no proxy configured in Settings and a
+    host that isn't bypassed, the mapping stays empty and an environment proxy still applies.
+    """
+    if should_bypass_proxy(url):
+        return {"http": None, "https": None, "all": None}
+    return {}
+
+
 class NetworkRules:
     """Mixin that applies the Settings → Network proxy and TLS rules to each request.
 
@@ -140,7 +154,7 @@ class NetworkRules:
         """Send a request with the proxy and ``verify`` for its URL unless the caller set them."""
         target = url.decode() if isinstance(url, bytes) else str(url)
         if kwargs.get("proxies") is None:
-            kwargs["proxies"] = get_proxies(target)
+            kwargs["proxies"] = get_proxies(target) or _direct_if_bypassed(target)
         if kwargs.get("verify") is None:
             kwargs["verify"] = get_ssl_verify(target)
         return super().request(method, url, *args, **kwargs)  # type: ignore[misc]

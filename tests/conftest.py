@@ -70,6 +70,7 @@ def sent_requests(monkeypatch):
     recorder = _Recorder()
 
     def _request(self, method, url, *args, **kwargs):
+        """Record the call and answer with the configured response."""
         call = {"method": method, "url": url, **kwargs}
         recorder.calls.append(call)
         if callable(recorder.respond):

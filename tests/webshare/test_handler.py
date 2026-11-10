@@ -25,6 +25,7 @@ def _http_response(body: bytes, *, content_length=True):
 
 
 def _run(tmp_path, *, file_link, body=b"x" * 20000, cancel=None, task=None, content_length=True):
+    """Run one Webshare download into tmp_path and return its result with the status and progress mocks."""
     status = MagicMock()
     progress = MagicMock()
     cancel = cancel or threading.Event()

@@ -175,6 +175,7 @@ class MolyProvider(MetadataProvider):
         return True
 
     def _fetch(self, url: str, timeout: int = 15) -> str | None:
+        """GET a page from moly.hu after the rate limit; its HTML, or None on any failure."""
         _rate_limiter.wait_if_needed()
         try:
             response = self.session.get(url, timeout=timeout)
