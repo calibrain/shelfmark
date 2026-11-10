@@ -18,13 +18,18 @@ def settings(monkeypatch):
     """Settings the function reads, a clean environment, and no variables set by it yet."""
     for name in (*_VARIABLES, "ALL_PROXY", "all_proxy"):
         monkeypatch.delenv(name, raising=False)
-    monkeypatch.setattr(network, "_proxy_env_set_by_us", {})
+    from shelfmark.core import settings_registry
+
+    monkeypatch.setattr(settings_registry, "_PROCESS_WRITTEN_ENV", {})
     network.app_config.get("PROXY_MODE")  # load the settings registry before patching
     values = {"PROXY_MODE": "http", "HTTP_PROXY": _PROXY, "HTTPS_PROXY": "", "NO_PROXY": ""}
     monkeypatch.setattr(network.app_config, "get", lambda key, default="": values.get(key, default))
     yield values
+    import os
+
+    # Directly: monkeypatch.delenv would record the written values and put them back.
     for name in _VARIABLES:
-        monkeypatch.delenv(name, raising=False)
+        os.environ.pop(name, None)
 
 
 def test_the_proxy_settings_are_written_to_the_environment(settings, monkeypatch):
@@ -121,3 +126,54 @@ def test_sending_a_notification_leaves_the_environment_alone(settings, monkeypat
     )
 
     assert {name: os.environ.get(name) for name in _VARIABLES} == before
+
+
+def test_the_proxy_fields_stay_editable_after_the_variables_are_written(monkeypatch):
+    """Through the real settings save: the written variables never lock their own fields.
+
+    The fields share their names with HTTP_PROXY/HTTPS_PROXY/NO_PROXY, so a value Shelfmark
+    wrote must not read as "set via env", or the next save would skip them.
+    """
+    import os
+
+    from shelfmark.core import settings_registry
+
+    for name in (*_VARIABLES, "ALL_PROXY", "all_proxy"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(settings_registry, "_PROCESS_WRITTEN_ENV", {})
+    original = {
+        key: network.app_config.get(key, "") for key in ("PROXY_MODE", "HTTP_PROXY", "NO_PROXY")
+    }
+    try:
+        # Saves from the UI are never 50 ms apart; let each save here reload the settings.
+        monkeypatch.setattr(network.app_config, "_last_refresh_time", 0.0)
+        settings_registry.update_settings("network", {"PROXY_MODE": "http", "HTTP_PROXY": _PROXY})
+        assert os.environ["HTTP_PROXY"] == _PROXY
+        monkeypatch.setattr(network.app_config, "_last_refresh_time", 0.0)
+
+        result = settings_registry.update_settings(
+            "network",
+            {"HTTP_PROXY": "http://other-proxy.example.com:3128", "NO_PROXY": "*.example.org"},
+        )
+
+        assert {"HTTP_PROXY", "NO_PROXY"} <= set(result["updated"])
+        assert "set via env" not in result["message"]
+        assert os.environ["HTTP_PROXY"] == "http://other-proxy.example.com:3128"
+        assert ".example.org" in os.environ["NO_PROXY"].split(",")
+    finally:
+        monkeypatch.setattr(network.app_config, "_last_refresh_time", 0.0)
+        settings_registry.update_settings("network", original)
+        for name in _VARIABLES:
+            os.environ.pop(name, None)
+
+
+def test_a_proxy_variable_from_the_deployment_still_reads_as_set_via_env(monkeypatch):
+    """A value Shelfmark didn't write keeps the field locked, as before."""
+    from shelfmark.core import settings_registry
+
+    monkeypatch.setattr(settings_registry, "_PROCESS_WRITTEN_ENV", {})
+    monkeypatch.setenv("NO_PROXY", "deployment.example.com")
+    network.app_config.get("NO_PROXY")
+    field, _tab = settings_registry.get_settings_field_map()["NO_PROXY"]
+
+    assert settings_registry.is_value_from_env(field) is True
