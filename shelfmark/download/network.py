@@ -4,6 +4,7 @@ import fnmatch
 import http.cookiejar
 import ipaddress
 import socket
+import threading
 import time
 import urllib.parse
 import urllib.request
@@ -140,6 +141,11 @@ def _direct_if_bypassed(url: str) -> dict[str, None] | dict[str, str]:
     return {}
 
 
+# Whether the request on this thread was given explicit proxies; redirects are followed on
+# the thread that made the request, so rebuild_proxies() can read it.
+_redirect_state = threading.local()
+
+
 class NetworkRules:
     """Mixin that applies the Settings → Network proxy and TLS rules to each request.
 
@@ -153,11 +159,37 @@ class NetworkRules:
     def request(self, method: Any, url: Any, *args: Any, **kwargs: Any) -> Any:
         """Send a request with the proxy and ``verify`` for its URL unless the caller set them."""
         target = url.decode() if isinstance(url, bytes) else str(url)
-        if kwargs.get("proxies") is None:
+        explicit = kwargs.get("proxies") is not None
+        if not explicit:
             kwargs["proxies"] = get_proxies(target) or _direct_if_bypassed(target)
         if kwargs.get("verify") is None:
             kwargs["verify"] = get_ssl_verify(target)
-        return super().request(method, url, *args, **kwargs)  # type: ignore[misc]
+        previous = getattr(_redirect_state, "explicit_proxies", False)
+        _redirect_state.explicit_proxies = explicit
+        try:
+            return super().request(method, url, *args, **kwargs)  # type: ignore[misc]
+        finally:
+            _redirect_state.explicit_proxies = previous
+
+    def rebuild_proxies(self, prepared_request: Any, proxies: Any) -> Any:
+        """Choose the proxy for a redirect hop from the hop's own URL, as for any request.
+
+        requests keeps the first URL's proxies for every redirect and only re-checks the
+        environment's NO_PROXY, so a LAN link that redirects to the internet (a Prowlarr
+        download with Redirect on) went out direct with a proxy configured. Proxies a
+        caller passed explicitly are kept. ``verify`` stays as chosen for the first URL;
+        requests offers no hook to change it per hop.
+        """
+        if getattr(_redirect_state, "explicit_proxies", False):
+            return super().rebuild_proxies(prepared_request, proxies)  # type: ignore[misc]
+        url = str(prepared_request.url)
+        configured = get_proxies(url)
+        if configured:
+            return super().rebuild_proxies(prepared_request, configured)  # type: ignore[misc]
+        if should_bypass_proxy(url):
+            prepared_request.headers.pop("Proxy-Authorization", None)
+            return {}
+        return super().rebuild_proxies(prepared_request, {})  # type: ignore[misc]
 
 
 class NetworkSession(NetworkRules, requests.Session):
