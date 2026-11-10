@@ -26,11 +26,47 @@ def test_a_remote_host_goes_through_the_proxy(settings, sent_requests):
     assert sent_requests.last()["proxies"] == {"http": _PROXY, "https": _PROXY}
 
 
-def test_a_lan_host_goes_direct(settings, sent_requests):
-    """A local URL gets no proxy, with No Proxy empty."""
-    network.NetworkSession().get("http://prowlarr:9696/api/v1/system/status")
+def _proxy_after_requests_merges_the_environment(url, proxies):
+    """The proxy requests would actually use for ``url``, environment variables included."""
+    import requests
+    from requests.utils import select_proxy
 
-    assert sent_requests.last()["proxies"] == {}
+    merged = requests.Session().merge_environment_settings(url, dict(proxies), None, None, None)
+    return select_proxy(url, merged["proxies"])
+
+
+@pytest.mark.parametrize("environment_proxy", [None, "http://env-proxy.example.com:3128"])
+def test_a_lan_host_goes_direct(settings, sent_requests, monkeypatch, environment_proxy):
+    """A local URL goes direct, even with a proxy in the container's environment."""
+    url = "http://prowlarr:9696/api/v1/system/status"
+    for name in ("HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY"):
+        monkeypatch.delenv(name, raising=False)
+        monkeypatch.delenv(name.lower(), raising=False)
+    if environment_proxy:
+        monkeypatch.setenv("HTTP_PROXY", environment_proxy)
+        monkeypatch.setenv("ALL_PROXY", environment_proxy)
+
+    network.NetworkSession().get(url)
+
+    assert (
+        _proxy_after_requests_merges_the_environment(url, sent_requests.last()["proxies"]) is None
+    )
+
+
+def test_an_environment_proxy_still_applies_when_settings_have_none(
+    settings, sent_requests, monkeypatch
+):
+    """With no proxy in Settings, a public host keeps the proxy from the environment."""
+    url = "https://api.hardcover.app/v1/graphql"
+    settings["PROXY_MODE"] = "none"
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    monkeypatch.setenv("HTTPS_PROXY", "http://env-proxy.example.com:3128")
+
+    network.NetworkSession().get(url)
+
+    proxy = _proxy_after_requests_merges_the_environment(url, sent_requests.last()["proxies"])
+    assert proxy == "http://env-proxy.example.com:3128"
 
 
 @pytest.mark.parametrize(
@@ -73,7 +109,7 @@ def test_a_settings_change_applies_to_the_next_request(settings, sent_requests):
     assert [call["proxies"] for call in sent_requests.calls] == [
         {"http": _PROXY, "https": _PROXY},
         {},
-    ]
+    ]  # an empty mapping: nothing in Settings, and the host is not one that bypasses
 
 
 def _offer_cookie(session):
@@ -102,6 +138,7 @@ class _RawWithCookie:
 
     class _Headers:
         def get_all(self, name, default=None):
+            """Return the Set-Cookie value, like urllib3's header map."""
             return ["tracker=1; Path=/"] if name.lower() == "set-cookie" else default
 
     _original_response = None

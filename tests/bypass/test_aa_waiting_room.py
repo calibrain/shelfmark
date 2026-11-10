@@ -139,6 +139,7 @@ def test_non_waiting_page_returns_without_polling(html):
 def test_http_200_timer_handoff_honors_browser_settings(
     monkeypatch, enabled, external, fallback, handoff
 ):
+    """A waiting-room page served with 200 goes to the browser only when the bypass settings allow it."""
     import shelfmark.download.http as http
 
     response = requests.Response()

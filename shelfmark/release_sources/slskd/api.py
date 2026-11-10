@@ -84,6 +84,7 @@ class SlskdClient:
         json: Any = None,
         params: dict[str, Any] | None = None,
     ) -> requests.Response:
+        """Call the slskd API with the key, raising SlskdAuthError on 401/403 and on other HTTP errors."""
         url = self._api_url(path)
         headers = {"Accept": "application/json"}
         if self.api_key:

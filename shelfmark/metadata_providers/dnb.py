@@ -518,6 +518,7 @@ class DNBProvider(MetadataProvider):
         return True
 
     def _fetch(self, url: str, params: dict[str, Any] | None = None) -> requests.Response | None:
+        """GET from the DNB after the rate limit; the response, or None on a timeout or HTTP error."""
         _rate_limiter.wait_if_needed()
         try:
             response = self.session.get(url, params=params, timeout=15)
