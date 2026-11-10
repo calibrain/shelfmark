@@ -147,7 +147,9 @@ def test_the_proxy_fields_stay_editable_after_the_variables_are_written(monkeypa
     """Through the real settings save: the written variables never lock their own fields.
 
     The fields share their names with HTTP_PROXY/HTTPS_PROXY/NO_PROXY, so a value Shelfmark
-    wrote must not read as "set via env", or the next save would skip them.
+    wrote must not read as "set via env", or the next save would skip them. The two saves
+    come back to back, inside the config's 50 ms refresh window, so the second also shows
+    that a save always reloads the settings.
     """
     import os
 
@@ -160,11 +162,8 @@ def test_the_proxy_fields_stay_editable_after_the_variables_are_written(monkeypa
         key: network.app_config.get(key, "") for key in ("PROXY_MODE", "HTTP_PROXY", "NO_PROXY")
     }
     try:
-        # Saves from the UI are never 50 ms apart; let each save here reload the settings.
-        monkeypatch.setattr(network.app_config, "_last_refresh_time", 0.0)
         settings_registry.update_settings("network", {"PROXY_MODE": "http", "HTTP_PROXY": _PROXY})
         assert os.environ["HTTP_PROXY"] == _PROXY
-        monkeypatch.setattr(network.app_config, "_last_refresh_time", 0.0)
 
         result = settings_registry.update_settings(
             "network",
@@ -176,7 +175,6 @@ def test_the_proxy_fields_stay_editable_after_the_variables_are_written(monkeypa
         assert os.environ["HTTP_PROXY"] == "http://other-proxy.example.com:3128"
         assert ".example.org" in os.environ["NO_PROXY"].split(",")
     finally:
-        monkeypatch.setattr(network.app_config, "_last_refresh_time", 0.0)
         settings_registry.update_settings("network", original)
         for name in _VARIABLES:
             os.environ.pop(name, None)
