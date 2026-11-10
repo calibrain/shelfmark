@@ -482,6 +482,86 @@ def test_html_rejected_for_xhtml_before_writing(tmp_path):
     run.status.assert_called_with("error", "Chomikuj returned an HTML page instead of a book")
 
 
+def test_html_body_detected_without_html_content_type(tmp_path):
+    """Test an HTML body is rejected even when Content-Type is not HTML."""
+    run = _run(
+        tmp_path,
+        body=b"<!DOCTYPE html><html><body>challenge</body></html>",
+        content_type="application/octet-stream",
+    )
+
+    assert run.result is None
+    assert not list(tmp_path.iterdir())
+    run.status.assert_called_with("error", "Chomikuj returned an HTML page instead of a book")
+
+
+def test_html_body_with_leading_comment_and_whitespace_is_detected(tmp_path):
+    """Test leading whitespace and an HTML comment do not mask an HTML body."""
+    run = _run(
+        tmp_path,
+        body=b"  <!-- challenge -->\n<!DOCTYPE html><html></html>",
+        content_type="application/octet-stream",
+    )
+
+    assert run.result is None
+    assert not list(tmp_path.iterdir())
+    run.status.assert_called_with("error", "Chomikuj returned an HTML page instead of a book")
+
+
+def test_plain_text_document_is_not_mistaken_for_html(tmp_path):
+    """Test a plain text body is accepted and its bytes are preserved."""
+    body = b"Hello, this is a plain text book."
+    run = _run(
+        tmp_path,
+        body=body,
+        content_type="text/plain",
+        payload={"FileUrl": FILE_URL, "Name": "book.txt"},
+        task=_task(fmt="txt"),
+    )
+
+    expected = tmp_path / "book.txt"
+    assert run.result == str(expected)
+    assert expected.read_bytes() == body
+
+
+@pytest.mark.parametrize(
+    ("body", "fmt"),
+    [
+        (b'<?xml version="1.0"?><FictionBook></FictionBook>', "fb2"),
+        (b"%PDF-1.7", "pdf"),
+        (b"PK\x03\x04", "epub"),
+    ],
+)
+def test_non_html_document_prefixes_are_accepted(tmp_path, body, fmt):
+    """Test XML, PDF, and EPUB prefixes are not mistaken for HTML."""
+    run = _run(
+        tmp_path,
+        body=body,
+        content_type="application/octet-stream",
+        payload={"FileUrl": FILE_URL, "Name": f"book.{fmt}"},
+        task=_task(fmt=fmt),
+    )
+
+    expected = tmp_path / f"book.{fmt}"
+    assert run.result == str(expected)
+    assert expected.read_bytes() == body
+
+
+def test_five_byte_non_html_body_is_accepted(tmp_path):
+    """Test a five-byte body is accepted, proving there is no size floor."""
+    run = _run(
+        tmp_path,
+        body=b"Hello",
+        content_type="text/plain",
+        payload={"FileUrl": FILE_URL, "Name": "book.txt"},
+        task=_task(fmt="txt"),
+    )
+
+    expected = tmp_path / "book.txt"
+    assert run.result == str(expected)
+    assert expected.read_bytes() == b"Hello"
+
+
 def test_empty_body_rejected_as_invalid_file(tmp_path):
     """Test an empty body is rejected as an invalid file."""
     run = _run(tmp_path, body=b"")

@@ -52,6 +52,7 @@ if TYPE_CHECKING:
 logger = setup_logger(__name__)
 
 _CHUNK_SIZE = 256 * 1024
+_HTML_SNIFF_SIZE = 4096
 _DOWNLOAD_TIMEOUT = (10, 60)
 _STREAM_HEADERS = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "*/*"}
 
@@ -154,6 +155,23 @@ def _file_url_from(payload: dict[str, object]) -> str:
     return file_url
 
 
+def _looks_like_html(chunk: bytes) -> bool:
+    """Return True when the first body bytes start an HTML document.
+
+    Leading whitespace and any leading HTML comments are ignored, so a
+    challenge page cannot hide behind them. Only an explicit doctype or
+    ``<html`` start counts; XML, PDF, EPUB, and plain text bodies do not.
+    """
+    text = chunk[:_HTML_SNIFF_SIZE].decode("utf-8-sig", errors="ignore").lstrip()
+    while text.startswith("<!--"):
+        end = text.find("-->")
+        if end == -1:
+            return False
+        text = text[end + 3 :].lstrip()
+    normalized = text.lower()
+    return normalized.startswith(("<!doctype html", "<html"))
+
+
 def _stream_file(
     url: str,
     target: Path,
@@ -164,9 +182,11 @@ def _stream_file(
 ) -> bool:
     """Stream ``url`` into ``target``; return False when cancelled midway.
 
-    The request headers are the live-proven Chomikuj contract and must stay
-    exactly the mobile API ``User-Agent`` / ``Accept: */*``. An HTML body is
-    refused before ``target`` is opened, so no partial file is created for it.
+    Both the Content-Type header and the first body chunk are checked, so an
+    HTML error page is refused even when the header lies or is missing. The
+    check happens before ``target`` is opened, so no partial file is created
+    for it. The request headers are the live-proven Chomikuj contract and must
+    stay exactly the mobile API ``User-Agent`` / ``Accept: */*``.
     """
     with requests.get(
         url,
@@ -185,9 +205,25 @@ def _stream_file(
         total = _positive_number(response.headers.get("Content-Length")) or _positive_number(
             expected_size
         )
+        stream = iter(response.iter_content(chunk_size=_CHUNK_SIZE))
+        first_chunk = b""
+        for chunk in stream:
+            if cancel_flag.is_set():
+                return False
+            if chunk:
+                first_chunk = chunk
+                break
+        if first_chunk and _looks_like_html(first_chunk):
+            raise _HtmlResponseError(_HTML_RESPONSE_MESSAGE)
+
         written = 0
         with target.open("wb") as file:
-            for chunk in response.iter_content(chunk_size=_CHUNK_SIZE):
+            if first_chunk:
+                file.write(first_chunk)
+                written += len(first_chunk)
+                if total:
+                    progress_callback(min(100.0, written * 100 / total))
+            for chunk in stream:
                 if cancel_flag.is_set():
                     return False
                 if not chunk:
