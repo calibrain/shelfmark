@@ -3,6 +3,7 @@
 import requests
 
 from shelfmark.core.image_cache import ImageCacheService
+from shelfmark.download.network import get_session as _shared_session
 
 
 def test_fetch_and_cache_rejects_backslash_authority_bypass_before_request(
@@ -15,7 +16,7 @@ def test_fetch_and_cache_rejects_backslash_authority_bypass_before_request(
         calls.append(url)
         raise AssertionError("unsafe URL should not be requested")
 
-    monkeypatch.setattr("shelfmark.core.image_cache.requests.get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
 
     assert cache.fetch_and_cache("cover-ssrf", "http://127.0.0.1:6666\\@1.1.1.1") is None
     assert calls == []
@@ -55,7 +56,7 @@ def test_fetch_and_cache_blocks_unsafe_redirect(tmp_path, monkeypatch) -> None:
         return RedirectResponse()
 
     monkeypatch.setattr("shelfmark.download.network.socket.getaddrinfo", fake_getaddrinfo)
-    monkeypatch.setattr("shelfmark.core.image_cache.requests.get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
 
     assert cache.fetch_and_cache("cover-redirect", "https://example.com/cover.jpg") is None
     assert calls == ["https://example.com/cover.jpg"]
@@ -68,7 +69,7 @@ def test_fetch_and_cache_returns_none_on_request_exception(tmp_path, monkeypatch
     def fake_get(*_args, **_kwargs):
         raise requests.exceptions.TooManyRedirects("too many redirects")
 
-    monkeypatch.setattr("shelfmark.core.image_cache.requests.get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
 
     assert cache.fetch_and_cache("cover-1", "https://example.com/cover.jpg") is None
     assert "cover-1" not in cache._index

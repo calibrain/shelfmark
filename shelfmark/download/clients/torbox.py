@@ -29,7 +29,7 @@ from shelfmark.download.clients.torrent_utils import (
     safe_relative_path,
 )
 from shelfmark.download.http import download_url
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import NetworkSession, get_ssl_verify
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -40,7 +40,7 @@ _API_BASE = "https://api.torbox.app/v1/api"
 
 # One session for every client instance, so the status poll every couple of seconds
 # reuses a keep-alive connection instead of opening a new TLS connection each time.
-_session = requests.Session()
+_session = NetworkSession()
 
 _API_TIMEOUT = 30
 _STATUS_TIMEOUT = 15

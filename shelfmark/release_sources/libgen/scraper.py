@@ -85,13 +85,11 @@ def fetch_page(url: str, timeout: tuple[int, int] = (5, 15)) -> str | None:
     parts = urlsplit(url)
     headers = {**downloader.DOWNLOAD_HEADERS, "Referer": f"{parts.scheme}://{parts.netloc}/"}
     try:
-        response = requests.get(
+        response = network.get_session().get(
             url,
             headers=headers,
             timeout=timeout,
             allow_redirects=True,
-            proxies=network.get_proxies(url),
-            verify=network.get_ssl_verify(url),
         )
     except requests.exceptions.RequestException as exc:
         logger.debug("Libgen fetch failed for %s: %s", url, exc)

@@ -12,6 +12,7 @@ the user was told to go and check a bypasser that was working perfectly.
 import pytest
 
 from shelfmark.bypass import ChallengeNotSolvedError
+from shelfmark.download.network import get_session as _shared_session
 
 # Verbatim from the annas-archive.pk page in #1292, trimmed to the markers. This is the
 # *manual* CAPTCHA - "could not verify your browser automatically" - not the ~900 byte
@@ -51,14 +52,14 @@ def _stub_solution(monkeypatch, external_bypasser, solution: dict) -> None:
 
     monkeypatch.setattr(external_bypasser.config, "get", fake_get)
     monkeypatch.setattr(
-        external_bypasser.requests,
+        _shared_session(),
         "post",
         # "Challenge solved!" is the solver's verdict; the page is the evidence.
         lambda *_a, **_k: _FakeResponse(
             {"status": "ok", "message": "Challenge solved!", "solution": solution}
         ),
     )
-    monkeypatch.setattr(external_bypasser, "get_ssl_verify", lambda _url: False)
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: False)
 
 
 def test_a_captcha_page_is_reported_as_unsolved_not_returned(monkeypatch):

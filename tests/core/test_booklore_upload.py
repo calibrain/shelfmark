@@ -1,5 +1,6 @@
 from unittest.mock import MagicMock, patch
 
+from shelfmark.download.network import get_session as _shared_session
 from shelfmark.download.outputs.booklore import BookloreConfig, booklore_upload_file
 
 
@@ -21,8 +22,9 @@ def test_booklore_upload_file_uses_library_endpoint_with_query_params(tmp_path):
     response = MagicMock()
     response.raise_for_status.return_value = None
 
-    with patch(
-        "shelfmark.download.outputs.booklore.requests.post",
+    with patch.object(
+        _shared_session(),
+        "post",
         return_value=response,
     ) as mock_post:
         booklore_upload_file(_booklore_config(upload_to_bookdrop=False), "token", file_path)
@@ -40,8 +42,9 @@ def test_booklore_upload_file_uses_bookdrop_endpoint_without_query_params(tmp_pa
     response = MagicMock()
     response.raise_for_status.return_value = None
 
-    with patch(
-        "shelfmark.download.outputs.booklore.requests.post",
+    with patch.object(
+        _shared_session(),
+        "post",
         return_value=response,
     ) as mock_post:
         booklore_upload_file(_booklore_config(upload_to_bookdrop=True), "token", file_path)

@@ -9,7 +9,7 @@ import requests
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import NetworkSession
 from shelfmark.release_sources.prowlarr.torznab import parse_torznab_xml
 
 logger = setup_logger(__name__)
@@ -22,7 +22,7 @@ class NewznabClient:
         self.base_url = normalize_http_url(url)
         self.api_key = api_key
         self.timeout = timeout
-        self._session = requests.Session()
+        self._session = NetworkSession()
 
     def _api_url(self) -> str:
         """Return the Newznab API endpoint URL."""
@@ -56,7 +56,6 @@ class NewznabClient:
             params=params,
             headers=headers,
             timeout=self.timeout,
-            verify=get_ssl_verify(url),
         )
         response.raise_for_status()
         return response

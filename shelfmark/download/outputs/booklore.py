@@ -12,6 +12,7 @@ import requests
 import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import is_audiobook as check_audiobook
+from shelfmark.download.network import get_session
 from shelfmark.download.outputs import StatusCallback, register_output
 from shelfmark.download.staging import (
     STAGE_COPY,
@@ -155,7 +156,9 @@ def booklore_login(booklore_config: BookloreConfig) -> str:
     }
 
     try:
-        response = requests.post(url, json=payload, timeout=30, verify=booklore_config.verify_tls)
+        response = get_session().post(
+            url, json=payload, timeout=30, verify=booklore_config.verify_tls
+        )
     except requests.exceptions.ConnectionError as exc:
         msg = f"Could not connect to {BOOKLORE_DISPLAY_NAME}"
         raise BookloreError(msg) from exc
@@ -196,7 +199,9 @@ def booklore_list_libraries(booklore_config: BookloreConfig, token: str) -> list
     headers = {"Authorization": f"Bearer {token}"}
 
     try:
-        response = requests.get(url, headers=headers, timeout=30, verify=booklore_config.verify_tls)
+        response = get_session().get(
+            url, headers=headers, timeout=30, verify=booklore_config.verify_tls
+        )
         response.raise_for_status()
     except requests.exceptions.RequestException as exc:
         msg = f"Failed to fetch {BOOKLORE_DISPLAY_NAME} libraries: {exc}"
@@ -227,7 +232,7 @@ def booklore_upload_file(booklore_config: BookloreConfig, token: str, file_path:
 
     try:
         with file_path.open("rb") as handle:
-            response = requests.post(
+            response = get_session().post(
                 url,
                 headers=headers,
                 params=params,
@@ -260,7 +265,9 @@ def booklore_refresh_library(booklore_config: BookloreConfig, token: str) -> Non
     headers = {"Authorization": f"Bearer {token}"}
 
     try:
-        response = requests.put(url, headers=headers, timeout=30, verify=booklore_config.verify_tls)
+        response = get_session().put(
+            url, headers=headers, timeout=30, verify=booklore_config.verify_tls
+        )
         response.raise_for_status()
     except requests.exceptions.RequestException as exc:
         msg = f"{BOOKLORE_DISPLAY_NAME} refresh failed: {exc}"

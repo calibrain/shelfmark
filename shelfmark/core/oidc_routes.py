@@ -12,6 +12,7 @@ from urllib.parse import urlencode, urlsplit, urlunsplit
 
 from authlib.integrations.base_client.errors import OAuthError
 from authlib.integrations.flask_client import OAuth
+from authlib.integrations.requests_client import OAuth2Session
 from flask import Flask, jsonify, redirect, request, session
 from joserfc.errors import InvalidClaimError
 
@@ -22,7 +23,7 @@ from shelfmark.core.oidc_auth import (
     parse_group_claims,
     provision_oidc_user,
 )
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import NetworkRules
 
 if TYPE_CHECKING:
     from flask.typing import ResponseReturnValue
@@ -31,6 +32,12 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 oauth = OAuth()
+
+
+class _OidcSession(NetworkRules, OAuth2Session):
+    """authlib's requests session with the Settings → Network proxy and TLS rules."""
+
+
 _RETURN_TO_SESSION_KEY = "oidc_return_to"
 _OIDC_CLIENT_ERRORS = (OAuthError, OSError, RuntimeError, TypeError, ValueError)
 _EMPTY_JWKS_MESSAGE = (
@@ -193,11 +200,6 @@ def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
     if admin_group and use_admin_group and group_claim and group_claim not in scopes:
         scopes.append(group_claim)
 
-    def _ssl_compliance_fix(session: Any, **kwargs: Any) -> Any:
-        """Set session.verify based on the Certificate Validation setting."""
-        session.verify = get_ssl_verify(discovery_url)
-        return session
-
     oauth._clients.pop("shelfmark_idp", None)
     oauth.register(
         name="shelfmark_idp",
@@ -208,7 +210,6 @@ def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
             "scope": " ".join(scopes),
             "code_challenge_method": "S256",
         },
-        compliance_fix=_ssl_compliance_fix,
         overwrite=True,
     )
 
@@ -216,6 +217,10 @@ def _get_oidc_client() -> tuple[Any, dict[str, Any]]:
     if client is None:
         msg = "OIDC client initialization failed"
         raise RuntimeError(msg)
+    # authlib builds a fresh session for each call: the discovery document and the JWKS
+    # (through _get_session, which skips compliance_fix), and the token exchange and
+    # userinfo. Its own session class with the network rules covers all of them.
+    client.client_cls = _OidcSession
 
     return client, {
         "OIDC_DISCOVERY_URL": discovery_url,

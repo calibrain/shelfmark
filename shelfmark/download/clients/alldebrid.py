@@ -33,7 +33,7 @@ from shelfmark.download.clients.torrent_utils import (
     resolve_debrid_upload,
 )
 from shelfmark.download.http import download_url
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import NetworkSession
 
 logger = setup_logger(__name__)
 
@@ -41,7 +41,7 @@ _API_BASE = "https://api.alldebrid.com/v4"
 
 # One session for every client instance, so the status poll every couple of seconds
 # reuses a keep-alive connection instead of opening a new TLS connection each time.
-_session = requests.Session()
+_session = NetworkSession()
 
 _AGENT = "shelfmark"
 
@@ -187,7 +187,6 @@ class AllDebridClient(DownloadClient):
                 url,
                 headers=self._auth_headers(),
                 timeout=_STATUS_TIMEOUT,
-                verify=get_ssl_verify(url),
             )
             resp.raise_for_status()
             data = resp.json()
@@ -272,7 +271,6 @@ class AllDebridClient(DownloadClient):
                 headers=self._auth_headers(),
                 data={"magnets[]": upload.magnet_url},
                 timeout=_API_TIMEOUT,
-                verify=get_ssl_verify(api_url),
             )
         else:
             api_url = f"{_API_BASE}/magnet/upload/file"
@@ -288,7 +286,6 @@ class AllDebridClient(DownloadClient):
                     )
                 },
                 timeout=_API_TIMEOUT,
-                verify=get_ssl_verify(api_url),
             )
 
         resp.raise_for_status()
@@ -346,7 +343,6 @@ class AllDebridClient(DownloadClient):
                 headers=self._auth_headers(),
                 data={"id": download_id},
                 timeout=_STATUS_TIMEOUT,
-                verify=get_ssl_verify(status_url),
             )
             resp.raise_for_status()
             data = resp.json()
@@ -380,7 +376,6 @@ class AllDebridClient(DownloadClient):
                 headers=self._auth_headers(),
                 data={"id": download_id},
                 timeout=_STATUS_TIMEOUT,
-                verify=get_ssl_verify(url),
             )
         except _ALLDEBRID_CLIENT_ERRORS as e:
             logger.warning("Failed to delete magnet from AllDebrid: %s", e)
@@ -527,7 +522,6 @@ class AllDebridClient(DownloadClient):
                 headers=headers,
                 data={"link": link},
                 timeout=_API_TIMEOUT,
-                verify=get_ssl_verify(unlock_url),
             )
             if resp.status_code == 200:
                 body = resp.json()
@@ -555,7 +549,6 @@ class AllDebridClient(DownloadClient):
                 get_url,
                 headers=headers,
                 timeout=_API_TIMEOUT,
-                verify=get_ssl_verify(get_url),
             )
             if resp.status_code == 200:
                 body = resp.json()
@@ -613,7 +606,6 @@ class AllDebridClient(DownloadClient):
                         headers=headers,
                         data={"id": delayed_id},
                         timeout=_STATUS_TIMEOUT,
-                        verify=get_ssl_verify(delayed_url),
                     )
                     if resp.status_code != 200:
                         continue
@@ -707,7 +699,6 @@ class AllDebridClient(DownloadClient):
             headers=self._auth_headers(),
             data={"id[]": magnet_id},
             timeout=_API_TIMEOUT,
-            verify=get_ssl_verify(url),
         )
         resp.raise_for_status()
         data = resp.json()

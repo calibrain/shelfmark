@@ -555,37 +555,30 @@ def _plugin_label(plugin: object, fallback_scheme: str) -> str:
 
 
 def _apprise_proxy_env() -> dict[str, str]:
-    """Build proxy env vars from app config so Apprise respects the proxy setting."""
+    """Proxy environment for the Apprise subprocess, from the same rule as every other call.
+
+    Apprise runs in its own process and reads the standard variables, so the proxies come
+    from ``get_proxies()`` and No Proxy is passed through as ``NO_PROXY``. With no URL to
+    judge, ``get_proxies()`` cannot apply the local-address rule; a LAN notification
+    target belongs in No Proxy. Variables already set in the environment are left alone.
+    """
     import os
 
-    from shelfmark.core.config import config as _cfg
+    from shelfmark.download.network import get_proxies
 
-    mode = str(_cfg.get("PROXY_MODE", "") or "").lower()
+    proxies = get_proxies()
     env: dict[str, str] = {}
+    for scheme in ("http", "https"):
+        value = str(proxies.get(scheme) or "").strip()
+        if value:
+            env[f"{scheme.upper()}_PROXY"] = value
+            env[f"{scheme}_proxy"] = value
 
-    if mode == "http":
-        http = str(_cfg.get("HTTP_PROXY", "") or "").strip()
-        https = str(_cfg.get("HTTPS_PROXY", "") or "").strip() or http
-        if http:
-            env["HTTP_PROXY"] = http
-            env["http_proxy"] = http
-        if https:
-            env["HTTPS_PROXY"] = https
-            env["https_proxy"] = https
-    elif mode == "socks5":
-        socks = str(_cfg.get("SOCKS5_PROXY", "") or "").strip()
-        if socks:
-            env["HTTP_PROXY"] = socks
-            env["http_proxy"] = socks
-            env["HTTPS_PROXY"] = socks
-            env["https_proxy"] = socks
-
-    no_proxy = str(_cfg.get("NO_PROXY", "") or "").strip()
+    no_proxy = str(app_config.get("NO_PROXY", "") or "").strip()
     if no_proxy and env:
         env["NO_PROXY"] = no_proxy
         env["no_proxy"] = no_proxy
 
-    # Don't override if the user already set these in the environment directly
     return {k: v for k, v in env.items() if not os.environ.get(k)}
 
 

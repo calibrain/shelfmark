@@ -15,7 +15,7 @@ import requests
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import NetworkSession
 
 logger = setup_logger(__name__)
 
@@ -67,7 +67,7 @@ class SlskdClient:
         self.base_url = normalize_http_url(url).rstrip("/")
         self.api_key = api_key
         self.timeout = timeout
-        self._session = requests.Session()
+        self._session = NetworkSession()
 
     # ── plumbing ──────────────────────────────────────────────────────────────
 
@@ -97,7 +97,6 @@ class SlskdClient:
             json=json,
             params=params,
             timeout=self.timeout,
-            verify=get_ssl_verify(url),
         )
         if response.status_code in (_HTTP_UNAUTHORIZED, _HTTP_FORBIDDEN):
             raise SlskdAuthError("slskd rejected the API key")

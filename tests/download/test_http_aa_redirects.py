@@ -1,5 +1,7 @@
 import requests
 
+from shelfmark.download.network import get_session as _shared_session
+
 
 class _FakeResponse:
     def __init__(
@@ -51,7 +53,7 @@ def test_html_get_page_aa_cross_host_redirect_rotates_mirror(monkeypatch):
 
     # Avoid bypasser imports in unit tests.
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: False)
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
     monkeypatch.setattr(http.time, "sleep", lambda _s: None)
     monkeypatch.setattr(http.network, "get_aa_base_url", lambda: "https://annas-archive.li")
     monkeypatch.setattr(http.network, "is_aa_auto_mode", lambda: True)
@@ -68,7 +70,7 @@ def test_html_get_page_aa_cross_host_redirect_rotates_mirror(monkeypatch):
             return _FakeResponse(200, text="OK", url=url)
         raise AssertionError(f"Unexpected URL: {url}")
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
 
     selector = _DummySelector(["https://annas-archive.li", "https://annas-archive.gl"])
     html = http.html_get_page(
@@ -90,7 +92,7 @@ def test_html_get_page_aa_same_host_redirect_is_followed(monkeypatch):
     import shelfmark.download.http as http
 
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: False)
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
     monkeypatch.setattr(http.time, "sleep", lambda _s: None)
     monkeypatch.setattr(http.network, "get_aa_base_url", lambda: "https://annas-archive.li")
     monkeypatch.setattr(http.network, "is_aa_auto_mode", lambda: True)
@@ -105,7 +107,7 @@ def test_html_get_page_aa_same_host_redirect_is_followed(monkeypatch):
             return _FakeResponse(200, text="OK2", url=url)
         raise AssertionError(f"Unexpected URL: {url}")
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
 
     selector = _DummySelector(["https://annas-archive.li"])
     html = http.html_get_page(
@@ -127,7 +129,7 @@ def test_html_get_page_locked_aa_does_not_fail_over_on_cross_host_redirect(monke
     import shelfmark.download.http as http
 
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: False)
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
     monkeypatch.setattr(http.time, "sleep", lambda _s: None)
     monkeypatch.setattr(http.network, "get_aa_base_url", lambda: "https://annas-archive.li")
     monkeypatch.setattr(http.network, "is_aa_auto_mode", lambda: False)
@@ -142,7 +144,7 @@ def test_html_get_page_locked_aa_does_not_fail_over_on_cross_host_redirect(monke
             )
         raise AssertionError(f"Unexpected URL: {url}")
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
 
     selector = _DummySelector(["https://annas-archive.li", "https://annas-archive.gl"])
     html = http.html_get_page(
@@ -165,7 +167,7 @@ def test_html_get_page_echoes_cookies_across_same_host_redirects(monkeypatch):
     import shelfmark.download.http as http
 
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: False)
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
     monkeypatch.setattr(http.time, "sleep", lambda _s: None)
     monkeypatch.setattr(http.network, "get_aa_base_url", lambda: "https://annas-archive.li")
     monkeypatch.setattr(http.network, "is_aa_auto_mode", lambda: True)
@@ -189,7 +191,7 @@ def test_html_get_page_echoes_cookies_across_same_host_redirects(monkeypatch):
             return _FakeResponse(200, text="RESULTS", url=url)
         raise AssertionError(f"Unexpected URL: {url}")
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
 
     selector = _DummySelector(["https://annas-archive.li"])
     html = http.html_get_page(

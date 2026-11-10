@@ -22,6 +22,7 @@ from shelfmark.download.clients.torrent_utils import (
     extract_torrent_info,
     parse_transmission_url,
 )
+from shelfmark.download.network import get_session as _shared_session
 
 
 class TestParseTransmissionUrl:
@@ -395,7 +396,7 @@ class TestExtractTorrentInfo:
         response = MagicMock(status_code=200, content=torrent_data)
         response.raise_for_status = MagicMock()
         mock_get = MagicMock(return_value=response)
-        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+        monkeypatch.setattr(_shared_session(), "get", mock_get)
 
         # No expected_hash supplied: the hash can only come from the prefetch.
         result = extract_torrent_info(
@@ -429,7 +430,7 @@ class TestExtractTorrentInfo:
         response = MagicMock(status_code=200, content=torrent_data)
         response.raise_for_status = MagicMock()
         mock_get = MagicMock(return_value=response)
-        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+        monkeypatch.setattr(_shared_session(), "get", mock_get)
 
         extract_torrent_info(
             "https://attacker.example/book.torrent",
@@ -462,7 +463,7 @@ class TestExtractTorrentInfo:
         response = MagicMock(status_code=200, content=torrent_data)
         response.raise_for_status = MagicMock()
         mock_get = MagicMock(return_value=response)
-        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+        monkeypatch.setattr(_shared_session(), "get", mock_get)
 
         result = extract_torrent_info(
             "https://prowlarr.example/1/download?apikey=secret&indexer=7",
@@ -496,7 +497,7 @@ class TestExtractTorrentInfo:
         response = MagicMock(status_code=200, content=torrent_data)
         response.raise_for_status = MagicMock()
         mock_get = MagicMock(return_value=response)
-        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+        monkeypatch.setattr(_shared_session(), "get", mock_get)
 
         result = extract_torrent_info(
             "http://prowlarr.example:9696/1/download?apikey=secret&indexer=7",
@@ -537,7 +538,7 @@ class TestExtractTorrentInfo:
         final = MagicMock(status_code=200, content=torrent_data)
         final.raise_for_status = MagicMock()
         mock_get = MagicMock(side_effect=[redirect, final])
-        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+        monkeypatch.setattr(_shared_session(), "get", mock_get)
 
         # No expected_hash supplied: the hash can only come from the prefetch.
         result = extract_torrent_info(
@@ -564,7 +565,7 @@ class TestExtractTorrentInfo:
         response = MagicMock(status_code=302)
         response.headers = {"Location": magnet}
         mock_get = MagicMock(return_value=response)
-        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+        monkeypatch.setattr(_shared_session(), "get", mock_get)
 
         result = extract_torrent_info(
             "https://prowlarr.example/1/download?apikey=secret&indexer=7",
@@ -586,7 +587,7 @@ class TestExtractTorrentInfo:
         response = MagicMock(status_code=302)
         response.headers = {"Location": "https://tracker.example/loop"}
         mock_get = MagicMock(return_value=response)
-        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+        monkeypatch.setattr(_shared_session(), "get", mock_get)
 
         result = extract_torrent_info(
             "https://prowlarr.example/1/download?apikey=secret&indexer=7",
@@ -616,7 +617,7 @@ class TestTorrentFetchHopCheck:
             lambda host: resolutions[host],
         )
         mock_get = MagicMock(side_effect=responses)
-        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+        monkeypatch.setattr(_shared_session(), "get", mock_get)
         return mock_get
 
     @staticmethod
@@ -713,7 +714,7 @@ class TestTorrentFetchHopCheck:
             "shelfmark.download.clients.torrent_utils._resolve_host_addresses", fail
         )
         mock_get = MagicMock()
-        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+        monkeypatch.setattr(_shared_session(), "get", mock_get)
 
         result = extract_torrent_info("https://nowhere.invalid/a.torrent", fetch_torrent=True)
 
@@ -824,7 +825,7 @@ class TestTorrentFetchCache:
         response = MagicMock(status_code=200, content=torrent_data)
         response.raise_for_status = MagicMock()
         mock_get = MagicMock(return_value=response)
-        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+        monkeypatch.setattr(_shared_session(), "get", mock_get)
 
         url = "https://prowlarr.example/26/download?apikey=secret&link=token"
         first = extract_torrent_info(url, fetch_torrent=True)
@@ -844,7 +845,7 @@ class TestTorrentFetchCache:
                 "500 Server Error: Internal Server Error for url: https://prowlarr.example/26/download"
             )
         )
-        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+        monkeypatch.setattr(_shared_session(), "get", mock_get)
 
         url = "https://prowlarr.example/26/download?apikey=secret&link=token"
         first = extract_torrent_info(url, fetch_torrent=True)
@@ -861,7 +862,7 @@ class TestTorrentFetchCache:
         import requests as requests_module
 
         mock_get = MagicMock(side_effect=requests_module.exceptions.ConnectionError("boom"))
-        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+        monkeypatch.setattr(_shared_session(), "get", mock_get)
 
         known_hash = "3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0"
         result = extract_torrent_info(
@@ -879,7 +880,7 @@ class TestTorrentFetchCache:
         response = MagicMock(status_code=200, content=b"<html>not a torrent</html>")
         response.raise_for_status = MagicMock()
         mock_get = MagicMock(return_value=response)
-        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+        monkeypatch.setattr(_shared_session(), "get", mock_get)
 
         url = "https://tracker.example/download/book.torrent"
         known_hash = "3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0"
@@ -896,7 +897,7 @@ class TestTorrentFetchCache:
         response = MagicMock(status_code=200, content=torrent_data)
         response.raise_for_status = MagicMock()
         mock_get = MagicMock(return_value=response)
-        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+        monkeypatch.setattr(_shared_session(), "get", mock_get)
 
         clock = {"now": 1000.0}
         monkeypatch.setattr(
@@ -916,7 +917,7 @@ class TestTorrentFetchCache:
         magnet = "magnet:?xt=urn:btih:3b245504cf5f11bbdbe1201cea6a6bf45aee1bc0&dn=test"
         response = MagicMock(status_code=302, headers={"Location": magnet})
         mock_get = MagicMock(return_value=response)
-        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+        monkeypatch.setattr(_shared_session(), "get", mock_get)
 
         url = "https://tracker.example/download/book.torrent"
         first = extract_torrent_info(url, fetch_torrent=True)

@@ -268,14 +268,12 @@ def _post_fetch_form(action_url: str, fields: dict[str, str], referer: str) -> r
             "headers": headers,
             "cookies": downloader.get_cf_cookies_for_domain(hostname),
             "timeout": _POST_TIMEOUT,
-            "proxies": network.get_proxies(url),
-            "verify": network.get_ssl_verify(url),
             "allow_redirects": False,
         }
         response = (
-            requests.post(url, data=fields, **common)
+            network.get_session().post(url, data=fields, **common)
             if method == "POST"
-            else requests.get(url, **common)
+            else network.get_session().get(url, **common)
         )
         location = response.headers.get("Location") if response.is_redirect else None
         if not location:

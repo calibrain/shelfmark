@@ -2,6 +2,8 @@
 
 import requests
 
+from shelfmark.download.network import get_session as _shared_session
+
 
 class _FakeResponse:
     def __init__(self, text: str) -> None:
@@ -20,8 +22,8 @@ class _FakeResponse:
 
 def _neutralize_network(monkeypatch, http) -> None:
     monkeypatch.setattr(http, "_apply_cf_bypass", lambda _url, _headers: {})
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
-    monkeypatch.setattr(http, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: True)
     monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: False)
     monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 1.0)
@@ -36,7 +38,7 @@ def test_diamwall_513_is_handed_to_the_bypasser(monkeypatch) -> None:
     attempts: list[str] = []
     bypassed: list[str] = []
     monkeypatch.setattr(
-        http.requests,
+        _shared_session(),
         "get",
         lambda url, **_kwargs: (
             attempts.append(url)
@@ -67,7 +69,7 @@ def test_plain_513_does_not_start_a_browser(monkeypatch) -> None:
 
     bypassed: list[str] = []
     monkeypatch.setattr(
-        http.requests,
+        _shared_session(),
         "get",
         lambda _url, **_kwargs: _FakeResponse("<html><body>Unknown server error</body></html>"),
     )

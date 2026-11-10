@@ -56,6 +56,12 @@ These optional environment variables control login page behavior when OIDC is en
 
 If `DISABLE_LOCAL_AUTH` and `OIDC_AUTO_REDIRECT` are both enabled, users are redirected straight to the OIDC provider. On failure they return to the login page with an error message but no password fallback.
 
+## Using an outbound proxy?
+
+With a proxy set under Settings → Network, Shelfmark fetches your provider's discovery document and signing keys (JWKS) through it, unless the provider's address is local: a LAN IP, a Docker service name, or a `.local`/`.lan` host. A provider on your LAN that you reach by a public hostname isn't local by its name, so add that hostname to **No Proxy**.
+
+If you are locked out because the proxy can't reach your provider, set `NO_PROXY` as an environment variable on the container and restart. It takes precedence over the saved setting, and replaces it rather than adding to it, so include any hosts you had saved there too.
+
 ## Troubleshooting
 
 - **No token signing keys (empty JWKS)** — The provider's JWKS endpoint returned no keys, so ID tokens can't be verified. In Authentik this happens when the provider has no **Signing Key** selected; pick one (e.g. the default self-signed certificate) and try again.

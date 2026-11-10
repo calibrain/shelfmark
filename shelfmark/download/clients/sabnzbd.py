@@ -19,7 +19,7 @@ from shelfmark.download.clients import (
     with_retry,
 )
 from shelfmark.download.clients._coercion import config_text, normalize_http_config_url
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import get_session
 
 logger = setup_logger(__name__)
 
@@ -214,9 +214,7 @@ class SABnzbdClient(DownloadClient):
         if params:
             request_params.update(params)
 
-        response = requests.get(
-            api_url, params=request_params, timeout=30, verify=get_ssl_verify(api_url)
-        )
+        response = get_session().get(api_url, params=request_params, timeout=30)
         response.raise_for_status()
 
         result = response.json()
@@ -248,12 +246,11 @@ class SABnzbdClient(DownloadClient):
         }
         files = {"name": (filename, nzb_content, "application/x-nzb")}
 
-        response = requests.post(
+        response = get_session().post(
             api_url,
             params=request_params,
             files=files,
             timeout=30,
-            verify=get_ssl_verify(api_url),
         )
         response.raise_for_status()
         result = response.json()
@@ -276,11 +273,10 @@ class SABnzbdClient(DownloadClient):
         redirects_remaining = _NZB_FETCH_MAX_REDIRECTS
         while True:
             headers = self._get_prowlarr_headers(current_url)
-            response = requests.get(
+            response = get_session().get(
                 current_url,
                 timeout=30,
                 headers=headers,
-                verify=get_ssl_verify(current_url),
                 allow_redirects=False,
             )
             if response.status_code not in (301, 302, 303, 307, 308):

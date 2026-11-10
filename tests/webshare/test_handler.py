@@ -4,6 +4,7 @@ import threading
 from unittest.mock import MagicMock, patch
 
 from shelfmark.core.models import DownloadTask
+from shelfmark.download.network import get_session as _shared_session
 from shelfmark.release_sources.webshare import handler as webshare_handler
 from shelfmark.release_sources.webshare.api import WebshareError
 from shelfmark.release_sources.webshare.handler import WebshareHandler
@@ -37,7 +38,7 @@ def _run(tmp_path, *, file_link, body=b"x" * 20000, cancel=None, task=None, cont
         patch.object(webshare_handler, "get_credentials", return_value=("user", "pw")),
         patch.object(webshare_handler.WebshareClient, "file_link", side_effect=file_link),
         patch.object(
-            webshare_handler.requests,
+            _shared_session(),
             "get",
             return_value=_http_response(body, content_length=content_length),
         ),
