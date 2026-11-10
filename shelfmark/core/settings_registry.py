@@ -1386,12 +1386,13 @@ def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
 
     # Save to config file
     if save_config_file(tab_name, values_to_save):
-        # Refresh the config singleton so live settings take effect immediately
+        # Refresh the config singleton so live settings take effect immediately. Forced:
+        # the file just changed, so a refresh in the last 50 ms must not stand in for it.
         config_obj = None
         try:
             from shelfmark.core.config import config as config_obj
 
-            config_obj.refresh()
+            config_obj.refresh(force=True)
         except ImportError:
             config_obj = None  # Config module not yet available during initial setup
 
