@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Owner-run live QA gate for the Chomikuj.pl release source.
+r"""Owner-run live QA gate for the Chomikuj.pl release source.
 
 Offline self-test::
 
@@ -20,7 +20,9 @@ Environment:
     Search text. Defaults to ``test``.
 ``CHOMIKUJ_TEST_FILE_ID``
     Optional numeric ``FileId``; when set, the search step is skipped and this
-    file is used for the free-download probe.
+    file is used for the free-download probe. The owner must supply a file that
+    is free for their account; this path assumes free status and does not verify
+    it.
 ``CHOMIKUJ_TEST_PAID_FILE_ID``
     Optional numeric paid ``FileId`` used by the spend-off proof. When unset, a
     synthetic paid file id is used.
@@ -314,7 +316,11 @@ def _synthetic_plan(query: str) -> ReleaseSearchPlan:
 
 
 def _test_file_release(file_id: str) -> Release:
-    """Build a release-shaped target for an owner-supplied ``CHOMIKUJ_TEST_FILE_ID``."""
+    """Build a release-shaped target for an owner-supplied ``CHOMIKUJ_TEST_FILE_ID``.
+
+    The release is built with ``is_free_for_user=True`` as an assumption for the
+    owner-supplied id; this script does not verify that the file is free.
+    """
     from shelfmark.release_sources import Release
 
     return Release(
@@ -589,7 +595,8 @@ def run_live(checked: EnvironmentCheck) -> int:
             record(
                 "search",
                 "PASS",
-                f"skipped; CHOMIKUJ_TEST_FILE_ID={checked.test_file_id}",
+                f"skipped; CHOMIKUJ_TEST_FILE_ID={checked.test_file_id}; "
+                "free status assumed, not verified; owner must supply a free file",
             )
         else:
             try:
@@ -858,8 +865,7 @@ def run_self_test() -> int:
         override = _formats_override()
         _expect("pdf" in override, "pdf is missing from the formats override")
         _expect(
-            PROBE_HEADERS
-            == {"User-Agent": "android/3.8.4 (python; python)", "Accept": "*/*"},
+            PROBE_HEADERS == {"User-Agent": "android/3.8.4 (python; python)", "Accept": "*/*"},
             "probe headers drifted from the live-proven contract",
         )
 

@@ -24,7 +24,11 @@ import requests
 
 from shelfmark.core.models import DownloadTask
 from shelfmark.release_sources.chomikuj import handler as handler_module
-from shelfmark.release_sources.chomikuj.client import DEFAULT_USER_AGENT, ChomikujError
+from shelfmark.release_sources.chomikuj.client import (
+    DEFAULT_USER_AGENT,
+    ChomikujAuthError,
+    ChomikujError,
+)
 from shelfmark.release_sources.chomikuj.handler import ChomikujHandler
 from shelfmark.release_sources.chomikuj.quota import (
     QuotaDecision,
@@ -151,6 +155,7 @@ def _run(
         session_mock = stack.enter_context(
             patch.object(handler_module, "get_session", return_value=session)
         )
+        clear_session_mock = stack.enter_context(patch.object(handler_module, "clear_session"))
         stack.enter_context(
             patch.object(
                 handler_module,
@@ -193,6 +198,7 @@ def _run(
         client=client,
         client_cls=client_cls,
         get_session=session_mock,
+        clear_session=clear_session_mock,
         get=get,
         decide=decide,
         session=session,
@@ -584,6 +590,20 @@ def test_error_message_redacts_api_key_and_password(tmp_path):
     message = run.status.call_args.args[1]
     assert API_KEY not in message
     assert PASSWORD not in message
+
+
+def test_unauthorized_clears_the_cached_session(tmp_path):
+    run = _run(
+        tmp_path,
+        download_url_error=ChomikujAuthError("unauthorized", status=401, code=401),
+    )
+
+    assert run.result is None
+    run.clear_session.assert_called_once_with(
+        username="reader",
+        password=PASSWORD,
+        base_url="https://mobile.chomikuj.pl/api/v3",
+    )
 
 
 def test_cancel_returns_false():

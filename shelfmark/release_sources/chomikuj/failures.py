@@ -140,6 +140,15 @@ def _has_cloudflare_challenge(body_text: str) -> bool:
     return any(marker in text for marker in CLOUDFLARE_MARKERS)
 
 
+def _is_json_document(text: str) -> bool:
+    """Return True when ``text`` parses as any JSON value."""
+    try:
+        json.loads(text)
+    except json.JSONDecodeError, ValueError:
+        return False
+    return True
+
+
 def _normalize_status(status: int | str | None) -> int | None:
     if isinstance(status, bool):
         return int(status)
@@ -180,12 +189,14 @@ def classify_http(status: int | str | None, body_text: str = "") -> FailureDecis
 
     Cloudflare interception wins over the status mapping: a challenge page is an
     unreachable transport, not an auth or quota verdict, even when it arrives
-    with a 2xx status.
+    with a 2xx status. JSON bodies are not scanned for challenge markers, so a
+    user-visible value such as ``"Just a Moment"`` cannot turn a valid response
+    into a challenge; only HTML and plain-text bodies are checked.
     """
     code = _normalize_status(status)
     text = body_text if isinstance(body_text, str) else _to_body_text(body_text)
 
-    if _has_cloudflare_challenge(text):
+    if not _is_json_document(text) and _has_cloudflare_challenge(text):
         return FailureDecision("unreachable", "cloudflare challenge", True)
 
     detail = _message_from_text(text)
@@ -257,7 +268,7 @@ def classify_login(status: int | str | None, body: object = None) -> FailureDeci
     if _is_2xx(code) and api_key:
         return _success()
 
-    if _has_cloudflare_challenge(text):
+    if not _is_json_document(text) and _has_cloudflare_challenge(text):
         return FailureDecision("unreachable", "cloudflare challenge", True)
 
     # Status 0 or a non-numeric status means no HTTP response was received.

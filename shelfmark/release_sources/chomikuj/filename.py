@@ -141,12 +141,12 @@ def normalize_format(value: object) -> str:
 
 
 def is_archive_extension(value: object) -> bool:
-    """True when ``value`` is an archive extension that must never be offered."""
+    """Return True when ``value`` is an archive extension that must never be offered."""
     return normalize_format(value) in ARCHIVE_EXTENSIONS
 
 
 def _is_noise_tag(content: str) -> bool:
-    """True when every token in a bracket tag is a format, language, or noise word."""
+    """Return True when every token in a bracket tag is a format, language, or noise word."""
     normalized = content.strip().lower()
     if not normalized:
         return True

@@ -39,7 +39,7 @@ from shelfmark.release_sources.chomikuj.client import (
     ChomikujError,
 )
 from shelfmark.release_sources.chomikuj.quota import QuotaDecision, decide_download
-from shelfmark.release_sources.chomikuj.session import get_session
+from shelfmark.release_sources.chomikuj.session import clear_session, get_session
 from shelfmark.release_sources.chomikuj.source import get_base_url, get_credentials
 
 if TYPE_CHECKING:
@@ -255,7 +255,9 @@ class ChomikujHandler(DownloadHandler):
 
         book_path: Path | None = None
         api_key = ""
+        username = ""
         password = ""
+        base_url = ""
         try:
             if cancel_flag.is_set():
                 status_callback("cancelled", "Cancelled")
@@ -328,6 +330,8 @@ class ChomikujHandler(DownloadHandler):
             return None
         except ChomikujError as exc:
             self._cleanup(book_path)
+            if exc.kind == "unauthorized" and username and password and base_url:
+                clear_session(username=username, password=password, base_url=base_url)
             if str(exc.code) == str(_TRANSFER_CODE):
                 logger.warning("Chomikuj download failed for %s: not enough transfer", file_id)
                 status_callback("error", _NOT_ENOUGH_TRANSFER_MESSAGE)
@@ -375,5 +379,5 @@ class ChomikujHandler(DownloadHandler):
         status_callback("error", message)
 
     def cancel(self, task_id: str) -> bool:
-        """Cancellation is handled by the orchestrator via the cancel flag."""
+        """Cancel an in-progress download (handled by the orchestrator's cancel flag)."""
         return False

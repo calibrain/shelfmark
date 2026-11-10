@@ -132,6 +132,27 @@ def test_cloudflare_on_a_2xx_response_is_still_unreachable():
     )
 
 
+def test_json_body_with_challenge_text_is_not_a_challenge():
+    _check(
+        classify_http(200, '{"Results":[{"FileName":"Just a Moment.pdf"}]}'),
+        OK,
+    )
+
+
+def test_html_body_with_challenge_text_is_still_a_challenge():
+    _check(
+        classify_http(200, "<html>Just a Moment</html>"),
+        FailureDecision("unreachable", "cloudflare challenge", True),
+    )
+
+
+def test_plain_text_body_with_challenge_text_is_still_a_challenge():
+    _check(
+        classify_http(200, "Just a Moment"),
+        FailureDecision("unreachable", "cloudflare challenge", True),
+    )
+
+
 # --- Network failures (no HTTP response) ----------------------------------
 
 
@@ -304,6 +325,13 @@ def test_login_cloudflare_is_unreachable(status):
     _check(
         classify_login(status, "<title>Just a moment...</title>"),
         FailureDecision("unreachable", "cloudflare challenge", True),
+    )
+
+
+def test_login_json_error_with_challenge_text_is_not_a_challenge():
+    _check(
+        classify_login(403, '{"Message":"Just a Moment"}'),
+        FailureDecision("unauthorized", "unauthorized: Just a Moment", False),
     )
 
 

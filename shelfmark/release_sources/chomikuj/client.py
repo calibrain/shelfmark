@@ -67,6 +67,7 @@ class ChomikujError(Exception):
         status: int | None = None,
         code: object = None,
     ) -> None:
+        """Store the message and the classification fields for this failure."""
         super().__init__(message)
         self.kind = kind
         self.retryable = retryable
@@ -85,6 +86,7 @@ class ChomikujAuthError(ChomikujError):
         status: int | None = None,
         code: object = None,
     ) -> None:
+        """Store the message and force ``kind='unauthorized'``."""
         super().__init__(
             message,
             kind="unauthorized",
@@ -198,6 +200,7 @@ class ChomikujClient:
         timeout: _REQUEST_TIMEOUT = DEFAULT_TIMEOUT,
         sleep: Callable[[float], None] = time.sleep,
     ) -> None:
+        """Normalize ``base_url`` and retain the injected session, timeout, and sleep."""
         self._root = normalize_base_url(base_url)
         self._user_agent = user_agent
         self._session = session if session is not None else requests.Session()
