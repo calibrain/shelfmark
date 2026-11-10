@@ -88,6 +88,21 @@ def test_turning_the_proxy_off_removes_the_variables_shelfmark_set(settings):
     assert not set(_VARIABLES) & set(os.environ)
 
 
+@pytest.mark.parametrize("mode", ["USING_TOR", "USING_WIREGUARD"])
+def test_no_variables_are_written_when_a_tunnel_routes_the_traffic(settings, monkeypatch, mode):
+    """Under Tor or WireGuard the saved proxy reaches no library through the environment."""
+    import os
+
+    from shelfmark.config import env
+
+    settings["USING_TOR"] = mode == "USING_TOR"
+    monkeypatch.setattr(env, "USING_WIREGUARD", mode == "USING_WIREGUARD")
+
+    network.apply_proxy_environment()
+
+    assert not set(_VARIABLES) & set(os.environ)
+
+
 def test_a_proxy_from_the_container_environment_is_left_alone(settings, monkeypatch):
     """A variable that was there before Shelfmark set it is never replaced or removed."""
     import os
