@@ -39,6 +39,7 @@ BASE_URL = "https://mobile.chomikuj.pl"
 
 
 def test_source_unavailable_error_masks_a_token_query_parameter():
+    """Test source unavailable error masks a token query parameter."""
     original = "https://x.test/a?token=SECRET"
     # Non-vacuous control: the secret really is in the input, so the assertion
     # below would fail without SourceUnavailableError's redaction.
@@ -51,6 +52,7 @@ def test_source_unavailable_error_masks_a_token_query_parameter():
 
 
 def test_source_unavailable_error_masks_userinfo_and_api_key_parameters():
+    """Test source unavailable error masks userinfo and api key parameters."""
     original = f"https://alice:{PASSWORD}@x.test/api?Api-Key={API_KEY}&Password={PASSWORD}"
     assert PASSWORD in original
     assert API_KEY in original
@@ -63,6 +65,7 @@ def test_source_unavailable_error_masks_userinfo_and_api_key_parameters():
 
 
 def test_the_shared_redactor_leaves_a_plain_message_alone():
+    """Test the shared redactor leaves a plain message alone."""
     message = "Chomikuj is unreachable"
 
     assert redact_secrets(message) == message
@@ -73,10 +76,12 @@ def test_the_shared_redactor_leaves_a_plain_message_alone():
 
 
 def _book() -> BookMetadata:
+    """Build the sample book metadata."""
     return BookMetadata(provider="test", provider_id="1", title="Krysař", authors=["Viktor Dyk"])
 
 
 def _plan() -> ReleaseSearchPlan:
+    """Build the sample search plan."""
     return ReleaseSearchPlan(
         languages=None,
         isbn_candidates=[],
@@ -89,6 +94,7 @@ def _plan() -> ReleaseSearchPlan:
 
 @pytest.fixture
 def configured_source(monkeypatch):
+    """Configure a Chomikuj source with test credentials."""
     values = {
         "CHOMIKUJ_ENABLED": True,
         "CHOMIKUJ_USERNAME": USERNAME,
@@ -107,6 +113,7 @@ def configured_source(monkeypatch):
 
 @pytest.mark.parametrize("kind", ["error", "unreachable", "throttled"])
 def test_search_failure_never_surfaces_configured_password_or_api_key(configured_source, kind):
+    """Test search failure never surfaces configured password or api key."""
     session = ChomikujSession(
         api_key=API_KEY,
         account_id=1,
@@ -141,6 +148,7 @@ def test_search_failure_never_surfaces_configured_password_or_api_key(configured
 
 
 def test_unauthorized_search_failure_never_surfaces_credentials(configured_source):
+    """Test unauthorized search failure never surfaces credentials."""
     session = ChomikujSession(
         api_key=API_KEY,
         account_id=1,
@@ -175,10 +183,14 @@ def test_unauthorized_search_failure_never_surfaces_credentials(configured_sourc
 
 
 class _ConfigStub:
+    """Minimal config stub with a fixed value map."""
+
     def __init__(self, values: dict[str, object]) -> None:
+        """Initialize the stub with the given values."""
         self.values = values
 
     def get(self, key: str, default: object = None) -> object:
+        """Return the stored value for the key, or the default."""
         return self.values.get(key, default)
 
 
@@ -189,6 +201,7 @@ class _FakeClient:
     account_error: Exception | None = None
 
     def __init__(self, base_url: object = None, **kwargs: object) -> None:
+        """Initialize the fake client and register the instance."""
         self.base_url = base_url
         self.username: str | None = None
         self.password: str | None = None
@@ -196,11 +209,13 @@ class _FakeClient:
         _FakeClient.instances.append(self)
 
     def login(self, username: str, password: str) -> dict[str, object]:
+        """Record the credentials and return a synthetic API key."""
         self.username = username
         self.password = password
         return {"ApiKey": API_KEY, "AccountId": 1, "AccountName": username}
 
     def account_info(self, api_key: str) -> dict[str, object]:
+        """Return the scripted account payload or raise its error."""
         self.api_key = api_key
         if _FakeClient.account_error is not None:
             raise _FakeClient.account_error
@@ -209,6 +224,7 @@ class _FakeClient:
 
 @pytest.fixture
 def settings_login(monkeypatch):
+    """Install a fake client and config for settings tests."""
     _FakeClient.instances = []
     _FakeClient.account_error = None
     monkeypatch.setattr(chomikuj_client, "ChomikujClient", _FakeClient)
@@ -228,6 +244,7 @@ def settings_login(monkeypatch):
 
 
 def test_test_login_success_dict_never_contains_password_or_api_key(settings_login):
+    """Test test login success dict never contains password or api key."""
     result = chomikuj_settings._test_chomikuj_connection()
 
     assert result == {"success": True, "message": "Chomikuj.pl (unlimited transfer)"}
@@ -240,6 +257,7 @@ def test_test_login_success_dict_never_contains_password_or_api_key(settings_log
 
 
 def test_test_login_failure_dict_never_contains_password_or_api_key(settings_login):
+    """Test test login failure dict never contains password or api key."""
     settings_login.account_error = ChomikujError("account lookup failed")
 
     result = chomikuj_settings._test_chomikuj_connection()
@@ -254,8 +272,13 @@ def test_test_login_failure_dict_never_contains_password_or_api_key(settings_log
 
 
 def test_test_login_rejected_password_dict_never_contains_password(settings_login, monkeypatch):
+    """Test test login rejected password dict never contains password."""
+
     class _RejectingClient(_FakeClient):
+        """Fake client whose login always rejects the password."""
+
         def login(self, username: str, password: str) -> dict[str, object]:
+            """Record the credentials and raise a login error."""
             self.username = username
             self.password = password
             raise ChomikujError("bad password")

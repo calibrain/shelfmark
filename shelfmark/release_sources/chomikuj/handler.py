@@ -204,6 +204,7 @@ def _stream_file(
 
 
 def _is_unlimited(account: object) -> bool:
+    """Return True when the account payload reports unlimited transfer."""
     return isinstance(account, dict) and account.get("HasUnlimitedTransfer") is True
 
 
@@ -354,6 +355,7 @@ class ChomikujHandler(DownloadHandler):
 
     @staticmethod
     def _resolve_file_id(task: DownloadTask) -> str | None:
+        """Return the persisted or task-derived Chomikuj file id."""
         context = getattr(task, "retry_source_context", None)
         if not isinstance(context, dict):
             context = {}
@@ -363,6 +365,7 @@ class ChomikujHandler(DownloadHandler):
 
     @staticmethod
     def _cleanup(book_path: Path | None) -> None:
+        """Delete a partially written file when one exists."""
         if book_path is not None:
             book_path.unlink(missing_ok=True)
 
@@ -374,6 +377,7 @@ class ChomikujHandler(DownloadHandler):
         password: str,
         status_callback: Callable[[str, str | None], None],
     ) -> None:
+        """Log a redacted error and report it through the status callback."""
         message = _safe_error(exc, api_key, password)
         logger.warning("Chomikuj download failed for %s: %s", file_id, message)
         status_callback("error", message)

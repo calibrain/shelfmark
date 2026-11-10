@@ -62,6 +62,7 @@ def _queue_release(monkeypatch, release_data: dict[str, object]):
     captured: dict[str, object] = {}
 
     def fake_add(task):
+        """Capture the queued task and report success."""
         captured["task"] = task
         return True
 
@@ -86,6 +87,7 @@ def _queue_release(monkeypatch, release_data: dict[str, object]):
 
 
 def test_retry_roundtrip_preserves_chomikuj_context(monkeypatch):
+    """Test retry roundtrip preserves chomikuj context."""
     import shelfmark.download.orchestrator as orchestrator
 
     task = _queue_release(monkeypatch, _release())
@@ -118,6 +120,7 @@ def test_retry_roundtrip_preserves_chomikuj_context(monkeypatch):
 
 
 def test_missing_file_id_falls_back_to_task_id_prefix(monkeypatch):
+    """Test missing file id falls back to task id prefix."""
     import shelfmark.download.orchestrator as orchestrator
 
     task = _queue_release(monkeypatch, _release(file_id=None))
@@ -139,6 +142,7 @@ def test_missing_file_id_falls_back_to_task_id_prefix(monkeypatch):
 
 @pytest.mark.parametrize("is_free", [True, False])
 def test_is_free_for_user_stays_a_bool_through_the_roundtrip(monkeypatch, is_free):
+    """Test is free for user stays a bool through the roundtrip."""
     import shelfmark.download.orchestrator as orchestrator
 
     release = _release()

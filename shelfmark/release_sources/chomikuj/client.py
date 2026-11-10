@@ -132,6 +132,7 @@ def _error_from(
 
 
 def _try_parse_json(text: str) -> object:
+    """Return the parsed JSON body, or None when it is not valid JSON."""
     try:
         return json.loads(text)
     except json.JSONDecodeError, ValueError:
@@ -139,15 +140,18 @@ def _try_parse_json(text: str) -> object:
 
 
 def _payload_code(payload: object) -> object:
+    """Return the code field from a JSON object payload, if present."""
     return payload.get("Code") if isinstance(payload, dict) else None
 
 
 def _payload_message(payload: dict[str, object]) -> str:
+    """Return the first non-empty message field from a payload."""
     value = payload.get("Message") or payload.get("message") or ""
     return value if isinstance(value, str) else ""
 
 
 def _header_value(headers: object, name: str) -> str | None:
+    """Return a header value by case-insensitive name, or None."""
     if not isinstance(headers, Mapping):
         return None
     value = headers.get(name)
@@ -284,6 +288,7 @@ class ChomikujClient:
         content_type: str | None = None,
         timeout: _REQUEST_TIMEOUT | None = None,
     ) -> tuple[int, str]:
+        """Send a request and return its status and body text."""
         status, text, _headers = self._send_full(
             method,
             path,
@@ -328,6 +333,7 @@ class ChomikujClient:
         retry: bool,
         timeout: _REQUEST_TIMEOUT | None = None,
     ) -> dict[str, object]:
+        """Send a signed GET and return its decoded JSON object."""
         status, text, headers = self._send_full(
             "GET", path, query=query, api_key=api_key, timeout=timeout
         )

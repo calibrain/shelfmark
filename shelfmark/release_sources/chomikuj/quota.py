@@ -42,10 +42,12 @@ class QuotaDecision:
 
 
 def _allow(reason: str) -> QuotaDecision:
+    """Return an allowed decision with the given reason."""
     return QuotaDecision(allowed=True, kind=None, reason=reason)
 
 
 def _deny(reason: str) -> QuotaDecision:
+    """Return a denied error decision with the given reason."""
     return QuotaDecision(allowed=False, kind="error", reason=reason)
 
 

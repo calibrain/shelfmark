@@ -39,6 +39,7 @@ class _LoopbackServer:
     """Serve one fixed ``(body, content-type)`` pair and record every request."""
 
     def __init__(self, *, body: bytes, content_type: str) -> None:
+        """Start a loopback server that serves the given body."""
         self.body = body
         self.content_type = content_type
         self.requests: list[dict[str, object]] = []
@@ -46,7 +47,10 @@ class _LoopbackServer:
         owner = self
 
         class _Handler(BaseHTTPRequestHandler):
+            """Serve the scripted response and record each request."""
+
             def do_GET(self) -> None:
+                """Record the request and write the scripted response."""
                 with owner._lock:
                     owner.requests.append({"path": self.path, "headers": dict(self.headers)})
                 self.send_response(200)
@@ -60,6 +64,7 @@ class _LoopbackServer:
                     pass
 
             def log_message(self, format: str, *args: object) -> None:  # noqa: A002
+                """Silence the default request logging."""
                 return
 
         self._httpd = ThreadingHTTPServer(("127.0.0.1", 0), _Handler)
@@ -72,12 +77,15 @@ class _LoopbackServer:
 
     @property
     def file_url(self) -> str:
+        """Return the URL of the served file."""
         return f"http://127.0.0.1:{self.port}/book.pdf"
 
     def start(self) -> None:
+        """Start the server thread."""
         self._thread.start()
 
     def stop(self) -> None:
+        """Shut down the server and join its thread."""
         self._httpd.shutdown()
         self._httpd.server_close()
         self._thread.join(timeout=5)
@@ -106,6 +114,7 @@ def loopback_server():
     servers: list[_LoopbackServer] = []
 
     def start(*, body: bytes, content_type: str) -> _LoopbackServer:
+        """Start a tracked server and return it."""
         server = _LoopbackServer(body=body, content_type=content_type)
         server.start()
         servers.append(server)
@@ -118,6 +127,7 @@ def loopback_server():
 
 
 def _task(server: _LoopbackServer) -> DownloadTask:
+    """Build a download task for the loopback server."""
     return DownloadTask(
         task_id=f"chomikuj:{FILE_ID}",
         source="chomikuj",
@@ -139,9 +149,11 @@ def _run_download(tmp_path, server: _LoopbackServer):
     progress: list[float] = []
 
     def status_callback(state: str, message: str | None) -> None:
+        """Record status updates."""
         statuses.append((state, message))
 
     def progress_callback(value: float) -> None:
+        """Record progress values."""
         progress.append(value)
 
     payload = {"FileUrl": server.file_url, "Name": RESPONSE_NAME}
@@ -198,6 +210,7 @@ def _run_download(tmp_path, server: _LoopbackServer):
 
 
 def test_pdf_download_streams_real_http_with_proven_headers(tmp_path, loopback_server):
+    """Test pdf download streams real http with proven headers."""
     server = loopback_server(body=PDF_BODY, content_type="application/pdf")
 
     run = _run_download(tmp_path, server)
@@ -224,6 +237,7 @@ def test_pdf_download_streams_real_http_with_proven_headers(tmp_path, loopback_s
 
 
 def test_html_response_is_rejected_and_no_file_is_written(tmp_path, loopback_server):
+    """Test html response is rejected and no file is written."""
     server = loopback_server(
         body=b"<html><body>human verification</body></html>",
         content_type="text/html; charset=utf-8",

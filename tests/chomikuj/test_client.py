@@ -28,12 +28,15 @@ PROXY_MAP = {"https": "http://proxy.test:8080"}
 
 
 class FakeResponse:
+    """Minimal HTTP response stand-in."""
+
     def __init__(
         self,
         status_code: int,
         text: str,
         headers: dict[str, str] | None = None,
     ) -> None:
+        """Initialize the fake response with its status, text, and headers."""
         self.status_code = status_code
         self.text = text
         self.headers = headers or {}
@@ -43,10 +46,12 @@ class FakeSession:
     """Minimal `requests.Session` stand-in that records every request."""
 
     def __init__(self, *responses: FakeResponse) -> None:
+        """Initialize the fake session with its scripted responses."""
         self._responses = list(responses)
         self.calls: list[dict[str, object]] = []
 
     def request(self, method: str, url: str, **kwargs: object) -> FakeResponse:
+        """Record the request and return the next scripted response."""
         self.calls.append({"method": method, "url": url, **kwargs})
         if not self._responses:
             raise AssertionError("unexpected extra request")
@@ -59,10 +64,12 @@ def network_spy(monkeypatch):
     seen: list[tuple[str, str]] = []
 
     def fake_get_proxies(url: str) -> dict[str, str]:
+        """Record the URL and return the fixed proxy map."""
         seen.append(("proxies", url))
         return PROXY_MAP
 
     def fake_get_ssl_verify(url: str) -> bool:
+        """Record the URL and report verification disabled."""
         seen.append(("verify", url))
         return False
 
@@ -88,10 +95,12 @@ def network_spy(monkeypatch):
     ],
 )
 def test_normalize_base_url(value, expected):
+    """Test normalize base url."""
     assert normalize_base_url(value) == expected
 
 
 def test_normalize_base_url_strips_all_trailing_slashes():
+    """Test normalize base url strips all trailing slashes."""
     assert normalize_base_url("https://x.test///") == "https://x.test/api/v3"
 
 
@@ -99,6 +108,7 @@ def test_normalize_base_url_strips_all_trailing_slashes():
 
 
 def test_headers_carry_user_agent_and_signed_token_only():
+    """Test headers carry user agent and signed token only."""
     client = ChomikujClient(session=FakeSession())
     body = '{"AccountName":"alice","Password":"p@ss"}'
     headers = client._headers("account/login", "", None, body)
@@ -111,6 +121,7 @@ def test_headers_carry_user_agent_and_signed_token_only():
 
 
 def test_headers_sign_the_exact_query_and_include_api_key_only_when_supplied():
+    """Test headers sign the exact query and include api key only when supplied."""
     client = ChomikujClient(session=FakeSession())
     query = "Query=test&PageNumber=1&MediaType=Documents"
 
@@ -125,6 +136,7 @@ def test_headers_sign_the_exact_query_and_include_api_key_only_when_supplied():
 
 
 def test_login_posts_one_compact_body_without_api_key(network_spy):
+    """Test login posts one compact body without api key."""
     session = FakeSession(FakeResponse(200, '{"ApiKey":"K","AccountId":42}'))
     client = ChomikujClient(session=session)
 
@@ -152,6 +164,7 @@ def test_login_posts_one_compact_body_without_api_key(network_spy):
 
 
 def test_login_encodes_unicode_body_unraised(network_spy):
+    """Test login encodes unicode body unraised."""
     session = FakeSession(FakeResponse(200, '{"ApiKey":"K"}'))
     client = ChomikujClient(session=session)
 
@@ -164,6 +177,7 @@ def test_login_encodes_unicode_body_unraised(network_spy):
 
 
 def test_login_uses_normalized_custom_base_url_user_agent_and_timeout(network_spy):
+    """Test login uses normalized custom base url user agent and timeout."""
     session = FakeSession(FakeResponse(200, '{"ApiKey":"K"}'))
     client = ChomikujClient(
         "https://x.test/",
@@ -181,6 +195,7 @@ def test_login_uses_normalized_custom_base_url_user_agent_and_timeout(network_sp
 
 
 def test_login_401_raises_auth_error_without_leaking_secrets(network_spy):
+    """Test login 401 raises auth error without leaking secrets."""
     session = FakeSession(FakeResponse(401, '{"Message":"invalid secret key"}'))
     client = ChomikujClient(session=session)
 
@@ -197,6 +212,7 @@ def test_login_401_raises_auth_error_without_leaking_secrets(network_spy):
 
 
 def test_login_invalid_json_raises_plain_error(network_spy):
+    """Test login invalid json raises plain error."""
     session = FakeSession(FakeResponse(200, "<html>not json</html>"))
     client = ChomikujClient(session=session)
 
@@ -211,6 +227,7 @@ def test_login_invalid_json_raises_plain_error(network_spy):
 
 
 def test_login_failure_never_contains_the_password_or_body(network_spy):
+    """Test login failure never contains the password or body."""
     response_body = '{"Message":"login rejected"}'
     session = FakeSession(FakeResponse(401, response_body))
     client = ChomikujClient(session=session)
@@ -225,6 +242,7 @@ def test_login_failure_never_contains_the_password_or_body(network_spy):
 
 
 def test_login_never_retries_on_429(network_spy):
+    """Test login never retries on 429."""
     session = FakeSession(
         FakeResponse(429, '{"Message":"throttled"}'),
         FakeResponse(200, '{"ApiKey":"K"}'),
@@ -244,6 +262,7 @@ def test_login_never_retries_on_429(network_spy):
 
 
 def make_client(*responses: FakeResponse) -> tuple[ChomikujClient, FakeSession, list[float]]:
+    """Build a client with a fake session and recorded sleeps."""
     session = FakeSession(*responses)
     sleeps: list[float] = []
     client = ChomikujClient(session=session, sleep=sleeps.append)
@@ -251,6 +270,7 @@ def make_client(*responses: FakeResponse) -> tuple[ChomikujClient, FakeSession, 
 
 
 def test_account_info_gets_exact_url_with_signed_empty_query(network_spy):
+    """Test account info gets exact url with signed empty query."""
     payload = {"Code": 0, "HasUnlimitedTransfer": True, "BalanceInfo": "1 GB"}
     client, session, sleeps = make_client(
         FakeResponse(200, '{"Code":0,"HasUnlimitedTransfer":true,"BalanceInfo":"1 GB"}')
@@ -271,6 +291,7 @@ def test_account_info_gets_exact_url_with_signed_empty_query(network_spy):
 
 @pytest.mark.parametrize("status", [429, 503])
 def test_account_retry_once_on_transient_status(network_spy, status):
+    """Test account retry once on transient status."""
     client, session, sleeps = make_client(
         FakeResponse(status, '{"Message":"busy"}'),
         FakeResponse(200, '{"Code":0,"HasUnlimitedTransfer":false}'),
@@ -286,6 +307,7 @@ def test_account_retry_once_on_transient_status(network_spy, status):
 
 
 def test_account_info_makes_at_most_one_retry(network_spy):
+    """Test account info makes at most one retry."""
     client, session, sleeps = make_client(
         FakeResponse(429, '{"Message":"throttled"}'),
         FakeResponse(503, '{"Message":"still down"}'),
@@ -302,6 +324,7 @@ def test_account_info_makes_at_most_one_retry(network_spy):
 
 
 def test_account_info_does_not_retry_401(network_spy):
+    """Test account info does not retry 401."""
     client, session, sleeps = make_client(FakeResponse(401, '{"Code":401}'))
 
     with pytest.raises(ChomikujAuthError) as excinfo:
@@ -313,6 +336,7 @@ def test_account_info_does_not_retry_401(network_spy):
 
 
 def test_account_info_honors_retry_after_under_the_cap(network_spy):
+    """Test account info honors retry after under the cap."""
     client, session, sleeps = make_client(
         FakeResponse(429, '{"Message":"slow down"}', {"Retry-After": "0.75"}),
         FakeResponse(200, '{"Code":0}'),
@@ -324,6 +348,7 @@ def test_account_info_honors_retry_after_under_the_cap(network_spy):
 
 
 def test_retry_after_too_long_suppresses_the_retry(network_spy):
+    """Test retry after too long suppresses the retry."""
     client, session, sleeps = make_client(
         FakeResponse(429, '{"Message":"slow down"}', {"Retry-After": "3"}),
         FakeResponse(200, '{"Code":0}'),
@@ -342,6 +367,7 @@ def test_retry_after_too_long_suppresses_the_retry(network_spy):
     [(-10, [0.5]), (10, [])],
 )
 def test_account_info_parses_http_date_retry_after(network_spy, offset_seconds, expected_sleeps):
+    """Test account info parses http date retry after."""
     retry_at = formatdate(time.time() + offset_seconds, usegmt=True)
     responses = [FakeResponse(429, '{"Message":"slow down"}', {"Retry-After": retry_at})]
     responses.append(FakeResponse(200, '{"Code":0}'))
@@ -359,6 +385,7 @@ def test_account_info_parses_http_date_retry_after(network_spy, offset_seconds, 
 
 
 def test_cloudflare_no_retry_on_account_info(network_spy):
+    """Test cloudflare no retry on account info."""
     challenge = (
         "<html><head><title>Just a moment...</title></head>"
         '<body><script src="/cdn-cgi/challenge-platform/h/b/orchestrate"></script>'
@@ -379,6 +406,7 @@ def test_cloudflare_no_retry_on_account_info(network_spy):
 
 
 def test_account_info_raises_on_non_success_business_code(network_spy):
+    """Test account info raises on non success business code."""
     client, session, sleeps = make_client(
         FakeResponse(200, '{"Code":605,"Message":"Not enough transfer"}')
     )
@@ -397,6 +425,7 @@ def test_account_info_raises_on_non_success_business_code(network_spy):
 
 
 def test_account_info_invalid_json_raises_plain_error(network_spy):
+    """Test account info invalid json raises plain error."""
     client, session, sleeps = make_client(FakeResponse(200, "<html>not json</html>"))
 
     with pytest.raises(ChomikujError) as excinfo:
@@ -413,6 +442,7 @@ def test_account_info_invalid_json_raises_plain_error(network_spy):
 
 
 def test_search_query_builds_ordered_string_and_signs_exact_token(network_spy):
+    """Test search query builds ordered string and signs exact token."""
     payload = {"Code": 0, "Results": [{"FileId": "1"}], "IsNextPageAvailable": False}
     client, session, sleeps = make_client(
         FakeResponse(200, '{"Code":0,"Results":[{"FileId":"1"}],"IsNextPageAvailable":false}')
@@ -430,6 +460,7 @@ def test_search_query_builds_ordered_string_and_signs_exact_token(network_spy):
 
 
 def test_search_page_sends_extension_last_and_omits_empty_extension(network_spy):
+    """Test search page sends extension last and omits empty extension."""
     client, session, sleeps = make_client(
         FakeResponse(200, '{"Code":0,"Results":[]}'),
         FakeResponse(200, '{"Code":0,"Results":[]}'),
@@ -452,6 +483,7 @@ def test_search_page_sends_extension_last_and_omits_empty_extension(network_spy)
 
 
 def test_search_page_signs_the_urlencoded_unicode_query_it_sends(network_spy):
+    """Test search page signs the urlencoded unicode query it sends."""
     client, session, sleeps = make_client(FakeResponse(200, '{"Code":0,"Results":[]}'))
 
     client.search_page("KEY", query="żółć test", page=3)
@@ -468,6 +500,7 @@ def test_search_page_signs_the_urlencoded_unicode_query_it_sends(network_spy):
 
 
 def test_search_page_retries_once_on_503_and_reuses_the_exact_request(network_spy):
+    """Test search page retries once on 503 and reuses the exact request."""
     client, session, sleeps = make_client(
         FakeResponse(503, '{"Message":"unavailable"}'),
         FakeResponse(200, '{"Code":0,"Results":[]}'),
@@ -481,6 +514,7 @@ def test_search_page_retries_once_on_503_and_reuses_the_exact_request(network_sp
 
 
 def test_search_page_forwards_the_per_request_timeout_to_every_attempt(network_spy):
+    """Test search page forwards the per request timeout to every attempt."""
     client, session, sleeps = make_client(
         FakeResponse(429, '{"Message":"throttled"}'),
         FakeResponse(200, '{"Code":0,"Results":[]}'),
@@ -493,6 +527,7 @@ def test_search_page_forwards_the_per_request_timeout_to_every_attempt(network_s
 
 
 def test_search_page_raises_on_non_success_business_code(network_spy):
+    """Test search page raises on non success business code."""
     client, session, sleeps = make_client(
         FakeResponse(200, '{"Code":602,"Message":"Access denied"}')
     )
@@ -507,6 +542,7 @@ def test_search_page_raises_on_non_success_business_code(network_spy):
 
 
 def test_search_page_invalid_json_raises_plain_error(network_spy):
+    """Test search page invalid json raises plain error."""
     client, session, sleeps = make_client(FakeResponse(200, "<html>not json</html>"))
 
     with pytest.raises(ChomikujError) as excinfo:
@@ -523,6 +559,7 @@ def test_search_page_invalid_json_raises_plain_error(network_spy):
 
 
 def test_download_no_retry_sends_exactly_one_request_even_on_429(network_spy):
+    """Test download no retry sends exactly one request even on 429."""
     client, session, sleeps = make_client(
         FakeResponse(429, '{"Message":"throttled"}', {"Retry-After": "0"}),
         FakeResponse(200, '{"Code":0,"FileUrl":"https://cdn.test/file"}'),
@@ -545,6 +582,7 @@ def test_download_no_retry_sends_exactly_one_request_even_on_429(network_spy):
 
 
 def test_download_url_urlencodes_the_file_id(network_spy):
+    """Test download url urlencodes the file id."""
     client, session, sleeps = make_client(
         FakeResponse(200, '{"Code":0,"FileUrl":"https://cdn.test/file"}')
     )
@@ -559,6 +597,7 @@ def test_download_url_urlencodes_the_file_id(network_spy):
 
 
 def test_download_url_returns_the_payload_with_a_file_url(network_spy):
+    """Test download url returns the payload with a file url."""
     payload = {"Code": 0, "FileUrl": "https://cdn.test/file"}
     client, session, sleeps = make_client(
         FakeResponse(200, '{"Code":0,"FileUrl":"https://cdn.test/file"}')
@@ -570,6 +609,7 @@ def test_download_url_returns_the_payload_with_a_file_url(network_spy):
 
 
 def test_download_url_605_is_a_permanent_quota_error(network_spy):
+    """Test download url 605 is a permanent quota error."""
     client, session, sleeps = make_client(
         FakeResponse(200, '{"Code":605,"Message":"Not enough transfer"}')
     )
@@ -595,6 +635,7 @@ def test_download_url_605_is_a_permanent_quota_error(network_spy):
     ],
 )
 def test_download_url_missing_file_url_raises(network_spy, payload):
+    """Test download url missing file url raises."""
     client, session, sleeps = make_client(FakeResponse(200, json.dumps(payload)))
 
     with pytest.raises(ChomikujError) as excinfo:
@@ -607,6 +648,7 @@ def test_download_url_missing_file_url_raises(network_spy, payload):
 
 
 def test_download_url_invalid_json_raises_plain_error(network_spy):
+    """Test download url invalid json raises plain error."""
     client, session, sleeps = make_client(FakeResponse(200, "<html>not json</html>"))
 
     with pytest.raises(ChomikujError) as excinfo:

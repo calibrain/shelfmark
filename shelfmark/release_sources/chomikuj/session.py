@@ -34,7 +34,9 @@ __all__ = ["ChomikujSession", "clear_session", "get_session"]
 class _LoginClient(Protocol):
     """The part of :class:`ChomikujClient` the cache needs."""
 
-    def login(self, username: str, password: str) -> Mapping[str, object]: ...
+    def login(self, username: str, password: str) -> Mapping[str, object]:
+        """Return the login payload for the given credentials."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,6 +55,7 @@ class _Entry:
     __slots__ = ("error", "event", "fingerprint", "session")
 
     def __init__(self, fingerprint: str) -> None:
+        """Initialize the entry with its fingerprint and an unresolved state."""
         self.fingerprint = fingerprint
         self.event = threading.Event()
         self.session: ChomikujSession | None = None
@@ -64,11 +67,13 @@ _cache_lock = threading.Lock()
 
 
 def _fingerprint(username: str, password: str, base_url: str) -> str:
+    """Return the cache key hashed from the credentials and base URL."""
     material = f"{username}\0{password}\0{base_url}"
     return hashlib.sha256(material.encode("utf-8")).hexdigest()
 
 
 def _to_session(payload: object, fingerprint: str) -> ChomikujSession:
+    """Build a session from the login payload or raise a clear error."""
     if not isinstance(payload, Mapping):
         msg = "Chomikuj login returned an unexpected payload"
         raise ChomikujError(msg)

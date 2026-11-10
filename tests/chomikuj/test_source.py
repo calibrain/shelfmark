@@ -49,6 +49,7 @@ _SUPPORTED_FORMATS = ["epub", "mobi", "pdf", "cbz"]
 
 
 def _book(title="Krysař"):
+    """Build the sample book metadata."""
     return BookMetadata(provider="test", provider_id="1", title=title, authors=["Viktor Dyk"])
 
 
@@ -59,6 +60,7 @@ def _plan(
     isbn=None,
     filters=None,
 ):
+    """Build the sample search plan."""
     if variants is None:
         variants = [ReleaseSearchVariant(title="Krysař", author="Viktor Dyk")]
     return ReleaseSearchPlan(
@@ -80,6 +82,7 @@ def _row(
     size=200,
     free=True,
 ):
+    """Build a synthetic Chomikuj search row."""
     row = {"FileId": file_id, "FileName": name, "FileType": file_type}
     if size is not _MISSING:
         row["Size"] = size
@@ -94,11 +97,13 @@ class ClientRecorder:
     instances: list[ClientRecorder] = []
 
     def __init__(self, base_url: str) -> None:
+        """Initialize the recorder and register the instance."""
         self.base_url = base_url
         self.login_calls: list[tuple[str, str]] = []
         ClientRecorder.instances.append(self)
 
     def login(self, username: str, password: str) -> dict[str, str]:
+        """Record the login call and return a synthetic API key."""
         self.login_calls.append((username, password))
         return {"ApiKey": "unused"}
 
@@ -110,6 +115,7 @@ def _patched(rows_by_query):
     ClientRecorder.instances = []
 
     def fake_search_files(client, api_key, query, **kwargs):
+        """Record the search call and return rows for the query."""
         calls.append({"client": client, "api_key": api_key, "query": query, **kwargs})
         return rows_by_query.get(query, [])
 
@@ -123,6 +129,7 @@ def _patched(rows_by_query):
 
 @pytest.fixture
 def config_values():
+    """Patch the source config with the test values."""
     values = dict(_CONFIG)
     supported = list(_SUPPORTED_FORMATS)
     with (
@@ -141,6 +148,7 @@ def config_values():
 
 
 def test_source_is_registered_with_expected_attributes():
+    """Test source is registered with expected attributes."""
     from shelfmark.release_sources import get_source
 
     sourced = get_source("chomikuj")
@@ -152,6 +160,7 @@ def test_source_is_registered_with_expected_attributes():
 
 
 def test_class_attributes_are_declared():
+    """Test class attributes are declared."""
     assert chomikuj_source.ChomikujSource.name == "chomikuj"
     assert chomikuj_source.ChomikujSource.display_name == "Chomikuj.pl"
     assert chomikuj_source.ChomikujSource.supported_content_types == ["ebook"]
@@ -170,11 +179,13 @@ def test_class_attributes_are_declared():
     ],
 )
 def test_is_available_is_config_only(config_values, overrides, expected):
+    """Test is available is config only."""
     config_values.update(overrides)
     assert chomikuj_source.ChomikujSource().is_available() is expected
 
 
 def test_is_available_never_constructs_a_client_or_logs_in(config_values):
+    """Test is available never constructs a client or logs in."""
     with (
         patch.object(
             chomikuj_source, "ChomikujClient", side_effect=AssertionError("network access")
@@ -185,12 +196,14 @@ def test_is_available_never_constructs_a_client_or_logs_in(config_values):
 
 
 def test_get_credentials_strips_username_but_not_password(config_values):
+    """Test get credentials strips username but not password."""
     config_values["CHOMIKUJ_USERNAME"] = " alice "
     config_values["CHOMIKUJ_PASSWORD"] = " pw "
     assert chomikuj_source.get_credentials() == ("alice", " pw ")
 
 
 def test_get_credentials_rejects_non_strings(config_values):
+    """Test get credentials rejects non strings."""
     config_values["CHOMIKUJ_USERNAME"] = None
     config_values["CHOMIKUJ_PASSWORD"] = 123
     assert chomikuj_source.get_credentials() == ("", "")
@@ -211,6 +224,7 @@ def test_get_credentials_rejects_non_strings(config_values):
     ],
 )
 def test_get_max_results_defaults_and_clamps(config_values, value, expected):
+    """Test get max results defaults and clamps."""
     if value is _MISSING:
         config_values.pop("CHOMIKUJ_MAX_RESULTS")
     else:
@@ -228,30 +242,36 @@ def test_get_max_results_defaults_and_clamps(config_values, value, expected):
     ],
 )
 def test_get_base_url_is_normalized(config_values, value, expected):
+    """Test get base url is normalized."""
     config_values["CHOMIKUJ_BASE_URL"] = value
     assert chomikuj_source.get_base_url() == expected
 
 
 def test_get_allowed_formats_intersects_supported_and_importable(config_values):
+    """Test get allowed formats intersects supported and importable."""
     assert chomikuj_source.get_allowed_formats() == {"epub", "mobi", "pdf"}
 
 
 def test_get_allowed_formats_never_includes_archives(config_values):
+    """Test get allowed formats never includes archives."""
     config_values["_supported"][:] = ["epub", "cbz", "cbr", "zip"]
     assert chomikuj_source.get_allowed_formats() == {"epub"}
 
 
 def test_get_allowed_formats_narrows_with_source_filters(config_values):
+    """Test get allowed formats narrows with source filters."""
     filters = SearchFilters(format=[".PDF", " EPUB ", "cbz", "zip"])
     assert chomikuj_source.get_allowed_formats(filters) == {"epub", "pdf"}
 
 
 def test_get_allowed_formats_ignores_empty_filter_list(config_values):
+    """Test get allowed formats ignores empty filter list."""
     filters = SearchFilters(format=[])
     assert chomikuj_source.get_allowed_formats(filters) == {"epub", "mobi", "pdf"}
 
 
 def test_get_allowed_formats_empty_when_nothing_importable_is_supported(config_values):
+    """Test get allowed formats empty when nothing importable is supported."""
     config_values["_supported"][:] = ["cbz", "cbr"]
     assert chomikuj_source.get_allowed_formats() == set()
 
@@ -260,12 +280,14 @@ def test_get_allowed_formats_empty_when_nothing_importable_is_supported(config_v
 
 
 def test_manual_query_wins_verbatim(config_values):
+    """Test manual query wins verbatim."""
     with _patched({}) as calls:
         chomikuj_source.ChomikujSource().search(_book(), _plan(manual_query="  dyk  krysar "))
     assert [call["query"] for call in calls] == ["dyk  krysar"]
 
 
 def test_candidates_title_author_then_title_only_fallback(config_values):
+    """Test candidates title author then title only fallback."""
     rows = {"Krysař": [_row()]}
     with _patched(rows) as calls:
         releases = chomikuj_source.ChomikujSource().search(_book(), _plan())
@@ -274,6 +296,7 @@ def test_candidates_title_author_then_title_only_fallback(config_values):
 
 
 def test_title_and_author_queries_are_deduplicated(config_values):
+    """Test title and author queries are deduplicated."""
     variants = [ReleaseSearchVariant(title="Krysař", author="")]
     with _patched({}) as calls:
         chomikuj_source.ChomikujSource().search(_book(), _plan(variants=variants))
@@ -281,6 +304,7 @@ def test_title_and_author_queries_are_deduplicated(config_values):
 
 
 def test_isbn_is_used_when_plan_has_no_title_or_author(config_values):
+    """Test isbn is used when plan has no title or author."""
     plan = _plan(variants=[], isbn=["9788070000000"])
     with _patched({}) as calls:
         chomikuj_source.ChomikujSource().search(_book(), plan)
@@ -288,6 +312,7 @@ def test_isbn_is_used_when_plan_has_no_title_or_author(config_values):
 
 
 def test_book_title_is_used_when_plan_is_empty(config_values):
+    """Test book title is used when plan is empty."""
     plan = _plan(variants=[], isbn=[])
     with _patched({}) as calls:
         chomikuj_source.ChomikujSource().search(_book(title="  Fallback Title "), plan)
@@ -298,6 +323,7 @@ def test_book_title_is_used_when_plan_is_empty(config_values):
 
 
 def test_disabled_no_client_returns_empty(config_values):
+    """Test disabled no client returns empty."""
     config_values["CHOMIKUJ_ENABLED"] = False
     with (
         patch.object(chomikuj_source, "ChomikujClient") as client_cls,
@@ -311,6 +337,7 @@ def test_disabled_no_client_returns_empty(config_values):
 
 
 def test_unsupported_content_type_returns_empty(config_values):
+    """Test unsupported content type returns empty."""
     with (
         patch.object(chomikuj_source, "ChomikujClient") as client_cls,
         patch.object(chomikuj_source, "search_files") as search_files,
@@ -324,6 +351,7 @@ def test_unsupported_content_type_returns_empty(config_values):
 
 
 def test_empty_allowed_set_returns_empty_without_client(config_values):
+    """Test empty allowed set returns empty without client."""
     config_values["_supported"][:] = ["cbz"]
     with (
         patch.object(chomikuj_source, "ChomikujClient") as client_cls,
@@ -335,6 +363,7 @@ def test_empty_allowed_set_returns_empty_without_client(config_values):
 
 
 def test_client_uses_the_normalized_base_url(config_values):
+    """Test client uses the normalized base url."""
     with _patched({}) as calls:
         chomikuj_source.ChomikujSource().search(_book(), _plan())
     assert calls
@@ -343,6 +372,7 @@ def test_client_uses_the_normalized_base_url(config_values):
 
 
 def test_orchestration_passes_limit_and_default_budget(config_values):
+    """Test orchestration passes limit and default budget."""
     config_values["CHOMIKUJ_MAX_RESULTS"] = 20
     with _patched({}) as calls:
         chomikuj_source.ChomikujSource().search(_book(), _plan())
@@ -353,6 +383,7 @@ def test_orchestration_passes_limit_and_default_budget(config_values):
 
 
 def test_expand_search_passes_twenty_seconds_and_five_pages(config_values):
+    """Test expand search passes twenty seconds and five pages."""
     with _patched({}) as calls:
         chomikuj_source.ChomikujSource().search(_book(), _plan(), expand_search=True)
     assert calls[0]["budget_seconds"] == 20.0
@@ -360,6 +391,7 @@ def test_expand_search_passes_twenty_seconds_and_five_pages(config_values):
 
 
 def test_search_caps_with_the_current_deadline(config_values):
+    """Test search caps with the current deadline."""
     from shelfmark.core.search_deadline import search_deadline
 
     with _patched({}) as calls, search_deadline(0.5):
@@ -371,6 +403,7 @@ def test_search_caps_with_the_current_deadline(config_values):
 
 
 def test_expired_deadline_returns_empty_without_error(config_values):
+    """Test expired deadline returns empty without error."""
     from shelfmark.core.search_deadline import search_deadline
 
     with _patched({}) as calls, search_deadline(0.0):
@@ -394,10 +427,14 @@ def test_deadline_expiry_during_first_page_returns_the_collected_page(config_val
     calls: list[dict[str, object]] = []
 
     class SlowPageClient:
+        """Client that sleeps before returning one open page."""
+
         def __init__(self, base_url: str) -> None:
+            """Store the base URL."""
             self.base_url = base_url
 
         def search_page(self, api_key, *, query, page, extension=None, timeout=None):
+            """Record the call, sleep, and return one open page."""
             calls.append(
                 {
                     "api_key": api_key,
@@ -432,10 +469,14 @@ def test_deadline_expired_no_error_returns_empty_without_a_request(config_values
     calls: list[dict[str, object]] = []
 
     class RecordingClient:
+        """Client that records construction and search calls."""
+
         def __init__(self, base_url: str) -> None:
+            """Record the base URL."""
             constructed.append(base_url)
 
         def search_page(self, api_key, *, query, page, extension=None, timeout=None):
+            """Record the call and return one open page."""
             calls.append({"query": query, "page": page})
             return {"Results": [_row()], "IsNextPageAvailable": True}
 
@@ -453,6 +494,7 @@ def test_deadline_expired_no_error_returns_empty_without_a_request(config_values
 
 
 def test_first_candidate_with_selectable_rows_wins(config_values):
+    """Test first candidate with selectable rows wins."""
     rows = {
         "Krysař Viktor Dyk": [_row(name="Krysar.cbz", file_type="cbz")],
         "Krysař": [_row()],
@@ -464,12 +506,14 @@ def test_first_candidate_with_selectable_rows_wins(config_values):
 
 
 def test_non_numeric_file_id_rows_are_dropped(config_values):
+    """Test non numeric file id rows are dropped."""
     rows = {"Krysař Viktor Dyk": [_row(file_id="not-a-number")], "Krysař": []}
     with _patched(rows):
         assert chomikuj_source.ChomikujSource().search(_book(), _plan()) == []
 
 
 def test_results_are_ordered_newest_first_and_limited(config_values):
+    """Test results are ordered newest first and limited."""
     config_values["CHOMIKUJ_MAX_RESULTS"] = 2
     rows = {
         "Krysař Viktor Dyk": [
@@ -495,7 +539,10 @@ def test_results_are_ordered_newest_first_and_limited(config_values):
     ],
 )
 def test_error_becomes_unavailable(config_values, kind, message):
+    """Test error becomes unavailable."""
+
     def fail(*args, **kwargs):
+        """Raise the scripted Chomikuj error."""
         raise ChomikujError("boom", kind=kind)
 
     with (
@@ -509,7 +556,10 @@ def test_error_becomes_unavailable(config_values, kind, message):
 
 
 def test_unauthorized_maps_to_credentials_message_and_clears_session(config_values):
+    """Test unauthorized maps to credentials message and clears session."""
+
     def fail(*args, **kwargs):
+        """Raise an unauthorized Chomikuj error."""
         raise ChomikujError("boom", kind="unauthorized")
 
     with (
@@ -527,6 +577,7 @@ def test_unauthorized_maps_to_credentials_message_and_clears_session(config_valu
 
 
 def test_unauthorized_login_error_maps_and_clears_session(config_values):
+    """Test unauthorized login error maps and clears session."""
     from shelfmark.release_sources.chomikuj.client import ChomikujAuthError
 
     with (
@@ -550,6 +601,7 @@ def test_unauthorized_login_error_maps_and_clears_session(config_values):
 
 
 def test_mapping_free_epub_row(config_values):
+    """Test mapping free epub row."""
     release = chomikuj_source.to_release(
         _row(name="Dyk Viktor - Krysar.epub", file_type="epub", size=200, free=True),
         allowed_formats={"epub"},
@@ -585,6 +637,7 @@ def test_mapping_free_epub_row(config_values):
 
 
 def test_mapping_paid_missing_flag(config_values):
+    """Test mapping paid missing flag."""
     release = chomikuj_source.to_release(_row(free=_MISSING), allowed_formats={"epub"})
     assert release is not None
     assert release.extra["is_free_for_user"] is False
@@ -593,6 +646,7 @@ def test_mapping_paid_missing_flag(config_values):
 
 
 def test_mapping_explicit_false_free_flag_is_paid(config_values):
+    """Test mapping explicit false free flag is paid."""
     release = chomikuj_source.to_release(_row(free=False), allowed_formats={"epub"})
     assert release is not None
     assert release.extra["freeleech"] is False
@@ -600,6 +654,7 @@ def test_mapping_explicit_false_free_flag_is_paid(config_values):
 
 
 def test_mapping_language_and_author_from_file_name(config_values):
+    """Test mapping language and author from file name."""
     release = chomikuj_source.to_release(_row(name="Ksiazka (PL).epub"), allowed_formats={"epub"})
     assert release is not None
     assert release.title == "Ksiazka"
@@ -609,6 +664,7 @@ def test_mapping_language_and_author_from_file_name(config_values):
 
 
 def test_mapping_title_falls_back_to_the_file_name(config_values):
+    """Test mapping title falls back to the file name."""
     release = chomikuj_source.to_release(
         _row(name="[PL].epub", file_type="epub"), allowed_formats={"epub"}
     )
@@ -617,6 +673,7 @@ def test_mapping_title_falls_back_to_the_file_name(config_values):
 
 
 def test_mapping_extra_keeps_author_and_language_when_none(config_values):
+    """Test mapping extra keeps author and language when none."""
     release = chomikuj_source.to_release(
         _row(name="NoSeparator.epub", file_type="epub"), allowed_formats={"epub"}
     )
@@ -645,6 +702,7 @@ def test_mapping_extra_keeps_author_and_language_when_none(config_values):
     ],
 )
 def test_mapping_unknown_size_and_size_kb_cases(config_values, size, expected_bytes):
+    """Test mapping unknown size and size kb cases."""
     release = chomikuj_source.to_release(_row(size=size), allowed_formats={"epub"})
     assert release is not None
     assert release.size_bytes == expected_bytes
@@ -652,6 +710,7 @@ def test_mapping_unknown_size_and_size_kb_cases(config_values, size, expected_by
 
 
 def test_format_size_is_human_readable():
+    """Test format size is human readable."""
     assert chomikuj_source._format_size(None) is None
     assert chomikuj_source._format_size(512) == "512 B"
     assert chomikuj_source._format_size(1024) == "1.0 KB"
@@ -673,15 +732,18 @@ def test_format_size_is_human_readable():
     ],
 )
 def test_mapping_returns_none_for_rows_select_rows_drops(config_values, row):
+    """Test mapping returns none for rows select rows drops."""
     allowed = {"epub", "zip", "cbz", "docx"}
     assert chomikuj_source.to_release(row, allowed_formats=allowed) is None
 
 
 def test_mapping_respects_the_allowed_format_set(config_values):
+    """Test mapping respects the allowed format set."""
     assert chomikuj_source.to_release(_row(file_type="epub"), allowed_formats={"mobi"}) is None
 
 
 def test_mapping_does_not_mutate_the_row(config_values):
+    """Test mapping does not mutate the row."""
     row = _row(name="Dyk Viktor - Krysar.epub", size=200, free=True)
     before = copy.deepcopy(row)
     chomikuj_source.to_release(row, allowed_formats={"epub"})
@@ -689,6 +751,7 @@ def test_mapping_does_not_mutate_the_row(config_values):
 
 
 def test_pdf_is_filtered_out_under_default_supported_formats(config_values):
+    """Test pdf is filtered out under default supported formats."""
     config_values["_supported"][:] = ["epub", "mobi", "azw3", "fb2", "djvu", "cbz", "cbr"]
     allowed = chomikuj_source.get_allowed_formats()
     assert "pdf" not in allowed
@@ -701,6 +764,7 @@ def test_pdf_is_filtered_out_under_default_supported_formats(config_values):
 
 
 def test_pdf_is_kept_when_supported_formats_include_it(config_values):
+    """Test pdf is kept when supported formats include it."""
     config_values["_supported"][:] = ["pdf"]
     allowed = chomikuj_source.get_allowed_formats()
     assert allowed == {"pdf"}
@@ -712,6 +776,7 @@ def test_pdf_is_kept_when_supported_formats_include_it(config_values):
 
 
 def test_pdf_only_search_returns_empty_under_defaults(config_values):
+    """Test pdf only search returns empty under defaults."""
     config_values["_supported"][:] = ["epub", "mobi", "azw3", "fb2", "djvu", "cbz", "cbr"]
     rows = {"Krysař Viktor Dyk": [_row(name="Krysar.pdf", file_type="pdf")], "Krysař": []}
     with _patched(rows):
@@ -719,6 +784,7 @@ def test_pdf_only_search_returns_empty_under_defaults(config_values):
 
 
 def test_pdf_only_search_keeps_the_pdf_when_enabled(config_values):
+    """Test pdf only search keeps the pdf when enabled."""
     config_values["_supported"][:] = ["pdf"]
     rows = {
         "Krysař Viktor Dyk": [_row(name="Krysar.pdf", file_type="pdf")],
@@ -733,10 +799,12 @@ def test_pdf_only_search_keeps_the_pdf_when_enabled(config_values):
 
 
 def _columns():
+    """Return the Chomikuj source column configuration."""
     return chomikuj_source.ChomikujSource().get_column_config()
 
 
 def test_column_config_has_exactly_four_columns():
+    """Test column config has exactly four columns."""
     column_config = _columns()
     assert [column.key for column in column_config.columns] == [
         "extra.language",
@@ -750,6 +818,7 @@ def test_column_config_has_exactly_four_columns():
 
 
 def test_language_column_schema():
+    """Test language column schema."""
     column = _columns().columns[0]
     assert column.label == "Language"
     assert column.render_type is ColumnRenderType.BADGE
@@ -759,6 +828,7 @@ def test_language_column_schema():
 
 
 def test_format_column_schema():
+    """Test format column schema."""
     column = _columns().columns[1]
     assert column.label == "Format"
     assert column.render_type is ColumnRenderType.BADGE
@@ -768,6 +838,7 @@ def test_format_column_schema():
 
 
 def test_size_column_is_sortable_on_size_bytes():
+    """Test size column is sortable on size bytes."""
     column = _columns().columns[2]
     assert column.label == "Size"
     assert column.render_type is ColumnRenderType.SIZE
@@ -777,6 +848,7 @@ def test_size_column_is_sortable_on_size_bytes():
 
 
 def test_access_column_schema():
+    """Test access column schema."""
     column = _columns().columns[3]
     assert column.label == "Access"
     assert column.render_type is ColumnRenderType.BADGE
@@ -787,11 +859,13 @@ def test_access_column_schema():
 
 
 def test_no_language_filter_and_format_only():
+    """Test no language filter and format only."""
     assert _columns().supported_filters == ["format"]
     assert "language" not in _columns().supported_filters
 
 
 def test_column_config_exposes_search_more_action_button():
+    """Test column config exposes search more action button."""
     action_button = _columns().action_button
     assert action_button is not None
     assert action_button.label == "Search more"
@@ -799,6 +873,7 @@ def test_column_config_exposes_search_more_action_button():
 
 
 def test_serialized_column_config_has_four_columns():
+    """Test serialized column config has four columns."""
     payload = serialize_column_config(_columns())
     assert [column["key"] for column in payload["columns"]] == [
         "extra.language",

@@ -59,10 +59,12 @@ class FailureDecision:
 
 
 def _success() -> FailureDecision:
+    """Return the decision for a successful response."""
     return FailureDecision(None, "ok", False)
 
 
 def _normalize_text(value: object) -> str:
+    """Return the stripped string, or an empty string for non-string input."""
     return value.strip() if isinstance(value, str) else ""
 
 
@@ -83,6 +85,7 @@ def _with_detail(message: str, detail: str) -> str:
 
 
 def _payload_message(payload: dict[str, object]) -> str:
+    """Return the first non-empty message field from a payload."""
     for key in ("Message", "message", "error"):
         text = _detail_excerpt(payload.get(key))
         if text:
@@ -91,6 +94,7 @@ def _payload_message(payload: dict[str, object]) -> str:
 
 
 def _message_from_text(body_text: str) -> str:
+    """Return the server message from a JSON or plain-text body."""
     text = _normalize_text(body_text)
     if not text:
         return ""
@@ -104,6 +108,7 @@ def _message_from_text(body_text: str) -> str:
 
 
 def _to_body_text(body: object) -> str:
+    """Serialize a body to text, returning an empty string when unsupported."""
     if isinstance(body, str):
         return body
     if body is None:
@@ -115,6 +120,7 @@ def _to_body_text(body: object) -> str:
 
 
 def _to_body_object(body: object) -> dict[str, object] | None:
+    """Return a JSON object parsed from the body, or None."""
     if isinstance(body, dict):
         return body
     if not isinstance(body, str):
@@ -127,6 +133,7 @@ def _to_body_object(body: object) -> dict[str, object] | None:
 
 
 def _body_message(body: object) -> str:
+    """Return the server message carried by a request body."""
     payload = _to_body_object(body)
     if payload is not None:
         return _payload_message(payload)
@@ -134,6 +141,7 @@ def _body_message(body: object) -> str:
 
 
 def _has_cloudflare_challenge(body_text: str) -> bool:
+    """Return True when the text contains a Cloudflare challenge marker."""
     text = _normalize_text(body_text).lower()
     if not text:
         return False
@@ -150,6 +158,7 @@ def _is_json_document(text: str) -> bool:
 
 
 def _normalize_status(status: int | str | None) -> int | None:
+    """Coerce a status value to an integer, or None when unknown."""
     if isinstance(status, bool):
         return int(status)
     if isinstance(status, int):
@@ -169,6 +178,7 @@ def _normalize_status(status: int | str | None) -> int | None:
 
 
 def _normalize_code(code: object) -> int | None:
+    """Coerce a business code to an integer, or None when unknown."""
     if isinstance(code, bool):
         return int(code)
     if isinstance(code, int):
@@ -181,6 +191,7 @@ def _normalize_code(code: object) -> int | None:
 
 
 def _is_2xx(status: int | None) -> bool:
+    """Return True when the status is in the 2xx range."""
     return status is not None and 200 <= status < 300
 
 
@@ -196,7 +207,7 @@ def classify_http(status: int | str | None, body_text: str = "") -> FailureDecis
     code = _normalize_status(status)
     text = body_text if isinstance(body_text, str) else _to_body_text(body_text)
 
-    if not _is_json_document(text) and _has_cloudflare_challenge(text):
+    if _has_cloudflare_challenge(text) and not _is_json_document(text):
         return FailureDecision("unreachable", "cloudflare challenge", True)
 
     detail = _message_from_text(text)
@@ -268,7 +279,7 @@ def classify_login(status: int | str | None, body: object = None) -> FailureDeci
     if _is_2xx(code) and api_key:
         return _success()
 
-    if not _is_json_document(text) and _has_cloudflare_challenge(text):
+    if _has_cloudflare_challenge(text) and not _is_json_document(text):
         return FailureDecision("unreachable", "cloudflare challenge", True)
 
     # Status 0 or a non-numeric status means no HTTP response was received.

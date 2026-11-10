@@ -176,20 +176,24 @@ PARSER_CASES = [
 
 
 def test_importable_formats_are_exact():
+    """Test importable formats are exact."""
     assert IMPORTABLE_EBOOK_FORMATS == EXPECTED_IMPORTABLE
     assert "kepub" not in IMPORTABLE_EBOOK_FORMATS
 
 
 def test_archive_extensions_are_exact():
+    """Test archive extensions are exact."""
     assert ARCHIVE_EXTENSIONS == EXPECTED_ARCHIVES
 
 
 def test_importable_and_archive_sets_are_disjoint():
+    """Test importable and archive sets are disjoint."""
     assert not set(IMPORTABLE_EBOOK_FORMATS) & set(ARCHIVE_EXTENSIONS)
     assert "kepub" not in ARCHIVE_EXTENSIONS
 
 
 def test_txt_doc_docx_are_rejected_by_omission():
+    """Test txt doc docx are rejected by omission."""
     assert {"txt", "doc", "docx"}.isdisjoint(IMPORTABLE_EBOOK_FORMATS)
 
 
@@ -207,24 +211,29 @@ def test_txt_doc_docx_are_rejected_by_omission():
     ],
 )
 def test_normalize_format(value, expected):
+    """Test normalize format."""
     assert normalize_format(value) == expected
 
 
 def test_normalize_format_strips_only_one_leading_dot():
+    """Test normalize format strips only one leading dot."""
     assert normalize_format("..epub") == ".epub"
 
 
 def test_is_archive_extension_every_member():
+    """Test is archive extension every member."""
     assert all(is_archive_extension(extension) for extension in ARCHIVE_EXTENSIONS)
 
 
 def test_is_archive_extension_normalizes_case_and_dot():
+    """Test is archive extension normalizes case and dot."""
     assert is_archive_extension(".CBZ")
     assert is_archive_extension(" RAR ")
     assert is_archive_extension("7Z")
 
 
 def test_is_archive_extension_false_for_other_formats():
+    """Test is archive extension false for other formats."""
     assert not is_archive_extension("epub")
     assert not is_archive_extension("pdf")
     assert not is_archive_extension("txt")
@@ -234,6 +243,7 @@ def test_is_archive_extension_false_for_other_formats():
 
 @pytest.mark.parametrize(("file_name", "file_type", "expected"), PARSER_CASES)
 def test_parse_file_name(file_name, file_type, expected):
+    """Test parse file name."""
     assert parse_file_name(file_name, file_type) == expected
 
 
@@ -246,6 +256,7 @@ def test_parse_file_name(file_name, file_type, expected):
     ],
 )
 def test_parse_file_name_dash_variants(file_name, separator):
+    """Test parse file name dash variants."""
     parsed = parse_file_name(file_name, None)
     assert parsed == ParsedFile(title="Title", author="Author", format="epub"), separator
 
@@ -255,24 +266,28 @@ def test_parse_file_name_dash_variants(file_name, separator):
     ["2020 - Title.epub", "12345 - Title.pdf", "0000 - Title.mobi"],
 )
 def test_year_not_author(file_name):
+    """Test year not author."""
     parsed = parse_file_name(file_name, None)
     assert parsed.author is None
     assert parsed.title.split(" - ", 1)[1].startswith("Title")
 
 
 def test_year_is_allowed_as_a_title():
+    """Test year is allowed as a title."""
     assert parse_file_name("Author - 2020.epub", None) == ParsedFile(
         title="2020", author="Author", format="epub"
     )
 
 
 def test_noise_only_name_strips_to_empty_title():
+    """Test noise only name strips to empty title."""
     assert parse_file_name("[PL] (ebook).epub", None) == ParsedFile(
         title="", author=None, format="epub"
     )
 
 
 def test_parse_file_name_handles_non_string_input():
+    """Test parse file name handles non string input."""
     assert parse_file_name(None, None) == ParsedFile(title="", author=None, format="")
     assert parse_file_name(42, "epub") == ParsedFile(title="", author=None, format="epub")
 
@@ -297,4 +312,5 @@ def test_parse_file_name_handles_non_string_input():
     ],
 )
 def test_guess_language(file_name, expected):
+    """Test guess language."""
     assert guess_language(file_name) == expected

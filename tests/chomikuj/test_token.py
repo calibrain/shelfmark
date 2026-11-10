@@ -54,11 +54,13 @@ VECTORS = [
 
 
 def test_secret_is_the_exact_mobile_app_constant():
+    """Test secret is the exact mobile app constant."""
     assert CHOMIKUJ_SECRET == "wzrwYua$.DSe8suk!`'2"
     assert len(CHOMIKUJ_SECRET) == 20
 
 
 def test_token_vectors():
+    """Test token vectors."""
     for name, path, query, body, expected in VECTORS:
         actual = sign_token(path, query, body)
         assert actual == expected, f"sign_token: {name}"
@@ -66,6 +68,7 @@ def test_token_vectors():
 
 
 def test_leading_slashes_are_stripped_not_signed():
+    """Test leading slashes are stripped not signed."""
     expected = VECTORS[0][4]
     assert sign_token("/api/v3/account/info") == expected
     assert sign_token("//api/v3/account/info") == expected
@@ -73,12 +76,14 @@ def test_leading_slashes_are_stripped_not_signed():
 
 
 def test_empty_query_and_body_match_defaults():
+    """Test empty query and body match defaults."""
     expected = VECTORS[0][4]
     assert sign_token("api/v3/account/info") == expected
     assert sign_token("api/v3/account/info", "", "") == expected
 
 
 def test_trailing_slash_changes_the_digest():
+    """Test trailing slash changes the digest."""
     trailing = sign_token("api/v3/account/info/")
     assert trailing == "fd75d7d488c54390b51a5bc0a54700a0"
     assert trailing != VECTORS[0][4]
@@ -110,6 +115,7 @@ def test_query_is_signed_verbatim():
     [(path, query, body, expected) for _, path, query, body, expected in VECTORS],
 )
 def test_wrong_secret_differs_from_every_vector(path, query, body, expected):
+    """Test wrong secret differs from every vector."""
     raw = path.lstrip("/")
     if query:
         raw = f"{raw}?{query}"

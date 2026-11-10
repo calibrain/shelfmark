@@ -51,6 +51,7 @@ def _task(
     year: str | None = "2020",
     fmt: str | None = "pdf",
 ) -> DownloadTask:
+    """Build a download task with optional overrides."""
     return DownloadTask(
         task_id=task_id,
         source="chomikuj",
@@ -73,6 +74,7 @@ def _response(
     content_length: bool = True,
     chunks: list[bytes] | None = None,
 ):
+    """Build a mock streaming response with the given body."""
     response = MagicMock()
     response.__enter__.return_value = response
     response.__exit__.return_value = False
@@ -118,6 +120,7 @@ def _run(
     account = {"HasUnlimitedTransfer": True, "Transfer": 1_000_000} if account is None else account
 
     def progress_callback(value: float) -> None:
+        """Forward progress values to the recorder and optional hook."""
         progress(value)
         if progress_hook is not None:
             progress_hook(value)
@@ -210,6 +213,7 @@ def _run(
 
 
 def test_retry_context_uses_top_level_size_bytes_and_only_retry_context():
+    """Test retry context uses top level size bytes and only retry context."""
     fields = ChomikujHandler().build_retry_resolution_fields(
         {
             "source": "chomikuj",
@@ -246,6 +250,7 @@ def test_retry_context_uses_top_level_size_bytes_and_only_retry_context():
 
 
 def test_retry_context_falls_back_to_extra_size_bytes():
+    """Test retry context falls back to extra size bytes."""
     fields = ChomikujHandler().build_retry_resolution_fields(
         {
             "source_id": "chomikuj:22",
@@ -257,6 +262,7 @@ def test_retry_context_falls_back_to_extra_size_bytes():
 
 
 def test_retry_context_omits_none_and_invalid_file_id():
+    """Test retry context omits none and invalid file id."""
     fields = ChomikujHandler().build_retry_resolution_fields(
         {
             "source_id": "chomikuj:1",
@@ -272,6 +278,7 @@ def test_retry_context_omits_none_and_invalid_file_id():
 
 
 def test_retry_context_normalizes_positive_integer_file_id():
+    """Test retry context normalizes positive integer file id."""
     fields = ChomikujHandler().build_retry_resolution_fields(
         {"extra": {"file_id": 123, "is_free_for_user": False}}
     )
@@ -282,6 +289,7 @@ def test_retry_context_normalizes_positive_integer_file_id():
 
 
 def test_preflight_blocks_no_download_when_spend_disabled(tmp_path):
+    """Test preflight blocks no download when spend disabled."""
     run = _run(
         tmp_path,
         task=_task(context={"file_id": "123456", "size_bytes": 20480, "is_free_for_user": False}),
@@ -298,6 +306,7 @@ def test_preflight_blocks_no_download_when_spend_disabled(tmp_path):
 
 
 def test_preflight_passes_context_and_allows_spending_warning(tmp_path):
+    """Test preflight passes context and allows spending warning."""
     run = _run(
         tmp_path,
         task=_task(context={"file_id": "123456", "size_bytes": 20480, "is_free_for_user": False}),
@@ -314,6 +323,7 @@ def test_preflight_passes_context_and_allows_spending_warning(tmp_path):
 
 
 def test_preflight_unlimited_account_proceeds_without_warning(tmp_path):
+    """Test preflight unlimited account proceeds without warning."""
     run = _run(
         tmp_path,
         task=_task(context={"file_id": "123456", "size_bytes": 20480, "is_free_for_user": False}),
@@ -326,6 +336,7 @@ def test_preflight_unlimited_account_proceeds_without_warning(tmp_path):
 
 
 def test_explicit_denial_sets_reason_and_skips_network(tmp_path):
+    """Test explicit denial sets reason and skips network."""
     run = _run(
         tmp_path,
         task=_task(context={"file_id": "123456", "size_bytes": 20480, "is_free_for_user": False}),
@@ -338,6 +349,7 @@ def test_explicit_denial_sets_reason_and_skips_network(tmp_path):
 
 
 def test_missing_file_id_returns_error_without_constructing_client(tmp_path):
+    """Test missing file id returns error without constructing client."""
     run = _run(tmp_path, task=_task(task_id="chomikuj:", context={}))
 
     assert run.result is None
@@ -348,6 +360,7 @@ def test_missing_file_id_returns_error_without_constructing_client(tmp_path):
 
 
 def test_non_numeric_file_id_returns_clean_error(tmp_path):
+    """Test non numeric file id returns clean error."""
     run = _run(tmp_path, task=_task(task_id="chomikuj:abc", context={}))
 
     assert run.result is None
@@ -357,6 +370,7 @@ def test_non_numeric_file_id_returns_clean_error(tmp_path):
 
 
 def test_file_id_falls_back_to_task_id_suffix(tmp_path):
+    """Test file id falls back to task id suffix."""
     run = _run(tmp_path, task=_task(task_id="chomikuj:987654", context={}))
 
     assert run.result is not None
@@ -364,6 +378,7 @@ def test_file_id_falls_back_to_task_id_suffix(tmp_path):
 
 
 def test_cancel_before_start_makes_no_network_call(tmp_path):
+    """Test cancel before start makes no network call."""
     cancel = threading.Event()
     cancel.set()
     run = _run(tmp_path, cancel=cancel)
@@ -379,6 +394,7 @@ def test_cancel_before_start_makes_no_network_call(tmp_path):
 
 
 def test_download_url_called_once_and_headers_are_exact(tmp_path):
+    """Test download url called once and headers are exact."""
     run = _run(tmp_path)
 
     assert run.result == str(tmp_path / "Książka - Autor.pdf")
@@ -396,6 +412,7 @@ def test_download_url_called_once_and_headers_are_exact(tmp_path):
 
 
 def test_stream_ok_writes_body_and_returns_staging_path(tmp_path):
+    """Test stream ok writes body and returns staging path."""
     body = bytes(range(256)) * 80  # 20480 bytes
     run = _run(tmp_path, body=body, organization="rename")
 
@@ -406,6 +423,7 @@ def test_stream_ok_writes_body_and_returns_staging_path(tmp_path):
 
 
 def test_path_escape_sanitized_response_name_stays_in_tmp(tmp_path):
+    """Test path escape sanitized response name stays in tmp."""
     run = _run(
         tmp_path,
         payload={"FileUrl": FILE_URL, "Name": "../../evil/book.pdf"},
@@ -419,6 +437,7 @@ def test_path_escape_sanitized_response_name_stays_in_tmp(tmp_path):
 
 
 def test_path_escape_dotdot_returns_clean_error(tmp_path):
+    """Test path escape dotdot returns clean error."""
     run = _run(
         tmp_path,
         payload={"FileUrl": FILE_URL, "Name": ".."},
@@ -431,6 +450,7 @@ def test_path_escape_dotdot_returns_clean_error(tmp_path):
 
 
 def test_numeric_file_id_fallback_builds_staging_name(tmp_path):
+    """Test numeric file id fallback builds staging name."""
     run = _run(
         tmp_path,
         payload={"FileUrl": FILE_URL, "Name": None},
@@ -441,6 +461,7 @@ def test_numeric_file_id_fallback_builds_staging_name(tmp_path):
 
 
 def test_html_rejected_before_writing(tmp_path):
+    """Test html rejected before writing."""
     run = _run(
         tmp_path,
         body=b"<html><body>challenge</body></html>",
@@ -453,6 +474,7 @@ def test_html_rejected_before_writing(tmp_path):
 
 
 def test_html_rejected_for_xhtml_before_writing(tmp_path):
+    """Test html rejected for xhtml before writing."""
     run = _run(tmp_path, body=b"<html/>", content_type="application/xhtml+xml")
 
     assert run.result is None
@@ -461,6 +483,7 @@ def test_html_rejected_for_xhtml_before_writing(tmp_path):
 
 
 def test_tiny_rejected_small_file_and_unlinked(tmp_path):
+    """Test tiny rejected small file and unlinked."""
     run = _run(tmp_path, body=b"tiny")
 
     assert run.result is None
@@ -469,6 +492,7 @@ def test_tiny_rejected_small_file_and_unlinked(tmp_path):
 
 
 def test_progress_uses_content_length_when_present(tmp_path):
+    """Test progress uses content length when present."""
     run = _run(tmp_path, body=b"x" * 20480, content_length=True)
 
     percents = [call.args[0] for call in run.progress.call_args_list]
@@ -477,6 +501,7 @@ def test_progress_uses_content_length_when_present(tmp_path):
 
 
 def test_progress_uses_size_bytes_without_content_length(tmp_path):
+    """Test progress uses size bytes without content length."""
     body = b"x" * 20480
     run = _run(
         tmp_path,
@@ -490,6 +515,7 @@ def test_progress_uses_size_bytes_without_content_length(tmp_path):
 
 
 def test_missing_file_url_returns_clean_error(tmp_path):
+    """Test missing file url returns clean error."""
     run = _run(tmp_path, payload={"Name": "Książka.pdf"})
 
     assert run.result is None
@@ -499,6 +525,7 @@ def test_missing_file_url_returns_clean_error(tmp_path):
 
 
 def test_downloading_status_clears_resolving_message(tmp_path):
+    """Test downloading status clears resolving message."""
     run = _run(tmp_path)
 
     run.status.assert_any_call("downloading", "")
@@ -508,9 +535,11 @@ def test_downloading_status_clears_resolving_message(tmp_path):
 
 
 def test_cancel_midstream_after_first_chunk_leaves_no_file(tmp_path):
+    """Test cancel midstream after first chunk leaves no file."""
     cancel = threading.Event()
 
     def progress_hook(percent: float) -> None:
+        """Cancel the download after the first nonzero progress update."""
         if percent > 0:
             cancel.set()
 
@@ -522,6 +551,7 @@ def test_cancel_midstream_after_first_chunk_leaves_no_file(tmp_path):
 
 
 def test_network_error_request_exception_cleans_up_and_reports_error(tmp_path):
+    """Test network error request exception cleans up and reports error."""
     run = _run(
         tmp_path,
         http_get=requests.exceptions.ConnectionError("connection reset"),
@@ -533,7 +563,10 @@ def test_network_error_request_exception_cleans_up_and_reports_error(tmp_path):
 
 
 def test_os_error_cleanup_removes_partial_and_reports_error(tmp_path):
+    """Test os error cleanup removes partial and reports error."""
+
     def stream_impl(_url, target, **_kwargs):
+        """Write a partial file, then raise an OS error."""
         target.write_bytes(b"partial")
         msg = "permission denied"
         raise OSError(msg)
@@ -546,7 +579,10 @@ def test_os_error_cleanup_removes_partial_and_reports_error(tmp_path):
 
 
 def test_unexpected_exception_never_escapes(tmp_path):
+    """Test unexpected exception never escapes."""
+
     def stream_impl(_url, _target, **_kwargs):
+        """Raise an unexpected runtime error."""
         msg = "surprise"
         raise RuntimeError(msg)
 
@@ -557,6 +593,7 @@ def test_unexpected_exception_never_escapes(tmp_path):
 
 
 def test_605_no_stream_reports_exact_message(tmp_path):
+    """Test 605 no stream reports exact message."""
     run = _run(
         tmp_path,
         download_url_error=ChomikujError("not enough transfer", code=605),
@@ -570,6 +607,7 @@ def test_605_no_stream_reports_exact_message(tmp_path):
 
 @pytest.mark.parametrize("code", [605, "605"])
 def test_605_no_stream_code_variants_map_to_exact_message(tmp_path, code):
+    """Test 605 no stream code variants map to exact message."""
     run = _run(
         tmp_path,
         download_url_error=ChomikujError("not enough transfer", code=code),
@@ -581,6 +619,7 @@ def test_605_no_stream_code_variants_map_to_exact_message(tmp_path, code):
 
 
 def test_error_message_redacts_api_key_and_password(tmp_path):
+    """Test error message redacts api key and password."""
     run = _run(
         tmp_path,
         download_url_error=ChomikujError(f"login {API_KEY} and {PASSWORD} failed", code=401),
@@ -593,6 +632,7 @@ def test_error_message_redacts_api_key_and_password(tmp_path):
 
 
 def test_unauthorized_clears_the_cached_session(tmp_path):
+    """Test unauthorized clears the cached session."""
     run = _run(
         tmp_path,
         download_url_error=ChomikujAuthError("unauthorized", status=401, code=401),
@@ -607,4 +647,5 @@ def test_unauthorized_clears_the_cached_session(tmp_path):
 
 
 def test_cancel_returns_false():
+    """Test cancel returns false."""
     assert ChomikujHandler().cancel("anything") is False

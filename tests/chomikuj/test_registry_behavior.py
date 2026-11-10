@@ -36,6 +36,7 @@ _CONFIG = {
 
 @pytest.fixture
 def config_values():
+    """Patch the source config with the registry test values."""
     values = dict(_CONFIG)
     with patch.object(
         chomikuj_source.config,
@@ -56,10 +57,12 @@ def _block_network():
 
 
 def _book() -> BookMetadata:
+    """Build the sample book metadata."""
     return BookMetadata(provider="test", provider_id="1", title="Krysař", authors=["Viktor Dyk"])
 
 
 def _plan() -> ReleaseSearchPlan:
+    """Build the sample search plan."""
     return ReleaseSearchPlan(
         languages=None,
         isbn_candidates=[],
@@ -70,6 +73,7 @@ def _plan() -> ReleaseSearchPlan:
 
 
 def _chomikuj_row() -> dict:
+    """Return the single registered Chomikuj source row."""
     rows = [row for row in list_available_sources() if row["name"] == "chomikuj"]
     assert len(rows) == 1, "chomikuj must appear exactly once in the source registry"
     return rows[0]
@@ -84,22 +88,26 @@ def _spies():
 
 
 def test_enabled_default_off_with_credentials_present(config_values):
+    """Test enabled default off with credentials present."""
     assert _chomikuj_row()["enabled"] is False
 
 
 @pytest.mark.parametrize("flag", ["true", "True", 1])
 def test_string_true_is_off(config_values, flag):
+    """Test string true is off."""
     config_values["CHOMIKUJ_ENABLED"] = flag
     assert _chomikuj_row()["enabled"] is False
 
 
 @pytest.mark.parametrize("flag", [False, None])
 def test_disabled_flag_is_off(config_values, flag):
+    """Test disabled flag is off."""
     config_values["CHOMIKUJ_ENABLED"] = flag
     assert _chomikuj_row()["enabled"] is False
 
 
 def test_enabled_with_literal_true_and_both_credentials(config_values):
+    """Test enabled with literal true and both credentials."""
     config_values["CHOMIKUJ_ENABLED"] = True
     assert _chomikuj_row()["enabled"] is True
 
@@ -113,12 +121,14 @@ def test_enabled_with_literal_true_and_both_credentials(config_values):
     ],
 )
 def test_enabled_requires_both_credentials(config_values, overrides):
+    """Test enabled requires both credentials."""
     config_values["CHOMIKUJ_ENABLED"] = True
     config_values.update(overrides)
     assert _chomikuj_row()["enabled"] is False
 
 
 def test_registry_availability_never_constructs_a_client_or_logs_in(config_values):
+    """Test registry availability never constructs a client or logs in."""
     config_values["CHOMIKUJ_ENABLED"] = True
     client_cls, login_spy = _spies()
     session_spy = MagicMock(name="get_session")
@@ -136,6 +146,7 @@ def test_registry_availability_never_constructs_a_client_or_logs_in(config_value
 
 
 def test_registry_row_declares_ebook_only(config_values):
+    """Test registry row declares ebook only."""
     row = _chomikuj_row()
     assert row["supported_content_types"] == ["ebook"]
     assert row["browse_results_are_releases"] is False
@@ -143,12 +154,14 @@ def test_registry_row_declares_ebook_only(config_values):
 
 
 def test_get_source_reports_ebook_only_release_semantics(config_values):
+    """Test get source reports ebook only release semantics."""
     sourced = get_source("chomikuj")
     assert sourced.supported_content_types == ["ebook"]
     assert sourced.search_results_are_releases() is False
 
 
 def test_audiobook_no_client_or_login(config_values):
+    """Test audiobook no client or login."""
     config_values["CHOMIKUJ_ENABLED"] = True
     client_cls, login_spy = _spies()
     session_spy = MagicMock(name="get_session")

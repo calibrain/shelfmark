@@ -179,6 +179,7 @@ def _text(value: object) -> str:
 
 
 def _missing_credentials_message(missing: list[str]) -> str:
+    """Build the exit-2 message listing the missing environment variables."""
     names = ", ".join(missing)
     return "\n".join(
         [
@@ -356,6 +357,7 @@ def _release_file_id(release: object) -> str | None:
 
 
 def _is_free_release(release: object) -> bool:
+    """Return True when the release is marked free for the current user."""
     extra = getattr(release, "extra", None)
     if not isinstance(extra, dict):
         return False
@@ -405,6 +407,7 @@ def _config_getter(overrides: dict[str, object]) -> Callable[..., object]:
     """Return a ``config.get`` replacement backed by ``overrides``."""
 
     def get(key: str, default: object = None, user_id: int | None = None) -> object:
+        """Return the configured override for the key, or the default."""
         del user_id
         return overrides.get(key, default)
 
@@ -486,6 +489,7 @@ def _account_secrets(account: Mapping[str, object]) -> list[str]:
 
 
 def _step_line(name: str, status: str, detail: str) -> str:
+    """Format one automated STEP line for the live report."""
     suffix = f": {detail}" if detail else ""
     return f"STEP {name}: {status}{suffix}"
 
@@ -513,15 +517,18 @@ def run_live(checked: EnvironmentCheck) -> int:
     paid_line = "paid_proof=SKIP_NOT_PROVEN"
 
     def record(name: str, status: str, detail: str = "") -> None:
+        """Record and print one redacted step result."""
         steps.append((name, status, detail))
         print(_redact(_step_line(name, status, detail), secrets))
 
     def fail(name: str, detail: str) -> None:
+        """Record a failing step and remember its detail."""
         nonlocal failure
         failure = detail
         record(name, "FAIL", detail)
 
     def finish() -> int:
+        """Restore logging, write the evidence file, and return the exit code."""
         logging.disable(previous_log_disable)
         passed = failure is None
         gate = "LIVE_QA=PASS" if passed else f"LIVE_QA=FAIL: {failure}"
@@ -713,6 +720,7 @@ def run_live(checked: EnvironmentCheck) -> int:
             download_called = False
 
             def forbidden_download(*args: object, **kwargs: object) -> object:
+                """Fail the proof when a download is attempted while spending is disabled."""
                 nonlocal download_called
                 del args, kwargs
                 download_called = True
@@ -777,6 +785,7 @@ def run_self_test() -> int:
     passed = 0
 
     def check(name: str, fn: Callable[[], None]) -> None:
+        """Run one named self-test and record the pass or fail."""
         nonlocal passed
         try:
             fn()
@@ -788,6 +797,7 @@ def run_self_test() -> int:
             print(f"SELF-TEST {name}: PASS")
 
     def token_checks() -> None:
+        """Verify token signing against the recorded vectors."""
         _expect(len(CHOMIKUJ_SECRET) == 20, "secret length is not 20")
         for path, query, body, expected in TOKEN_VECTORS:
             actual = sign_token(path, query, body)
@@ -803,6 +813,7 @@ def run_self_test() -> int:
         )
 
     def quota_checks() -> None:
+        """Verify the quota decision cases."""
         unlimited = decide_download(
             file={"is_free_for_user": False},
             account={"HasUnlimitedTransfer": True, "Transfer": 0},
@@ -838,6 +849,7 @@ def run_self_test() -> int:
         _expect("not enough transfer" in short.reason, "denial should say not enough transfer")
 
     def missing_credentials_check() -> None:
+        """Verify that missing credentials exit with code 2."""
         stdout = io.StringIO()
         stderr = io.StringIO()
         with redirect_stdout(stdout), redirect_stderr(stderr):
@@ -848,6 +860,7 @@ def run_self_test() -> int:
         _expect("CHOMIKUJ_PASSWORD" in output, "missing password name was not printed")
 
     def redaction_check() -> None:
+        """Verify that secrets, URLs, and emails are redacted."""
         known = ["owner@example.invalid", "hunter2", "API-KEY-123", "424242", "Owner Name"]
         text = " | ".join(
             [
@@ -862,6 +875,7 @@ def run_self_test() -> int:
         _expect(REDACTED in rendered, "redaction marker missing")
 
     def format_checks() -> None:
+        """Verify the formats override and probe headers."""
         override = _formats_override()
         _expect("pdf" in override, "pdf is missing from the formats override")
         _expect(

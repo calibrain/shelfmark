@@ -37,10 +37,12 @@ def live_script():
 
 
 def _no_live_run(_checked):
+    """Fail when the live path is invoked from an offline test."""
     raise AssertionError("the live path must not run in the offline tests")
 
 
 def test_constants_carry_the_live_proven_contract(live_script):
+    """Test constants carry the live proven contract."""
     from shelfmark.release_sources.chomikuj.filename import IMPORTABLE_EBOOK_FORMATS
 
     assert live_script.DEFAULT_QUERY == "test"
@@ -82,6 +84,7 @@ def test_constants_carry_the_live_proven_contract(live_script):
 
 
 def test_redact_removes_credentials_account_fields_urls_and_emails(live_script):
+    """Test redact removes credentials account fields urls and emails."""
     secrets = [
         "owner@example.invalid",
         "hunter2-configured-password",
@@ -110,6 +113,7 @@ def test_redact_removes_credentials_account_fields_urls_and_emails(live_script):
 
 
 def test_redact_replaces_every_url_even_without_extra_secrets(live_script):
+    """Test redact replaces every url even without extra secrets."""
     text = "probe https://example.test/a?token=abc and http://other.test/b"
 
     redacted = live_script._redact(text)
@@ -121,6 +125,7 @@ def test_redact_replaces_every_url_even_without_extra_secrets(live_script):
 
 
 def test_check_environment_reports_only_missing_names(live_script):
+    """Test check environment reports only missing names."""
     unresolved = live_script.check_environment({})
 
     assert unresolved.ok is False
@@ -136,6 +141,7 @@ def test_check_environment_reports_only_missing_names(live_script):
 
 
 def test_check_environment_defaults_and_optional_numeric_ids(live_script):
+    """Test check environment defaults and optional numeric ids."""
     checked = live_script.check_environment(
         {"CHOMIKUJ_USERNAME": "alice", "CHOMIKUJ_PASSWORD": "secret"}
     )
@@ -161,6 +167,7 @@ def test_check_environment_defaults_and_optional_numeric_ids(live_script):
 @pytest.mark.parametrize("variable", ["CHOMIKUJ_TEST_FILE_ID", "CHOMIKUJ_TEST_PAID_FILE_ID"])
 @pytest.mark.parametrize("value", ["not-a-file-id", "0", "-1"])
 def test_non_numeric_file_ids_are_rejected_before_any_network_call(live_script, variable, value):
+    """Test non numeric file ids are rejected before any network call."""
     checked = live_script.check_environment(
         {
             "CHOMIKUJ_USERNAME": "alice",
@@ -176,6 +183,7 @@ def test_non_numeric_file_ids_are_rejected_before_any_network_call(live_script, 
 
 
 def test_missing_credentials_exit_2_without_running_the_live_path(live_script, monkeypatch):
+    """Test missing credentials exit 2 without running the live path."""
     monkeypatch.setattr(live_script, "run_live", _no_live_run)
     stdout = StringIO()
     stderr = StringIO()
@@ -191,6 +199,7 @@ def test_missing_credentials_exit_2_without_running_the_live_path(live_script, m
 
 
 def test_self_test_passes_offline(live_script, monkeypatch):
+    """Test self test passes offline."""
     monkeypatch.setattr(live_script, "run_live", _no_live_run)
     stdout = StringIO()
 
@@ -207,6 +216,7 @@ def test_self_test_passes_offline(live_script, monkeypatch):
 
 
 def test_main_self_test_flag_returns_zero_offline(live_script, monkeypatch):
+    """Test main self test flag returns zero offline."""
     monkeypatch.setattr(live_script, "run_live", _no_live_run)
     stdout = StringIO()
 

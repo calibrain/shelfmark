@@ -27,6 +27,7 @@ def _decide(
     *,
     allow_transfer_spend: bool = True,
 ) -> QuotaDecision:
+    """Call decide_download with the given inputs."""
     return decide_download(
         file=file,
         account=account,
@@ -49,6 +50,7 @@ def _verdict(
 
 
 def test_quota_decision_is_a_frozen_dataclass():
+    """Test quota decision is a frozen dataclass."""
     decision = QuotaDecision(allowed=True, kind=None, reason="ok")
     assert decision.allowed is True
     assert decision.kind is None
@@ -58,6 +60,7 @@ def test_quota_decision_is_a_frozen_dataclass():
 
 
 def test_unlimited_transfer_wins_even_when_spend_disabled():
+    """Test unlimited transfer wins even when spend disabled."""
     _verdict(
         _decide(
             {"size_bytes": 500 * KB, "is_free_for_user": False},
@@ -71,6 +74,7 @@ def test_unlimited_transfer_wins_even_when_spend_disabled():
 
 @pytest.mark.parametrize("marker", ["is_free_for_user", "freeleech"])
 def test_free_file_wins_when_spend_disabled(marker: str):
+    """Test free file wins when spend disabled."""
     _verdict(
         _decide(
             {"size_bytes": 500 * KB, marker: True},
@@ -83,6 +87,7 @@ def test_free_file_wins_when_spend_disabled(marker: str):
 
 
 def test_spend_disabled_paid_file_denies_with_balance():
+    """Test spend disabled paid file denies with balance."""
     decision = _decide(
         {"size_bytes": 10 * KB, "is_free_for_user": False, "freeleech": False},
         {
@@ -107,6 +112,7 @@ def test_spend_disabled_paid_file_denies_with_balance():
 
 
 def test_spend_check_runs_before_the_balance_check():
+    """Test spend check runs before the balance check."""
     decision = _decide(
         {"size_bytes": 200 * KB},
         {"HasUnlimitedTransfer": False, "Transfer": 100},
@@ -117,6 +123,7 @@ def test_spend_check_runs_before_the_balance_check():
 
 
 def test_enough_transfer_allows():
+    """Test enough transfer allows."""
     _verdict(
         _decide(
             {"size_bytes": 100 * KB},
@@ -128,6 +135,7 @@ def test_enough_transfer_allows():
 
 
 def test_not_enough_transfer_denies():
+    """Test not enough transfer denies."""
     decision = _decide(
         {"size_bytes": 200 * KB},
         {
@@ -145,6 +153,7 @@ def test_not_enough_transfer_denies():
 
 def test_ceil_boundary_102401_bytes_denies():
     # 102 401 / 1024 = 100.0009... kB, so ceil() needs 101 kB from a 100 kB balance.
+    """Test ceil boundary 102401 bytes denies."""
     decision = _decide(
         {"size_bytes": 102_401},
         {"HasUnlimitedTransfer": False, "Transfer": 100},
@@ -153,6 +162,7 @@ def test_ceil_boundary_102401_bytes_denies():
 
 
 def test_exact_kilobyte_boundary_allows():
+    """Test exact kilobyte boundary allows."""
     _verdict(
         _decide(
             {"size_bytes": 102_400},
@@ -176,6 +186,7 @@ def test_exact_kilobyte_boundary_allows():
     ids=["missing", "null", "empty", "whitespace", "non-numeric", "bool"],
 )
 def test_unknown_size_allows_with_advisory(file: dict[str, object]):
+    """Test unknown size allows with advisory."""
     _verdict(
         _decide(file, {"HasUnlimitedTransfer": False, "Transfer": 1}),
         True,
@@ -197,6 +208,7 @@ def test_unknown_size_allows_with_advisory(file: dict[str, object]):
     ids=["none", "empty", "missing", "null", "empty-string", "non-numeric", "bool"],
 )
 def test_unknown_balance_allows_with_advisory(account: dict[str, object] | None):
+    """Test unknown balance allows with advisory."""
     _verdict(
         _decide({"size_bytes": 100 * KB}, account),
         True,
@@ -205,6 +217,7 @@ def test_unknown_balance_allows_with_advisory(account: dict[str, object] | None)
 
 
 def test_numeric_string_transfer_is_coerced():
+    """Test numeric string transfer is coerced."""
     _verdict(
         _decide(
             {"size_bytes": 1024 * KB},
@@ -224,6 +237,7 @@ def test_numeric_string_transfer_is_coerced():
 
 
 def test_numeric_float_values_are_coerced():
+    """Test numeric float values are coerced."""
     _verdict(
         _decide(
             {"size_bytes": 1024 * KB},
@@ -236,6 +250,7 @@ def test_numeric_float_values_are_coerced():
 
 def test_literal_true_is_required_for_free_and_unlimited():
     # Non-literal truthy values must not bypass either allow rule.
+    """Test literal true is required for free and unlimited."""
     _verdict(
         _decide(
             {"size_bytes": 10 * KB, "is_free_for_user": 1, "freeleech": "true"},

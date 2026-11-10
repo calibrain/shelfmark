@@ -28,6 +28,7 @@ OTHER_PASSWORD = "an0ther-p@ssword"
 
 
 def _fingerprint(username: str, password: str, base_url: str) -> str:
+    """Return the cache fingerprint for the test credentials."""
     return hashlib.sha256(f"{username}\0{password}\0{base_url}".encode()).hexdigest()
 
 
@@ -41,6 +42,7 @@ class FakeClient:
         failure: Exception | None = None,
         fail_first: bool = False,
     ) -> None:
+        """Initialize the fake client with its blocking and failure options."""
         self.calls: list[tuple[str, str]] = []
         self._calls_lock = threading.Lock()
         self.login_started = threading.Event()
@@ -51,6 +53,7 @@ class FakeClient:
         self.fail_first = fail_first
 
     def login(self, username: str, password: str) -> dict[str, object]:
+        """Record the credentials and return a synthetic session payload."""
         with self._calls_lock:
             self.calls.append((username, password))
             attempt = len(self.calls)
@@ -69,27 +72,32 @@ class FakeClient:
 
 @pytest.fixture(autouse=True)
 def _empty_cache():
+    """Clear the session cache before and after the test."""
     clear_session()
     yield
     clear_session()
 
 
 def _get(client, *, username=USERNAME, password=PASSWORD, base_url=BASE_URL):
+    """Call get_session with the test credentials."""
     return get_session(client, username=username, password=password, base_url=base_url)
 
 
 def _start(target) -> threading.Thread:
+    """Start a daemon thread for the target."""
     thread = threading.Thread(target=target, daemon=True)
     thread.start()
     return thread
 
 
 def _join(thread: threading.Thread) -> None:
+    """Join the thread and assert that it finished."""
     thread.join(5)
     assert not thread.is_alive(), "worker thread did not finish"
 
 
 def test_sequential_calls_reuse_one_login():
+    """Test sequential calls reuse one login."""
     client = FakeClient()
 
     first = _get(client)
@@ -107,12 +115,14 @@ def test_sequential_calls_reuse_one_login():
 
 
 def test_concurrent_calls_share_one_in_flight_login():
+    """Test concurrent calls share one in flight login."""
     client = FakeClient(blocked=True)
     entered = threading.Barrier(3)
     results: list[ChomikujSession] = []
     errors: list[BaseException] = []
 
     def worker() -> None:
+        """Collect a session result or the raised error."""
         entered.wait()
         try:
             results.append(_get(client))
@@ -140,6 +150,7 @@ def test_concurrent_calls_share_one_in_flight_login():
 
 
 def test_fingerprint_change_password_forces_new_login():
+    """Test fingerprint change password forces new login."""
     client = FakeClient()
 
     first = _get(client)
@@ -152,6 +163,7 @@ def test_fingerprint_change_password_forces_new_login():
 
 
 def test_fingerprint_change_base_url_forces_new_login():
+    """Test fingerprint change base url forces new login."""
     client = FakeClient()
 
     first = _get(client)
@@ -163,6 +175,7 @@ def test_fingerprint_change_base_url_forces_new_login():
 
 
 def test_rejected_not_cached_and_next_call_retries():
+    """Test rejected not cached and next call retries."""
     failure = ChomikujAuthError("rejected")
     client = FakeClient(failure=failure, fail_first=True)
 
@@ -181,12 +194,14 @@ def test_rejected_not_cached_and_next_call_retries():
 
 
 def test_failed_login_with_concurrent_credential_change_keeps_newer_entry():
+    """Test failed login with concurrent credential change keeps newer entry."""
     failure = ChomikujAuthError("rejected")
     old_client = FakeClient(blocked=True, failure=failure)
     new_client = FakeClient()
     errors: list[BaseException] = []
 
     def old_worker() -> None:
+        """Collect the error raised by the old client."""
         try:
             _get(old_client)
         except BaseException as exc:
@@ -205,12 +220,14 @@ def test_failed_login_with_concurrent_credential_change_keeps_newer_entry():
 
 
 def test_failed_login_does_not_evict_replacement_entry_for_same_credentials():
+    """Test failed login does not evict replacement entry for same credentials."""
     failure = ChomikujAuthError("rejected")
     old_client = FakeClient(blocked=True, failure=failure)
     new_client = FakeClient()
     errors: list[BaseException] = []
 
     def old_worker() -> None:
+        """Collect the error raised by the old client."""
         try:
             _get(old_client)
         except BaseException as exc:
@@ -232,12 +249,14 @@ def test_failed_login_does_not_evict_replacement_entry_for_same_credentials():
 
 
 def test_concurrent_waiters_reraises_the_same_login_failure():
+    """Test concurrent waiters reraises the same login failure."""
     failure = ChomikujAuthError("rejected")
     client = FakeClient(blocked=True, failure=failure)
     entered = threading.Barrier(3)
     errors: list[BaseException] = []
 
     def worker() -> None:
+        """Collect a session result or the raised error."""
         entered.wait()
         try:
             _get(client)
@@ -271,6 +290,7 @@ def test_concurrent_waiters_reraises_the_same_login_failure():
     ],
 )
 def test_empty_credentials_raise_without_calling_login(username, password):
+    """Test empty credentials raise without calling login."""
     client = FakeClient()
 
     with pytest.raises(ChomikujAuthError) as exc_info:
@@ -281,6 +301,7 @@ def test_empty_credentials_raise_without_calling_login(username, password):
 
 
 def test_clear_session_without_arguments_clears_everything():
+    """Test clear session without arguments clears everything."""
     client = FakeClient()
 
     first = _get(client)
@@ -294,6 +315,7 @@ def test_clear_session_without_arguments_clears_everything():
 
 
 def test_clear_session_clears_only_the_matching_entry():
+    """Test clear session clears only the matching entry."""
     client = FakeClient()
 
     first = _get(client)
@@ -308,6 +330,7 @@ def test_clear_session_clears_only_the_matching_entry():
 
 
 def test_cache_lock_is_not_held_during_login():
+    """Test cache lock is not held during login."""
     client = FakeClient(blocked=True)
 
     worker = _start(lambda: _get(client))
@@ -316,6 +339,7 @@ def test_cache_lock_is_not_held_during_login():
     cleared = threading.Event()
 
     def clear() -> None:
+        """Clear the session cache and signal completion."""
         clear_session()
         cleared.set()
 
@@ -329,6 +353,7 @@ def test_cache_lock_is_not_held_during_login():
 
 
 def test_session_repr_does_not_expose_the_password():
+    """Test session repr does not expose the password."""
     client = FakeClient()
 
     session = _get(client)
@@ -338,6 +363,7 @@ def test_session_repr_does_not_expose_the_password():
 
 
 def test_session_writes_no_logs(caplog):
+    """Test session writes no logs."""
     caplog.set_level(logging.DEBUG)
     client = FakeClient()
 

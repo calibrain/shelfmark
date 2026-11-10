@@ -159,6 +159,7 @@ def _is_noise_tag(content: str) -> bool:
 
 
 def _strip_leading_noise(name: str) -> str:
+    """Remove leading bracket tags that only name a format, language, or noise."""
     current = name.strip()
     while match := _LEADING_BRACKET_RE.match(current):
         if not _is_noise_tag(match.group(1)):
@@ -168,6 +169,7 @@ def _strip_leading_noise(name: str) -> str:
 
 
 def _strip_trailing_noise(name: str) -> str:
+    """Remove trailing bracket tags that only name a format, language, or noise."""
     current = name.strip()
     while match := _TRAILING_BRACKET_RE.search(current):
         if not _is_noise_tag(match.group(1)):
@@ -177,6 +179,7 @@ def _strip_trailing_noise(name: str) -> str:
 
 
 def _strip_repeated_known_extensions(name: str) -> str:
+    """Remove trailing known extensions until a single one remains."""
     current = name.strip()
     while match := _EXTENSION_RE.search(current):
         if match.group(1).lower() not in _KNOWN_EXTENSIONS:
@@ -192,6 +195,7 @@ def _looks_like_author(value: str) -> bool:
 
 
 def _split_author_title(name: str) -> tuple[str, str] | None:
+    """Split an author-title pair into its title and author, or return None."""
     match = _AUTHOR_TITLE_SEPARATOR_RE.search(name)
     if match is None:
         return None
@@ -203,6 +207,7 @@ def _split_author_title(name: str) -> tuple[str, str] | None:
 
 
 def _split_title_author(name: str) -> tuple[str, str] | None:
+    """Split a title with a trailing parenthetical author, or return None."""
     match = _TRAILING_PARENTHETICAL_RE.match(name)
     if match is None:
         return None

@@ -15,6 +15,7 @@ from shelfmark.release_sources import (
 
 
 def test_chomikuj_source_handler_and_settings_resolve():
+    """Test chomikuj source handler and settings resolve."""
     _ensure_builtin_sources_registered()
 
     source = get_source("chomikuj")
@@ -30,6 +31,7 @@ def test_chomikuj_source_handler_and_settings_resolve():
 
 
 def test_list_available_sources_exposes_chomikuj():
+    """Test list available sources exposes chomikuj."""
     rows = [row for row in list_available_sources() if row["name"] == "chomikuj"]
     assert len(rows) == 1
 
@@ -40,12 +42,16 @@ def test_list_available_sources_exposes_chomikuj():
 
 
 def test_builtin_source_modules_lists_chomikuj_once():
+    """Test builtin source modules lists chomikuj once."""
     assert _BUILTIN_SOURCE_MODULES.count("shelfmark.release_sources.chomikuj") == 1
     assert list(_BUILTIN_SOURCE_MODULES) == sorted(_BUILTIN_SOURCE_MODULES)
 
 
 def test_no_network_on_availability(monkeypatch):
+    """Test no network on availability."""
+
     def _boom(*args, **kwargs):
+        """Fail when any HTTP request is attempted."""
         raise AssertionError("network access during registration/availability")
 
     monkeypatch.setattr(requests.Session, "request", _boom)
