@@ -2221,7 +2221,7 @@ Maximum number of files to request per search (1-200). Results are then filtered
 
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
-| `CHOMIKUJ_ENABLED` | Search Chomikuj.pl's Documents collection and download matching ebooks with your own Chomikuj account. Chomikuj results are mostly PDF, so PDF must be enabled under Supported Book Formats or results will be filtered out. | boolean | `false` |
+| `CHOMIKUJ_ENABLED` | Search Chomikuj.pl's Documents collection and download matching ebooks with your own Chomikuj account. Chomikuj results often include PDF; enabling PDF under Supported Book Formats can show more results, while unsupported formats may be filtered out. | boolean | `false` |
 | `CHOMIKUJ_USERNAME` | Your Chomikuj.pl login. | string | _none_ |
 | `CHOMIKUJ_PASSWORD` | Your Chomikuj.pl password. | string (secret) | _none_ |
 | `CHOMIKUJ_ALLOW_TRANSFER_SPEND` | Allow downloading or previewing paid Chomikuj.pl files. Previewing a paid file can spend transfer from your Chomikuj.pl account. | boolean | `true` |
@@ -2235,7 +2235,7 @@ Maximum number of files to request per search (1-200). Results are then filtered
 
 **Enable Chomikuj.pl**
 
-Search Chomikuj.pl's Documents collection and download matching ebooks with your own Chomikuj account. Chomikuj results are mostly PDF, so PDF must be enabled under Supported Book Formats or results will be filtered out.
+Search Chomikuj.pl's Documents collection and download matching ebooks with your own Chomikuj account. Chomikuj results often include PDF; enabling PDF under Supported Book Formats can show more results, while unsupported formats may be filtered out.
 
 - **Type:** boolean
 - **Default:** `false`

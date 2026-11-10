@@ -87,8 +87,9 @@ def chomikuj_config_settings() -> list[SettingsField]:
             label="Enable Chomikuj.pl",
             description=(
                 "Search Chomikuj.pl's Documents collection and download matching ebooks "
-                "with your own Chomikuj account. Chomikuj results are mostly PDF, so PDF "
-                "must be enabled under Supported Book Formats or results will be filtered out."
+                "with your own Chomikuj account. Chomikuj results often include PDF; "
+                "enabling PDF under Supported Book Formats can show more results, while "
+                "unsupported formats may be filtered out."
             ),
             default=False,
         ),
