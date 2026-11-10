@@ -142,12 +142,11 @@ def test_cloudflare_on_a_2xx_response_is_still_unreachable():
     )
 
 
-def test_json_body_with_challenge_text_is_not_a_challenge():
+@pytest.mark.parametrize("field", ["FileName", "Name"])
+def test_json_body_with_challenge_text_is_not_a_challenge(field):
     """Test json body with challenge text is not a challenge."""
-    _check(
-        classify_http(200, '{"Results":[{"FileName":"Just a Moment.pdf"}]}'),
-        OK,
-    )
+    body = f'{{"Results":[{{"{field}":"Just a Moment.pdf"}}]}}'
+    _check(classify_http(200, body), OK)
 
 
 def test_html_body_with_challenge_text_is_still_a_challenge():
