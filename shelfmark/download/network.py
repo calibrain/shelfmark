@@ -3,6 +3,7 @@
 import fnmatch
 import http.cookiejar
 import ipaddress
+import os
 import socket
 import threading
 import time
@@ -682,15 +683,105 @@ _LOCAL_NO_PROXY = (
 )
 
 
+def _hostname_of(value: object) -> str:
+    """The host in a URL or ``host:port`` setting value, lower-cased, or empty."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        parsed = urllib.parse.urlsplit(text if "://" in text else f"//{text}")
+        return (parsed.hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def _configured_local_hostnames() -> list[str]:
+    """Single-label local hosts named in a service setting (``*_URL``, ``*_URLS``, ``*_HOST``).
+
+    These are Docker service names such as ``qbittorrent``. The local rule covers them in
+    ``get_proxies()``, but ``NO_PROXY`` has no pattern for "any single-label name", so a
+    library reading the environment only skips the proxy for names listed by hand.
+    """
+    from shelfmark.core.settings_registry import get_settings_field_map
+
+    names: list[str] = []
+    for key in get_settings_field_map():
+        if not key.endswith(("_URL", "_URLS", "_HOST")):
+            continue
+        value = app_config.get(key, "")
+        for item in value if isinstance(value, list) else [value]:
+            host = _hostname_of(item)
+            if host and "." not in host and _is_local_address(host):
+                names.append(host)
+    return names
+
+
 def no_proxy_for_environment() -> str:
     """A ``NO_PROXY`` value carrying the local-address rule and the No Proxy setting.
 
     requests matches ``NO_PROXY`` entries as IPv4 networks or as name suffixes, so the
-    private ranges and internal TLDs come first, then each No Proxy pattern, with a
-    leading ``*.`` written as ``.`` because that is the form requests understands.
+    private ranges and internal TLDs come first, then the configured services' Docker
+    names, then each No Proxy pattern, with a leading ``*.`` written as ``.`` because
+    that is the form requests understands.
     """
     patterns = [f".{p[2:]}" if p.startswith("*.") else p for p in _get_no_proxy_patterns()]
-    return ",".join(dict.fromkeys([*_LOCAL_NO_PROXY, *patterns]))
+    return ",".join(dict.fromkeys([*_LOCAL_NO_PROXY, *_configured_local_hostnames(), *patterns]))
+
+
+_PROXY_VARIABLES = (
+    "HTTP_PROXY",
+    "http_proxy",
+    "HTTPS_PROXY",
+    "https_proxy",
+    "NO_PROXY",
+    "no_proxy",
+)
+_proxy_env_set_by_us: dict[str, str] = {}
+_proxy_env_lock = threading.Lock()
+
+
+def proxy_environment() -> dict[str, str]:
+    """The proxy variables Settings → Network calls for, upper- and lower-case.
+
+    Empty when no proxy is configured. ``NO_PROXY`` comes with the proxies, from
+    ``no_proxy_for_environment()``.
+    """
+    proxies = get_proxies("")
+    env: dict[str, str] = {}
+    for scheme in ("http", "https"):
+        value = str(proxies.get(scheme) or "").strip()
+        if value:
+            env[f"{scheme.upper()}_PROXY"] = value
+            env[f"{scheme}_proxy"] = value
+    if env:
+        no_proxy = no_proxy_for_environment()
+        env["NO_PROXY"] = no_proxy
+        env["no_proxy"] = no_proxy
+    return env
+
+
+def apply_proxy_environment() -> None:
+    """Make the process's proxy variables match Settings → Network.
+
+    Some libraries (Apprise, qbittorrent-api) read ``HTTP_PROXY``/``HTTPS_PROXY``/
+    ``NO_PROXY`` instead of calling ``get_proxies()``. Called at startup and after every
+    settings save. A variable Shelfmark set is replaced or removed to follow the settings;
+    one that was already in the environment when Shelfmark found it, such as a proxy given
+    in the container's own environment, is left alone.
+    """
+    desired = proxy_environment()
+    with _proxy_env_lock:
+        for name in _PROXY_VARIABLES:
+            current = os.environ.get(name)
+            if current is not None and current != _proxy_env_set_by_us.get(name):
+                continue
+            value = desired.get(name)
+            if value:
+                os.environ[name] = value
+                _proxy_env_set_by_us[name] = value
+            else:
+                os.environ.pop(name, None)
+                _proxy_env_set_by_us.pop(name, None)
 
 
 def _is_local_address(host_str: str) -> bool:
@@ -1765,6 +1856,7 @@ def init(*, force: bool = False) -> None:
         init_dns(force=force)
         init_aa(force=force)
         _apply_ssl_warning_suppression()
+        apply_proxy_environment()
         # Only set flag AFTER work completes successfully.
         _initialized = True
 

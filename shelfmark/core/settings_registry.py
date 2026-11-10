@@ -1368,6 +1368,15 @@ def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
         except ImportError:
             config_obj = None  # Config module not yet available during initial setup
 
+        # Keep the proxy variables in step (any tab: a service URL can change NO_PROXY)
+        if config_obj is not None:
+            try:
+                from shelfmark.download.network import apply_proxy_environment
+
+                apply_proxy_environment()
+            except _SETTINGS_LIVE_APPLY_ERRORS as e:
+                logger.warning("Failed to apply proxy settings to the environment: %s", e)
+
         # Apply DNS settings changes live (network tab)
         dns_keys = {"CUSTOM_DNS", "CUSTOM_DNS_MANUAL", "USE_DOH"}
         if (

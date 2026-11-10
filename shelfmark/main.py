@@ -264,6 +264,15 @@ if user_db is not None and download_history_service is not None:
     except _IMPORT_OPERATIONAL_ERRORS as exc:
         logger.warning("Could not reconcile interrupted downloads at startup: %s", exc)
 
+# Proxy settings into the environment for the libraries that read them from there, before
+# anything starts making requests.
+try:
+    from shelfmark.download.network import apply_proxy_environment
+
+    apply_proxy_environment()
+except _IMPORT_OPERATIONAL_ERRORS as exc:
+    logger.warning("Could not apply the proxy settings to the environment: %s", exc)
+
 # Start download coordinator
 backend.start()
 
