@@ -17,10 +17,23 @@ import re
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
-# Formats Shelfmark can postprocess. The validated importable-format list minus
-# ``kepub``, which Shelfmark's postprocess step cannot track
-# (shelfmark/download/postprocess/scan.py).
-IMPORTABLE_EBOOK_FORMATS = ("epub", "mobi", "azw3", "azw", "pdf", "fb2", "djvu")
+# Formats Shelfmark tracks and can postprocess: the ebook formats plus the
+# document formats tracked by ``shelfmark/download/postprocess/scan.py``.
+# ``kepub`` is excluded because that postprocess step cannot track it, and
+# archives are kept in a separate list below.
+IMPORTABLE_EBOOK_FORMATS = (
+    "epub",
+    "mobi",
+    "azw3",
+    "azw",
+    "pdf",
+    "fb2",
+    "djvu",
+    "txt",
+    "rtf",
+    "doc",
+    "docx",
+)
 
 # Archives are never offered or imported by the Chomikuj source, even though
 # Shelfmark's default ebook formats include cbz and cbr for other sources.

@@ -265,6 +265,16 @@ def test_extension_single_non_archive_format_only(allowed_formats, expected):
     assert client.calls[0]["extension"] == expected
 
 
+@pytest.mark.parametrize("format_name", ["txt", "rtf", "doc", "docx"])
+def test_extension_sent_for_each_single_document_format(format_name):
+    """Test each single document format is sent as the Extension parameter."""
+    client = FakeClient(stopped([row(1)]))
+
+    search_files(client, API_KEY, "Test", allowed_formats={format_name}, limit=20)
+
+    assert client.calls[0]["extension"] == format_name
+
+
 # --- paging ---------------------------------------------------------------
 
 
@@ -659,18 +669,24 @@ def test_select_rows_archive_never_resurrected_even_when_in_allowed_formats(file
 @pytest.mark.parametrize(
     ("file_name", "file_type"),
     [
-        ("Synthetic Author - Book.txt", None),
-        ("Synthetic Author - Book.doc", None),
-        ("Synthetic Author - Book.docx", None),
+        ("Synthetic Author - Book", "kepub"),
+        ("Synthetic Author - Book", "cbz"),
         ("Synthetic Author - Book", None),
-        ("Synthetic Author - Book.epub", "txt"),
     ],
 )
 def test_select_rows_drops_non_importable_or_missing_formats(file_name, file_type):
     """Test select rows drops non importable or missing formats."""
     row = selection_row("10", file_name=file_name, file_type=file_type)
 
-    assert select_rows([row], allowed_formats={"txt", "doc", "epub"}) == []
+    assert select_rows([row], allowed_formats={"kepub", "cbz", "epub"}) == []
+
+
+@pytest.mark.parametrize("format_name", ["txt", "rtf", "doc", "docx"])
+def test_select_rows_keeps_each_allowed_document_format(format_name):
+    """Test select rows keeps each allowed Shelfmark document format."""
+    row = selection_row("10", file_name="Synthetic Author - Book", file_type=format_name)
+
+    assert select_rows([row], allowed_formats={format_name}) == [row]
 
 
 @pytest.mark.parametrize(

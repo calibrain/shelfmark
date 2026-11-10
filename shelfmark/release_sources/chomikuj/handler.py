@@ -51,8 +51,6 @@ if TYPE_CHECKING:
 
 logger = setup_logger(__name__)
 
-# Same contract as the other direct handlers: anything smaller is an error page.
-_MIN_VALID_FILE_SIZE = 10 * 1024
 _CHUNK_SIZE = 256 * 1024
 _DOWNLOAD_TIMEOUT = (10, 60)
 _STREAM_HEADERS = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "*/*"}
@@ -318,7 +316,7 @@ class ChomikujHandler(DownloadHandler):
                 status_callback("cancelled", "Cancelled")
                 return None
 
-            if book_path.stat().st_size < _MIN_VALID_FILE_SIZE:
+            if book_path.stat().st_size <= 0:
                 book_path.unlink(missing_ok=True)
                 status_callback("error", _INVALID_FILE_MESSAGE)
                 return None

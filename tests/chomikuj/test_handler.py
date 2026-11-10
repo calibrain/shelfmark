@@ -482,13 +482,36 @@ def test_html_rejected_for_xhtml_before_writing(tmp_path):
     run.status.assert_called_with("error", "Chomikuj returned an HTML page instead of a book")
 
 
-def test_tiny_rejected_small_file_and_unlinked(tmp_path):
-    """Test tiny rejected small file and unlinked."""
-    run = _run(tmp_path, body=b"tiny")
+def test_empty_body_rejected_as_invalid_file(tmp_path):
+    """Test an empty body is rejected as an invalid file."""
+    run = _run(tmp_path, body=b"")
 
     assert run.result is None
     assert not list(tmp_path.iterdir())
     run.status.assert_called_with("error", "Chomikuj returned an invalid file")
+
+
+def test_small_valid_document_is_accepted(tmp_path):
+    """Test a valid document well under ten kilobytes is accepted."""
+    body = (
+        b'<?xml version="1.0" encoding="utf-8"?>'
+        b"<FictionBook><description><title-info>"
+        b"<book-title>Tiny</book-title>"
+        b"</title-info></description></FictionBook>"
+    )
+    assert len(body) < 10 * 1024
+    run = _run(
+        tmp_path,
+        body=body,
+        content_type="application/xml",
+        payload={"FileUrl": FILE_URL, "Name": "tiny.fb2"},
+        task=_task(fmt="fb2"),
+        organization="none",
+    )
+
+    expected = tmp_path / "tiny.fb2"
+    assert run.result == str(expected)
+    assert expected.read_bytes() == body
 
 
 def test_progress_uses_content_length_when_present(tmp_path):

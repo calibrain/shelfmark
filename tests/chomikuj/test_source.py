@@ -276,6 +276,13 @@ def test_get_allowed_formats_empty_when_nothing_importable_is_supported(config_v
     assert chomikuj_source.get_allowed_formats() == set()
 
 
+@pytest.mark.parametrize("format_name", ["txt", "rtf", "doc", "docx"])
+def test_get_allowed_formats_keeps_each_shelfmark_document_format(config_values, format_name):
+    """Test get allowed formats can be exactly one Shelfmark document format."""
+    config_values["_supported"][:] = [format_name]
+    assert chomikuj_source.get_allowed_formats() == {format_name}
+
+
 # --- Todo 12: query candidates --------------------------------------------
 
 
@@ -727,13 +734,13 @@ def test_format_size_is_human_readable():
         {"FileId": "abc", "FileName": "Krysar.epub", "FileType": "epub", "Size": 1},
         {"FileId": 0, "FileName": "Krysar.epub", "FileType": "epub", "Size": 1},
         {"FileId": "7", "FileName": "   ", "FileType": "epub", "Size": 1},
-        {"FileId": "7", "FileName": "Krysar.docx", "FileType": "docx", "Size": 1},
+        {"FileId": "7", "FileName": "Krysar.kepub", "FileType": "kepub", "Size": 1},
         "not-a-row",
     ],
 )
 def test_mapping_returns_none_for_rows_select_rows_drops(config_values, row):
     """Test mapping returns none for rows select rows drops."""
-    allowed = {"epub", "zip", "cbz", "docx"}
+    allowed = {"epub", "zip", "cbz", "kepub"}
     assert chomikuj_source.to_release(row, allowed_formats=allowed) is None
 
 
@@ -793,6 +800,20 @@ def test_pdf_only_search_keeps_the_pdf_when_enabled(config_values):
     with _patched(rows):
         releases = chomikuj_source.ChomikujSource().search(_book(), _plan())
     assert [release.format for release in releases] == ["pdf"]
+
+
+def test_txt_only_search_maps_release_and_passes_allowed_formats(config_values):
+    """Test txt only search keeps the txt and passes the allowed set."""
+    config_values["_supported"][:] = ["txt"]
+    rows = {
+        "Krysař Viktor Dyk": [_row(name="Dyk Viktor - Krysar.txt", file_type="txt")],
+        "Krysař": [],
+    }
+    with _patched(rows) as calls:
+        releases = chomikuj_source.ChomikujSource().search(_book(), _plan())
+    assert calls[0]["allowed_formats"] == {"txt"}
+    assert [release.source_id for release in releases] == ["chomikuj:7"]
+    assert [release.format for release in releases] == ["txt"]
 
 
 # --- Todo 14: column configuration -----------------------------------------

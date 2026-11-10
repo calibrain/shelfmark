@@ -18,7 +18,19 @@ from shelfmark.release_sources.chomikuj.filename import (
     parse_file_name,
 )
 
-EXPECTED_IMPORTABLE = ("epub", "mobi", "azw3", "azw", "pdf", "fb2", "djvu")
+EXPECTED_IMPORTABLE = (
+    "epub",
+    "mobi",
+    "azw3",
+    "azw",
+    "pdf",
+    "fb2",
+    "djvu",
+    "txt",
+    "rtf",
+    "doc",
+    "docx",
+)
 EXPECTED_ARCHIVES = (
     "zip",
     "rar",
@@ -172,6 +184,30 @@ PARSER_CASES = [
         ParsedFile(title="Title", author="Author", format="mobi"),
         id="dot-prefixed-file-type-wins",
     ),
+    pytest.param(
+        "Author - Title.txt",
+        None,
+        ParsedFile(title="Title", author="Author", format="txt"),
+        id="author-dash-title-txt",
+    ),
+    pytest.param(
+        "Title (Author).rtf",
+        None,
+        ParsedFile(title="Title", author="Author", format="rtf"),
+        id="title-author-parenthetical-rtf",
+    ),
+    pytest.param(
+        "Author - Title.doc",
+        None,
+        ParsedFile(title="Title", author="Author", format="doc"),
+        id="author-dash-title-doc",
+    ),
+    pytest.param(
+        "Author - Title.docx",
+        None,
+        ParsedFile(title="Title", author="Author", format="docx"),
+        id="author-dash-title-docx",
+    ),
 ]
 
 
@@ -192,9 +228,9 @@ def test_importable_and_archive_sets_are_disjoint():
     assert "kepub" not in ARCHIVE_EXTENSIONS
 
 
-def test_txt_doc_docx_are_rejected_by_omission():
-    """Test txt doc docx are rejected by omission."""
-    assert {"txt", "doc", "docx"}.isdisjoint(IMPORTABLE_EBOOK_FORMATS)
+def test_document_formats_are_importable():
+    """Test Shelfmark-tracked document formats are importable."""
+    assert {"txt", "rtf", "doc", "docx"} <= set(IMPORTABLE_EBOOK_FORMATS)
 
 
 @pytest.mark.parametrize(
