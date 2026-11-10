@@ -1,6 +1,7 @@
 """DNS rotation, mirror selection, and network utilities."""
 
 import fnmatch
+import http.cookiejar
 import ipaddress
 import socket
 import time
@@ -34,21 +35,22 @@ def _get_no_proxy_patterns() -> list[str]:
 
 
 def should_bypass_proxy(url: str) -> bool:
-    """Check if a URL should bypass the proxy based on NO_PROXY patterns.
+    """Whether a request to ``url`` goes direct instead of through the configured proxy.
 
-    Supports:
-    - Exact hostname match: localhost, myhost.local
-    - Wildcard prefix: *.local matches foo.local
-    - Wildcard suffix: 10.* matches 10.1.2.3
+    Two reasons, either is enough:
+
+    - The host is local by ``_is_local_address``: loopback or private IPs, single-label
+      names such as Docker service names, and internal TLDs (``.local``, ``.lan`` ...). A
+      proxy chosen for outbound privacy cannot reach these, so they never go through it.
+    - The host matches a No Proxy pattern: an exact name (``myhost.example.com``), a
+      wildcard prefix (``*.example.com``) or a wildcard suffix (``10.*``). This is for
+      hosts that are local but don't look it, such as a LAN service under a public name.
+
+    The decision is made from the name alone; nothing is resolved.
     """
     if not url:
         return False
 
-    patterns = _get_no_proxy_patterns()
-    if not patterns:
-        return False
-
-    # Extract hostname from URL
     try:
         parsed = urllib.parse.urlparse(url)
         hostname = (parsed.hostname or "").lower()
@@ -59,6 +61,10 @@ def should_bypass_proxy(url: str) -> bool:
     if not hostname:
         return False
 
+    if _is_local_address(hostname):
+        return True
+
+    patterns = _get_no_proxy_patterns()
     return any(fnmatch.fnmatch(hostname, pattern) for pattern in patterns)
 
 
@@ -118,6 +124,60 @@ def get_ssl_verify(url: str = "") -> bool:
             pass
 
     return True
+
+
+class NetworkRules:
+    """Mixin that applies the Settings → Network proxy and TLS rules to each request.
+
+    Each request gets ``proxies=get_proxies(url)`` and ``verify=get_ssl_verify(url)`` for
+    its own URL, read when it is sent, so a settings change applies to the next request
+    without a restart and a local host goes direct. A caller that passes ``proxies`` or
+    ``verify`` itself keeps its value. Mixed into ``NetworkSession`` and into any session
+    class a library builds for itself, such as the OIDC client's.
+    """
+
+    def request(self, method: Any, url: Any, *args: Any, **kwargs: Any) -> Any:
+        """Send a request with the proxy and ``verify`` for its URL unless the caller set them."""
+        target = url.decode() if isinstance(url, bytes) else str(url)
+        if kwargs.get("proxies") is None:
+            kwargs["proxies"] = get_proxies(target)
+        if kwargs.get("verify") is None:
+            kwargs["verify"] = get_ssl_verify(target)
+        return super().request(method, url, *args, **kwargs)  # type: ignore[misc]
+
+
+class NetworkSession(NetworkRules, requests.Session):
+    """The ``requests.Session`` every outbound HTTP call in Shelfmark goes through.
+
+    ``tests/download/test_outbound_http_guard.py`` fails on a plain ``requests`` call or
+    session anywhere else.
+    """
+
+
+class _NoCookies(http.cookiejar.DefaultCookiePolicy):
+    """Refuse every cookie, so the shared session behaves like the one-off calls it replaced."""
+
+    def set_ok(self, cookie: http.cookiejar.Cookie, request: Any) -> bool:
+        """Never store a cookie."""
+        return False
+
+
+_shared_session: NetworkSession | None = None
+
+
+def get_session() -> NetworkSession:
+    """The shared session for one-off requests that keep no state of their own.
+
+    It stores no cookies, so a request made through it carries nothing from an earlier
+    one. A client that keeps headers, auth or cookies across its calls creates its own
+    ``NetworkSession`` instead.
+    """
+    global _shared_session
+    if _shared_session is None:
+        session = NetworkSession()
+        session.cookies.set_policy(_NoCookies())
+        _shared_session = session
+    return _shared_session
 
 
 _ssl_warnings_suppressed = False
@@ -514,7 +574,12 @@ def _decode_port(port: str | bytes | int | None) -> int:
 
 
 def _is_local_address(host_str: str) -> bool:
-    """Check if an address is local/private and should bypass custom DNS.
+    """Whether a host is on the local network, judged from its name or literal IP alone.
+
+    This is the one definition of "local" shared by custom DNS (local names are not sent
+    to the custom resolver), certificate validation (``disabled_local``) and the proxy
+    (``should_bypass_proxy``). It never resolves a name, so a LAN service under a public
+    hostname is not local here; No Proxy covers that case for the proxy.
 
     Returns True for:
     - 'localhost'

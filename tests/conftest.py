@@ -40,6 +40,53 @@ def _reset_config_dir_writable_cache():
 
 
 @pytest.fixture(autouse=True)
+def _fresh_shared_session(monkeypatch):
+    """Each test gets its own shared network session, so a patched method cannot leak."""
+    from shelfmark.download import network
+
+    monkeypatch.setattr(network, "_shared_session", None)
+
+
+@pytest.fixture
+def sent_requests(monkeypatch):
+    """Record what a ``NetworkSession`` hands to ``requests`` after the network rules ran.
+
+    Patches ``requests.Session.request`` itself, below ``NetworkRules``, so a test sees the
+    ``proxies`` and ``verify`` the session chose for each URL. Each call is recorded as a
+    dict of ``method``, ``url`` and the keyword arguments; ``respond`` sets the response
+    (a value, or a callable taking the recorded call), by default an empty 200.
+    """
+    import requests
+
+    class _Recorder:
+        def __init__(self) -> None:
+            self.calls: list[dict] = []
+            self.respond = None
+
+        def last(self) -> dict:
+            """The most recent call."""
+            return self.calls[-1]
+
+    recorder = _Recorder()
+
+    def _request(self, method, url, *args, **kwargs):
+        call = {"method": method, "url": url, **kwargs}
+        recorder.calls.append(call)
+        if callable(recorder.respond):
+            return recorder.respond(call)
+        if recorder.respond is not None:
+            return recorder.respond
+        response = requests.Response()
+        response.status_code = 200
+        response._content = b"{}"
+        response.url = url
+        return response
+
+    monkeypatch.setattr(requests.Session, "request", _request)
+    return recorder
+
+
+@pytest.fixture(autouse=True)
 def _clear_torrent_fetch_cache():
     """Keep the shared torrent fetch cache from leaking between tests."""
     from shelfmark.download.clients.torrent_utils import clear_torrent_fetch_cache

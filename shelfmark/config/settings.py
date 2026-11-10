@@ -846,7 +846,11 @@ def network_settings() -> list[SettingsField]:
         TextField(
             key="NO_PROXY",
             label="No Proxy",
-            description="Comma-separated hosts to bypass proxy (e.g., localhost,127.0.0.1,10.*,*.local)",
+            description=(
+                "Local and private addresses (LAN IPs, Docker service names, .local/.lan hosts) "
+                "always bypass the proxy. List additional hosts here, e.g. a LAN service "
+                "reached by a public hostname: *.example.com"
+            ),
             disabled=tor_overrides_network,
             disabled_reason="Proxy settings are not used when Tor routing is enabled.",
             show_when={"field": "PROXY_MODE", "value": ["http", "socks5"]},
