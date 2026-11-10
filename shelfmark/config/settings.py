@@ -848,8 +848,8 @@ def network_settings() -> list[SettingsField]:
             label="No Proxy",
             description=(
                 "Local and private addresses (LAN IPs, Docker service names, .local/.lan hosts) "
-                "always bypass the proxy. List additional hosts here, e.g. a LAN service "
-                "reached by a public hostname: *.example.com"
+                "always bypass the proxy. List additional hosts here, comma-separated, e.g. "
+                "a LAN service reached by a public hostname: *.example.com,abs.example.org"
             ),
             disabled=tor_overrides_network,
             disabled_reason="Proxy settings are not used when Tor routing is enabled.",

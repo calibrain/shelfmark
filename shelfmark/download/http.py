@@ -347,7 +347,7 @@ def html_get_page(
     allow_bypasser_fallback: bool = True,
     include_response_url: bool = False,
     success_delay: float = 1.0,
-    session: requests.Session | None = None,
+    session: network.NetworkSession | None = None,
 ) -> str | tuple[str, str]:
     """Fetch HTML content from a URL with retry mechanism.
 
@@ -366,7 +366,8 @@ def html_get_page(
         include_response_url: If True, return `(html, final_url)` to expose the
             resolved response URL after redirects.
         success_delay: Optional delay (seconds) after successful fetch.
-        session: Optional requests session to reuse across attempts.
+        session: Optional network session to reuse across attempts. It must be a
+            ``NetworkSession`` so the proxy and TLS settings still apply.
 
     """
 
