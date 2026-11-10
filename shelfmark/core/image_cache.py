@@ -533,6 +533,8 @@ class ImageCacheService:
         if not hostname:
             return None
 
+        # With a proxy set, the proxy resolves the name again when it connects, so this
+        # check only holds as far as the proxy's DNS agrees with Shelfmark's (#1687).
         if not hostname_resolves_publicly(hostname, use_custom_dns=True):
             return None
 
