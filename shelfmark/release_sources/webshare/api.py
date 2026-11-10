@@ -166,13 +166,11 @@ def _post(
     """POST to an API endpoint and return the parsed ``<response>`` root on OK."""
     url = f"{API_BASE}/{endpoint}/"
     try:
-        response = requests.post(
+        response = network.get_session().post(
             url,
             data=data,
             headers=_API_HEADERS,
             timeout=timeout,
-            proxies=network.get_proxies(url),
-            verify=network.get_ssl_verify(url),
         )
         response.raise_for_status()
     except requests.exceptions.RequestException as exc:

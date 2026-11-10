@@ -13,7 +13,7 @@ import requests
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import coerce_int
-from shelfmark.download.network import get_ssl_verify, hostname_resolves_publicly
+from shelfmark.download.network import get_session, hostname_resolves_publicly
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -551,12 +551,11 @@ class ImageCacheService:
             return None
 
         for _ in range(MAX_REDIRECTS + 1):
-            response = requests.get(
+            response = get_session().get(
                 current_url,
                 timeout=(5, 10),
                 headers=FETCH_HEADERS,
                 stream=True,
-                verify=get_ssl_verify(current_url),
                 allow_redirects=False,
             )
 

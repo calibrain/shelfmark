@@ -12,7 +12,7 @@ from defusedxml.common import DefusedXmlException
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import normalize_optional_text
 from shelfmark.core.utils import normalize_http_url
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import NetworkSession
 from shelfmark.release_sources.prowlarr.api import (
     _CONNECT_TIMEOUT_SECONDS,
     resolve_indexer_timeout,
@@ -80,7 +80,7 @@ class JackettClient:
         self.indexer_timeout = resolve_indexer_timeout(
             indexer_timeout, config_key=JACKETT_TIMEOUT_CONFIG_KEY
         )
-        self._session = requests.Session()
+        self._session = NetworkSession()
 
     def _torznab_url(self, indexer_id: str) -> str:
         return f"{self.base_url}/api/v2.0/indexers/{indexer_id}/results/torznab/api"
@@ -94,7 +94,6 @@ class JackettClient:
                 url,
                 params={"t": "caps", "apikey": self.api_key},
                 timeout=(_CONNECT_TIMEOUT_SECONDS, self.timeout),
-                verify=get_ssl_verify(url),
             )
             error = _torznab_error(response.text)
             if error and error[0] in _TORZNAB_AUTH_ERROR_CODES:
@@ -136,7 +135,6 @@ class JackettClient:
                 url,
                 params={"t": "indexers", "configured": "true", "apikey": self.api_key},
                 timeout=self.timeout,
-                verify=get_ssl_verify(url),
             )
             error = _torznab_error(response.text)
             if error:
@@ -206,7 +204,6 @@ class JackettClient:
                 params=params,
                 timeout=(_CONNECT_TIMEOUT_SECONDS, self.indexer_timeout),
                 headers={"Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8"},
-                verify=get_ssl_verify(url),
             )
             if not response.ok:
                 with suppress(Exception):

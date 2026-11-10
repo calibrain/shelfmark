@@ -2,6 +2,7 @@
 
 from unittest.mock import patch
 
+from shelfmark.download.network import get_session as _shared_session
 from shelfmark.release_sources.libgen import scraper
 from tests.libgen import sample_html as html
 
@@ -86,7 +87,7 @@ def test_fetch_page_sends_same_origin_referer():
         return FakeResponse()
 
     with (
-        patch.object(scraper.requests, "get", side_effect=fake_get),
+        patch.object(_shared_session(), "get", side_effect=fake_get),
         patch.object(scraper.network, "get_proxies", return_value=None),
         patch.object(scraper.network, "get_ssl_verify", return_value=True),
     ):

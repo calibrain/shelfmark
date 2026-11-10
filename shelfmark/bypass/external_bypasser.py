@@ -12,7 +12,7 @@ from shelfmark.bypass.cookie_store import store_extracted_cookies
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import normalize_http_url
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import get_session
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
@@ -116,7 +116,7 @@ def _fetch_via_bypasser(target_url: str) -> str | None:
     read_timeout = min((bypasser_timeout / 1000) + READ_TIMEOUT_BUFFER, MAX_READ_TIMEOUT)
 
     try:
-        response = requests.post(
+        response = get_session().post(
             f"{bypasser_url}{bypasser_path}",
             headers={"Content-Type": "application/json"},
             json={
@@ -125,7 +125,6 @@ def _fetch_via_bypasser(target_url: str) -> str | None:
                 "maxTimeout": bypasser_timeout,
             },
             timeout=(CONNECT_TIMEOUT, read_timeout),
-            verify=get_ssl_verify(bypasser_url),
         )
         response.raise_for_status()
         result = response.json()

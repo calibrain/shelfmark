@@ -24,7 +24,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable, Mapping
 
 from shelfmark.core.logger import setup_logger
-from shelfmark.download.network import get_proxies, get_ssl_verify
+from shelfmark.download.network import get_session
 from shelfmark.release_sources.prowlarr.api import get_indexer_field
 from shelfmark.release_sources.prowlarr.utils import coerce_int_like
 
@@ -278,13 +278,11 @@ class MamClient:
 
     def _get(self, path: str, params: Mapping[str, str | list[str]] | None = None) -> object:
         url = MAM_BASE_URL + path
-        response = requests.get(
+        response = get_session().get(
             url,
             params=params,
             headers=self._headers,
             timeout=_REQUEST_TIMEOUT_SECONDS,
-            proxies=get_proxies(url),
-            verify=get_ssl_verify(url),
             allow_redirects=False,
         )
         if response.status_code == _HTTP_FORBIDDEN:

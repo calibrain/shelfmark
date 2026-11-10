@@ -2,6 +2,8 @@
 
 import requests
 
+from shelfmark.download.network import get_session as _shared_session
+
 _CHALLENGE_HTML = (
     "<html><head><title>Checking your browser before accessing z-lib.gd</title>"
     "<script src='/.well-known/ddos-guard/check.js'></script></head>"
@@ -36,8 +38,8 @@ class _FakeResponse:
 
 def _neutralize_network(monkeypatch, http):
     monkeypatch.setattr(http, "_apply_cf_bypass", lambda _url, _headers: {})
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
-    monkeypatch.setattr(http, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: True)
     monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: False)
     monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
 
@@ -64,7 +66,7 @@ def test_503_challenge_is_handed_to_the_bypasser(monkeypatch):
         bypassed.append(url)
         return "<html>real page</html>"
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
     monkeypatch.setattr(http, "get_bypassed_page", fake_bypass)
 
     html = http.html_get_page("https://z-lib.gd/md5/abc", retry=10, success_delay=0)
@@ -90,7 +92,7 @@ def test_plain_503_still_retries_without_bypassing(monkeypatch):
         attempts.append(dict(kwargs["cookies"]))
         return _FakeResponse(503, text="<html><body>Service Unavailable</body></html>")
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
     monkeypatch.setattr(
         http, "get_bypassed_page", lambda url, *_a, **_k: bypassed.append(url) or ""
     )
@@ -111,7 +113,7 @@ def test_503_challenge_respects_disabled_bypasser_fallback(monkeypatch):
 
     bypassed: list[str] = []
     monkeypatch.setattr(
-        http.requests,
+        _shared_session(),
         "get",
         lambda _url, **_kwargs: _FakeResponse(503, text=_CHALLENGE_HTML),
     )

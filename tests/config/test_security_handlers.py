@@ -3,6 +3,7 @@
 from unittest.mock import MagicMock, patch
 
 from shelfmark.config.security_handlers import check_oidc_connection
+from shelfmark.download.network import get_session as _shared_session
 
 DISCOVERY_URL = "https://auth.example.com/.well-known/openid-configuration"
 
@@ -24,8 +25,8 @@ def _mock_response(payload):
 def _run_check(responses):
     """Run check_oidc_connection with requests.get returning the given responses."""
     with (
-        patch("requests.get", side_effect=responses) as mock_get,
-        patch("shelfmark.config.security_handlers.get_ssl_verify", return_value=True),
+        patch.object(_shared_session(), "get", side_effect=responses) as mock_get,
+        patch("shelfmark.download.network.get_ssl_verify", return_value=True),
     ):
         result = check_oidc_connection(
             load_security_config=lambda: {"OIDC_DISCOVERY_URL": DISCOVERY_URL},

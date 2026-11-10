@@ -25,7 +25,7 @@ from shelfmark.core.settings_registry import (
     SettingsField,
     register_settings,
 )
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import NetworkSession
 from shelfmark.metadata_providers import (
     BookMetadata,
     DisplayField,
@@ -167,7 +167,7 @@ class MolyProvider(MetadataProvider):
 
     def __init__(self) -> None:
         """Initialize provider."""
-        self.session = requests.Session()
+        self.session = NetworkSession()
         self.session.headers.update(REQUEST_HEADERS)
 
     def is_available(self) -> bool:
@@ -177,7 +177,7 @@ class MolyProvider(MetadataProvider):
     def _fetch(self, url: str, timeout: int = 15) -> str | None:
         _rate_limiter.wait_if_needed()
         try:
-            response = self.session.get(url, timeout=timeout, verify=get_ssl_verify(MOLY_BASE_URL))
+            response = self.session.get(url, timeout=timeout)
             response.raise_for_status()
         except requests.Timeout:
             logger.warning("Moly.hu request timed out: %s", url)
@@ -451,7 +451,6 @@ def _test_moly_connection() -> dict[str, Any]:
         response = provider.session.get(
             MOLY_SEARCH_URL + quote("teszt"),
             timeout=10,
-            verify=get_ssl_verify(MOLY_BASE_URL),
         )
         response.raise_for_status()
     except requests.Timeout:

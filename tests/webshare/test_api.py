@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from shelfmark.download.network import get_session as _shared_session
 from shelfmark.release_sources.webshare import api
 from shelfmark.release_sources.webshare.api import WebshareClient, WebshareError
 
@@ -66,7 +67,7 @@ def test_search_parses_files_and_sends_token():
             )
         )
 
-    with patch.object(api.requests, "post", side_effect=post):
+    with patch.object(_shared_session(), "post", side_effect=post):
         files = WebshareClient("user", "pw").search("kniha", limit=10)
 
     assert [f.ident for f in files] == ["abc123"]
@@ -90,7 +91,7 @@ def test_token_is_reused_between_calls():
             return _response(_xml("<token>T</token>"))
         return _response(_xml("<link>https://dl.example/file.epub</link>"))
 
-    with patch.object(api.requests, "post", side_effect=post):
+    with patch.object(_shared_session(), "post", side_effect=post):
         WebshareClient("user", "pw").file_link("a")
         WebshareClient("user", "pw").file_link("b")
 
@@ -113,7 +114,7 @@ def test_expired_token_triggers_one_relogin():
             )
         return _response(_xml("<total>0</total>"))
 
-    with patch.object(api.requests, "post", side_effect=post):
+    with patch.object(_shared_session(), "post", side_effect=post):
         assert WebshareClient("user", "pw").search("x") == []
 
     assert seen_tokens == ["OLD", "NEW"]
@@ -133,7 +134,7 @@ def test_file_errors_are_not_retried():
         )
 
     with (
-        patch.object(api.requests, "post", side_effect=post),
+        patch.object(_shared_session(), "post", side_effect=post),
         pytest.raises(WebshareError) as exc_info,
     ):
         WebshareClient("user", "pw").file_link("gone")
@@ -150,7 +151,7 @@ def test_login_requires_credentials():
 
 def test_unreadable_response_raises():
     with (
-        patch.object(api.requests, "post", return_value=_response(b"<html>nope")),
+        patch.object(_shared_session(), "post", return_value=_response(b"<html>nope")),
         pytest.raises(WebshareError),
     ):
         WebshareClient("user", "pw").login()
@@ -167,7 +168,7 @@ def test_changed_password_forces_new_login():
             return _response(_xml(f"<token>T{len(logins)}</token>"))
         return _response(_xml("<link>https://dl.example/file.epub</link>"))
 
-    with patch.object(api.requests, "post", side_effect=post):
+    with patch.object(_shared_session(), "post", side_effect=post):
         WebshareClient("user", "old").file_link("a")
         WebshareClient("user", "new").file_link("a")
 

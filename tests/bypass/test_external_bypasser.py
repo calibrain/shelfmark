@@ -2,6 +2,8 @@
 
 import pytest
 
+from shelfmark.download.network import get_session as _shared_session
+
 
 class _FakeResponse:
     def __init__(self, payload: dict) -> None:
@@ -14,10 +16,9 @@ class _FakeResponse:
         return self._payload
 
 
-def test_fetch_via_bypasser_posts_expected_payload_and_uses_ssl_verify(monkeypatch):
+def test_fetch_via_bypasser_posts_expected_payload_and_uses_ssl_verify(monkeypatch, sent_requests):
+    """The bypasser POST goes out with its payload, and the session applies the TLS rule."""
     import shelfmark.bypass.external_bypasser as external_bypasser
-
-    calls: list[dict] = []
 
     def fake_get(key, default=""):
         values = {
@@ -27,24 +28,23 @@ def test_fetch_via_bypasser_posts_expected_payload_and_uses_ssl_verify(monkeypat
         }
         return values.get(key, default)
 
-    def fake_post(url: str, **kwargs):
-        calls.append({"url": url, **kwargs})
-        return _FakeResponse(
-            {
-                "status": "ok",
-                "message": "done",
-                "solution": {"response": "<html>ok</html>"},
-            }
-        )
-
+    sent_requests.respond = _FakeResponse(
+        {
+            "status": "ok",
+            "message": "done",
+            "solution": {"response": "<html>ok</html>"},
+        }
+    )
     monkeypatch.setattr(external_bypasser.config, "get", fake_get)
-    monkeypatch.setattr(external_bypasser.requests, "post", fake_post)
-    monkeypatch.setattr(external_bypasser, "get_ssl_verify", lambda _url: False)
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: False)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
 
     assert external_bypasser._fetch_via_bypasser("https://example.com/book") == "<html>ok</html>"
-    assert calls == [
+    assert sent_requests.calls == [
         {
+            "method": "POST",
             "url": "https://bypass.example/v1",
+            "data": None,
             "headers": {"Content-Type": "application/json"},
             "json": {
                 "cmd": "request.get",
@@ -53,6 +53,7 @@ def test_fetch_via_bypasser_posts_expected_payload_and_uses_ssl_verify(monkeypat
             },
             "timeout": (10, 75.0),
             "verify": False,
+            "proxies": {},
         }
     ]
 
@@ -70,11 +71,11 @@ def _stub_solution(monkeypatch, external_bypasser, solution: dict) -> None:
 
     monkeypatch.setattr(external_bypasser.config, "get", fake_get)
     monkeypatch.setattr(
-        external_bypasser.requests,
+        _shared_session(),
         "post",
         lambda *_a, **_k: _FakeResponse({"status": "ok", "solution": solution}),
     )
-    monkeypatch.setattr(external_bypasser, "get_ssl_verify", lambda _url: False)
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: False)
 
 
 def test_solved_clearance_is_stored_for_reuse(monkeypatch):

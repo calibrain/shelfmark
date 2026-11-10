@@ -105,7 +105,7 @@ def test_html_get_page_will_not_start_a_bypass_on_a_spent_budget(monkeypatch):
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
     monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 1.0)
     monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: True)
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
     monkeypatch.setattr(http.time, "sleep", lambda _s: None)
 
     class _Selector:
@@ -144,7 +144,7 @@ def test_search_budget_becomes_the_cancel_flag(monkeypatch):
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
     monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 1.0)
     monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: True)
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
     monkeypatch.setattr(http.time, "sleep", lambda _s: None)
 
     class _Selector:
@@ -181,7 +181,7 @@ def test_a_callers_own_cancel_flag_is_not_replaced(monkeypatch):
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
     monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 1.0)
     monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: True)
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
     monkeypatch.setattr(http.time, "sleep", lambda _s: None)
 
     class _Selector:
@@ -219,7 +219,7 @@ def test_expired_budget_reports_the_challenge_not_a_cancellation(monkeypatch):
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
     monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 1.0)
     monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: True)
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
     monkeypatch.setattr(http.time, "sleep", lambda _s: None)
 
     failures: list[str] = []

@@ -575,21 +575,21 @@ class TestDnbLookups:
             "Millionen von Lesern sind mit Harry aufgewachsen."
         )
 
-    def test_requests_use_the_configured_proxy(self, monkeypatch):
+    def test_requests_use_the_configured_proxy(self, monkeypatch, sent_requests):
+        """The provider's own session sends both DNB requests through the Settings proxy."""
         # The proxy from Settings > Network, which requests' own env handling misses for HTTPS
         proxies = {"https": "http://proxy.local:8118"}
-        monkeypatch.setattr(dnb, "get_proxies", lambda url: proxies if "dnb.de" in url else {})
-        session = _DnbSession(_sru(HARRY_POTTER))
-        serve, used = session.get, []
+        monkeypatch.setattr(
+            "shelfmark.download.network.get_proxies",
+            lambda url: proxies if "dnb.de" in url else {},
+        )
+        canned = _DnbSession(_sru(HARRY_POTTER))
+        sent_requests.respond = lambda call: canned.get(call["url"], call.get("params"))
 
-        def get(url, params=None, **kwargs):
-            used.append(kwargs.get("proxies"))
-            return serve(url, params, **kwargs)
+        DNBProvider().get_book("1420086006")
 
-        monkeypatch.setattr(session, "get", get)
-        _provider(session).get_book("1420086006")
-
-        assert used == [proxies, proxies]  # catalog record, then blurb
+        # catalog record, then blurb
+        assert [call["proxies"] for call in sent_requests.calls] == [proxies, proxies]
 
     def test_get_book_checks_the_id(self):
         session = _DnbSession(_sru(HARRY_POTTER))

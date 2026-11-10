@@ -17,7 +17,7 @@ from shelfmark.download.clients import (
     with_retry,
 )
 from shelfmark.download.clients._coercion import config_text, normalize_http_config_url
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import get_session
 
 logger = setup_logger(__name__)
 _NZBGET_CLIENT_ERRORS = (AttributeError, OSError, RuntimeError, TypeError, ValueError)
@@ -96,13 +96,12 @@ class NZBGetClient(DownloadClient):
             separators=(",", ":"),
         )
 
-        response = requests.post(
+        response = get_session().post(
             rpc_url,
             data=payload,
             headers={"Content-Type": "application/json"},
             auth=(self.username, self.password),
             timeout=30,
-            verify=get_ssl_verify(rpc_url),
         )
         response.raise_for_status()
 
@@ -161,7 +160,7 @@ class NZBGetClient(DownloadClient):
         try:
             # Fetch NZB content from the URL (handles Prowlarr proxy redirects)
             logger.debug("Fetching NZB from: %s", url)
-            response = requests.get(url, timeout=30, verify=get_ssl_verify(url))
+            response = get_session().get(url, timeout=30)
             response.raise_for_status()
             nzb_content = base64.b64encode(response.content).decode("ascii")
 

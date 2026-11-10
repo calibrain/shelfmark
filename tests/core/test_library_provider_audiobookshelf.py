@@ -384,11 +384,14 @@ def test_fetch_entries_requires_url_and_token() -> None:
     ],
 )
 def test_session_honours_certificate_validation_for_the_server_url(
-    config: dict[str, Any], mode: str, url: str, verify: bool
+    config: dict[str, Any], sent_requests: Any, mode: str, url: str, verify: bool
 ) -> None:
+    """Each request to the server is verified as Certificate Validation says for its URL."""
     config["CERTIFICATE_VALIDATION"] = mode
 
-    assert audiobookshelf._session(url, "t").verify is verify
+    audiobookshelf._session(url, "t").get(f"{url}/api/libraries")
+
+    assert sent_requests.last()["verify"] is verify
 
 
 def test_configured_url_is_normalized(config: dict[str, Any]) -> None:

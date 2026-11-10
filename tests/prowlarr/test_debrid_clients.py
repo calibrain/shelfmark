@@ -20,6 +20,7 @@ from shelfmark.download.clients.torrent_utils import (
     bencode_encode,
     resolve_debrid_upload,
 )
+from shelfmark.download.network import get_session as _shared_session
 
 _PROWLARR_PROXY_URL = "https://prowlarr.example/api/v1/indexer/1/download?apikey=k&link=abc"
 _MAGNET = "magnet:?xt=urn:btih:0123456789abcdef0123456789abcdef01234567&dn=Dune"
@@ -46,7 +47,7 @@ def _mock_fetch(monkeypatch, *, content=b"", status_code=200, error=None):
         response = MagicMock(status_code=status_code, content=content)
         response.raise_for_status = MagicMock()
         mock_get = MagicMock(return_value=response)
-    monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+    monkeypatch.setattr(_shared_session(), "get", mock_get)
     return mock_get
 
 
@@ -119,7 +120,7 @@ class TestResolveDebridUpload:
         )
         response.raise_for_status = MagicMock()
         mock_get = MagicMock(return_value=response)
-        monkeypatch.setattr("shelfmark.download.clients.torrent_utils.requests.get", mock_get)
+        monkeypatch.setattr(_shared_session(), "get", mock_get)
 
         resolve_debrid_upload(_PROWLARR_PROXY_URL, expected_hash="a" * 40)
 
