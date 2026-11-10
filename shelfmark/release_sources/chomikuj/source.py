@@ -36,6 +36,7 @@ from shelfmark.release_sources import (
     ReleaseColumnConfig,
     ReleaseProtocol,
     ReleaseSource,
+    SourceActionButton,
     SourceUnavailableError,
     register_source,
 )
@@ -380,4 +381,5 @@ class ChomikujSource(ReleaseSource):
             ],
             grid_template="minmax(0,2fr) 60px 80px 80px 80px",
             supported_filters=["format"],
+            action_button=SourceActionButton(label="Search more"),
         )

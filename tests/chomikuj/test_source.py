@@ -791,6 +791,13 @@ def test_no_language_filter_and_format_only():
     assert "language" not in _columns().supported_filters
 
 
+def test_column_config_exposes_search_more_action_button():
+    action_button = _columns().action_button
+    assert action_button is not None
+    assert action_button.label == "Search more"
+    assert action_button.action == "expand"
+
+
 def test_serialized_column_config_has_four_columns():
     payload = serialize_column_config(_columns())
     assert [column["key"] for column in payload["columns"]] == [
