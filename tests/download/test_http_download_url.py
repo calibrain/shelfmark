@@ -17,11 +17,16 @@ class _FakeResponse:
         url: str = "",
         iter_error: requests.exceptions.RequestException | None = None,
     ) -> None:
+        """A response with these headers and chunks; ``iter_error`` is raised after them."""
         self.status_code = status_code
         self.headers = headers or {}
         self.url = url
         self._chunks = chunks or []
         self._iter_error = iter_error
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
@@ -122,6 +127,47 @@ def test_download_url_rejects_html_error_pages(monkeypatch):
 
     assert result is None
     assert status_updates == [("downloading", "")]
+
+
+def test_download_url_closes_the_response_it_rejects(monkeypatch):
+    """An early return still hands the streamed connection back to the shared session."""
+    http = _prepare_download_test(monkeypatch)
+    response = _FakeResponse(
+        200,
+        headers={"content-length": "100", "content-type": "text/html"},
+        chunks=[b"<html>busy</html>"],
+    )
+    monkeypatch.setattr(_shared_session(), "get", lambda _url, **_kwargs: response)
+
+    assert http.download_url("https://example.com/file.epub") is None
+    assert response.closed is True
+
+
+def test_resume_closes_the_response_when_the_server_ignores_the_range(monkeypatch):
+    """A 200 to a Range request ends the resume, and its response is closed too."""
+    http = _prepare_download_test(monkeypatch)
+    responses = [
+        _FakeResponse(
+            200,
+            headers={"content-length": "8", "content-type": "application/octet-stream"},
+            chunks=[b"abcd"],
+            iter_error=requests.exceptions.ConnectionError("socket reset"),
+        ),
+        _FakeResponse(200, chunks=[b"abcdefgh"]),
+    ]
+    calls = []
+
+    def fake_get(_url, **_kwargs):
+        """Hand out the responses in order, one per request."""
+        calls.append(_url)
+        return responses[min(len(calls), len(responses)) - 1]
+
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
+
+    http.download_url("https://example.com/file.epub")
+
+    assert len(calls) >= 2
+    assert all(response.closed for response in responses)
 
 
 def test_download_url_resumes_partial_download_after_connection_error(monkeypatch):

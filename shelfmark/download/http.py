@@ -954,6 +954,7 @@ def download_url(
         )
         bytes_downloaded = 0
         returned = False
+        response = None
 
         try:
             try:
@@ -1083,6 +1084,9 @@ def download_url(
                 return buffer
 
         finally:
+            # The shared session pools connections: release this one on every exit path.
+            if response is not None:
+                response.close()
             if not returned:
                 buffer.close()
 
@@ -1127,6 +1131,7 @@ def _try_resume(
         )
         time.sleep(_backoff_delay(attempt + 1, base=0.5, cap=5.0))
 
+        response = None
         try:
             # Try with CF cookies/UA if available
             resume_headers = {
@@ -1178,6 +1183,10 @@ def _try_resume(
             logger.debug("Resume attempt %s failed: %s", attempt + 1, type(e).__name__)
         else:
             return buffer
+        finally:
+            # Release the pooled connection, also when returning early.
+            if response is not None:
+                response.close()
 
     logger.warning("Resume failed after %s attempts", MAX_RESUME_ATTEMPTS)
     return None
