@@ -32,6 +32,7 @@ def _get_booklore_select_options(
     username: str,
     password: str,
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    """Sign in to Grimmory and list its libraries and their paths as settings options."""
     # library_id/path_id are not used for login/library listing
     booklore_config = BookloreConfig(
         base_url=base_url.rstrip("/"),
