@@ -141,6 +141,7 @@ class DelugeClient(DownloadClient):
         return self._rpc_id
 
     def _rpc_call(self, method: str, *params: object, timeout: int = 15) -> Any:
+        """Call one Deluge Web JSON-RPC method and return its result, raising DelugeRpcError."""
         payload = {
             "id": self._next_rpc_id(),
             "method": method,
