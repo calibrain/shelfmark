@@ -29,7 +29,7 @@ from shelfmark.download.clients.torrent_utils import (
     safe_relative_path,
 )
 from shelfmark.download.http import download_url
-from shelfmark.download.network import NetworkSession, get_ssl_verify
+from shelfmark.download.network import NetworkSession
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -322,7 +322,6 @@ class TorBoxClient(DownloadClient):
         url = f"{_API_BASE}{endpoint}"
         request_kwargs: Any = {
             "headers": self._auth_headers(),
-            "verify": get_ssl_verify(url),
             **kwargs,
         }
         request: Any = _session.get if method == "GET" else _session.post
