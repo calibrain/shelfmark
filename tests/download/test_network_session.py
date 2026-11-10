@@ -78,6 +78,8 @@ def test_an_environment_proxy_still_applies_when_settings_have_none(
         ("disabled", "https://api.hardcover.app", False),
         ("disabled_local", "https://192.168.1.10", False),
         ("disabled_local", "https://api.hardcover.app", True),
+        ("disabled_local", "https://[fd12:3456::7]", False),
+        ("disabled_local", "https://[2606:4700::1]", True),
     ],
 )
 def test_verify_follows_certificate_validation(settings, sent_requests, mode, url, verify):

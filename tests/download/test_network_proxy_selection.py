@@ -88,6 +88,8 @@ import pytest
         "http://172.16.4.2",
         "http://127.0.0.1:8084",
         "http://[::1]:8080",
+        "http://[fd12:3456::7]:8080",
+        "http://[fe80::1]/",
         "http://prowlarr:9696/api/v1",
         "http://nas.local/share",
         "https://abs.lan:13378",
@@ -106,7 +108,12 @@ def test_a_local_host_always_bypasses_the_proxy(monkeypatch, url):
 
 @pytest.mark.parametrize(
     "url",
-    ["https://api.hardcover.app/v1/graphql", "https://abs.example.com", "http://8.8.8.8"],
+    [
+        "https://api.hardcover.app/v1/graphql",
+        "https://abs.example.com",
+        "http://8.8.8.8",
+        "http://[2606:4700::1]/",
+    ],
 )
 def test_a_public_host_goes_through_the_proxy(monkeypatch, url):
     """A public name or address is proxied, including a LAN service under a public name."""
