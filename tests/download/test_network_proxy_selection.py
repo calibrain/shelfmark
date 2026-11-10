@@ -132,3 +132,29 @@ def test_no_proxy_covers_a_lan_service_under_a_public_hostname(monkeypatch):
 
     assert network.should_bypass_proxy("https://abs.example.com") is True
     assert network.should_bypass_proxy("https://api.hardcover.app") is False
+
+
+@pytest.mark.parametrize(
+    ("url", "bypassed"),
+    [
+        ("http://192.168.1.20:8080/", True),
+        ("http://10.0.0.5/", True),
+        ("http://127.0.0.1:8084/", True),
+        ("http://nas.local/", True),
+        ("https://ntfy.lan/topic", True),
+        ("https://abs.example.com/", True),
+        ("https://api.hardcover.app/", False),
+        ("http://8.8.8.8/", False),
+    ],
+)
+def test_the_environment_no_proxy_carries_the_local_rule_for_requests(monkeypatch, url, bypassed):
+    """Code that reads NO_PROXY instead of calling get_proxies() gets the same local rule.
+
+    Checked with requests' own matcher, the one Apprise uses, including a No Proxy
+    pattern written as ``*.example.com``.
+    """
+    from requests.utils import should_bypass_proxies
+
+    network = _set_proxy_config(monkeypatch, NO_PROXY="*.example.com")
+
+    assert should_bypass_proxies(url, no_proxy=network.no_proxy_for_environment()) is bypassed

@@ -587,6 +587,34 @@ def _decode_port(port: str | bytes | int | None) -> int:
     return int(port)
 
 
+_INTERNAL_TLDS = (".local", ".internal", ".lan", ".home", ".docker", ".localdomain")
+
+# The local-address rule as standard NO_PROXY entries, for code that reads the environment
+# instead of calling get_proxies(). Single-label names (Docker services) have no NO_PROXY
+# form, so this covers them only through No Proxy.
+_LOCAL_NO_PROXY = (
+    "localhost",
+    "127.0.0.0/8",
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "169.254.0.0/16",
+    "::1",
+    *_INTERNAL_TLDS,
+)
+
+
+def no_proxy_for_environment() -> str:
+    """A ``NO_PROXY`` value carrying the local-address rule and the No Proxy setting.
+
+    requests matches ``NO_PROXY`` entries as IPv4 networks or as name suffixes, so the
+    private ranges and internal TLDs come first, then each No Proxy pattern, with a
+    leading ``*.`` written as ``.`` because that is the form requests understands.
+    """
+    patterns = [f".{p[2:]}" if p.startswith("*.") else p for p in _get_no_proxy_patterns()]
+    return ",".join(dict.fromkeys([*_LOCAL_NO_PROXY, *patterns]))
+
+
 def _is_local_address(host_str: str) -> bool:
     """Whether a host is on the local network, judged from its name or literal IP alone.
 
@@ -615,8 +643,7 @@ def _is_local_address(host_str: str) -> bool:
         return True
 
     # Check for common internal TLDs
-    internal_tlds = (".local", ".internal", ".lan", ".home", ".docker", ".localdomain")
-    if any(host_lower.endswith(tld) for tld in internal_tlds):
+    if any(host_lower.endswith(tld) for tld in _INTERNAL_TLDS):
         return True
 
     # Check for private/loopback/link-local IP addresses

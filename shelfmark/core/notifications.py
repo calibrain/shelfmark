@@ -555,16 +555,17 @@ def _plugin_label(plugin: object, fallback_scheme: str) -> str:
 
 
 def _apprise_proxy_env() -> dict[str, str]:
-    """Proxy environment for the Apprise subprocess, from the same rule as every other call.
+    """Proxy variables for Apprise, from the same rule as every other call.
 
-    Apprise runs in its own process and reads the standard variables, so the proxies come
-    from ``get_proxies()`` and No Proxy is passed through as ``NO_PROXY``. With no URL to
-    judge, ``get_proxies()`` cannot apply the local-address rule; a LAN notification
-    target belongs in No Proxy. Variables already set in the environment are left alone.
+    Apprise runs in this process but reads the standard proxy variables rather than
+    calling ``get_proxies()``, so the proxies come from ``get_proxies()`` and ``NO_PROXY``
+    from ``no_proxy_for_environment()``: the private ranges and internal TLDs, then the
+    No Proxy setting. A single-label LAN name (a Docker service) still needs No Proxy.
+    Variables already set in the environment are left alone.
     """
     import os
 
-    from shelfmark.download.network import get_proxies
+    from shelfmark.download.network import get_proxies, no_proxy_for_environment
 
     proxies = get_proxies()
     env: dict[str, str] = {}
@@ -574,8 +575,8 @@ def _apprise_proxy_env() -> dict[str, str]:
             env[f"{scheme.upper()}_PROXY"] = value
             env[f"{scheme}_proxy"] = value
 
-    no_proxy = str(app_config.get("NO_PROXY", "") or "").strip()
-    if no_proxy and env:
+    if env:
+        no_proxy = no_proxy_for_environment()
         env["NO_PROXY"] = no_proxy
         env["no_proxy"] = no_proxy
 
