@@ -10,9 +10,9 @@ search-file ``Size`` are kilobytes, so ``size_bytes`` is divided by 1024 before
 comparing. This preflight is advisory; business code 605 from
 ``files/download`` remains authoritative and is never retryable.
 
-Ported from the proven BookOrbit plugin (``src/lib/quota.mjs``); rule order is
-part of the contract. Unlimited transfer and owner-marked-free files are always
-allowed, even when paid spending is disabled.
+Ported from a validated Chomikuj implementation (``src/lib/quota.mjs``); rule
+order is part of the contract. Unlimited transfer and owner-marked-free files
+are always allowed, even when paid spending is disabled.
 """
 
 import math

@@ -8,10 +8,10 @@ Resolves a Chomikuj file id to a one-shot download URL and streams the body into
   ``files/download`` issues the URL, not when the bytes arrive, so a denied
   preflight must never call it.
 * the **transfer** asks for the URL exactly once, then streams with the exact
-  headers proven against the live service: ``User-Agent: BookOrbit`` and
-  ``Accept: */*`` with no ``Range``. A ranged request makes the CDN answer
-  ``206 text/html`` instead of the PDF, so Shelfmark's generic Chrome download
-  headers are intentionally not used here.
+  live-proven mobile API headers: the mobile ``User-Agent`` and ``Accept: */*``
+  with no ``Range``. A ranged request makes the CDN answer ``206 text/html``
+  instead of the PDF, so Shelfmark's generic Chrome download headers are
+  intentionally not used here.
 
 Retry context is source-private: the queue persists the file id, size, and
 free/paid flag so a restart can re-resolve without re-searching. Error messages
@@ -33,7 +33,11 @@ from shelfmark.core.redaction import redact_secrets
 from shelfmark.core.request_helpers import coerce_bool
 from shelfmark.download import network
 from shelfmark.release_sources import DownloadHandler, register_handler
-from shelfmark.release_sources.chomikuj.client import ChomikujClient, ChomikujError
+from shelfmark.release_sources.chomikuj.client import (
+    DEFAULT_USER_AGENT,
+    ChomikujClient,
+    ChomikujError,
+)
 from shelfmark.release_sources.chomikuj.quota import QuotaDecision, decide_download
 from shelfmark.release_sources.chomikuj.session import get_session
 from shelfmark.release_sources.chomikuj.source import get_base_url, get_credentials
@@ -51,7 +55,7 @@ logger = setup_logger(__name__)
 _MIN_VALID_FILE_SIZE = 10 * 1024
 _CHUNK_SIZE = 256 * 1024
 _DOWNLOAD_TIMEOUT = (10, 60)
-_STREAM_HEADERS = {"User-Agent": "BookOrbit", "Accept": "*/*"}
+_STREAM_HEADERS = {"User-Agent": DEFAULT_USER_AGENT, "Accept": "*/*"}
 
 _INVALID_FILE_ID_MESSAGE = "Chomikuj: invalid file id"
 _HTML_RESPONSE_MESSAGE = "Chomikuj returned an HTML page instead of a book"
@@ -163,7 +167,7 @@ def _stream_file(
     """Stream ``url`` into ``target``; return False when cancelled midway.
 
     The request headers are the live-proven Chomikuj contract and must stay
-    exactly ``User-Agent: BookOrbit`` / ``Accept: */*``. An HTML body is
+    exactly the mobile API ``User-Agent`` / ``Accept: */*``. An HTML body is
     refused before ``target`` is opened, so no partial file is created for it.
     """
     with requests.get(

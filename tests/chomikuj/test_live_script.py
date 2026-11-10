@@ -44,7 +44,10 @@ def test_constants_carry_the_live_proven_contract(live_script):
     from shelfmark.release_sources.chomikuj.filename import IMPORTABLE_EBOOK_FORMATS
 
     assert live_script.DEFAULT_QUERY == "test"
-    assert live_script.PROBE_HEADERS == {"User-Agent": "BookOrbit", "Accept": "*/*"}
+    assert live_script.PROBE_HEADERS == {
+        "User-Agent": "android/3.8.4 (python; python)",
+        "Accept": "*/*",
+    }
     assert "Range" not in live_script.PROBE_HEADERS
     assert tuple(live_script._formats_override()) == tuple(IMPORTABLE_EBOOK_FORMATS)
     assert "pdf" in live_script._formats_override()

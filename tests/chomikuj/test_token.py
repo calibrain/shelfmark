@@ -1,9 +1,8 @@
 """Known-answer tests for the Chomikuj mobile API request token.
 
-The formula and vectors were verified against the mobile app by the sibling
-BookOrbit plugin (``scripts/live-spike.mjs`` and ``tests/token.test.mjs``).
-Hardcoding the digests keeps any regression in the secret, separator, path
-normalization, or UTF-8 handling visible.
+The formula and vectors were verified against the mobile app (``scripts/live-spike.mjs``
+and ``tests/token.test.mjs``). Hardcoding the digests keeps any regression in the
+secret, separator, path normalization, or UTF-8 handling visible.
 """
 
 import hashlib

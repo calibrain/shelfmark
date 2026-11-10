@@ -1,6 +1,6 @@
 """Paged NFC/NFD Chomikuj document search with a self-imposed budget.
 
-Ported from the sibling BookOrbit plugin's ``search.mjs``. The client owns the
+Ported from a validated Chomikuj implementation's ``search.mjs``. The client owns the
 wire format: it always adds ``MediaType=Documents`` and ``PageNumber``, and
 adds ``Extension`` only when this module passes one. :func:`search_files`
 returns the raw ``Results`` rows in API order; :func:`select_rows` then applies
@@ -15,9 +15,9 @@ query is searched in both its NFC and NFD forms because Chomikuj's index does
 not normalize filenames.
 
 Shelfmark adaptation: :data:`EXPANDED_SEARCH_BUDGET_SECONDS` (20 s) and
-:data:`EXPANDED_MAX_PAGES` (5) are the ``expand_search`` escalation. BookOrbit
-has no expand search and keeps one module-level 12 s / 3 page budget, so this
-pair is a Shelfmark-only extension, not a port.
+:data:`EXPANDED_MAX_PAGES` (5) are the ``expand_search`` escalation. The
+validated implementation has no expand search and keeps one module-level
+12 s / 3 page budget, so this pair is a Shelfmark-only extension, not a port.
 """
 
 from __future__ import annotations

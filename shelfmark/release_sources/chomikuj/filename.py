@@ -6,7 +6,7 @@ source of truth for which formats may be imported, which extensions are
 archives that must never be offered, and how a ``FileName``/``FileType`` pair
 maps to a title, an optional author, and a format.
 
-The parsing shapes are ported from the sibling BookOrbit plugin's
+The parsing shapes are ported from a validated Chomikuj implementation's
 ``filename.mjs``. The language heuristic is a Shelfmark-specific addition
 modelled on :mod:`shelfmark.release_sources.webshare.source`: Chomikuj has no
 server-side language filter, so a language tag is read from the name for display
@@ -17,8 +17,9 @@ import re
 from dataclasses import dataclass
 from pathlib import PurePosixPath
 
-# Formats Shelfmark can postprocess. BookOrbit's list minus ``kepub``, which
-# Shelfmark's postprocess step cannot track (shelfmark/download/postprocess/scan.py).
+# Formats Shelfmark can postprocess. The validated importable-format list minus
+# ``kepub``, which Shelfmark's postprocess step cannot track
+# (shelfmark/download/postprocess/scan.py).
 IMPORTABLE_EBOOK_FORMATS = ("epub", "mobi", "azw3", "azw", "pdf", "fb2", "djvu")
 
 # Archives are never offered or imported by the Chomikuj source, even though
@@ -53,8 +54,9 @@ _LANGUAGE_TAGS = {
     "deu": "de",
 }
 
-# Broader tag set used only to strip bracket noise (ported from BookOrbit), so
-# tags such as ``[FR]`` disappear from titles even though they are not guessed.
+# Broader tag set used only to strip bracket noise (from the validated
+# implementation), so tags such as ``[FR]`` disappear from titles even though
+# they are not guessed.
 _LANGUAGE_CODES = frozenset(
     {
         *_LANGUAGE_TAGS,

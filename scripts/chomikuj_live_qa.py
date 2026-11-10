@@ -45,7 +45,7 @@ untouched.
 The live path logs in, reads ``account/info``, widens the source's supported
 formats to the Chomikuj importable set for its own search (Shelfmark's default
 formats exclude ``pdf``), searches through the real ``ChomikujSource``, probes
-the returned ``FileUrl`` once with the live-proven ``BookOrbit`` headers and no
+the returned ``FileUrl`` once with the live-proven mobile API headers and no
 ``Range``, runs ``ChomikujHandler``, and finally proves that a paid file is
 refused before ``files/download`` when transfer spending is disabled. The
 username, password, API key, account id/name, and every URL are redacted from
@@ -83,7 +83,7 @@ if str(_PROJECT_ROOT) not in sys.path:
 
 REDACTED = "<redacted>"
 DEFAULT_QUERY = "test"
-PROBE_HEADERS = {"User-Agent": "BookOrbit", "Accept": "*/*"}
+PROBE_HEADERS = {"User-Agent": "android/3.8.4 (python; python)", "Accept": "*/*"}
 MIN_DOWNLOAD_BYTES = 10 * 1024
 DEFAULT_TIMEOUT = 30.0
 
@@ -93,8 +93,8 @@ EVIDENCE_FILE = EVIDENCE_DIR / "live-qa.txt"
 _URL_RE = re.compile(r"https?://[^\s'\"<>]+", re.IGNORECASE)
 _EMAIL_RE = re.compile(r"[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}")
 
-# The exact vectors proven against the live service by the sibling BookOrbit
-# plugin (scripts/live-spike.mjs). Each entry is (path, query, body, digest).
+# The exact vectors proven against the live service (scripts/live-spike.mjs).
+# Each entry is (path, query, body, digest).
 TOKEN_VECTORS: tuple[tuple[str, str, str, str], ...] = (
     ("api/v3/account/info", "", "", "22dbb80e516477793934fa0add1b8929"),
     (
@@ -858,7 +858,8 @@ def run_self_test() -> int:
         override = _formats_override()
         _expect("pdf" in override, "pdf is missing from the formats override")
         _expect(
-            PROBE_HEADERS == {"User-Agent": "BookOrbit", "Accept": "*/*"},
+            PROBE_HEADERS
+            == {"User-Agent": "android/3.8.4 (python; python)", "Accept": "*/*"},
             "probe headers drifted from the live-proven contract",
         )
 

@@ -5,8 +5,9 @@ single :class:`FailureDecision`. Every function here is pure: nothing performs
 I/O, throws, retries, or logs. Callers turn the decision into a user-visible
 error and decide whether a retry is allowed.
 
-Ported from the proven BookOrbit plugin (``src/lib/failures.mjs``); messages are
-never built from raw HTML and plain-text excerpts are capped at 160 characters.
+Ported from a validated Chomikuj implementation (``src/lib/failures.mjs``);
+messages are never built from raw HTML and plain-text excerpts are capped at
+160 characters.
 """
 
 import json

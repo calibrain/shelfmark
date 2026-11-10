@@ -4,7 +4,7 @@ Unlike ``test_handler.py``, which patches ``requests.get``, this module runs the
 real HTTP client against a real loopback ``ThreadingHTTPServer``. That proves
 the wire-level header contract the live service depends on:
 
-* ``User-Agent: BookOrbit`` and ``Accept: */*``;
+* the mobile API ``User-Agent`` and ``Accept: */*``;
 * no ``Range`` header (a ranged request gets ``206 text/html`` from the CDN);
 * the server actually receives the request (not a cache or a proxy);
 * the streamed bytes land unchanged in ``TMP_DIR``.
@@ -22,7 +22,7 @@ import pytest
 
 from shelfmark.core.models import DownloadTask
 from shelfmark.release_sources.chomikuj import handler as handler_module
-from shelfmark.release_sources.chomikuj.client import ChomikujClient
+from shelfmark.release_sources.chomikuj.client import DEFAULT_USER_AGENT, ChomikujClient
 from shelfmark.release_sources.chomikuj.handler import ChomikujHandler
 
 API_KEY = "test-api-key"
@@ -213,7 +213,7 @@ def test_pdf_download_streams_real_http_with_proven_headers(tmp_path, loopback_s
         str(name).lower(): str(value)
         for name, value in dict(request["headers"]).items()  # type: ignore[arg-type]
     }
-    assert headers["user-agent"] == "BookOrbit"
+    assert headers["user-agent"] == DEFAULT_USER_AGENT
     assert headers["accept"] == "*/*"
     assert "range" not in headers
 

@@ -1,9 +1,9 @@
 """Tests for the Chomikuj filename/format parser and language heuristic.
 
-Ported from the sibling BookOrbit plugin's ``filename.test.mjs``, with the
-Shelfmark adaptations from the work plan: ``kepub`` is not importable, a year or
-bare number is never an author, and language tags follow the Webshare-style
-heuristic instead of BookOrbit's hardcoded ``None``.
+Ported from a validated Chomikuj implementation's ``filename.test.mjs``, with
+the Shelfmark adaptations from the work plan: ``kepub`` is not importable, a year
+or bare number is never an author, and language tags follow the Webshare-style
+heuristic instead of that implementation's hardcoded ``None``.
 """
 
 import pytest

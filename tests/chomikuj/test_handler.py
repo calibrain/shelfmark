@@ -5,7 +5,7 @@ The handler has three jobs, specified by plan todos 20-22:
 * marshalling the retry context and running the transfer-quota preflight before
   ``files/download`` is charged;
 * resolving a one-shot download URL and streaming it with the exact live-proven
-  ``BookOrbit``/``Accept: */*`` headers (no ``Range``, no Shelfmark
+  mobile API ``User-Agent``/``Accept: */*`` headers (no ``Range``, no Shelfmark
   ``DOWNLOAD_HEADERS``);
 * cancelling, reporting progress, mapping business code 605, and cleaning up
   every partial file without ever leaking a credential.
@@ -24,7 +24,7 @@ import requests
 
 from shelfmark.core.models import DownloadTask
 from shelfmark.release_sources.chomikuj import handler as handler_module
-from shelfmark.release_sources.chomikuj.client import ChomikujError
+from shelfmark.release_sources.chomikuj.client import DEFAULT_USER_AGENT, ChomikujError
 from shelfmark.release_sources.chomikuj.handler import ChomikujHandler
 from shelfmark.release_sources.chomikuj.quota import (
     QuotaDecision,
@@ -369,7 +369,7 @@ def test_cancel_before_start_makes_no_network_call(tmp_path):
     run.get.assert_not_called()
 
 
-# --- Todo 21: one-shot URL resolution and BookOrbit streaming ----------------
+# --- Todo 21: one-shot URL resolution and mobile-API streaming ----------------
 
 
 def test_download_url_called_once_and_headers_are_exact(tmp_path):
@@ -381,7 +381,7 @@ def test_download_url_called_once_and_headers_are_exact(tmp_path):
     run.get.assert_called_once()
     assert run.get.call_args.args == (FILE_URL,)
     kwargs = run.get.call_args.kwargs
-    assert kwargs["headers"] == {"User-Agent": "BookOrbit", "Accept": "*/*"}
+    assert kwargs["headers"] == {"User-Agent": DEFAULT_USER_AGENT, "Accept": "*/*"}
     assert "Range" not in kwargs["headers"]
     assert kwargs["stream"] is True
     assert kwargs["timeout"] == (10, 60)

@@ -1,4 +1,4 @@
-"""Failure-classification table tests, ported from the BookOrbit plugin.
+"""Failure-classification table tests, ported from the validated implementation.
 
 Every mapping called out by the plan is pinned here so a future change cannot
 silently turn the permanent 605 quota error into a retryable one, let a
