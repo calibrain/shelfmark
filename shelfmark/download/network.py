@@ -736,7 +736,6 @@ _PROXY_VARIABLES = (
     "NO_PROXY",
     "no_proxy",
 )
-_proxy_env_set_by_us: dict[str, str] = {}
 _proxy_env_lock = threading.Lock()
 
 
@@ -767,21 +766,17 @@ def apply_proxy_environment() -> None:
     ``NO_PROXY`` instead of calling ``get_proxies()``. Called at startup and after every
     settings save. A variable Shelfmark set is replaced or removed to follow the settings;
     one that was already in the environment when Shelfmark found it, such as a proxy given
-    in the container's own environment, is left alone.
+    in the container's own environment, is left alone. The ones it writes are recorded with
+    ``set_process_env`` so the Settings fields of the same names don't read as "set via env".
     """
+    from shelfmark.core.settings_registry import is_process_written_env, set_process_env
+
     desired = proxy_environment()
     with _proxy_env_lock:
         for name in _PROXY_VARIABLES:
-            current = os.environ.get(name)
-            if current is not None and current != _proxy_env_set_by_us.get(name):
+            if name in os.environ and not is_process_written_env(name):
                 continue
-            value = desired.get(name)
-            if value:
-                os.environ[name] = value
-                _proxy_env_set_by_us[name] = value
-            else:
-                os.environ.pop(name, None)
-                _proxy_env_set_by_us.pop(name, None)
+            set_process_env(name, desired.get(name) or None)
 
 
 def _is_local_address(host_str: str) -> bool:
