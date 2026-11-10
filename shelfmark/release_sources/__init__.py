@@ -514,6 +514,7 @@ _SOURCES: dict[str, type[ReleaseSource]] = {}
 _HANDLERS: dict[str, type[DownloadHandler]] = {}
 _BUILTIN_SOURCE_MODULES = (
     "shelfmark.release_sources.audiobookbay",
+    "shelfmark.release_sources.chomikuj",
     "shelfmark.release_sources.direct_download",
     "shelfmark.release_sources.irc",
     "shelfmark.release_sources.jackett",
