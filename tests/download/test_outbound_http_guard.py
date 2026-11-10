@@ -32,6 +32,10 @@ _CLIENT_LIBRARIES = {
     "websockets",
 }
 
+# Arguments NetworkSession supplies itself. Passing one by hand makes it explicit, which
+# stops the session choosing it again for each redirect hop.
+_SESSION_ARGUMENTS = {"verify": "get_ssl_verify", "proxies": "get_proxies"}
+
 # (file, what it uses) -> why it cannot go through NetworkSession.
 ALLOWLIST: dict[tuple[str, str], str] = {
     ("shelfmark/download/clients/qbittorrent.py", "qbittorrentapi"): (
@@ -71,6 +75,13 @@ def _dotted(node: ast.expr) -> str:
     return ""
 
 
+def _note_hand_passed(found: set[str], argument: str, value: ast.expr) -> None:
+    """Record ``verify=get_ssl_verify(...)`` or ``proxies=get_proxies(...)`` passed by hand."""
+    helper = _SESSION_ARGUMENTS.get(argument)
+    if helper and isinstance(value, ast.Call) and _dotted(value.func).rpartition(".")[2] == helper:
+        found.add(f"{argument}={helper}()")
+
+
 def _uses(tree: ast.AST) -> set[str]:
     """What a module uses to reach the network on its own, as short names."""
     found: set[str] = set()
@@ -83,7 +94,15 @@ def _uses(tree: ast.AST) -> set[str]:
                 for library in _CLIENT_LIBRARIES
                 if node.module == library or node.module.startswith(f"{library}.")
             )
+        elif isinstance(node, ast.Dict):
+            # request kwargs built as a dict literal: {"verify": get_ssl_verify(url), ...}
+            for key, value in zip(node.keys, node.values, strict=True):
+                if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                    _note_hand_passed(found, key.value, value)
         elif isinstance(node, ast.Call):
+            for keyword in node.keywords:
+                if keyword.arg:
+                    _note_hand_passed(found, keyword.arg, keyword.value)
             name = _dotted(node.func)
             base, _, attr = name.rpartition(".")
             if base == "requests" and attr in _REQUESTS_CALLS | _REQUESTS_SESSIONS:
@@ -140,7 +159,10 @@ def test_the_scan_catches_each_kind_of_bypass(tmp_path):
         "requests.post('https://example.com')\n"
         "requests.Session()\n"
         "httpx.Client()\n"
-        "socket.socket()\n",
+        "socket.socket()\n"
+        "get_session().get('https://example.com', verify=get_ssl_verify('x'))\n"
+        "get_session().get('https://example.com', proxies=network.get_proxies('x'))\n"
+        "kwargs = {'verify': get_ssl_verify('x')}\n",
         encoding="utf-8",
     )
     (package / "fine.py").write_text(
@@ -160,4 +182,6 @@ def test_the_scan_catches_each_kind_of_bypass(tmp_path):
         ("shelfmark/planted.py", "requests.Session"),
         ("shelfmark/planted.py", "httpx.Client"),
         ("shelfmark/planted.py", "socket.socket"),
+        ("shelfmark/planted.py", "verify=get_ssl_verify()"),
+        ("shelfmark/planted.py", "proxies=get_proxies()"),
     }
