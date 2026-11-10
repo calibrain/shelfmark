@@ -717,6 +717,9 @@ def network_settings() -> list[SettingsField]:
     # When Tor is enabled, DNS/proxy settings are overridden by iptables rules
     # Tor uses iptables to force ALL traffic through Tor
     tor_overrides_network = tor_enabled  # Only override when Tor is actually active
+    # Tor and WireGuard both route all traffic themselves, so neither uses the proxy.
+    tunnel = "Tor" if tor_enabled else "WireGuard" if env.USING_WIREGUARD else ""
+    proxy_unused = f"Proxy settings are not used when {tunnel} routing is enabled."
 
     return [
         SelectField(
@@ -803,8 +806,8 @@ def network_settings() -> list[SettingsField]:
             key="PROXY_MODE",
             label="Proxy Mode",
             description=(
-                "Not applicable when Tor routing is enabled."
-                if tor_overrides_network
+                f"Not applicable when {tunnel} routing is enabled."
+                if tunnel
                 else "Choose proxy type. SOCKS5 handles all traffic through a single proxy."
             ),
             options=[
@@ -813,16 +816,16 @@ def network_settings() -> list[SettingsField]:
                 {"value": "socks5", "label": "SOCKS5 Proxy"},
             ],
             default="none",
-            disabled=tor_overrides_network,
-            disabled_reason="Proxy settings are not used when Tor routing is enabled.",
+            disabled=bool(tunnel),
+            disabled_reason=proxy_unused,
         ),
         TextField(
             key="HTTP_PROXY",
             label="HTTP Proxy",
             description="HTTP proxy URL. Supports auth: http://user:pass@host:port",
             placeholder="http://proxy:8080",
-            disabled=tor_overrides_network,
-            disabled_reason="Proxy settings are not used when Tor routing is enabled.",
+            disabled=bool(tunnel),
+            disabled_reason=proxy_unused,
             show_when={"field": "PROXY_MODE", "value": "http"},
         ),
         TextField(
@@ -830,8 +833,8 @@ def network_settings() -> list[SettingsField]:
             label="HTTPS Proxy",
             description="HTTPS proxy URL (leave empty to use HTTP proxy for HTTPS). Supports auth: http://user:pass@host:port",
             placeholder="http://proxy:8080",
-            disabled=tor_overrides_network,
-            disabled_reason="Proxy settings are not used when Tor routing is enabled.",
+            disabled=bool(tunnel),
+            disabled_reason=proxy_unused,
             show_when={"field": "PROXY_MODE", "value": "http"},
         ),
         TextField(
@@ -839,8 +842,8 @@ def network_settings() -> list[SettingsField]:
             label="SOCKS5 Proxy",
             description="SOCKS5 proxy URL. Supports auth: socks5://user:pass@host:port",
             placeholder="socks5://localhost:1080",
-            disabled=tor_overrides_network,
-            disabled_reason="Proxy settings are not used when Tor routing is enabled.",
+            disabled=bool(tunnel),
+            disabled_reason=proxy_unused,
             show_when={"field": "PROXY_MODE", "value": "socks5"},
         ),
         TextField(
@@ -851,8 +854,8 @@ def network_settings() -> list[SettingsField]:
                 "always bypass the proxy. List additional hosts here, comma-separated, e.g. "
                 "a LAN service reached by a public hostname: *.example.com,abs.example.org"
             ),
-            disabled=tor_overrides_network,
-            disabled_reason="Proxy settings are not used when Tor routing is enabled.",
+            disabled=bool(tunnel),
+            disabled_reason=proxy_unused,
             show_when={"field": "PROXY_MODE", "value": ["http", "socks5"]},
         ),
     ]

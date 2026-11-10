@@ -165,3 +165,48 @@ def test_the_environment_no_proxy_carries_the_local_rule_for_requests(monkeypatc
     network = _set_proxy_config(monkeypatch, NO_PROXY="*.example.com")
 
     assert should_bypass_proxies(url, no_proxy=network.no_proxy_for_environment()) is bypassed
+
+
+@pytest.mark.parametrize("mode", ["USING_TOR", "USING_WIREGUARD"])
+def test_a_saved_proxy_is_not_used_when_a_tunnel_routes_the_traffic(monkeypatch, mode):
+    """Tor and WireGuard route everything themselves; a LAN proxy would carry it around them."""
+    from shelfmark.config import env
+
+    network = _set_proxy_config(
+        monkeypatch,
+        PROXY_MODE="http",
+        HTTP_PROXY="http://192.168.1.5:3128",
+        NO_PROXY="",
+        USING_TOR=mode == "USING_TOR",
+    )
+    monkeypatch.setattr(env, "USING_WIREGUARD", mode == "USING_WIREGUARD")
+
+    assert network.get_proxies("https://example.com") == {}
+
+
+def test_a_saved_proxy_is_used_without_a_tunnel(monkeypatch):
+    """With neither tunnel on, the proxy from Settings applies as before."""
+    from shelfmark.config import env
+
+    network = _set_proxy_config(
+        monkeypatch, PROXY_MODE="socks5", SOCKS5_PROXY="socks5://proxy.local:1080", NO_PROXY=""
+    )
+    monkeypatch.setattr(env, "USING_WIREGUARD", False)
+
+    assert network.get_proxies("https://example.com")["https"] == "socks5://proxy.local:1080"
+
+
+@pytest.mark.parametrize(("mode", "name"), [("USING_TOR", "Tor"), ("USING_WIREGUARD", "WireGuard")])
+def test_the_proxy_fields_say_why_they_are_unused_under_a_tunnel(monkeypatch, mode, name):
+    """Settings greys out every proxy field and names the tunnel that routes the traffic."""
+    from shelfmark.config import env
+    from shelfmark.config.settings import network_settings
+
+    monkeypatch.setattr(env, "USING_TOR", False)
+    monkeypatch.setattr(env, "USING_WIREGUARD", False)
+    monkeypatch.setattr(env, mode, True)
+    fields = {field.key: field for field in network_settings()}
+
+    for key in ("PROXY_MODE", "HTTP_PROXY", "HTTPS_PROXY", "SOCKS5_PROXY", "NO_PROXY"):
+        assert fields[key].disabled is True
+        assert name in fields[key].disabled_reason

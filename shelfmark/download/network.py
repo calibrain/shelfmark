@@ -18,6 +18,7 @@ import httpx
 import requests
 from dns.exception import DNSException
 
+from shelfmark.config import env
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import coerce_bool, normalize_optional_text
@@ -69,14 +70,35 @@ def should_bypass_proxy(url: str) -> bool:
     return any(fnmatch.fnmatch(hostname, pattern) for pattern in patterns)
 
 
+def tunnel_egress() -> str:
+    """The egress mode that routes all traffic itself, or "" when there is none.
+
+    Tor and WireGuard send every outbound connection through the tunnel with iptables and
+    leave the private ranges off it. A proxy from Settings would undo that: one on the LAN
+    would carry all traffic around the tunnel, and a public one would put its own address
+    in front. So with either mode on, the proxy settings are not used.
+    """
+    if coerce_bool(app_config.get("USING_TOR", False)):
+        return "Tor"
+    if env.USING_WIREGUARD:
+        return "WireGuard"
+    return ""
+
+
 def get_proxies(url: str = "") -> dict:
     """Get current proxy configuration from config singleton.
+
+    Empty when Tor or WireGuard routes the traffic (``tunnel_egress``), or when ``url``
+    matches the local rule or a No Proxy pattern.
 
     Args:
         url: Optional URL to check against NO_PROXY patterns.
              If provided and matches a pattern, returns empty dict.
 
     """
+    if tunnel_egress():
+        return {}
+
     # Check NO_PROXY bypass first
     if url and should_bypass_proxy(url):
         return {}
