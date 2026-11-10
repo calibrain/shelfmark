@@ -17,7 +17,6 @@ from shelfmark.download.postprocess.packs import PackFile
 from shelfmark.release_sources.audiobookbay.utils import normalize_search_punctuation
 
 if TYPE_CHECKING:
-    import requests
     from bs4.element import Tag
 
 logger = setup_logger(__name__)
@@ -161,7 +160,7 @@ def _normalize_result_url(url: str, hostname: str) -> str:
 
 def _bootstrap_abb_session(
     hostname: str,
-    session: requests.Session,
+    session: NetworkSession,
     retry_attempts: int,
 ) -> None:
     """Warm up ABB session cookies (best effort)."""
