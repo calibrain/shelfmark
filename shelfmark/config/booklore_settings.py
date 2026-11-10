@@ -39,7 +39,6 @@ def _get_booklore_select_options(
         password=password,
         library_id=1,
         path_id=1,
-        verify_tls=True,
         refresh_after_upload=True,
     )
 

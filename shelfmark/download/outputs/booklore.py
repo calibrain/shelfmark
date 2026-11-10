@@ -63,7 +63,9 @@ class BookloreConfig:
     password: str
     library_id: int
     path_id: int
-    verify_tls: bool = True
+    # None lets the network session follow Certificate Validation for the server's URL;
+    # True or False overrides it for this server.
+    verify_tls: bool | None = None
     upload_to_bookdrop: bool = False
     refresh_after_upload: bool = False
 
@@ -141,7 +143,6 @@ def build_booklore_config(
         password=password,
         library_id=library_id,
         path_id=path_id,
-        verify_tls=True,
         upload_to_bookdrop=upload_to_bookdrop,
         refresh_after_upload=not upload_to_bookdrop,
     )
