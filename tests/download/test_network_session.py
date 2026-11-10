@@ -228,6 +228,9 @@ def sent_hops(monkeypatch):
     """Record the ``verify`` each hop reaches the transport with."""
     import requests
 
+    # requests swaps verify=True for a bundle named in these, so keep the host's out.
+    for name in ("REQUESTS_CA_BUNDLE", "CURL_CA_BUNDLE"):
+        monkeypatch.delenv(name, raising=False)
     hops = []
 
     def fake_send(self, request, **kwargs):
