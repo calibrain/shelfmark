@@ -670,21 +670,21 @@ def _is_local_address(host_str: str) -> bool:
     if host_lower == "localhost":
         return True
 
+    # An IP literal first: an IPv6 address has no dot, so it must not fall through to the
+    # single-label rule below, where a public one would count as local.
+    try:
+        addr = ipaddress.ip_address(host_str.strip("[]"))
+    except ValueError:
+        pass
+    else:
+        return addr.is_private or addr.is_loopback or addr.is_link_local
+
     # Check for simple hostnames (no dot = likely internal Docker/container name)
     if "." not in host_str:
         return True
 
     # Check for common internal TLDs
-    if any(host_lower.endswith(tld) for tld in _INTERNAL_TLDS):
-        return True
-
-    # Check for private/loopback/link-local IP addresses
-    try:
-        addr = ipaddress.ip_address(host_str)
-    except ValueError:
-        return False
-    else:
-        return addr.is_private or addr.is_loopback or addr.is_link_local
+    return any(host_lower.endswith(tld) for tld in _INTERNAL_TLDS)
 
 
 class UnsafeDestinationError(requests.exceptions.InvalidURL):
