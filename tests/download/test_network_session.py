@@ -221,3 +221,57 @@ def test_explicit_proxies_are_kept_across_redirects(settings, monkeypatch):
 
     assert hops[0].get("https") == "http://chosen:1"
     assert hops[1] == {"http": _PROXY, "https": _PROXY}
+
+
+@pytest.fixture
+def sent_hops(monkeypatch):
+    """Record the ``verify`` each hop reaches the transport with."""
+    import requests
+
+    hops = []
+
+    def fake_send(self, request, **kwargs):
+        hops.append((request.url, kwargs.get("verify")))
+        response = requests.Response()
+        response.status_code = 200
+        response.url = request.url
+        response.request = request
+        return response
+
+    monkeypatch.setattr(requests.Session, "send", fake_send)
+    return hops
+
+
+def test_verify_is_chosen_again_for_a_redirect_hop(settings, sent_hops):
+    """Under disabled_local, a hop from a local link to a public host is verified."""
+    settings["CERTIFICATE_VALIDATION"] = "disabled_local"
+    session = network.NetworkSession()
+
+    session.send(_redirect_hop("https://auth.example.com/jwks"), verify=False)
+    session.send(_redirect_hop("https://192.168.1.20/jwks"), verify=True)
+
+    assert sent_hops == [
+        ("https://auth.example.com/jwks", True),
+        ("https://192.168.1.20/jwks", False),
+    ]
+
+
+def test_a_ca_bundle_from_the_environment_is_kept_for_a_verified_hop(
+    settings, sent_hops, monkeypatch
+):
+    """Turning verification back on for a hop uses the CA bundle requests would have used."""
+    settings["CERTIFICATE_VALIDATION"] = "disabled_local"
+    monkeypatch.setenv("REQUESTS_CA_BUNDLE", "/etc/ssl/custom.pem")
+
+    network.NetworkSession().send(_redirect_hop("https://auth.example.com/jwks"), verify=False)
+
+    assert sent_hops == [("https://auth.example.com/jwks", "/etc/ssl/custom.pem")]
+
+
+def test_an_explicit_verify_is_kept_on_every_hop(settings, sent_hops):
+    """A caller's own ``verify`` is not replaced, on the first hop or a redirect."""
+    settings["CERTIFICATE_VALIDATION"] = "disabled"
+
+    network.NetworkSession().get("https://auth.example.com/", verify=True)
+
+    assert sent_hops == [("https://auth.example.com/", True)]

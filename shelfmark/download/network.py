@@ -160,16 +160,41 @@ class NetworkRules:
         """Send a request with the proxy and ``verify`` for its URL unless the caller set them."""
         target = url.decode() if isinstance(url, bytes) else str(url)
         explicit = kwargs.get("proxies") is not None
+        explicit_verify = kwargs.get("verify") is not None
         if not explicit:
             kwargs["proxies"] = get_proxies(target) or _direct_if_bypassed(target)
-        if kwargs.get("verify") is None:
+        if not explicit_verify:
             kwargs["verify"] = get_ssl_verify(target)
-        previous = getattr(_redirect_state, "explicit_proxies", False)
+        previous = (
+            getattr(_redirect_state, "explicit_proxies", False),
+            getattr(_redirect_state, "explicit_verify", False),
+        )
         _redirect_state.explicit_proxies = explicit
+        _redirect_state.explicit_verify = explicit_verify
         try:
             return super().request(method, url, *args, **kwargs)  # type: ignore[misc]
         finally:
-            _redirect_state.explicit_proxies = previous
+            _redirect_state.explicit_proxies, _redirect_state.explicit_verify = previous
+
+    def send(self, request: Any, **kwargs: Any) -> Any:
+        """Send one hop, with ``verify`` chosen for that hop's own URL.
+
+        requests reuses the first URL's ``verify`` for every redirect, so with
+        ``disabled_local`` a local link that redirected to a public host was fetched without
+        checking its certificate. Each hop now gets ``get_ssl_verify()`` for its URL, keeping
+        a CA bundle from the environment where verification is on. A ``verify`` the caller
+        passed explicitly is kept.
+        """
+        if not getattr(_redirect_state, "explicit_verify", False):
+            url = str(request.url)
+            if get_ssl_verify(url):
+                if kwargs.get("verify") is False:
+                    kwargs["verify"] = self.merge_environment_settings(  # type: ignore[attr-defined]
+                        url, {}, None, True, None
+                    )["verify"]
+            else:
+                kwargs["verify"] = False
+        return super().send(request, **kwargs)  # type: ignore[misc]
 
     def rebuild_proxies(self, prepared_request: Any, proxies: Any) -> Any:
         """Choose the proxy for a redirect hop from the hop's own URL, as for any request.
@@ -177,8 +202,7 @@ class NetworkRules:
         requests keeps the first URL's proxies for every redirect and only re-checks the
         environment's NO_PROXY, so a LAN link that redirects to the internet (a Prowlarr
         download with Redirect on) went out direct with a proxy configured. Proxies a
-        caller passed explicitly are kept. ``verify`` stays as chosen for the first URL;
-        requests offers no hook to change it per hop.
+        caller passed explicitly are kept. ``send()`` does the same for ``verify``.
         """
         if getattr(_redirect_state, "explicit_proxies", False):
             return super().rebuild_proxies(prepared_request, proxies)  # type: ignore[misc]
