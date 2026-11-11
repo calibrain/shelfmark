@@ -4,10 +4,3 @@ name: Shelfmark CodeQL configuration
 # findings are noise. Skipping it drops those alerts without hiding anything in the app.
 paths-ignore:
   - tests
-  # Chomikuj's mobile API mandates MD5 over a static 20-character signing
-  # constant shipped in the public Chomikuj app. The constant is a public app
-  # value, not a user credential, and the call uses usedforsecurity=False.
-  # CodeQL cannot path-scope query filters, so this file-level exclusion is the
-  # only working mechanism; keeping it scoped here leaves the weak-hash query
-  # actionable for application code. All other Chomikuj files stay scanned.
-  - shelfmark/release_sources/chomikuj/token.py

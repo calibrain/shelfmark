@@ -34,4 +34,7 @@ def sign_token(path: str, query: str = "", body: str = "") -> str:
     if query:
         signed = f"{signed}?{query}"
     signed += body + CHOMIKUJ_SIGNING_CONSTANT
+    # Chomikuj's mobile API mandates MD5 request signing; the signing constant is
+    # a public app value, not a user credential, and this is not password storage.
+    # codeql[py/weak-sensitive-data-hashing]: Chomikuj's mobile API mandates MD5
     return hashlib.md5(signed.encode("utf-8"), usedforsecurity=False).hexdigest()
