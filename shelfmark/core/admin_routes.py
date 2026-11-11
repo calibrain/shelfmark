@@ -6,8 +6,6 @@ All endpoints require admin session.
 
 from __future__ import annotations
 
-import os
-import sqlite3
 from functools import wraps
 from typing import TYPE_CHECKING, Any, ParamSpec
 
@@ -33,7 +31,7 @@ from shelfmark.core.auth_modes import (
     normalize_auth_source,
 )
 from shelfmark.core.config import config as app_config
-from shelfmark.core.cwa_user_sync import sync_cwa_users_from_rows
+from shelfmark.core.cwa_user_sync import connect_cwa_db, sync_cwa_users_from_rows
 from shelfmark.core.logger import setup_logger
 
 if TYPE_CHECKING:
@@ -154,9 +152,7 @@ def _sync_all_cwa_users(user_db: UserDB) -> dict[str, int]:
         msg = "Calibre-Web database is not available"
         raise FileNotFoundError(msg)
 
-    db_path = os.fspath(CWA_DB_PATH)
-    db_uri = f"file:{db_path}?mode=ro&immutable=1"
-    conn = sqlite3.connect(db_uri, uri=True)
+    conn = connect_cwa_db(CWA_DB_PATH)
     try:
         cur = conn.cursor()
         cur.execute("SELECT name, role, email FROM user")
