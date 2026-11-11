@@ -29,11 +29,13 @@ def connect_cwa_db(db_path: str | os.PathLike[str] | Path) -> sqlite3.Connection
     SQLite cannot use the -shm file.
     """
     uri = f"file:{os.fspath(db_path)}?mode=ro"
-    conn = sqlite3.connect(uri, uri=True)
+    conn = None
     try:
+        conn = sqlite3.connect(uri, uri=True)
         conn.execute("PRAGMA schema_version").fetchone()
     except sqlite3.OperationalError:
-        conn.close()
+        if conn is not None:
+            conn.close()
         conn = sqlite3.connect(f"{uri}&immutable=1", uri=True)
     return conn
 

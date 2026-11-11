@@ -236,3 +236,32 @@ def test_connect_cwa_db_is_read_only(tmp_path):
             conn.execute("DELETE FROM user")
     finally:
         conn.close()
+
+
+def test_connect_cwa_db_falls_back_to_immutable_when_the_plain_open_fails(tmp_path, monkeypatch):
+    db_path = tmp_path / "app.db"
+    writer = _make_wal_app_db(db_path)
+
+    real_connect = sqlite3.connect
+    uris = []
+
+    def fake_connect(database, **kwargs):
+        uris.append(database)
+        if "immutable=1" not in database:
+            raise sqlite3.OperationalError("unable to open database file")
+        return real_connect(database, **kwargs)
+
+    monkeypatch.setattr("shelfmark.core.cwa_user_sync.sqlite3.connect", fake_connect)
+    try:
+        conn = connect_cwa_db(db_path)
+        try:
+            rows = conn.execute("SELECT name, password FROM user").fetchall()
+        finally:
+            conn.close()
+    finally:
+        writer.close()
+
+    assert uris[0].endswith("?mode=ro")
+    assert uris[1].endswith("?mode=ro&immutable=1")
+    # The fallback skips the WAL, so it only sees the last checkpoint.
+    assert rows == [("admin", "old-hash")]
