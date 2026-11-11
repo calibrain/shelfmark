@@ -8,12 +8,15 @@ from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.auth_modes import AUTH_SOURCE_CWA, normalize_auth_source
 from shelfmark.core.external_user_linking import upsert_external_user
+from shelfmark.core.logger import setup_logger
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
     from pathlib import Path
 
     from shelfmark.core.user_db import UserDB
+
+logger = setup_logger(__name__)
 
 _CWA_ALIAS_SUFFIX = "__cwa"
 
@@ -33,9 +36,16 @@ def connect_cwa_db(db_path: str | os.PathLike[str] | Path) -> sqlite3.Connection
     try:
         conn = sqlite3.connect(uri, uri=True)
         conn.execute("PRAGMA schema_version").fetchone()
-    except sqlite3.OperationalError:
+    except sqlite3.OperationalError as exc:
         if conn is not None:
             conn.close()
+        logger.warning(
+            "CWA database %s cannot be read in place (%s); using an immutable snapshot, "
+            "which misses account changes CWA has not checkpointed yet. Mount the folder "
+            "that holds app.db, not the file alone, so SQLite can read app.db-wal.",
+            db_path,
+            exc,
+        )
         conn = sqlite3.connect(f"{uri}&immutable=1", uri=True)
     return conn
 
