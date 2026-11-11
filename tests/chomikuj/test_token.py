@@ -2,7 +2,7 @@
 
 The formula and vectors were verified against the mobile app (``scripts/live-spike.mjs``
 and ``tests/token.test.mjs``). Hardcoding the digests keeps any regression in the
-secret, separator, path normalization, or UTF-8 handling visible.
+signing constant, separator, path normalization, or UTF-8 handling visible.
 """
 
 import hashlib
@@ -10,7 +10,7 @@ import re
 
 import pytest
 
-from shelfmark.release_sources.chomikuj.token import CHOMIKUJ_SECRET, sign_token
+from shelfmark.release_sources.chomikuj.token import CHOMIKUJ_SIGNING_CONSTANT, sign_token
 
 MD5_HEX = re.compile(r"^[0-9a-f]{32}$")
 
@@ -53,10 +53,10 @@ VECTORS = [
 ]
 
 
-def test_secret_is_the_exact_mobile_app_constant():
-    """Test secret is the exact mobile app constant."""
-    assert CHOMIKUJ_SECRET == "wzrwYua$.DSe8suk!`'2"
-    assert len(CHOMIKUJ_SECRET) == 20
+def test_signing_constant_is_the_exact_mobile_app_value():
+    """Test signing constant is the exact mobile app value."""
+    assert CHOMIKUJ_SIGNING_CONSTANT == "wzrwYua$.DSe8suk!`'2"
+    assert len(CHOMIKUJ_SIGNING_CONSTANT) == 20
 
 
 def test_token_vectors():
@@ -104,7 +104,7 @@ def test_query_is_signed_verbatim():
     # Independent oracle: the digest is MD5 over the exact string, no re-encoding.
     raw_query = "Query=a%20b+c&PageNumber=2"
     expected = hashlib.md5(
-        f"api/v3/files/search?{raw_query}{CHOMIKUJ_SECRET}".encode(),
+        f"api/v3/files/search?{raw_query}{CHOMIKUJ_SIGNING_CONSTANT}".encode(),
         usedforsecurity=False,
     ).hexdigest()
     assert sign_token("api/v3/files/search", raw_query) == expected
@@ -114,8 +114,8 @@ def test_query_is_signed_verbatim():
     ("path", "query", "body", "expected"),
     [(path, query, body, expected) for _, path, query, body, expected in VECTORS],
 )
-def test_wrong_secret_differs_from_every_vector(path, query, body, expected):
-    """Test wrong secret differs from every vector."""
+def test_wrong_signing_constant_differs_from_every_vector(path, query, body, expected):
+    """Test wrong signing constant differs from every vector."""
     raw = path.lstrip("/")
     if query:
         raw = f"{raw}?{query}"

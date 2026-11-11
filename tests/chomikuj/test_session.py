@@ -14,6 +14,8 @@ import pytest
 
 from shelfmark.release_sources.chomikuj.client import ChomikujAuthError
 from shelfmark.release_sources.chomikuj.session import (
+    CACHE_FINGERPRINT_ITERATIONS,
+    CACHE_FINGERPRINT_SALT,
     ChomikujSession,
     clear_session,
     get_session,
@@ -28,8 +30,14 @@ OTHER_PASSWORD = "an0ther-p@ssword"
 
 
 def _fingerprint(username: str, password: str, base_url: str) -> str:
-    """Return the cache fingerprint for the test credentials."""
-    return hashlib.sha256(f"{username}\0{password}\0{base_url}".encode()).hexdigest()
+    """Return the PBKDF2 cache fingerprint for the test credentials."""
+    material = f"{username}\0{password}\0{base_url}".encode()
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        material,
+        CACHE_FINGERPRINT_SALT,
+        CACHE_FINGERPRINT_ITERATIONS,
+    ).hex()
 
 
 class FakeClient:
@@ -147,6 +155,17 @@ def test_concurrent_calls_share_one_in_flight_login():
     assert len(client.calls) == 1
     assert len(results) == 2
     assert results[0] is results[1]
+
+
+def test_fingerprint_is_64_char_lowercase_hex_and_credential_sensitive():
+    """The cache fingerprint is a 64-character lowercase hex, credential-scoped key."""
+    fingerprint = _fingerprint(USERNAME, PASSWORD, BASE_URL)
+
+    assert len(fingerprint) == 64
+    assert fingerprint == fingerprint.lower()
+    assert set(fingerprint) <= set("0123456789abcdef")
+    assert fingerprint != _fingerprint(USERNAME, OTHER_PASSWORD, BASE_URL)
+    assert fingerprint != _fingerprint(USERNAME, PASSWORD, OTHER_BASE_URL)
 
 
 def test_fingerprint_change_password_forces_new_login():

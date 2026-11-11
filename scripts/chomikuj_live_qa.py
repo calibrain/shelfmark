@@ -779,7 +779,7 @@ def run_live(checked: EnvironmentCheck) -> int:
 def run_self_test() -> int:
     """Run the fully offline self-test; return 0 when every check passes."""
     from shelfmark.release_sources.chomikuj.quota import decide_download
-    from shelfmark.release_sources.chomikuj.token import CHOMIKUJ_SECRET, sign_token
+    from shelfmark.release_sources.chomikuj.token import CHOMIKUJ_SIGNING_CONSTANT, sign_token
 
     failed: list[str] = []
     passed = 0
@@ -798,7 +798,7 @@ def run_self_test() -> int:
 
     def token_checks() -> None:
         """Verify token signing against the recorded vectors."""
-        _expect(len(CHOMIKUJ_SECRET) == 20, "secret length is not 20")
+        _expect(len(CHOMIKUJ_SIGNING_CONSTANT) == 20, "signing constant length is not 20")
         for path, query, body, expected in TOKEN_VECTORS:
             actual = sign_token(path, query, body)
             _expect(actual == expected, f"{path}: expected {expected}, got {actual}")

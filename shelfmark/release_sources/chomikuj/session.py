@@ -2,9 +2,12 @@
 
 The Chomikuj mobile API requires an ``ApiKey`` obtained from
 ``account/login``. Shelfmark is single-account, so the cache is keyed by a
-SHA-256 fingerprint over the username, the password, and the base URL: changing
-any of them is a cache miss and starts a fresh login. The fingerprint is also
-kept on the returned session so callers can compare cache generations.
+PBKDF2-HMAC-SHA256 fingerprint over the username, the password, and the base
+URL: changing any of them is a cache miss and starts a fresh login. The
+fingerprint is an in-memory cache key only and is never persisted; the salt and
+iteration count are public process-local KDF parameters, not password storage.
+The fingerprint is also kept on the returned session so callers can compare
+cache generations.
 
 Concurrent callers that miss the cache share one in-flight login instead of
 logging in twice. Each cache entry owns a :class:`threading.Event`; exactly one
@@ -28,7 +31,18 @@ from typing import Protocol
 
 from shelfmark.release_sources.chomikuj.client import ChomikujAuthError, ChomikujError
 
-__all__ = ["ChomikujSession", "clear_session", "get_session"]
+__all__ = [
+    "CACHE_FINGERPRINT_ITERATIONS",
+    "CACHE_FINGERPRINT_SALT",
+    "ChomikujSession",
+    "clear_session",
+    "get_session",
+]
+
+# Public, process-local PBKDF2 parameters for the in-memory cache key. They are
+# not secrets, never leave the process, and are not used for password storage.
+CACHE_FINGERPRINT_SALT = b"shelfmark-chomikuj-session-cache-v1"
+CACHE_FINGERPRINT_ITERATIONS = 100_000
 
 
 class _LoginClient(Protocol):
@@ -67,9 +81,19 @@ _cache_lock = threading.Lock()
 
 
 def _fingerprint(username: str, password: str, base_url: str) -> str:
-    """Return the cache key hashed from the credentials and base URL."""
+    """Return the PBKDF2-HMAC-SHA256 cache key for the credentials and base URL.
+
+    The digest is an in-memory cache key only: it is never persisted or logged.
+    ``CACHE_FINGERPRINT_SALT`` and ``CACHE_FINGERPRINT_ITERATIONS`` are public
+    process-local KDF parameters, not password storage.
+    """
     material = f"{username}\0{password}\0{base_url}"
-    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+    return hashlib.pbkdf2_hmac(
+        "sha256",
+        material.encode("utf-8"),
+        CACHE_FINGERPRINT_SALT,
+        CACHE_FINGERPRINT_ITERATIONS,
+    ).hex()
 
 
 def _to_session(payload: object, fingerprint: str) -> ChomikujSession:
