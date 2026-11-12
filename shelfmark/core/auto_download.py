@@ -181,11 +181,14 @@ def _format_match(
         # Reject things that are clearly an ebook and nothing else.
         return _audiobook_signal(release, audiobook_formats) and fmt not in EBOOK_FORMAT_MARKERS
 
-    title_l = (release.title or "").lower()
+    # A format named as a whole word anywhere in the name ("Dune.epub", "(epub)", "[EPUB]")
+    # counts: Newznab releases, and Prowlarr ones outside MyAnonamouse, carry no format and
+    # only the generic "book" content type, so the name is their only signal. Whole words
+    # only, so "Mobile" is not "mobi".
     has_ebook_signal = (
         fmt in ebook_formats
         or (release.content_type or "").lower() == "ebook"
-        or any(f".{ef}" in title_l for ef in ebook_formats)
+        or not ebook_formats.isdisjoint(_tokens(release.title))
     )
     return has_ebook_signal and not _audiobook_signal(release, audiobook_formats)
 
