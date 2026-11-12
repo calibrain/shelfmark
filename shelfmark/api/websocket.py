@@ -190,9 +190,11 @@ class WebSocketManager:
             if user_id is not None:
                 room = f"user_{user_id}"
                 with self._rooms_lock:
-                    if room in self._user_rooms:
-                        user_data = {**data, "book_id": viewer_download_id(book_id, request_id)}
-                        socketio.emit("download_progress", user_data, to=room)
+                    has_clients = room in self._user_rooms
+                # emit() can synchronously disconnect a client whose cleanup needs this lock.
+                if has_clients:
+                    user_data = {**data, "book_id": viewer_download_id(book_id, request_id)}
+                    socketio.emit("download_progress", user_data, to=room)
             logger.debug("Broadcasted progress for book %s: %s%%", book_id, progress)
         except Exception:
             logger.exception("Error broadcasting download progress")
