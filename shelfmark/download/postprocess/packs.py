@@ -425,6 +425,85 @@ def drop_ignored_files(book_files: list[Path], ignored: list[str] | None) -> lis
     return [p for p in book_files if p not in dropped]
 
 
+@dataclass(frozen=True)
+class _PlanFileIndex:
+    """On-disk book files, keyed each way an approved plan entry can name them."""
+
+    root: Path
+    files: list[Path]
+    by_rel: dict[str, Path]
+    by_root_rel: dict[str, Path]
+    parts_by_path: dict[Path, tuple[str, ...]]
+    by_name: dict[str, list[Path]]
+
+    @classmethod
+    def build(cls, book_files: list[Path]) -> _PlanFileIndex:
+        root, rel_by_path = _relative_paths(book_files)
+        by_root_rel = {f"{root.name}/{rel}": path for path, rel in rel_by_path.items()}
+        parts_by_path = {
+            path: (root.name, *PurePosixPath(rel).parts) for path, rel in rel_by_path.items()
+        }
+        # A folder nested under the root with the root's own name repeats a root-relative
+        # path. Drop such keys so the shared-tail match decides between the copies.
+        for parts in parts_by_path.values():
+            for index in range(1, len(parts) - 1):
+                if parts[index] == root.name:
+                    by_root_rel.pop("/".join(parts[index:]), None)
+        by_name: dict[str, list[Path]] = {}
+        for path in book_files:
+            by_name.setdefault(path.name, []).append(path)
+        return cls(
+            root=root,
+            files=book_files,
+            by_rel={rel: path for path, rel in rel_by_path.items()},
+            by_root_rel=by_root_rel,
+            parts_by_path=parts_by_path,
+            by_name=by_name,
+        )
+
+    def match(self, wanted: str, claimed: set[Path]) -> Path | None:
+        """Find the file a plan entry names, in the order `match_plan_to_files` lists."""
+        wanted_rel = wanted.replace("\\", "/").lstrip("./")
+        exact = self.by_rel.get(wanted_rel)
+        if exact is not None:
+            return exact
+        root_relative = self.by_root_rel.get(wanted_rel)
+        if root_relative is not None and root_relative not in claimed:
+            return root_relative
+
+        wanted_path = PurePosixPath(wanted_rel)
+        same_name = [p for p in self.by_name.get(wanted_path.name, []) if p not in claimed]
+        shared_tail = _best_shared_tail(wanted_path.parts, same_name, self.parts_by_path)
+        if shared_tail is not None:
+            return shared_tail
+        if same_name:
+            return same_name[0]
+
+        wanted_name = wanted_path.name.lower()
+        glued = [p for p in self.files if p not in claimed and wanted_name.endswith(p.name.lower())]
+        return glued[0] if len(glued) == 1 else None
+
+
+def _best_shared_tail(
+    wanted_parts: tuple[str, ...],
+    candidates: list[Path],
+    parts_by_path: dict[Path, tuple[str, ...]],
+) -> Path | None:
+    """Return the candidate sharing the most trailing components (at least 2) with a path."""
+    scores: dict[Path, int] = {}
+    for path in candidates:
+        depth = 0
+        for actual, expected in zip(
+            reversed(parts_by_path[path]), reversed(wanted_parts), strict=False
+        ):
+            if actual != expected:
+                break
+            depth += 1
+        if depth > 1:
+            scores[path] = depth
+    return _single_best(scores)
+
+
 def match_plan_to_files(
     plan: list[PackBook],
     book_files: list[Path],
@@ -434,40 +513,28 @@ def match_plan_to_files(
 ) -> list[BookGroup]:
     """Apply an approved plan to on-disk files.
 
-    Files match by release-relative path first, then by basename (archive extraction
-    and client save paths can shift the root), then by the on-disk basename being a
-    suffix of the planned name (sources that glue folder and file names together).
+    Files match in this order:
+
+    - Release-relative path.
+    - Same path under the release root's name.
+    - Most trailing path components shared with a same-named file.
+    - Basename. Archive extraction and client save paths can shift the root.
+    - On-disk basename that ends the planned name. Some sources glue folder and
+      file names together.
+
     Book files the plan does not mention fall back to heuristic grouping so nothing
     is silently dropped.
     """
     if not book_files:
         return []
-    root, rel_by_path = _relative_paths(book_files)
-    by_rel = {rel: path for path, rel in rel_by_path.items()}
-    by_name: dict[str, list[Path]] = {}
-    for path in book_files:
-        by_name.setdefault(path.name, []).append(path)
+    files = _PlanFileIndex.build(book_files)
 
     claimed: set[Path] = set()
     groups: list[BookGroup] = []
     for book in plan:
         matched: list[Path] = []
         for wanted in book.files:
-            wanted_rel = wanted.replace("\\", "/").lstrip("./")
-            candidate = by_rel.get(wanted_rel)
-            if candidate is None:
-                candidates = [
-                    p for p in by_name.get(PurePosixPath(wanted_rel).name, []) if p not in claimed
-                ]
-                candidate = candidates[0] if candidates else None
-            if candidate is None:
-                wanted_name = PurePosixPath(wanted_rel).name.lower()
-                candidates = [
-                    p
-                    for p in book_files
-                    if p not in claimed and wanted_name.endswith(p.name.lower())
-                ]
-                candidate = candidates[0] if len(candidates) == 1 else None
+            candidate = files.match(wanted, claimed)
             if candidate is not None and candidate not in claimed:
                 claimed.add(candidate)
                 matched.append(candidate)
@@ -504,7 +571,7 @@ def match_plan_to_files(
     if still_unmatched:
         groups.extend(
             group_files_into_books(
-                still_unmatched, series_name=series_name, author_name=author_name, root=root
+                still_unmatched, series_name=series_name, author_name=author_name, root=files.root
             )
         )
     return groups

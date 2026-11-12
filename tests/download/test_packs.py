@@ -256,6 +256,89 @@ class TestGroupFilesIntoBooks:
 
 
 class TestMatchPlanToFiles:
+    def test_release_root_paths_match_duplicate_names_in_reversed_plan(self, tmp_path: Path):
+        root = tmp_path / "staging" / "Series Pack"
+        first = root / "Book 1" / "001.mp3"
+        second = root / "Book 2" / "001.mp3"
+        for index, file in enumerate((first, second)):
+            file.parent.mkdir(parents=True)
+            file.write_bytes(f"audio{index}".encode())
+        plan = [
+            PackBook(
+                title="Edited Two",
+                series_position=2,
+                year=None,
+                files=["Series Pack/Book 2/001.mp3"],
+            ),
+            PackBook(
+                title="Edited One",
+                series_position=1,
+                year=None,
+                files=["Series Pack/Book 1/001.mp3"],
+            ),
+        ]
+        groups = match_plan_to_files(plan, [first, second])
+        assert [(group.title, group.files) for group in groups] == [
+            ("Edited Two", [second]),
+            ("Edited One", [first]),
+        ]
+        assert [[file.read_bytes() for file in group.files] for group in groups] == [
+            [b"audio1"],
+            [b"audio0"],
+        ]
+
+    def test_relative_path_precedes_root_prefixed_collision(self, tmp_path: Path):
+        root = tmp_path / "Series"
+        prefixed = root / "Book" / "audio.m4b"
+        relative = root / "Series" / "Book" / "audio.m4b"
+        plan = [
+            PackBook(
+                title="Relative", series_position=None, year=None, files=["Series/Book/audio.m4b"]
+            ),
+            PackBook(title="Prefixed", series_position=None, year=None, files=["Book/audio.m4b"]),
+        ]
+        groups = match_plan_to_files(plan, [prefixed, relative])
+        assert [(group.title, group.files) for group in groups] == [
+            ("Relative", [relative]),
+            ("Prefixed", [prefixed]),
+        ]
+
+    def test_root_prefixed_tie_retains_basename_order(self, tmp_path: Path):
+        root = tmp_path / "Series"
+        exact = root / "Book" / "audio.m4b"
+        nested = root / "Nested" / "Series" / "Book" / "audio.m4b"
+        plan = [
+            PackBook(
+                title="First", series_position=None, year=None, files=["Series/Book/audio.m4b"]
+            ),
+            PackBook(
+                title="Second", series_position=None, year=None, files=["Series/Book/audio.m4b"]
+            ),
+        ]
+        groups = match_plan_to_files(plan, [nested, exact])
+        assert [(group.title, group.files) for group in groups] == [
+            ("First", [nested]),
+            ("Second", [exact]),
+        ]
+
+    def test_repeated_root_prefixed_path_uses_unclaimed_fallback(self, tmp_path: Path):
+        root = tmp_path / "Series"
+        exact = root / "Book" / "audio.m4b"
+        other = root / "Other" / "audio.m4b"
+        plan = [
+            PackBook(
+                title="First", series_position=None, year=None, files=["Series/Book/audio.m4b"]
+            ),
+            PackBook(
+                title="Second", series_position=None, year=None, files=["Series/Book/audio.m4b"]
+            ),
+        ]
+        groups = match_plan_to_files(plan, [exact, other])
+        assert [(group.title, group.files) for group in groups] == [
+            ("First", [exact]),
+            ("Second", [other]),
+        ]
+
     def test_matches_by_relative_path_then_basename(self, tmp_path: Path):
         root = tmp_path / "staging" / "Sun Eater"
         a = root / "Book 1 - A" / "a.m4b"
