@@ -65,6 +65,9 @@ HARDCOVER_LIST_URL_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# A user's own Hardcover account by API key: (user id, username). Kept in memory only.
+_OWN_ACCOUNT_IDENTITIES: dict[str, tuple[str, str | None]] = {}
+
 LIST_LOOKUP_QUERY = """
 query LookupListsBySlug($slug: String!) {
     lists(where: {slug: {_eq: $slug}}, limit: 20) {
@@ -1128,10 +1131,16 @@ class HardcoverProvider(MetadataProvider):
         ),
     )
 
-    def __init__(self, api_key: str | None = None) -> None:
-        """Initialize provider with optional API key (falls back to config)."""
+    def __init__(self, api_key: str | None = None, *, own_account: bool = False) -> None:
+        """Initialize provider with optional API key (falls back to config).
+
+        ``own_account`` marks a key that belongs to one user rather than to the instance. The
+        account the instance is connected to is remembered in the settings; a user's own is
+        looked up from Hardcover and kept in memory, so the two are never mixed up.
+        """
         raw_key = api_key or app_config.get("HARDCOVER_API_KEY", "")
         self.api_key = _normalize_hardcover_api_key(raw_key)
+        self._own_account = own_account
         self.session = requests.Session()
         if self.api_key:
             self.session.headers.update(
@@ -1299,8 +1308,27 @@ class HardcoverProvider(MetadataProvider):
 
         return self._fetch_list_books_by_id(list_id, page, limit)
 
+    def _own_account_identity(self) -> tuple[str, str | None] | None:
+        """(user id, username) of a user's own Hardcover account, from memory or a me query."""
+        known = _OWN_ACCOUNT_IDENTITIES.get(self.api_key)
+        if known is not None:
+            return known
+        result = self._execute_query("query { me { id, username } }", {})
+        me_data = result.get("me", {}) if result else {}
+        if isinstance(me_data, list) and me_data:
+            me_data = me_data[0]
+        if not isinstance(me_data, dict) or me_data.get("id") is None:
+            return None
+        username = str(me_data.get("username") or "").strip() or None
+        identity = (str(me_data["id"]), username)
+        _OWN_ACCOUNT_IDENTITIES[self.api_key] = identity
+        return identity
+
     def _resolve_current_user_id(self) -> str | None:
         """Resolve current Hardcover user id from saved settings or API me query."""
+        if self._own_account:
+            identity = self._own_account_identity()
+            return identity[0] if identity else None
         connected_user_id = _get_connected_user_id()
         if connected_user_id:
             return connected_user_id
@@ -1919,7 +1947,11 @@ class HardcoverProvider(MetadataProvider):
         # Build source URL for the status shelf
         source_url = None
         url_slug = HARDCOVER_STATUS_URL_SLUGS.get(status_id)
-        username = _get_connected_username()
+        if self._own_account:
+            identity = self._own_account_identity()
+            username = identity[1] if identity else None
+        else:
+            username = _get_connected_username()
         if url_slug and username:
             source_url = f"https://hardcover.app/@{username}/books/{url_slug}"
 

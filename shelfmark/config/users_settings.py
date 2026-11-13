@@ -71,6 +71,10 @@ _SELF_SETTINGS_SECTION_OPTIONS = [
     },
 ]
 _SELF_SETTINGS_SECTION_VALUES = {option["value"] for option in _SELF_SETTINGS_SECTION_OPTIONS}
+# Sections that are not the admin's to pick here. A list saved by a build that offered one
+# may still carry it, and it is dropped on save rather than refused. "hardcover" follows
+# HARDCOVER_SYNC_ENABLED instead.
+_SELF_SETTINGS_SECTIONS_NOT_LISTED = frozenset({"hardcover"})
 _SELF_SETTINGS_SECTION_DEFAULTS = [option["value"] for option in _SELF_SETTINGS_SECTION_OPTIONS]
 _SEARCH_MODE_VALUES = {"direct", "universal"}
 _SEARCH_PREFERENCE_PROVIDER_KEYS = {
@@ -289,6 +293,8 @@ def _on_save_users(values: dict[str, object]) -> dict[str, object]:
 
         normalized_sections: list[str] = []
         for section in candidate_sections:
+            if section in _SELF_SETTINGS_SECTIONS_NOT_LISTED:
+                continue
             if section not in _SELF_SETTINGS_SECTION_VALUES:
                 allowed = ", ".join(sorted(_SELF_SETTINGS_SECTION_VALUES))
                 return {
