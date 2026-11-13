@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Any
 from shelfmark.config.env import DISABLE_LOCAL_AUTH
 from shelfmark.core.user_db import UserDB
 from shelfmark.core.utils import normalize_http_url
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import get_session
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -105,7 +105,6 @@ def check_oidc_connection(
     logger: Any,
 ) -> dict[str, Any]:
     """Fetch and validate the configured OIDC discovery document."""
-    import requests
 
     try:
         # Prefer the current (unsaved) form value over the saved config
@@ -115,7 +114,7 @@ def check_oidc_connection(
         if not discovery_url:
             return {"success": False, "message": "Discovery URL is not configured."}
 
-        response = requests.get(discovery_url, timeout=10, verify=get_ssl_verify(discovery_url))
+        response = get_session().get(discovery_url, timeout=10)
         response.raise_for_status()
         document = response.json()
 
@@ -131,7 +130,7 @@ def check_oidc_connection(
         # set (e.g. an Authentik provider with no Signing Key selected) means every
         # login will fail even though discovery looks healthy.
         jwks_uri = str(document["jwks_uri"])
-        jwks_response = requests.get(jwks_uri, timeout=10, verify=get_ssl_verify(jwks_uri))
+        jwks_response = get_session().get(jwks_uri, timeout=10)
         jwks_response.raise_for_status()
         jwks_document = jwks_response.json()
         jwks_keys = jwks_document.get("keys") if isinstance(jwks_document, dict) else None

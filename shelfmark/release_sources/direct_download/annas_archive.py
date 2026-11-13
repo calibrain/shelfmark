@@ -830,7 +830,7 @@ _DOWNLOAD_COUNT_WORKERS = 5
 _download_count_cache = CacheService(max_size=2000)
 # Keeps connections to the mirror open between lookups. requests' default pool of 10
 # per host already covers _DOWNLOAD_COUNT_WORKERS.
-_inline_info_session = requests.Session()
+_inline_info_session = network.NetworkSession()
 
 
 def _fetch_download_count_inline(book_id: str) -> int | None:
@@ -844,7 +844,6 @@ def _fetch_download_count_inline(book_id: str) -> int | None:
             url,
             timeout=5,
             headers={"Accept": "application/json"},
-            proxies=network.get_proxies(url),
         )
         if resp.status_code == 200:
             data = resp.json()
@@ -1438,13 +1437,11 @@ def _extract_libgen_download_url(link: str, cancel_flag: Event | None = None) ->
     headers = {**downloader.DOWNLOAD_HEADERS, "Referer": f"{base_url}/"}
 
     try:
-        response = requests.get(
+        response = network.get_session().get(
             link,
             headers=headers,
             timeout=(5, 10),
             allow_redirects=True,
-            proxies=network.get_proxies(link),
-            verify=network.get_ssl_verify(link),
         )
 
         if response.status_code != HTTPStatus.OK:

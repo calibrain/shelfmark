@@ -124,6 +124,82 @@ class TestOIDCClientRegistration:
         assert "groups" not in scope_str.split()
 
 
+class TestOIDCOutboundRequests:
+    """authlib's own sessions follow the Settings → Network proxy and TLS rules (#1687)."""
+
+    _NETWORK = {
+        **MOCK_OIDC_CONFIG,
+        "PROXY_MODE": "http",
+        "HTTP_PROXY": "http://proxy.example.com:8118",
+        "NO_PROXY": "",
+        "CERTIFICATE_VALIDATION": "disabled",
+    }
+
+    @staticmethod
+    def _reply(call):
+        """Discovery points at a JWKS URL; the JWKS answer is an empty key set."""
+        import json
+
+        import requests
+
+        body = (
+            {"keys": []}
+            if call["url"].endswith("/jwks")
+            else {
+                "issuer": "https://auth.example.com",
+                "authorization_endpoint": "https://auth.example.com/authorize",
+                "token_endpoint": "https://auth.example.com/token",
+                "jwks_uri": "https://auth.example.com/jwks",
+            }
+        )
+        response = requests.Response()
+        response.status_code = 200
+        response._content = json.dumps(body).encode()
+        response.url = call["url"]
+        return response
+
+    def test_discovery_and_jwks_at_login_use_the_proxy_and_tls_setting(self, app, sent_requests):
+        """The two fetches authlib makes outside compliance_fix get the rules too."""
+        from shelfmark.core.oidc_routes import _get_oidc_client
+
+        sent_requests.respond = self._reply
+        with (
+            app.app_context(),
+            patch(
+                "shelfmark.core.oidc_routes.app_config.get",
+                side_effect=_config_getter(self._NETWORK),
+            ),
+        ):
+            client, _config = _get_oidc_client()
+            client.server_metadata.pop("_loaded_at", None)
+            client.load_server_metadata()
+            client.fetch_jwk_set(force=True)
+
+        proxy = {"http": "http://proxy.example.com:8118", "https": "http://proxy.example.com:8118"}
+        assert [call["url"] for call in sent_requests.calls] == [
+            "https://auth.example.com/.well-known/openid-configuration",
+            "https://auth.example.com/jwks",
+        ]
+        assert all(call["proxies"] == proxy for call in sent_requests.calls)
+        assert all(call["verify"] is False for call in sent_requests.calls)
+
+    def test_the_token_exchange_session_follows_the_rules(self, app):
+        """The session authlib builds for the token and userinfo calls is the network one."""
+        from shelfmark.core.oidc_routes import _get_oidc_client
+        from shelfmark.download.network import NetworkRules
+
+        with (
+            app.app_context(),
+            patch(
+                "shelfmark.core.oidc_routes.app_config.get",
+                side_effect=_config_getter(self._NETWORK),
+            ),
+        ):
+            client, _config = _get_oidc_client()
+
+        assert isinstance(client._get_oauth_client(), NetworkRules)
+
+
 class TestOIDCLoginEndpoint:
     @patch("shelfmark.core.oidc_routes._get_oidc_client")
     def test_login_redirects_to_provider(self, mock_get_client, client):

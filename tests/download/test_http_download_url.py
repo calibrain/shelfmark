@@ -4,6 +4,8 @@ from unittest.mock import MagicMock
 
 import requests
 
+from shelfmark.download.network import get_session as _shared_session
+
 
 class _FakeResponse:
     def __init__(
@@ -15,11 +17,16 @@ class _FakeResponse:
         url: str = "",
         iter_error: requests.exceptions.RequestException | None = None,
     ) -> None:
+        """A response with these headers and chunks; ``iter_error`` is raised after them."""
         self.status_code = status_code
         self.headers = headers or {}
         self.url = url
         self._chunks = chunks or []
         self._iter_error = iter_error
+        self.closed = False
+
+    def close(self) -> None:
+        self.closed = True
 
     def raise_for_status(self) -> None:
         if self.status_code >= 400:
@@ -50,8 +57,8 @@ def _prepare_download_test(monkeypatch):
     import shelfmark.download.http as http
 
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: False)
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
-    monkeypatch.setattr(http, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: True)
     monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(http, "tqdm", _DummyProgressBar)
 
@@ -67,7 +74,7 @@ def test_download_url_returns_none_on_rate_limit(monkeypatch):
         error.response = _FakeResponse(429, url=_url)
         raise error
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
 
     result = http.download_url(
         "https://example.com/file.epub",
@@ -85,7 +92,7 @@ def test_download_url_returns_none_on_timeout(monkeypatch):
     def fake_get(_url: str, **_kwargs):
         raise requests.exceptions.Timeout("read timed out")
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
 
     result = http.download_url(
         "https://example.com/file.epub",
@@ -111,7 +118,7 @@ def test_download_url_rejects_html_error_pages(monkeypatch):
             url=url,
         )
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
 
     result = http.download_url(
         "https://example.com/file.epub",
@@ -120,6 +127,47 @@ def test_download_url_rejects_html_error_pages(monkeypatch):
 
     assert result is None
     assert status_updates == [("downloading", "")]
+
+
+def test_download_url_closes_the_response_it_rejects(monkeypatch):
+    """An early return still hands the streamed connection back to the shared session."""
+    http = _prepare_download_test(monkeypatch)
+    response = _FakeResponse(
+        200,
+        headers={"content-length": "100", "content-type": "text/html"},
+        chunks=[b"<html>busy</html>"],
+    )
+    monkeypatch.setattr(_shared_session(), "get", lambda _url, **_kwargs: response)
+
+    assert http.download_url("https://example.com/file.epub") is None
+    assert response.closed is True
+
+
+def test_resume_closes_the_response_when_the_server_ignores_the_range(monkeypatch):
+    """A 200 to a Range request ends the resume, and its response is closed too."""
+    http = _prepare_download_test(monkeypatch)
+    responses = [
+        _FakeResponse(
+            200,
+            headers={"content-length": "8", "content-type": "application/octet-stream"},
+            chunks=[b"abcd"],
+            iter_error=requests.exceptions.ConnectionError("socket reset"),
+        ),
+        _FakeResponse(200, chunks=[b"abcdefgh"]),
+    ]
+    calls = []
+
+    def fake_get(_url, **_kwargs):
+        """Hand out the responses in order, one per request."""
+        calls.append(_url)
+        return responses[min(len(calls), len(responses)) - 1]
+
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
+
+    http.download_url("https://example.com/file.epub")
+
+    assert len(calls) >= 2
+    assert all(response.closed for response in responses)
 
 
 def test_download_url_resumes_partial_download_after_connection_error(monkeypatch):
@@ -149,7 +197,7 @@ def test_download_url_resumes_partial_download_after_connection_error(monkeypatc
         calls.append({"url": url, "headers": dict(kwargs.get("headers", {}))})
         return responses[len(calls) - 1]
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
 
     result = http.download_url("https://example.com/file.epub")
 
@@ -180,7 +228,7 @@ def test_download_does_not_log_a_url_bearing_resume_error(monkeypatch):
             requests.exceptions.ConnectionError(sensitive_url),
         ]
     )
-    monkeypatch.setattr(http.requests, "get", get)
+    monkeypatch.setattr(_shared_session(), "get", get)
 
     assert http.download_url(sensitive_url) is None
 
@@ -202,7 +250,7 @@ def test_download_logs_resume_error_type_without_exception_details(monkeypatch):
         iter_error=error,
     )
     get = MagicMock(side_effect=[initial_response, error, error, error])
-    monkeypatch.setattr(http.requests, "get", get)
+    monkeypatch.setattr(_shared_session(), "get", get)
 
     assert http.download_url(download_url) is None
 
@@ -214,7 +262,7 @@ def test_download_url_does_not_log_a_sensitive_url(monkeypatch):
     logger = MagicMock()
     monkeypatch.setattr(http, "logger", logger)
     monkeypatch.setattr(
-        http.requests,
+        _shared_session(),
         "get",
         lambda url, **_kwargs: _FakeResponse(
             200,
@@ -236,7 +284,7 @@ def test_download_does_not_log_a_url_bearing_request_error(monkeypatch):
     monkeypatch.setattr(http, "logger", logger)
     sensitive_url = "https://cdn.example/book.epub?signature=secret"
     monkeypatch.setattr(
-        http.requests,
+        _shared_session(),
         "get",
         lambda url, **_kwargs: (_ for _ in ()).throw(requests.exceptions.ConnectionError(url)),
     )
@@ -254,7 +302,7 @@ def test_download_logs_request_error_type_without_exception_details(monkeypatch)
     download_url = "https://cdn.example/file.epub?signature=secret"
     error = requests.exceptions.ConnectionError(download_url)
     monkeypatch.setattr(
-        http.requests,
+        _shared_session(),
         "get",
         lambda _url, **_kwargs: (_ for _ in ()).throw(error),
     )
@@ -272,7 +320,7 @@ def test_download_does_not_log_rotated_url_after_retry(monkeypatch):
     source_url = "https://source.example/file.epub"
     rotated_url = "https://rotated.example/file.epub"
     error = requests.exceptions.ConnectionError("connection reset")
-    monkeypatch.setattr(http.requests, "get", MagicMock(side_effect=error))
+    monkeypatch.setattr(_shared_session(), "get", MagicMock(side_effect=error))
     monkeypatch.setattr(http, "_try_rotation", MagicMock(side_effect=[rotated_url, None]))
 
     assert http.download_url(source_url) is None
@@ -287,7 +335,7 @@ def test_download_does_not_pass_url_redaction_state_into_rotation(monkeypatch):
     monkeypatch.setattr(http, "MAX_DOWNLOAD_RETRIES", 1)
     sensitive_url = "https://cdn.example/book.epub?signature=secret"
     monkeypatch.setattr(
-        http.requests,
+        _shared_session(),
         "get",
         lambda _url, **_kwargs: (_ for _ in ()).throw(requests.exceptions.ConnectionError("x")),
     )
@@ -307,7 +355,7 @@ def test_download_does_not_log_a_rotated_url(monkeypatch):
     sensitive_url = "https://cdn.example/book.epub?signature=secret"
     rotated_url = "https://rotated.example/book.epub?signature=secret"
     error = requests.exceptions.ConnectionError("connection reset")
-    monkeypatch.setattr(http.requests, "get", MagicMock(side_effect=error))
+    monkeypatch.setattr(_shared_session(), "get", MagicMock(side_effect=error))
     monkeypatch.setattr(http, "_try_rotation", MagicMock(side_effect=[rotated_url, None]))
 
     assert http.download_url(sensitive_url) is None
@@ -326,7 +374,7 @@ def test_default_download_does_not_log_the_rotated_url(monkeypatch):
     source_url = "https://source.example/file.epub?apikey=k"
     rotated_url = "https://rotated.example/file.epub?apikey=k"
     error = requests.exceptions.ConnectionError("connection reset")
-    monkeypatch.setattr(http.requests, "get", MagicMock(side_effect=error))
+    monkeypatch.setattr(_shared_session(), "get", MagicMock(side_effect=error))
 
     def fake_rotation(original_url, _current, _selector, *, fatal_reason=None):
         return rotated_url
@@ -342,7 +390,7 @@ def test_spooled_download_rolls_to_disk_and_retains_contents(monkeypatch):
     http = _prepare_download_test(monkeypatch)
     payload = b"a" * (8 * 1024 * 1024 + 1)
     monkeypatch.setattr(
-        http.requests,
+        _shared_session(),
         "get",
         lambda url, **kwargs: _FakeResponse(
             200, headers={"content-length": str(len(payload))}, chunks=[payload], url=url
@@ -357,6 +405,7 @@ def test_spooled_download_rolls_to_disk_and_retains_contents(monkeypatch):
 
 
 def test_spooled_download_closes_temporary_file_on_error(monkeypatch):
+    """A download that fails partway closes the temporary file it spooled to."""
     http = _prepare_download_test(monkeypatch)
     created = []
     factory = http.SpooledTemporaryFile
@@ -368,7 +417,7 @@ def test_spooled_download_closes_temporary_file_on_error(monkeypatch):
 
     monkeypatch.setattr(http, "SpooledTemporaryFile", track)
     monkeypatch.setattr(
-        http.requests,
+        _shared_session(),
         "get",
         lambda *args, **kwargs: (_ for _ in ()).throw(requests.exceptions.Timeout()),
     )
@@ -395,7 +444,7 @@ def test_spooled_download_resumes_and_returns_complete_content(monkeypatch):
         calls.append(kwargs)
         return next(responses)
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
     result = http.download_url("https://example.com/file", spool_to_disk=True)
     assert result is not None
     with result:

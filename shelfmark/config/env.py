@@ -219,6 +219,7 @@ RELEASE_VERSION = os.getenv("RELEASE_VERSION", "N/A")
 DOCKERMODE = string_to_bool(os.getenv("DOCKERMODE", "false"))
 TOR_VARIANT_AVAILABLE = shutil.which("tor") is not None
 USING_TOR = string_to_bool(os.getenv("USING_TOR", "false"))
+USING_WIREGUARD = string_to_bool(os.getenv("USING_WIREGUARD", "false"))
 
 
 # =============================================================================

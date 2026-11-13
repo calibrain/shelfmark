@@ -2,6 +2,7 @@
 
 from unittest.mock import patch
 
+from shelfmark.download.network import get_session as _shared_session
 from shelfmark.release_sources.direct_download import annas_archive
 from tests.libgen import sample_html as html
 
@@ -21,7 +22,7 @@ def test_extract_libgen_download_url_sends_same_origin_referer():
         return FakeResponse()
 
     with (
-        patch.object(annas_archive.requests, "get", side_effect=fake_get),
+        patch.object(_shared_session(), "get", side_effect=fake_get),
         patch.object(annas_archive.network, "get_proxies", return_value=None),
         patch.object(annas_archive.network, "get_ssl_verify", return_value=True),
     ):

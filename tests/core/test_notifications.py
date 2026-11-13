@@ -879,6 +879,24 @@ class TestAppriseProxyEnv:
 
         assert result == {}
 
+    def test_proxies_come_from_get_proxies(self, monkeypatch):
+        """Apprise gets the proxies from get_proxies() and NO_PROXY from the shared local rule."""
+        self._patch_config(monkeypatch, {"PROXY_MODE": "http", "NO_PROXY": "*.example.com"})
+        monkeypatch.setattr(
+            "shelfmark.download.network.get_proxies",
+            lambda url="": {"http": "http://rule:1", "https": "http://rule:2"},
+        )
+        monkeypatch.delenv("HTTP_PROXY", raising=False)
+        monkeypatch.delenv("HTTPS_PROXY", raising=False)
+        monkeypatch.delenv("NO_PROXY", raising=False)
+
+        result = notifications_module._apprise_proxy_env()
+
+        assert result["HTTP_PROXY"] == "http://rule:1"
+        assert result["HTTPS_PROXY"] == "http://rule:2"
+        assert result["NO_PROXY"].endswith(",.example.com")
+        assert "192.168.0.0/16" in result["NO_PROXY"].split(",")
+
     def test_does_not_override_already_set_env_vars(self, monkeypatch):
         self._patch_config(
             monkeypatch,

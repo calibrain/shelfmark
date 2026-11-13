@@ -3,6 +3,7 @@
 import requests
 
 from shelfmark.bypass import BypassCancelledError
+from shelfmark.download.network import get_session as _shared_session
 
 
 class _FakeResponse:
@@ -53,8 +54,8 @@ def test_external_bypasser_solve_is_reused_instead_of_re_solved(monkeypatch):
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
     monkeypatch.setattr(http, "_is_using_external_bypasser", lambda: True)
     monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 100.0)
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
-    monkeypatch.setattr(http, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: True)
     monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: False)
     monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
 
@@ -86,7 +87,7 @@ def test_external_bypasser_solve_is_reused_instead_of_re_solved(monkeypatch):
         )
         return "<table>results</table>"
 
-    monkeypatch.setattr(http.requests, "get", gated_get)
+    monkeypatch.setattr(_shared_session(), "get", gated_get)
     monkeypatch.setattr(http, "get_bypassed_page", fake_solve)
 
     url = "https://annas-archive.gl/search?q=dune"
@@ -114,8 +115,8 @@ def test_403_with_a_concurrently_won_clearance_still_reaches_the_bypasser(monkey
     # A concurrent solve has filled the store, but this request went out before it did.
     monkeypatch.setattr(http, "get_cf_cookies_for_domain", lambda _hostname: {"__ddg1_": "fresh"})
     monkeypatch.setattr(http, "_apply_cf_bypass", lambda _url, _headers: {})
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
-    monkeypatch.setattr(http, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: True)
     monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: False)
     monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
 
@@ -125,7 +126,7 @@ def test_403_with_a_concurrently_won_clearance_still_reaches_the_bypasser(monkey
         raise error
 
     bypassed: list[str] = []
-    monkeypatch.setattr(http.requests, "get", gated)
+    monkeypatch.setattr(_shared_session(), "get", gated)
     monkeypatch.setattr(
         http,
         "get_bypassed_page",
@@ -278,8 +279,8 @@ def test_challenged_search_switches_to_bypasser(monkeypatch):
     monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 100.0)
     monkeypatch.setattr(http, "get_cf_cookies_for_domain", lambda _hostname: {})
     monkeypatch.setattr(http, "_apply_cf_bypass", lambda _url, _headers: {})
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
-    monkeypatch.setattr(http, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: True)
     monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: False)
     monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
 
@@ -289,7 +290,7 @@ def test_challenged_search_switches_to_bypasser(monkeypatch):
         raise error
 
     bypassed: list[str] = []
-    monkeypatch.setattr(http.requests, "get", ddos_guarded)
+    monkeypatch.setattr(_shared_session(), "get", ddos_guarded)
     monkeypatch.setattr(
         http,
         "get_bypassed_page",
@@ -327,8 +328,8 @@ def test_redirect_loop_purges_stale_cookies_and_switches_to_bypasser(monkeypatch
     monkeypatch.setattr(http.cookie_store, "clear_cf_cookies", fake_clear)
     monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 100.0)
     monkeypatch.setattr(http, "_apply_cf_bypass", lambda _url, _headers: dict(stale))
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
-    monkeypatch.setattr(http, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: True)
     monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: True)
     monkeypatch.setattr(http.network, "is_aa_auto_mode", lambda: True)
     monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
@@ -343,7 +344,7 @@ def test_redirect_loop_purges_stale_cookies_and_switches_to_bypasser(monkeypatch
         return response
 
     bypassed: list[str] = []
-    monkeypatch.setattr(http.requests, "get", check_redirect)
+    monkeypatch.setattr(_shared_session(), "get", check_redirect)
     monkeypatch.setattr(
         http,
         "get_bypassed_page",
@@ -369,7 +370,7 @@ def test_download_url_ignores_zlib_cookie_refresh_failure(monkeypatch):
 
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
     monkeypatch.setattr(http, "_is_configured_zlib_host", lambda hostname: hostname == "z-lib.fm")
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
     monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
 
     def fake_get(_url: str, **_kwargs):
@@ -380,7 +381,7 @@ def test_download_url_ignores_zlib_cookie_refresh_failure(monkeypatch):
     def failing_bypasser(*_args, **_kwargs):
         raise RuntimeError("refresh failed")
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
     monkeypatch.setattr(http, "get_bypassed_page", failing_bypasser)
 
     result = http.download_url(
@@ -422,8 +423,8 @@ def test_redirect_loop_gives_up_immediately_when_bypasser_not_allowed(monkeypatc
 
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
     monkeypatch.setattr(http, "_apply_cf_bypass", lambda _url, _headers: {})
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
-    monkeypatch.setattr(http, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: True)
     monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: True)
     monkeypatch.setattr(http.network, "is_aa_auto_mode", lambda: True)
     monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
@@ -441,7 +442,7 @@ def test_redirect_loop_gives_up_immediately_when_bypasser_not_allowed(monkeypatc
         msg = "bypasser must not run when allow_bypasser_fallback is False"
         raise AssertionError(msg)
 
-    monkeypatch.setattr(http.requests, "get", check_redirect)
+    monkeypatch.setattr(_shared_session(), "get", check_redirect)
     monkeypatch.setattr(http, "get_bypassed_page", unreachable_bypasser)
 
     html = http.html_get_page(
@@ -467,7 +468,7 @@ def test_html_get_page_redirect_loop_purges_cookies_and_bypasses(monkeypatch):
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
     monkeypatch.setattr(http, "_is_using_external_bypasser", lambda: False)
     monkeypatch.setattr(http, "_bypass_grace_seconds", lambda: 330.0)
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
     monkeypatch.setattr(http.time, "sleep", lambda _s: None)
     monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: True)
     monkeypatch.setattr(http.network, "get_aa_base_url", lambda: "https://annas-archive.li")
@@ -500,7 +501,7 @@ def test_html_get_page_redirect_loop_purges_cookies_and_bypasses(monkeypatch):
         # Stale cookies: the server keeps re-issuing the same ?check=1 redirect.
         return _FakeRedirect(url)
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
 
     html = http.html_get_page(
         "https://annas-archive.li/search?q=test",
@@ -525,8 +526,8 @@ def test_html_get_page_redirect_loop_on_non_aa_host_is_left_alone(monkeypatch):
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
     monkeypatch.setattr(http, "_is_using_external_bypasser", lambda: False)
     monkeypatch.setattr(http, "_apply_cf_bypass", lambda _url, _headers: {})
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
-    monkeypatch.setattr(http, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: True)
     monkeypatch.setattr(http.time, "sleep", lambda _s: None)
     monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: False)
 
@@ -538,7 +539,7 @@ def test_html_get_page_redirect_loop_on_non_aa_host_is_left_alone(monkeypatch):
     def fake_get(_url: str, **_kwargs):
         raise requests.exceptions.TooManyRedirects("Exceeded 30 redirects.")
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
 
     html = http.html_get_page("https://example.com/loop", retry=2, success_delay=0)
 

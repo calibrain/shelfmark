@@ -10,6 +10,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from shelfmark.download.network import get_session as _shared_session
+
 
 class TestNZBGetClientIsConfigured:
     """Tests for NZBGetClient.is_configured()."""
@@ -85,8 +87,9 @@ class TestNZBGetClientTestConnection:
         mock_response = MagicMock()
         mock_response.json.return_value = {"result": {"Version": "21.1"}}
 
-        with patch(
-            "shelfmark.download.clients.nzbget.requests.post",
+        with patch.object(
+            _shared_session(),
+            "post",
             return_value=mock_response,
         ):
             from shelfmark.download.clients.nzbget import (
@@ -114,8 +117,9 @@ class TestNZBGetClientTestConnection:
             lambda key, default="": config_values.get(key, default),
         )
 
-        with patch(
-            "shelfmark.download.clients.nzbget.requests.post",
+        with patch.object(
+            _shared_session(),
+            "post",
             side_effect=requests.exceptions.ConnectionError("Connection refused"),
         ):
             from shelfmark.download.clients.nzbget import (
@@ -143,8 +147,9 @@ class TestNZBGetClientTestConnection:
             lambda key, default="": config_values.get(key, default),
         )
 
-        with patch(
-            "shelfmark.download.clients.nzbget.requests.post",
+        with patch.object(
+            _shared_session(),
+            "post",
             side_effect=requests.exceptions.Timeout("Timeout"),
         ):
             from shelfmark.download.clients.nzbget import (
@@ -177,8 +182,9 @@ class TestNZBGetClientRPCCall:
         mock_response = MagicMock()
         mock_response.json.return_value = {"result": "test_result"}
 
-        with patch(
-            "shelfmark.download.clients.nzbget.requests.post",
+        with patch.object(
+            _shared_session(),
+            "post",
             return_value=mock_response,
         ) as mock_post:
             from shelfmark.download.clients.nzbget import (
@@ -209,8 +215,9 @@ class TestNZBGetClientRPCCall:
         mock_response = MagicMock()
         mock_response.json.return_value = {"error": {"message": "Invalid method"}}
 
-        with patch(
-            "shelfmark.download.clients.nzbget.requests.post",
+        with patch.object(
+            _shared_session(),
+            "post",
             return_value=mock_response,
         ):
             from shelfmark.download.clients.nzbget import (
@@ -556,12 +563,14 @@ class TestNZBGetClientAddDownload:
         mock_post_response.json.return_value = {"result": 456}
 
         with (
-            patch(
-                "shelfmark.download.clients.nzbget.requests.get",
+            patch.object(
+                _shared_session(),
+                "get",
                 return_value=mock_get_response,
             ),
-            patch(
-                "shelfmark.download.clients.nzbget.requests.post",
+            patch.object(
+                _shared_session(),
+                "post",
                 return_value=mock_post_response,
             ),
         ):
@@ -597,12 +606,14 @@ class TestNZBGetClientAddDownload:
         mock_post_response.json.return_value = {"result": "789"}
 
         with (
-            patch(
-                "shelfmark.download.clients.nzbget.requests.get",
+            patch.object(
+                _shared_session(),
+                "get",
                 return_value=mock_get_response,
             ),
-            patch(
-                "shelfmark.download.clients.nzbget.requests.post",
+            patch.object(
+                _shared_session(),
+                "post",
                 return_value=mock_post_response,
             ) as mock_post,
         ):
@@ -634,8 +645,9 @@ class TestNZBGetClientAddDownload:
             lambda key, default="": config_values.get(key, default),
         )
 
-        with patch(
-            "shelfmark.download.clients.nzbget.requests.get",
+        with patch.object(
+            _shared_session(),
+            "get",
             side_effect=requests.RequestException("Failed to fetch"),
         ):
             from shelfmark.download.clients.nzbget import (

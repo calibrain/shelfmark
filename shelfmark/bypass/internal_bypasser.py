@@ -49,7 +49,7 @@ from shelfmark.config.settings import RECORDING_DIR
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.download import network
-from shelfmark.download.network import get_proxies, get_ssl_verify
+from shelfmark.download.network import get_proxies
 
 logger = setup_logger(__name__)
 
@@ -1636,13 +1636,11 @@ def _try_with_cached_cookies(url: str, hostname: str) -> str | None:
             headers["User-Agent"] = stored_ua
 
         logger.debug("Trying request with cached cookies: %s", url)
-        response = requests.get(
+        response = network.get_session().get(
             url,
             cookies=cookies,
             headers=headers,
-            proxies=get_proxies(url),
             timeout=(5, 10),
-            verify=get_ssl_verify(url),
         )
         if response.status_code == HTTPStatus.OK:
             if is_aa_waiting_room(url, response.text):
