@@ -18,8 +18,8 @@ database directly. No HTTP call, no API token, and nothing is ever written back.
    it somewhere else.
 4. Press **Test Calibre library**. It reports how many books it indexed.
 
-A result that matches the library then carries an **In library** badge in the card, list
-and compact views, and in the details dialog.
+A result that matches the library then carries a badge in the card, list and compact views,
+and in the details dialog.
 
 ## Audiobookshelf
 
@@ -69,3 +69,7 @@ Sequels and other near-miss titles fail the title rule; the same title by a diff
   Audiobookshelf. The provider interface in `shelfmark/core/library_providers/` takes more libraries: add a
   module with the `LibraryProvider` shape and list it in `all_providers()`. Nothing above
   that function knows which libraries exist.
+- **Badges show the format.** Search results (card, list and compact views) and the details
+  dialog show an **Ebook** or **Audiobook** badge on a book the check finds in the matching
+  library. Only formats with an enabled library are reported, and the badges read the same
+  cached index as the sync, so they add no network calls per search once it is warm.
