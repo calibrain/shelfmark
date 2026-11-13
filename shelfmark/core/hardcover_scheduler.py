@@ -3,14 +3,14 @@
 Runs an in-process daemon thread (mirroring the download coordinator pattern in
 ``shelfmark.download.orchestrator``) that periodically syncs configured Hardcover
 shelves into requests and auto-downloads them. Also exposes a manual trigger used
-by the "Sync now" settings action button.
+by the "Sync (admin)" and "Sync (all)" settings action buttons.
 """
 
 from __future__ import annotations
 
 import threading
 import time
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, Literal
 
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
@@ -66,13 +66,76 @@ def _enabled() -> bool:
     )
 
 
-def run_once(*, force: bool = False) -> dict[str, Any]:
+SyncScope = Literal["all", "admin"]
+
+
+def _admin_ids(user_db: UserDB) -> set[int]:
+    """Ids of the users whose role is admin."""
+    return {
+        int(user["id"])
+        for user in user_db.list_users()
+        if user.get("id") is not None and user.get("role") == "admin"
+    }
+
+
+def _sync_all_accounts(
+    user_db: UserDB, *, db_path: str | None, scope: SyncScope = "all"
+) -> dict[str, Any]:
+    """Sync every connected Hardcover account, then the app-level token.
+
+    Each user is synced on their own so a bad token, a rate limit or an API outage on
+    one account cannot stop the rest of the sweep. Totals are summed across the runs
+    and ``accounts`` reports how many were attempted. ``scope="admin"`` syncs only the
+    admins' own accounts and the app-level token, whose requests an admin owns.
+    """
+    from shelfmark.core.hardcover_sync import (
+        has_app_level_token,
+        sync_wishlist,
+        users_with_hardcover_token,
+    )
+
+    totals: dict[str, Any] = {"added": 0, "skipped": 0, "in_library": 0, "errors": 0}
+    connected_ids = users_with_hardcover_token(user_db)
+    per_user_ids = connected_ids
+    if scope == "admin":
+        admins = _admin_ids(user_db)
+        per_user_ids = [user_id for user_id in connected_ids if user_id in admins]
+
+    def merge(summary: dict[str, int]) -> None:
+        """Add one account's sync summary to the running totals."""
+        for key in ("added", "skipped", "in_library", "errors"):
+            totals[key] += int(summary.get(key, 0))
+
+    for user_id in per_user_ids:
+        try:
+            merge(sync_wishlist(user_db, db_path=db_path, user_id=user_id))
+        except Exception:
+            logger.exception("hardcover-sync: sync failed for user %s", user_id)
+            totals["errors"] += 1
+
+    # The app-level token still runs, for instances where nobody connected their own. When
+    # accounts are connected and no app-level token is set there is nothing for it to do, and
+    # running it would only log "no token" and count an error every cycle.
+    run_app_level = not connected_ids or has_app_level_token()
+    if run_app_level:
+        try:
+            merge(sync_wishlist(user_db, db_path=db_path))
+        except Exception:
+            logger.exception("hardcover-sync: app-level sync failed")
+            totals["errors"] += 1
+
+    totals["accounts"] = len(per_user_ids) + int(run_app_level)
+    return totals
+
+
+def run_once(*, force: bool = False, scope: SyncScope = "all") -> dict[str, Any]:
     """Run one sync + auto-download pass. Returns a combined summary.
 
     ``force=True`` (the manual "Sync now" path) syncs regardless of the scheduler
     toggle; auto-download always remains gated by ``AUTO_DOWNLOAD_ENABLED`` inside
-    ``auto_download_pending``. Skips (returns ``{"status": "busy"}``) if another run
-    is in progress.
+    ``auto_download_pending``. ``scope="admin"`` syncs only the admins' accounts and
+    the app-level token, and auto-downloads only requests an admin owns. Skips
+    (returns ``{"status": "busy"}``) if another run is in progress.
     """
     if not _run_lock.acquire(blocking=False):
         return {"status": "busy"}
@@ -86,25 +149,36 @@ def run_once(*, force: bool = False) -> dict[str, Any]:
             return {"status": "unconfigured"}
 
         from shelfmark.core.auto_download import auto_download_pending
-        from shelfmark.core.hardcover_sync import sync_wishlist
 
         sync_summary: dict[str, Any] | None = None
         if force or bool(app_config.get("HARDCOVER_SYNC_ENABLED", False)):
-            sync_summary = sync_wishlist(user_db, db_path=db_path)
-        auto_summary = auto_download_pending(
-            user_db, queue_release=queue_release, db_path=db_path, ignore_backoff=force
-        )
+            sync_summary = _sync_all_accounts(user_db, db_path=db_path, scope=scope)
+        auto_kwargs: dict[str, Any] = {
+            "queue_release": queue_release,
+            "db_path": db_path,
+            "ignore_backoff": force,
+        }
+        if scope == "admin":
+            admins = _admin_ids(user_db)
+            auto_kwargs["only_request_ids"] = frozenset(
+                int(row["id"])
+                for row in user_db.list_requests(status="pending")
+                if row.get("user_id") is not None and int(row["user_id"]) in admins
+            )
+        auto_summary = auto_download_pending(user_db, **auto_kwargs)
         return {"status": "ok", "sync": sync_summary, "auto_download": auto_summary}
     finally:
         _run_lock.release()
 
 
-def trigger_async(*, force: bool = True) -> bool:
+def trigger_async(*, force: bool = True, scope: SyncScope = "all") -> bool:
     """Kick off a one-off run in a background thread. Returns False if one is active."""
     if _run_lock.locked():
         return False
     thread = threading.Thread(
-        target=lambda: run_once(force=force), daemon=True, name="HardcoverSyncManual"
+        target=lambda: run_once(force=force, scope=scope),
+        daemon=True,
+        name="HardcoverSyncManual",
     )
     thread.start()
     return True
