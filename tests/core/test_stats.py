@@ -90,7 +90,7 @@ def test_an_empty_database_reports_zeroes(env):
         "cancelled": 0,
         "rejected": 0,
     }
-    assert result["errors"] == {"failed_7d": 0}
+    assert result["errors"] == {"failed_7d": 0, "interrupted_7d": 0}
     assert result["generated_at"] == NOW.isoformat()
 
 
@@ -158,13 +158,15 @@ def test_requests_are_bucketed_by_status_and_delivery(env):
     }
 
 
-def test_failures_are_counted_over_the_last_seven_days_only(env):
+def test_interruptions_are_counted_apart_from_failures(env):
     _history(env, "f1", "ebook", "error", age_days=1, message="source said no")
     _history(env, "f2", "ebook", "error", age_days=3, message="timeout")
+    _history(env, "i1", "ebook", "error", age_days=1, message="Interrupted")
     _history(env, "old", "ebook", "error", age_days=8, message="timeout")
-    _history(env, "ok", "ebook", "complete", age_days=1)
 
-    assert stats.collect(env[3], now=NOW)["errors"] == {"failed_7d": 2}
+    errors = stats.collect(env[3], now=NOW)["errors"]
+
+    assert errors == {"failed_7d": 2, "interrupted_7d": 1}
 
 
 def test_an_error_without_a_message_is_a_failure(env):

@@ -52,6 +52,9 @@ def test_action_buttons_are_registered():
     fields = _field_map()
 
     assert fields["sync_now"].callback is not None
+    assert fields["sync_now_admin"].callback is not None
+    assert fields["sync_now"].label == "Sync (all)"
+    assert fields["sync_now_admin"].label == "Sync (admin)"
 
 
 def test_sync_now_reports_busy_when_a_run_is_active(monkeypatch):
@@ -75,7 +78,22 @@ def test_sync_now_starts_a_forced_run(monkeypatch):
     result = settings_registry.execute_action("hardcover_sync", "sync_now")
 
     assert result["success"] is True
-    assert seen == [{"force": True}]
+    assert seen == [{"force": True, "scope": "all"}]
+
+
+def test_sync_admin_starts_a_forced_admin_only_run(monkeypatch):
+    seen = []
+
+    def _trigger(**kwargs):
+        seen.append(kwargs)
+        return True
+
+    monkeypatch.setattr("shelfmark.core.hardcover_scheduler.trigger_async", _trigger)
+
+    result = settings_registry.execute_action("hardcover_sync", "sync_now_admin")
+
+    assert result["success"] is True
+    assert seen == [{"force": True, "scope": "admin"}]
 
 
 def test_request_as_offers_both_and_ebook_sources_have_their_own_priority_list():

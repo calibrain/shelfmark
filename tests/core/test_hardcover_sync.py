@@ -6,7 +6,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from shelfmark.core import hardcover_sync, library_index
+from shelfmark.core import hardcover_scheduler, hardcover_sync, library_index
+from shelfmark.core.search_deadline import SearchDeadline
 from shelfmark.core.user_db import UserDB
 from shelfmark.core.utils import transform_cover_url
 from shelfmark.metadata_providers import BookMetadata
@@ -94,6 +95,18 @@ def _request(user_db, user_id, provider_id, content_type="audiobook", title="Som
         },
     )
     return int(row["id"])
+
+
+_REAL_USER_TOKEN = hardcover_sync._user_token
+
+
+@pytest.fixture(autouse=True)
+def _users_have_their_own_token(monkeypatch):
+    """A per-user pass needs the user's own token; tests that sync a user assume one.
+
+    A test that exercises the real lookup puts ``_REAL_USER_TOKEN`` back.
+    """
+    monkeypatch.setattr(hardcover_sync, "_user_token", lambda _user_id: "user-token")
 
 
 @pytest.fixture
@@ -333,7 +346,32 @@ class TestSyncWishlist:
         assert all(conn is seen[0] for conn in seen)
 
     def _use_provider(self, monkeypatch, provider):
-        monkeypatch.setattr(hardcover_sync, "_build_provider", lambda: provider)
+        monkeypatch.setattr(hardcover_sync, "_build_provider", lambda *_args: provider)
+
+    def test_a_shelf_is_left_unfinished_once_the_scheduler_gives_up_on_the_cycle(
+        self, user_db, db_path, monkeypatch
+    ):
+        user = user_db.create_user(username="reader", role="user")
+        deadline = SearchDeadline(60.0)
+
+        class _Slow(_Provider):
+            def _fetch_current_user_books_by_status(self, status_id, page, limit):
+                deadline.event.set()  # the cycle runs out while this page is in flight
+                return super()._fetch_current_user_books_by_status(status_id, page, limit)
+
+        provider = _Slow(
+            {1: [[_book(1, "Dungeon Crawler Carl")], [_book(2, "Carl's Doomsday Scenario")]]}
+        )
+        self._use_provider(monkeypatch, provider)
+
+        with hardcover_scheduler._in_cycle(deadline):
+            summary = hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=user["id"])
+
+        assert provider.calls == [(1, 1, 25)]  # page 2 was never asked for
+        # The cycle is out of time, so nothing is requested from what was read; the next
+        # cycle reads the shelf again and skips whatever it already knows.
+        assert summary["added"] == 0
+        assert summary["errors"] == 1
 
     def test_a_failed_shelf_fetch_is_counted_as_an_error(self, user_db, db_path, monkeypatch):
         user = user_db.create_user(username="reader", role="user")
@@ -392,6 +430,42 @@ class TestSyncWishlist:
         )
         assert rows["2"]["book_data"]["year"] == 2021
         assert "preview" not in rows["2"]["book_data"]
+
+    def test_a_content_type_the_users_policy_blocks_is_not_requested(
+        self, user_db, db_path, monkeypatch
+    ):
+        user = user_db.create_user(username="reader", role="user")
+        user_db.set_user_settings(user["id"], {"REQUEST_POLICY_DEFAULT_AUDIOBOOK": "blocked"})
+        self._use_provider(monkeypatch, _Provider({1: [[_book(1, "Dungeon Crawler Carl")]]}))
+
+        summary = hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=user["id"])
+
+        assert summary == {"added": 0, "skipped": 1, "in_library": 0, "errors": 0}
+        assert user_db.list_requests() == []
+
+    def test_an_admin_is_not_held_to_the_request_policy(self, user_db, db_path, monkeypatch):
+        admin = user_db.create_user(username="ops", role="admin")
+        user_db.set_user_settings(admin["id"], {"REQUEST_POLICY_DEFAULT_AUDIOBOOK": "blocked"})
+        self._use_provider(monkeypatch, _Provider({1: [[_book(1, "Dungeon Crawler Carl")]]}))
+
+        summary = hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=admin["id"])
+
+        assert summary["added"] == 1
+
+    def test_a_cycle_that_ran_out_of_time_creates_no_more_requests(
+        self, user_db, db_path, monkeypatch
+    ):
+        user = user_db.create_user(username="reader", role="user")
+        self._use_provider(monkeypatch, _Provider({1: [[_book(1, "Dungeon Crawler Carl")]]}))
+        deadline = SearchDeadline(60.0)
+        deadline.event.set()
+
+        with hardcover_scheduler._in_cycle(deadline):
+            summary = hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=user["id"])
+
+        assert summary["added"] == 0
+        assert summary["errors"] >= 1
+        assert user_db.list_requests() == []
 
     def test_skips_known_downloaded_owned_and_duplicate_books(self, user_db, db_path, monkeypatch):
         user = user_db.create_user(username="reader", role="user")
@@ -465,6 +539,53 @@ class TestSyncWishlist:
         assert provider.calls == []  # Hardcover was not even asked
         assert user_db.list_requests() == []
 
+    def test_a_blocked_formats_library_being_down_does_not_stop_the_permitted_one(
+        self, user_db, db_path, monkeypatch
+    ):
+        """A blocked format's unavailable library does not stop the permitted format's requests."""
+        user = user_db.create_user(username="reader", role="user")
+        user_db.set_user_settings(user["id"], {"REQUEST_POLICY_DEFAULT_AUDIOBOOK": "blocked"})
+        _configure(monkeypatch, HARDCOVER_SYNC_STATUSES="1", HARDCOVER_SYNC_CONTENT_TYPE="both")
+        self._use_provider(monkeypatch, _Provider({1: [[_book(1, "Dungeon Crawler Carl")]]}))
+        checked: list[str] = []
+
+        def _ready(content_type):
+            """Record each readiness check; the audiobook library is down."""
+            checked.append(content_type)
+            if content_type == "audiobook":
+                raise library_index.LibraryUnavailableError("Audiobookshelf is unavailable")
+
+        monkeypatch.setattr("shelfmark.core.library_index.require_ready", _ready)
+
+        summary = hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=user["id"])
+
+        assert checked == ["ebook"]
+        assert summary == {"added": 1, "skipped": 1, "in_library": 0, "errors": 0}
+        assert [row["content_type"] for row in user_db.list_requests()] == ["ebook"]
+
+    def test_a_user_whose_own_token_is_gone_is_skipped_not_given_the_shared_one(
+        self, user_db, db_path, monkeypatch
+    ):
+        """A user whose own token is gone is skipped, never synced on the shared token."""
+        user = user_db.create_user(username="reader", role="user")
+        monkeypatch.setattr(hardcover_sync, "_user_token", lambda _user_id: "")
+        built: list[object] = []
+        monkeypatch.setattr(
+            hardcover_sync, "_build_provider", lambda *args: built.append(args) or _Provider({})
+        )
+
+        summary = hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=user["id"])
+
+        assert summary == {"added": 0, "skipped": 0, "in_library": 0, "errors": 0}
+        assert built == []
+        assert user_db.list_requests() == []
+
+    def test_a_per_user_provider_uses_only_the_users_own_token(self, monkeypatch):
+        monkeypatch.setattr(hardcover_sync, "_user_token", lambda _user_id: "")
+        monkeypatch.setattr(hardcover_sync, "_configured_token", lambda *_a: "app-token")
+
+        assert hardcover_sync._build_provider(5) is None
+
     def test_unavailable_provider_counts_as_error(self, user_db, db_path, monkeypatch):
         self._use_provider(monkeypatch, None)
 
@@ -499,12 +620,111 @@ class TestResolveRequestOwner:
         user_db.create_user(username="reader", role="user")
         admin = user_db.create_user(username="ops", role="admin")
         provider = _Provider({1: [[_book(1, "Dungeon Crawler Carl")]]})
-        monkeypatch.setattr(hardcover_sync, "_build_provider", lambda: provider)
+        monkeypatch.setattr(hardcover_sync, "_build_provider", lambda *_args: provider)
 
         summary = hardcover_sync.sync_wishlist(user_db, db_path=db_path)
 
         assert summary["added"] == 1
         assert user_db.list_requests()[0]["user_id"] == admin["id"]
+
+
+class TestPerUserTokens:
+    def test_a_users_own_token_is_used_for_their_sync(self, monkeypatch):
+        """A user's own token is the one their sync resolves."""
+        seen: list[int | None] = []
+
+        def _get(key, default=None, user_id=None):
+            """Config.get stand-in: user 5 has an own token, everyone else reads the app token."""
+            seen.append(user_id)
+            if key == "HARDCOVER_SYNC_TOKEN" and user_id == 5:
+                return "user-token"
+            if key == "HARDCOVER_SYNC_TOKEN":
+                return "app-token"
+            return default
+
+        monkeypatch.setattr(hardcover_sync.app_config, "get", _get)
+
+        assert hardcover_sync._configured_token(5) == "user-token"
+        assert 5 in seen
+
+    def test_the_app_level_token_is_the_fallback(self, monkeypatch):
+        # Like the real Config.get: a user with no override of their own reads the global value.
+        """Without an own token a user resolves to the app-level token."""
+
+        def _get(key, default=None, user_id=None):
+            """Config.get stand-in: user 7 has an own token, everyone else reads the app token."""
+            if key == "HARDCOVER_SYNC_TOKEN":
+                return "user-token" if user_id == 7 else "app-token"
+            if key == "HARDCOVER_API_KEY":
+                return ""
+            return default
+
+        monkeypatch.setattr(hardcover_sync.app_config, "get", _get)
+
+        assert hardcover_sync._configured_token() == "app-token"
+        # A user who connected nothing of their own still syncs on the shared token.
+        assert hardcover_sync._configured_token(5) == "app-token"
+        assert hardcover_sync._configured_token(7) == "user-token"
+
+    def test_provider_api_key_remains_the_last_resort(self, monkeypatch):
+        """With no sync token anywhere, the metadata provider's API key is used."""
+
+        def _get(key, default=None, user_id=None):
+            """Config.get stand-in that only knows the provider API key."""
+            return "provider-key" if key == "HARDCOVER_API_KEY" else ""
+
+        monkeypatch.setattr(hardcover_sync.app_config, "get", _get)
+
+        assert hardcover_sync._configured_token() == "provider-key"
+
+    def test_only_users_who_connected_a_token_are_listed(self, user_db, monkeypatch):
+        """Only users with a token of their own are listed for a per-user sync."""
+        monkeypatch.setattr(hardcover_sync, "_user_token", _REAL_USER_TOKEN)
+        reader = user_db.create_user(username="reader", role="user")
+        admin = user_db.create_user(username="ops", role="admin")
+        user_db.create_user(username="nobody", role="user")
+        connected = {reader["id"], admin["id"]}
+        monkeypatch.setattr(
+            hardcover_sync.app_config,
+            "get_user_override",
+            lambda _key, *, user_id: "token" if user_id in connected else None,
+        )
+
+        assert hardcover_sync.users_with_hardcover_token(user_db) == sorted(connected)
+
+    def test_a_users_sync_is_owned_by_them_and_deduped_against_their_own_requests(
+        self, user_db, db_path, monkeypatch
+    ):
+        user_db.create_user(username="ops", role="admin")
+        reader = user_db.create_user(username="reader", role="user")
+        provider = _Provider({1: [[_book(1, "Dungeon Crawler Carl")]]})
+        monkeypatch.setattr(hardcover_sync, "_build_provider", lambda *_args: provider)
+
+        first = hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=reader["id"])
+        assert first["added"] == 1
+        assert user_db.list_requests()[0]["user_id"] == reader["id"]
+
+        second = hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=reader["id"])
+        assert second["added"] == 0
+        assert second["skipped"] == 1
+
+    def test_another_users_request_does_not_swallow_this_users_book(
+        self, user_db, db_path, monkeypatch
+    ):
+        user_db.create_user(username="ops", role="admin")
+        first_reader = user_db.create_user(username="ann", role="user")
+        second_reader = user_db.create_user(username="ben", role="user")
+        provider = _Provider({1: [[_book(1, "Dungeon Crawler Carl")]]})
+        monkeypatch.setattr(hardcover_sync, "_build_provider", lambda *_args: provider)
+
+        hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=first_reader["id"])
+        summary = hardcover_sync.sync_wishlist(
+            user_db, db_path=db_path, user_id=second_reader["id"]
+        )
+
+        assert summary["added"] == 1
+        owners = {row["user_id"] for row in user_db.list_requests()}
+        assert owners == {first_reader["id"], second_reader["id"]}
 
 
 @pytest.mark.parametrize(
@@ -544,10 +764,11 @@ class TestSyncBothFormats:
     def test_both_creates_an_ebook_and_an_audiobook_request_per_book(
         self, user_db, db_path, monkeypatch
     ):
+        """Both formats gives an ebook and an audiobook request per book, each checked alone."""
         admin = user_db.create_user(username="ops", role="admin")
         _configure(monkeypatch, HARDCOVER_SYNC_STATUSES="1", HARDCOVER_SYNC_CONTENT_TYPE="both")
         provider = _Provider({1: [[_book(1, "Dungeon Crawler Carl")]]})
-        monkeypatch.setattr(hardcover_sync, "_build_provider", lambda: provider)
+        monkeypatch.setattr(hardcover_sync, "_build_provider", lambda *_args: provider)
         checked: list[str] = []
         monkeypatch.setattr("shelfmark.core.library_index.any_provider_enabled", lambda: True)
         monkeypatch.setattr(
@@ -569,7 +790,7 @@ class TestSyncBothFormats:
         admin = user_db.create_user(username="ops", role="admin")
         _configure(monkeypatch, HARDCOVER_SYNC_STATUSES="1", HARDCOVER_SYNC_CONTENT_TYPE="both")
         provider = _Provider({1: [[_book(1, "Dungeon Crawler Carl")]]})
-        monkeypatch.setattr(hardcover_sync, "_build_provider", lambda: provider)
+        monkeypatch.setattr(hardcover_sync, "_build_provider", lambda *_args: provider)
 
         first = hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=admin["id"])
         second = hardcover_sync.sync_wishlist(user_db, db_path=db_path, user_id=admin["id"])
