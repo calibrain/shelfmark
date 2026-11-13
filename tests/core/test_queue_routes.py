@@ -16,6 +16,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from shelfmark.core import queue_routes
+from shelfmark.core.delivered_files import file_identity
 from shelfmark.core.models import DownloadTask
 from shelfmark.core.viewer_redaction import viewer_download_id
 
@@ -59,6 +61,12 @@ def _task(task_id="task-1", *, user=None, request_id=None) -> DownloadTask:
     )
 
 
+def _delivered(task: DownloadTask, *paths) -> DownloadTask:
+    """Record the files as delivered, the way the queue does when a download finishes."""
+    task.download_identities = {str(path): file_identity(path) for path in paths}
+    return task
+
+
 def _builtin(main_module):
     return patch.object(main_module, "get_auth_mode", return_value="builtin")
 
@@ -94,7 +102,7 @@ class TestLocalDownload:
         book = tmp_path / "book.epub"
         book.write_bytes(b"epub-bytes")
         _login(client, is_admin=True)
-        task = _task()
+        task = _delivered(_task(), book)
         with _builtin(main_module):
             with patch.object(
                 main_module.backend, "get_book_paths", return_value=([str(book)], task)
@@ -104,6 +112,22 @@ class TestLocalDownload:
         assert resp.status_code == 200
         assert resp.data == b"epub-bytes"
         assert resp.headers["Content-Disposition"].startswith("attachment")
+        assert resp.headers["Content-Length"] == str(len(b"epub-bytes"))
+
+    def test_a_range_request_gets_part_of_the_file(self, main_module, client, tmp_path):
+        book = tmp_path / "book.epub"
+        book.write_bytes(b"0123456789")
+        _login(client, is_admin=True)
+        task = _delivered(_task(), book)
+        with _builtin(main_module):
+            with patch.object(
+                main_module.backend, "get_book_paths", return_value=([str(book)], task)
+            ):
+                resp = client.get("/api/localdownload?id=task-1", headers={"Range": "bytes=2-5"})
+
+        assert resp.status_code == 206
+        assert resp.data == b"2345"
+        assert resp.headers["Content-Range"] == "bytes 2-5/10"
 
     def test_owner_gets_the_file(self, main_module, client, tmp_path):
         book = tmp_path / "book.epub"
@@ -114,7 +138,7 @@ class TestLocalDownload:
             with patch.object(
                 main_module.backend,
                 "get_book_paths",
-                return_value=([str(book)], _task(user=user)),
+                return_value=([str(book)], _delivered(_task(user=user), book)),
             ):
                 resp = client.get("/api/localdownload?id=task-1")
 
@@ -148,7 +172,7 @@ class TestLocalDownload:
             with patch.object(
                 main_module.backend,
                 "get_book_paths",
-                return_value=([str(first), str(second)], _task()),
+                return_value=([str(first), str(second)], _delivered(_task(), first, second)),
             ):
                 resp = client.get("/api/localdownload?id=task-1")
 
@@ -166,19 +190,87 @@ class TestLocalDownload:
         user = _create_user(main_module, prefix="reader")
         _login(client, user_id=user["username"], db_user_id=user["id"])
         history = MagicMock()
-        history.get_by_task_id.return_value = {"user_id": user["id"], "download_path": str(book)}
+        history.get_by_task_id.return_value = {
+            "user_id": user["id"],
+            "download_path": str(book),
+            "download_identity": file_identity(book),
+        }
         with _builtin(main_module):
             with patch.object(main_module.backend, "get_book_paths", return_value=([], None)):
                 with patch.object(main_module, "download_history_service", history):
-                    with patch.object(
-                        main_module.DownloadHistoryService,
-                        "_resolve_existing_download_path",
-                        return_value=str(book),
-                    ):
-                        resp = client.get("/api/localdownload?id=task-1")
+                    resp = client.get("/api/localdownload?id=task-1")
 
         assert resp.status_code == 200
         assert resp.data == b"from-history"
+
+    def test_a_history_entry_with_no_recorded_file_is_a_404(self, main_module, client, tmp_path):
+        # Rows written before identities were recorded have none, and are not sent.
+        book = tmp_path / "old.epub"
+        book.write_bytes(b"from-history")
+        _login(client, is_admin=True)
+        history = MagicMock()
+        history.get_by_task_id.return_value = {"user_id": 7, "download_path": str(book)}
+        with _builtin(main_module):
+            with patch.object(main_module.backend, "get_book_paths", return_value=([], None)):
+                with patch.object(main_module, "download_history_service", history):
+                    resp = client.get("/api/localdownload?id=task-1")
+
+        assert resp.status_code == 404
+
+    def test_a_history_path_that_now_holds_another_file_is_a_404(
+        self, main_module, client, tmp_path
+    ):
+        book = tmp_path / "old.epub"
+        book.write_bytes(b"what was delivered")
+        delivered = file_identity(book)
+        replacement = tmp_path / "other.epub"
+        replacement.write_bytes(b"something else entirely")
+        replacement.replace(book)
+        _login(client, is_admin=True)
+        history = MagicMock()
+        history.get_by_task_id.return_value = {
+            "user_id": 7,
+            "download_path": str(book),
+            "download_identity": delivered,
+        }
+        with _builtin(main_module):
+            with patch.object(main_module.backend, "get_book_paths", return_value=([], None)):
+                with patch.object(main_module, "download_history_service", history):
+                    resp = client.get("/api/localdownload?id=task-1")
+
+        assert resp.status_code == 404
+
+    def test_a_live_file_replaced_after_delivery_is_a_404(self, main_module, client, tmp_path):
+        book = tmp_path / "book.epub"
+        book.write_bytes(b"delivered")
+        task = _delivered(_task(), book)
+        book.write_bytes(b"rewritten after the download finished")
+        _login(client, is_admin=True)
+        with _builtin(main_module):
+            with patch.object(
+                main_module.backend, "get_book_paths", return_value=([str(book)], task)
+            ):
+                resp = client.get("/api/localdownload?id=task-1")
+
+        assert resp.status_code == 404
+        assert resp.get_json() == {"error": "File not found"}
+
+    def test_a_zip_is_refused_when_any_part_was_not_delivered(self, main_module, client, tmp_path):
+        first = tmp_path / "01.mp3"
+        second = tmp_path / "02.mp3"
+        first.write_bytes(b"one")
+        second.write_bytes(b"two")
+        task = _delivered(_task(), first)
+        _login(client, is_admin=True)
+        with _builtin(main_module):
+            with patch.object(
+                main_module.backend,
+                "get_book_paths",
+                return_value=([str(first), str(second)], task),
+            ):
+                resp = client.get("/api/localdownload?id=task-1")
+
+        assert resp.status_code == 404
 
     def test_a_history_entry_of_someone_else_is_a_404(self, main_module, client, tmp_path):
         book = tmp_path / "old.epub"
@@ -493,3 +585,34 @@ class TestStatus:
             "delivery_state": "complete",
             "title": "Dune",
         }
+
+
+class TestLocalDownloadClosesFiles:
+    def test_a_head_request_for_a_zip_closes_the_opened_files(self, main_module, client, tmp_path):
+        first = tmp_path / "01.mp3"
+        second = tmp_path / "02.mp3"
+        first.write_bytes(b"one")
+        second.write_bytes(b"two")
+        task = _delivered(_task(), first, second)
+        opened = []
+        real_open = queue_routes.open_delivered_file
+
+        def recording_open(path, identity):
+            handle = real_open(path, identity)
+            opened.append(handle)
+            return handle
+
+        _login(client, is_admin=True)
+        with _builtin(main_module):
+            with patch.object(
+                main_module.backend,
+                "get_book_paths",
+                return_value=([str(first), str(second)], task),
+            ):
+                with patch.object(queue_routes, "open_delivered_file", recording_open):
+                    resp = client.head("/api/localdownload?id=task-1")
+                    resp.close()
+
+        assert resp.status_code == 200
+        assert len(opened) == 2
+        assert all(handle.closed for handle in opened)
