@@ -1321,7 +1321,7 @@ A copy of an audiobook smaller than this share of the largest copy found for the
 | `HTTP_PROXY` | HTTP proxy URL. Supports auth: http://user:pass@host:port | string | _none_ |
 | `HTTPS_PROXY` | HTTPS proxy URL (leave empty to use HTTP proxy for HTTPS). Supports auth: http://user:pass@host:port | string | _none_ |
 | `SOCKS5_PROXY` | SOCKS5 proxy URL. Supports auth: socks5://user:pass@host:port | string | _none_ |
-| `NO_PROXY` | Comma-separated hosts to bypass proxy (e.g., localhost,127.0.0.1,10.*,*.local) | string | _none_ |
+| `NO_PROXY` | Local and private addresses (LAN IPs, Docker service names, .local/.lan hosts) always bypass the proxy. List additional hosts here, comma-separated, e.g. a LAN service reached by a public hostname: *.example.com,abs.example.org | string | _none_ |
 
 <details>
 <summary>Detailed descriptions</summary>
@@ -1414,7 +1414,7 @@ SOCKS5 proxy URL. Supports auth: socks5://user:pass@host:port
 
 **No Proxy**
 
-Comma-separated hosts to bypass proxy (e.g., localhost,127.0.0.1,10.*,*.local)
+Local and private addresses (LAN IPs, Docker service names, .local/.lan hosts) always bypass the proxy. List additional hosts here, comma-separated, e.g. a LAN service reached by a public hostname: *.example.com,abs.example.org
 
 - **Type:** string
 - **Default:** _none_

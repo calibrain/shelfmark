@@ -917,13 +917,40 @@ def _normalize_mirror_env_urls(values: list[str]) -> list[str]:
     return normalized
 
 
+# Environment variables the running process wrote itself, name -> value. The proxy fields
+# share their names with the standard HTTP_PROXY/HTTPS_PROXY/NO_PROXY variables, which
+# network.apply_proxy_environment() writes from those same settings; a value Shelfmark wrote
+# is not deployment configuration, so it must not count as "set via env" and lock the field.
+_PROCESS_WRITTEN_ENV: dict[str, str] = {}
+
+
+def set_process_env(name: str, value: str | None) -> None:
+    """Set or remove an environment variable and record it as written by Shelfmark."""
+    if value is None:
+        os.environ.pop(name, None)
+        _PROCESS_WRITTEN_ENV.pop(name, None)
+    else:
+        os.environ[name] = value
+        _PROCESS_WRITTEN_ENV[name] = value
+
+
+def is_process_written_env(name: str) -> bool:
+    """Whether the variable's current value is one Shelfmark wrote, not one it was given."""
+    current = os.environ.get(name)
+    return current is not None and _PROCESS_WRITTEN_ENV.get(name) == current
+
+
 def _get_env_value_for_field(field: FieldBase) -> tuple[bool, object | None]:
-    """Return parsed env-backed value for a field, including legacy mirror aliases."""
+    """Return parsed env-backed value for a field, including legacy mirror aliases.
+
+    A variable Shelfmark wrote itself (``set_process_env``) is ignored, so a setting is
+    only treated as set via env when the deployment set it.
+    """
     if not field.env_supported:
         return False, None
 
     env_var_name = field.get_env_var_name()
-    env_value = os.environ.get(env_var_name)
+    env_value = None if is_process_written_env(env_var_name) else os.environ.get(env_var_name)
     if env_value is not None:
         parsed = _parse_env_value(env_value, field)
         if field.key in {
@@ -1359,14 +1386,24 @@ def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
 
     # Save to config file
     if save_config_file(tab_name, values_to_save):
-        # Refresh the config singleton so live settings take effect immediately
+        # Refresh the config singleton so live settings take effect immediately. Forced:
+        # the file just changed, so a refresh in the last 50 ms must not stand in for it.
         config_obj = None
         try:
             from shelfmark.core.config import config as config_obj
 
-            config_obj.refresh()
+            config_obj.refresh(force=True)
         except ImportError:
             config_obj = None  # Config module not yet available during initial setup
+
+        # Keep the proxy variables in step (any tab: a service URL can change NO_PROXY)
+        if config_obj is not None:
+            try:
+                from shelfmark.download.network import apply_proxy_environment
+
+                apply_proxy_environment()
+            except _SETTINGS_LIVE_APPLY_ERRORS as e:
+                logger.warning("Failed to apply proxy settings to the environment: %s", e)
 
         # Apply DNS settings changes live (network tab)
         dns_keys = {"CUSTOM_DNS", "CUSTOM_DNS_MANUAL", "USE_DOH"}

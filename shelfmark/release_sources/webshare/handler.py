@@ -104,13 +104,11 @@ class WebshareHandler(DownloadHandler):
         Without a Content-Length the search result's size drives progress, so the
         orchestrator's stall detection still sees the download moving.
         """
-        with requests.get(
+        with network.get_session().get(
             link,
             headers=downloader.DOWNLOAD_HEADERS,
             stream=True,
             timeout=_DOWNLOAD_TIMEOUT,
-            proxies=network.get_proxies(link),
-            verify=network.get_ssl_verify(link),
         ) as response:
             response.raise_for_status()
             total = int(response.headers.get("Content-Length") or 0) or expected_size

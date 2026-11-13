@@ -3,16 +3,20 @@
 import re
 import time
 from threading import Lock
+from typing import TYPE_CHECKING
 from urllib.parse import quote, quote_plus
 
-import requests
 from bs4 import BeautifulSoup
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.download import http as downloader
+from shelfmark.download.network import NetworkSession
 from shelfmark.download.postprocess.packs import PackFile
 from shelfmark.release_sources.audiobookbay.utils import normalize_search_punctuation
+
+if TYPE_CHECKING:
+    pass
 
 logger = setup_logger(__name__)
 
@@ -135,7 +139,7 @@ def _normalize_result_url(url: str, hostname: str) -> str:
 
 def _bootstrap_abb_session(
     hostname: str,
-    session: requests.Session,
+    session: NetworkSession,
     retry_attempts: int,
 ) -> None:
     """Warm up ABB session cookies (best effort)."""
@@ -174,7 +178,7 @@ def search_audiobookbay(
     # the search returns nothing at all rather than merely ranking worse.
     query = normalize_search_punctuation(query)
     rate_limit_delay = _coerce_non_negative_float(config.get("ABB_RATE_LIMIT_DELAY", 1.0), 1.0)
-    session = requests.Session()
+    session = NetworkSession()
 
     # Bootstrap ABB session cookie (PHPSESSID). ABB increasingly serves reliable
     # search/detail pages only after session initialization, similar to browsers.
@@ -211,7 +215,7 @@ def search_audiobookbay(
             # If page 1 fails, refresh the session and retry the exact same URL.
             if page == 1 and (not page_html or was_home_redirect):
                 for refresh_attempt in range(1, FIRST_PAGE_SESSION_REFRESH_ATTEMPTS + 1):
-                    session = requests.Session()
+                    session = NetworkSession()
                     _bootstrap_abb_session(hostname, session, SEARCH_PAGE_RETRY_ATTEMPTS)
                     page_html, final_url = downloader.html_get_page(
                         primary_url,
@@ -389,7 +393,7 @@ def clear_detail_page_cache() -> None:
 
 
 def _fetch_detail_page_once(details_url: str, hostname: str) -> str:
-    session = requests.Session()
+    session = NetworkSession()
     _bootstrap_abb_session(hostname, session, DETAIL_PAGE_RETRY_ATTEMPTS)
     return _coerce_markup_to_html(
         downloader.html_get_page(

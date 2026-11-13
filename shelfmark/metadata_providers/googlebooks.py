@@ -26,7 +26,7 @@ from shelfmark.core.settings_registry import (
     SettingsField,
     register_settings,
 )
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import NetworkSession
 from shelfmark.metadata_providers import (
     BookMetadata,
     DisplayField,
@@ -101,7 +101,7 @@ class GoogleBooksProvider(MetadataProvider):
         """Initialize provider with optional API key (falls back to config)."""
         raw_key = api_key or app_config.get("GOOGLEBOOKS_API_KEY", "")
         self.api_key = _normalize_googlebooks_api_key(raw_key)
-        self.session = requests.Session()
+        self.session = NetworkSession()
 
     def is_available(self) -> bool:
         """Check if provider is configured with an API key."""
@@ -262,7 +262,7 @@ class GoogleBooksProvider(MetadataProvider):
         url = f"{GOOGLE_BOOKS_BASE_URL}{endpoint}"
 
         try:
-            response = self.session.get(url, params=params, timeout=15, verify=get_ssl_verify(url))
+            response = self.session.get(url, params=params, timeout=15)
             response.raise_for_status()
             return response.json()
 

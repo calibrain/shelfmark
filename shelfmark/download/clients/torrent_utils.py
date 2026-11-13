@@ -20,7 +20,7 @@ from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.redaction import redact_urls_in_text, safe_url
 from shelfmark.core.utils import normalize_http_url
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import get_session
 from shelfmark.download.postprocess.packs import PackFile
 
 logger = setup_logger(__name__)
@@ -253,12 +253,11 @@ def _fetch_torrent_info(url: str) -> TorrentInfo:
             ):
                 request_headers.pop("X-Api-Key", None)
 
-            resp = requests.get(
+            resp = get_session().get(
                 current_url,
                 timeout=30,
                 allow_redirects=False,
                 headers=request_headers,
-                verify=get_ssl_verify(current_url),
             )
 
             if resp.status_code not in (301, 302, 303, 307, 308):

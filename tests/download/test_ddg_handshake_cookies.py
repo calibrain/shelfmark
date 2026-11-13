@@ -12,6 +12,7 @@ import requests
 
 import shelfmark.bypass.cookie_store as cs
 import shelfmark.download.http as http
+from shelfmark.download.network import get_session as _shared_session
 
 URL = "https://annas-archive.gl/search?q=dune"
 FRESH = {"__ddg1_": "FRESH1", "__ddg2_": "FRESH2"}
@@ -61,8 +62,8 @@ def ddos_guard(monkeypatch):
     monkeypatch.setattr(cs, "_get_full_cookie_domains", set)
     monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: True)
     monkeypatch.setattr(http.network, "is_aa_auto_mode", lambda: True)
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
-    monkeypatch.setattr(http, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: True)
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
     monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
 
@@ -77,7 +78,7 @@ def ddos_guard(monkeypatch):
             302, headers={"Location": "/search?q=dune&check=1"}, cookies=dict(FRESH)
         )
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
     return sent
 
 
@@ -132,8 +133,8 @@ def test_store_still_applies_when_the_server_issues_nothing(monkeypatch, bypasse
     # for a lookup these tests do not exercise.
     monkeypatch.setattr(cs, "_get_full_cookie_domains", set)
     monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: True)
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
-    monkeypatch.setattr(http, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: True)
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
     monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
     cs._cf_cookies["annas-archive.gl"] = {"__ddg1_": {"value": "CLEARANCE", "expiry": None}}
@@ -144,7 +145,7 @@ def test_store_still_applies_when_the_server_issues_nothing(monkeypatch, bypasse
         sent.append(dict(kwargs.get("cookies") or {}))
         return _FakeResponse(200, text="<html>page</html>")
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
 
     assert (
         http.html_get_page(URL, retry=1, selector=_DummySelector(), success_delay=0)

@@ -15,6 +15,8 @@ CAPTCHA page coming back.
 
 import requests
 
+from shelfmark.download.network import get_session as _shared_session
+
 
 class _FakeResponse:
     """Minimal stand-in for requests.Response covering what html_get_page touches."""
@@ -47,8 +49,8 @@ def _aa_http(monkeypatch):
     import shelfmark.download.http as http
 
     monkeypatch.setattr(http, "_apply_cf_bypass", lambda _url, _headers: {})
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
-    monkeypatch.setattr(http, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: True)
     monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: True)
     monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: True)
@@ -71,7 +73,7 @@ def test_403_on_the_check_probe_hands_over_the_pre_probe_url(monkeypatch):
             return _FakeResponse(302, url=url, headers={"Location": PROBE_URL})
         return _FakeResponse(403, url=url)
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
     monkeypatch.setattr(
         http, "get_bypassed_page", lambda url, *_a, **_k: bypassed.append(url) or "<html>ok</html>"
     )
@@ -90,7 +92,7 @@ def test_redirect_loop_hands_over_the_pre_probe_url(monkeypatch):
     bypassed: list[str] = []
 
     monkeypatch.setattr(
-        http.requests,
+        _shared_session(),
         "get",
         lambda url, **_kwargs: _FakeResponse(302, url=url, headers={"Location": PROBE_URL}),
     )

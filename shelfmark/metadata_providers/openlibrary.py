@@ -22,7 +22,7 @@ from shelfmark.core.settings_registry import (
     register_settings,
 )
 from shelfmark.core.text_match import STOPWORDS
-from shelfmark.download.network import get_proxies, get_ssl_verify
+from shelfmark.download.network import NetworkSession
 from shelfmark.metadata_providers import (
     BookMetadata,
     DisplayField,
@@ -168,7 +168,7 @@ class OpenLibraryProvider(MetadataProvider):
 
     def __init__(self) -> None:
         """Initialize provider."""
-        self.session = requests.Session()
+        self.session = NetworkSession()
 
     def is_available(self) -> bool:
         """Open Library is always available (no auth required)."""
@@ -241,8 +241,6 @@ class OpenLibraryProvider(MetadataProvider):
                 f"{OPENLIBRARY_BASE_URL}/search.json",
                 params=params,
                 timeout=15,
-                proxies=get_proxies(OPENLIBRARY_BASE_URL),
-                verify=get_ssl_verify(OPENLIBRARY_BASE_URL),
             )
             response.raise_for_status()
             data = response.json()
@@ -286,8 +284,6 @@ class OpenLibraryProvider(MetadataProvider):
             response = self.session.get(
                 f"{OPENLIBRARY_BASE_URL}/works/{book_id}.json",
                 timeout=15,
-                proxies=get_proxies(OPENLIBRARY_BASE_URL),
-                verify=get_ssl_verify(OPENLIBRARY_BASE_URL),
             )
             response.raise_for_status()
             work = response.json()
@@ -323,8 +319,6 @@ class OpenLibraryProvider(MetadataProvider):
             response = self.session.get(
                 f"{OPENLIBRARY_BASE_URL}/isbn/{clean_isbn}.json",
                 timeout=15,
-                proxies=get_proxies(OPENLIBRARY_BASE_URL),
-                verify=get_ssl_verify(OPENLIBRARY_BASE_URL),
             )
             response.raise_for_status()
             edition = response.json()
@@ -598,8 +592,6 @@ class OpenLibraryProvider(MetadataProvider):
             response = self.session.get(
                 f"{OPENLIBRARY_BASE_URL}{author_key}.json",
                 timeout=10,
-                proxies=get_proxies(OPENLIBRARY_BASE_URL),
-                verify=get_ssl_verify(OPENLIBRARY_BASE_URL),
             )
             response.raise_for_status()
             author = response.json()
@@ -620,8 +612,6 @@ def _test_openlibrary_connection() -> dict[str, Any]:
             f"{OPENLIBRARY_BASE_URL}/search.json",
             params={"q": "test", "limit": 1},
             timeout=10,
-            proxies=get_proxies(OPENLIBRARY_BASE_URL),
-            verify=get_ssl_verify(OPENLIBRARY_BASE_URL),
         )
         response.raise_for_status()
         data = response.json()

@@ -8,6 +8,7 @@ import requests
 
 import shelfmark.release_sources.prowlarr.mam as mam
 import shelfmark.release_sources.prowlarr.source as prowlarr_source
+from shelfmark.download.network import get_session as _shared_session
 from shelfmark.metadata_providers import BookMetadata
 from shelfmark.release_sources import (
     ColumnSchema,
@@ -183,9 +184,9 @@ def mam_http(monkeypatch):
             return self.response
 
     http = _Http()
-    monkeypatch.setattr(mam.requests, "get", http.get)
-    monkeypatch.setattr(mam, "get_proxies", lambda _url: {})
-    monkeypatch.setattr(mam, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr(_shared_session(), "get", http.get)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: True)
     return http
 
 

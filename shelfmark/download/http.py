@@ -20,7 +20,6 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import coerce_bool, normalize_positive_int
 from shelfmark.download import network
 from shelfmark.download.activity import release_activity_grace, request_activity_grace
-from shelfmark.download.network import get_proxies, get_ssl_verify
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -348,7 +347,7 @@ def html_get_page(
     allow_bypasser_fallback: bool = True,
     include_response_url: bool = False,
     success_delay: float = 1.0,
-    session: requests.Session | None = None,
+    session: network.NetworkSession | None = None,
 ) -> str | tuple[str, str]:
     """Fetch HTML content from a URL with retry mechanism.
 
@@ -367,7 +366,8 @@ def html_get_page(
         include_response_url: If True, return `(html, final_url)` to expose the
             resolved response URL after redirects.
         success_delay: Optional delay (seconds) after successful fetch.
-        session: Optional requests session to reuse across attempts.
+        session: Optional network session to reuse across attempts. It must be a
+            ``NetworkSession`` so the proxy and TLS settings still apply.
 
     """
 
@@ -561,10 +561,9 @@ def html_get_page(
             while True:
                 # Try with CF cookies/UA if available (from previous bypass)
                 cookies = _apply_cf_bypass(current_url, headers)
-                request_client = session or requests
+                request_client = session or network.get_session()
                 response = request_client.get(
                     current_url,
-                    proxies=get_proxies(current_url),
                     timeout=REQUEST_TIMEOUT,
                     # Handshake cookies win. They were issued by *this* exchange, so by
                     # definition they are fresher than anything the store holds, and the
@@ -577,7 +576,6 @@ def html_get_page(
                     cookies={**cookies, **handshake_cookies},
                     headers=headers,
                     allow_redirects=allow_redirects,
-                    verify=get_ssl_verify(current_url),
                     hooks=network.REDIRECT_GUARD_HOOKS,
                 )
 
@@ -956,6 +954,7 @@ def download_url(
         )
         bytes_downloaded = 0
         returned = False
+        response = None
 
         try:
             try:
@@ -968,14 +967,12 @@ def download_url(
                 logger.info("Downloading (attempt %s/%s)", attempt + 1, MAX_DOWNLOAD_RETRIES)
                 # Try with CF cookies/UA if available
                 cookies = _apply_cf_bypass(current_url, headers)
-                response = requests.get(
+                response = network.get_session().get(
                     current_url,
                     stream=True,
-                    proxies=get_proxies(current_url),
                     timeout=REQUEST_TIMEOUT,
                     cookies=cookies,
                     headers=headers,
-                    verify=get_ssl_verify(current_url),
                     hooks=network.REDIRECT_GUARD_HOOKS,
                 )
                 response.raise_for_status()
@@ -1087,6 +1084,9 @@ def download_url(
                 return buffer
 
         finally:
+            # The shared session pools connections: release this one on every exit path.
+            if response is not None:
+                response.close()
             if not returned:
                 buffer.close()
 
@@ -1131,6 +1131,7 @@ def _try_resume(
         )
         time.sleep(_backoff_delay(attempt + 1, base=0.5, cap=5.0))
 
+        response = None
         try:
             # Try with CF cookies/UA if available
             resume_headers = {
@@ -1138,14 +1139,12 @@ def _try_resume(
                 "Range": f"bytes={start_byte}-",
             }
             cookies = _apply_cf_bypass(url, resume_headers)
-            response = requests.get(
+            response = network.get_session().get(
                 url,
                 stream=True,
-                proxies=get_proxies(url),
                 timeout=REQUEST_TIMEOUT,
                 headers=resume_headers,
                 cookies=cookies,
-                verify=get_ssl_verify(url),
                 hooks=network.REDIRECT_GUARD_HOOKS,
             )
 
@@ -1184,6 +1183,10 @@ def _try_resume(
             logger.debug("Resume attempt %s failed: %s", attempt + 1, type(e).__name__)
         else:
             return buffer
+        finally:
+            # Release the pooled connection, also when returning early.
+            if response is not None:
+                response.close()
 
     logger.warning("Resume failed after %s attempts", MAX_RESUME_ATTEMPTS)
     return None
