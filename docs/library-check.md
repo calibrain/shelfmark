@@ -69,3 +69,67 @@ Sequels and other near-miss titles fail the title rule; the same title by a diff
   Audiobookshelf. The provider interface in `shelfmark/core/library_providers/` takes more libraries: add a
   module with the `LibraryProvider` shape and list it in `all_providers()`. Nothing above
   that function knows which libraries exist.
+
+## Cross-Format Markers
+
+With both library checks on, Shelfmark can mark the works you hold in both formats, so a reader in Audiobookshelf sees that the ebook is in Calibre, and a reader in Calibre-Web sees that the audiobook is in Audiobookshelf.
+
+A Calibre book and an Audiobookshelf item are a **pair** when either one, asked for by its own title, author and identifiers (ISBN, ASIN), is found in the other library by the matching rules above. The same exceptions apply: a series label or numbered parenthetical in front of a title is the series, not another work; a different edition ("Full Cast Edition", "Dramatized Adaptation") is a different recording and not a pair; an omnibus contains the work but is not its copy; a sequel whose title extends the other ("Dune", "Dune Messiah") is a different book. Two editions on one side both pair with the one copy on the other.
+
+### Audiobookshelf tags
+
+Shelfmark writes one tag (`ebook-in-library` by default) to every paired audiobook and removes it from any audiobook that has lost its pair. No other tag is touched: the item's current tag list is read back from Audiobookshelf just before each write, so a tag you added a minute ago is kept, and running the sync twice changes nothing the second time.
+
+| Setting | Description | Default |
+|---------|-------------|---------|
+| Tag audiobooks whose ebook is in Calibre | Write the tag at the end of every sync cycle | Off |
+| Audiobookshelf tag | The tag to write | `ebook-in-library` |
+
+**Preview Audiobookshelf tags** is a dry run: it counts the pairs and lists what would be added and removed, without writing. It works with the toggle off and uses the form's unsaved values. **Apply Audiobookshelf tags now** writes the changes with the saved settings and needs the toggle on.
+
+With the toggle on, the tags are also refreshed at the end of every [Hardcover sync](hardcover-sync.md) cycle. The cycle's log reports the counts, and a failure in this pass is logged and counted but never stops the cycle.
+
+The token's user needs Audiobookshelf's **Can update** permission. Without it Audiobookshelf answers 403 (`PATCH /api/items/<id>/media`); Shelfmark stops at the first refusal, logs it, and says so in the settings button's message and the endpoint's answer. Each write sends the item's whole tag list, as the Audiobookshelf API requires, which is why the fresh read comes first.
+
+Environment variables: `CROSS_FORMAT_ABS_TAGGING_ENABLED`, `CROSS_FORMAT_ABS_TAG`.
+
+### Endpoints
+
+Both are admin endpoints, so an [API key](api-access.md) can call them from a script.
+
+`GET /api/admin/library/cross-format` returns the pairs, flat and indexed from both sides:
+
+```json
+{
+  "ebooks_indexed": 412,
+  "audiobooks_indexed": 97,
+  "pair_count": 1,
+  "pairs": [
+    {"ebook": {"id": "118", "title": "Dune", "author": "Frank Herbert"},
+     "audiobook": {"id": "li_8gch9ve09orgn4fdz8", "title": "Dune", "author": "Frank Herbert"}}
+  ],
+  "by_calibre_id": {"118": [{"id": "li_8gch9ve09orgn4fdz8", "title": "Dune", "author": "Frank Herbert"}]},
+  "by_audiobookshelf_id": {"li_8gch9ve09orgn4fdz8": [{"id": "118", "title": "Dune", "author": "Frank Herbert"}]}
+}
+```
+
+`POST /api/admin/library/cross-format/audiobookshelf-tags` with body `{"dry_run": true}` (the default when the body is empty) reports; `{"dry_run": false}` writes. The answer lists the `added` and `removed` items with `already_current`, `errors` and `forbidden` counts, plus a one-line `message`. Status codes: 400 when either library check is off, 409 when writing with the toggle off, 503 when a library cannot be read, 502 when Audiobookshelf refused the write.
+
+Both hold rather than guess when a library cannot be read: an empty index would look like "no pairs" and remove every tag.
+
+### Marking the Calibre side
+
+Shelfmark only reads `metadata.db`, so the Calibre side is marked outside Shelfmark by a script that reads `by_calibre_id` from the endpoint and runs `calibredb` wherever Calibre's tools and the library are (a Calibre-Web container that ships them, or a host with calibre installed). A yes/no custom column is the natural marker. Create it once:
+
+```bash
+calibredb add_custom_column --library-path /calibre-library audiobook "Audiobook in library" bool
+```
+
+Then set it on each Calibre id the endpoint lists and clear it on books that are no longer listed:
+
+```bash
+calibredb set_custom --library-path /calibre-library audiobook 118 true
+calibredb set_custom --library-path /calibre-library audiobook 118 ""
+```
+
+`calibredb list --library-path /calibre-library --fields id,#audiobook` shows what is set, so the script can change only what differs. Do not run `calibredb` against a library that the calibre desktop application has open; Calibre-Web and Calibre-Web Automated read the database and may need their library refresh to show the column.
