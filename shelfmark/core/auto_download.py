@@ -1397,15 +1397,12 @@ class OwnerPolicy:
         ]
 
     def may_fulfil(self, row: dict[str, Any]) -> bool:
-        """True when auto-download could fulfil ``row`` from at least one configured source."""
-        if self._bypass:
-            return True
-        user_id = coerce_int(row.get("user_id"), 0)
-        owner = self._owner(user_id) if user_id > 0 else None
-        if owner is None:
-            return False
-        if owner[0]:
-            return True
+        """True when auto-download could fulfil ``row`` from at least one configured source.
+
+        An exempt owner (an admin, a user with requests off, or any owner on an install
+        without login) may use every configured source, but still needs one: with none
+        usable for the content type, nothing would ever search the request.
+        """
         book_data = row.get("book_data")
         content_type = normalize_content_type(
             row.get("content_type")
