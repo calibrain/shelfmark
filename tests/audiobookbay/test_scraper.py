@@ -2,6 +2,7 @@
 Tests for AudiobookBay scraper functions.
 """
 
+import base64
 from unittest.mock import patch
 
 from shelfmark.release_sources.audiobookbay import scraper
@@ -47,6 +48,41 @@ SAMPLE_SEARCH_HTML = """
 EMPTY_SEARCH_HTML = """
 <html>
 <body>
+</body>
+</html>
+"""
+
+# ABB serves post markup base64-encoded inside hidden .post divs, decoded
+# client-side by JavaScript. The decoded payload is the classic markup.
+_POST_INNER_HTML = (
+    '<div class="postTitle"><h2><a href="/abss/encoded-book-title/" rel="bookmark">'
+    "Encoded Book Title - Encoded Author</a></h2></div>"
+    '<div class="postInfo">Category: Crime&nbsp; <br>Language: English'
+    '<span style="margin-left:100px;">Keywords: Test&nbsp;</span><br></div>'
+    '<div class="postContent">'
+    '<div class="center">'
+    '<p class="center"><a href="https://audiobookbay.lu/abss/encoded-book-title/">'
+    '<img src="https://example.com/encoded-cover.jpg" alt="Cover" width="250"></a></p>'
+    "</div>"
+    '<p style="text-align:center;">Posted: 12 Jul 2026<br>'
+    'Format: <span style="color:#a00;">M4B</span> / '
+    'Bitrate: <span style="color:#a00;">64 Kbps</span><br>'
+    'File Size: <span style="color:#00f;">1.55</span> GBs</p>'
+    "</div>"
+)
+
+_BASE64_PAYLOAD = base64.b64encode(_POST_INNER_HTML.encode("utf-8")).decode("ascii")
+
+PLAIN_POST_SEARCH_HTML = f'<html><body><div class="post">{_POST_INNER_HTML}</div></body></html>'
+
+BASE64_SEARCH_HTML = f'<html><body><div class="post re-ab" style="display:none;">{_BASE64_PAYLOAD}</div></body></html>'
+
+# .post elements whose content is neither valid base64 nor classic markup.
+UNPARSEABLE_SEARCH_HTML = """
+<html>
+<body>
+<div class="post re-ab" style="display:none;">this is not base64 and has no postTitle markup!</div>
+<div class="post re-ab" style="display:none;">another opaque blob without any known structure</div>
 </body>
 </html>
 """
@@ -379,6 +415,56 @@ class TestSearchAudiobookbay:
             url == "https://audiobookbay.lu/?s=test&cat=undefined%2Cundefined"
             for url in search_urls
         )
+
+
+class TestSearchAudiobookbayBase64Posts:
+    """Tests for ABB's base64-encoded post markup."""
+
+    @staticmethod
+    def _search(html):
+        with (
+            patch("shelfmark.release_sources.audiobookbay.scraper.downloader.html_get_page") as get,
+            patch("shelfmark.release_sources.audiobookbay.scraper.config.get") as cfg,
+        ):
+            cfg.return_value = 0.0
+            get.return_value = (html, "https://audiobookbay.lu/?s=test&cat=undefined%2Cundefined")
+            return scraper.search_audiobookbay("test", max_pages=1, hostname="audiobookbay.lu")
+
+    def test_base64_page_parses_same_posts_as_plain_page(self):
+        plain = self._search(PLAIN_POST_SEARCH_HTML)
+        encoded = self._search(BASE64_SEARCH_HTML)
+
+        assert len(encoded) == 1
+        assert encoded == plain
+        assert encoded[0]["title"] == "Encoded Book Title - Encoded Author"
+        assert encoded[0]["link"] == "https://audiobookbay.lu/abss/encoded-book-title/"
+        assert encoded[0]["format"] == "M4B"
+        assert encoded[0]["bitrate"] == "64 Kbps"
+        assert encoded[0]["size"] == "1.55 GB"
+        assert encoded[0]["posted_date"] == "12 Jul 2026"
+        assert encoded[0]["cover"] == "https://example.com/encoded-cover.jpg"
+
+    def test_warns_when_posts_found_but_none_parsed(self):
+        # setup_logger builds parentless loggers (no propagation), so caplog
+        # can't see them; spy on the module logger instead.
+        with patch.object(scraper.logger, "warning") as mock_warning:
+            results = self._search(UNPARSEABLE_SEARCH_HTML)
+
+        assert results == []
+        warning_texts = [
+            (call.args[0] % tuple(call.args[1:])) if len(call.args) > 1 else call.args[0]
+            for call in mock_warning.call_args_list
+        ]
+        assert any("2 .post elements" in t and "parsed 0" in t for t in warning_texts), (
+            warning_texts
+        )
+
+    def test_no_warning_when_posts_parse(self):
+        with patch.object(scraper.logger, "warning") as mock_warning:
+            results = self._search(SAMPLE_SEARCH_HTML)
+
+        assert results
+        mock_warning.assert_not_called()
 
 
 class TestExtractMagnetLink:
