@@ -56,7 +56,7 @@ These environment variables are used at startup before the settings system loads
 | `HIDE_LOCAL_AUTH` | Hide the username/password login form when OIDC is active. | boolean | `false` |
 | `DISABLE_LOCAL_AUTH` | Disable username/password login and remove the local-admin prerequisite for OIDC. Implies HIDE_LOCAL_AUTH; with AUTH_METHOD=builtin, everyone is locked out until auth env vars are changed. | boolean | `false` |
 | `SHELFMARK_API_KEY` | Optional static API key. When set, requests carrying it as 'Authorization: Bearer <key>' (or X-Api-Key) are authenticated as an admin; browser sessions keep working. Unset = off. | string | `unset` |
-| `SHELFMARK_API_KEY_READONLY` | Optional second API key for dashboards and monitors. Send it like SHELFMARK_API_KEY. It can only GET /api/stats (counters only, no titles or user names). Every other request, and any write, is refused with 403, and it never gets a session. Unset = off. | string | `unset` |
+| `SHELFMARK_API_KEY_READONLY` | Optional second API key for dashboards and monitors. Send it like SHELFMARK_API_KEY. It can only GET /api/stats (counters and scheduler health, no titles or user names). Every other request, and any write, is refused with 403, and it never gets a session. Unset = off. | string | `unset` |
 | `OIDC_AUTO_REDIRECT` | Automatically redirect to the OIDC provider instead of showing the login page. | boolean | `false` |
 | `UMASK` | File creation mask for the app process, read by entrypoint.sh. The default 0022 gives files 644 and directories 755. | string (octal) | `0022` |
 | `DOCKERMODE` | Indicates the application is running inside a Docker container. | boolean | `false` |
@@ -151,7 +151,7 @@ Optional static API key. When set, requests carrying it as 'Authorization: Beare
 
 #### `SHELFMARK_API_KEY_READONLY`
 
-Optional second API key for dashboards and monitors. Send it like SHELFMARK_API_KEY. It can only GET /api/stats (counters only, no titles or user names). Every other request, and any write, is refused with 403, and it never gets a session. Unset = off.
+Optional second API key for dashboards and monitors. Send it like SHELFMARK_API_KEY. It can only GET /api/stats (counters and scheduler health, no titles or user names). Every other request, and any write, is refused with 403, and it never gets a session. Unset = off.
 
 - **Type:** string
 - **Default:** `unset`
@@ -1122,7 +1122,7 @@ Custom label for the OIDC sign-in button on the login page.
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
 | `HARDCOVER_SYNC_ENABLED` | Periodically sync the selected Hardcover shelves into requests. | boolean | `false` |
-| `HARDCOVER_SYNC_TOKEN` | Bearer token for your Hardcover account. Leave blank to reuse the token from the Hardcover metadata provider. | string (secret) | _none_ |
+| `HARDCOVER_SYNC_TOKEN` | Bearer token for your Hardcover account. Leave blank to reuse the token from the Hardcover metadata provider. Each user can connect their own account instead, in which case their shelf syncs to requests they own and this token is the fallback for everyone else. | string (secret) | _none_ |
 | `HARDCOVER_SYNC_STATUSES` | Which Hardcover reading shelf to pull from. | string (choice) | `1` |
 | `HARDCOVER_SYNC_CONTENT_TYPE` | Content type for synced requests. "Ebooks and audiobooks" creates one request of each per shelf book; every request is checked against its own library and downloaded with its own format guard and source priority. | string (choice) | `audiobook` |
 | `HARDCOVER_SYNC_INTERVAL` | How often the scheduled sync runs (minimum 1 minute). | number | `6` |
@@ -1134,7 +1134,7 @@ Custom label for the OIDC sign-in button on the login page.
 | `AUTO_DOWNLOAD_RETRY_DAYS` | A synced request whose download failed, or was interrupted (a restart, say), goes back to pending after this many days and is tried again, a few per pass. A release that failed is not picked again, and a request is given up on after three failed retries. A download the stall timer cancelled counts as failed; one cancelled by a person, and rejected requests, are never retried. 0 turns retries off. | number | `7` |
 | `AUTO_DOWNLOAD_FAILURE_RETRY_MINUTES` | A download that failed, or that was given up on (stalled, no seeders), goes back to pending this many minutes later and another release is chosen, without waiting for the retry days above or the next sync cycle. The release that failed is not picked again, and a request is given up on after three failed attempts. 0 turns this off. | number | `0` |
 | `AUTO_DOWNLOAD_RETRY_FAILED_RELEASE_DAYS` | A release that failed or stalled is kept out of the search for this many days, then it may be picked again. A torrent that stalled can be revived by new seeds, so a failure should not shut a book out for good. A request is still given up on after three failed attempts. | number | `7` |
-| `AUTO_DOWNLOAD_BACKOFF_MAX_DAYS` | A request that no source has a match for is searched every cycle at first. After three passes in a row with no match it is searched once a day, then every two days, and at most this often apart. A match, or Sync now, starts it over. 0 searches every unmatched request every cycle. | number | `3` |
+| `AUTO_DOWNLOAD_BACKOFF_MAX_DAYS` | A request that no source has a match for is searched every cycle at first. After three passes in a row with no match it is searched once a day, then every two days, and at most this often apart. A match, or either sync button, starts it over. 0 searches every unmatched request every cycle. | number | `3` |
 | `AUTO_DOWNLOAD_EXISTENCE_CHECK_ENABLED` | An audiobook request that stays unmatched is looked up on Audible (US and UK) through your Audiobookshelf server. Either way it stays pending and its reason says what the store answered (with the ASIN when listed), for you to decline or keep; it is checked again after a week. A lookup that fails decides nothing. Needs the Audiobookshelf URL and token below. | boolean | `false` |
 | `AUTO_DOWNLOAD_EXISTENCE_CHECK_AFTER_PASSES` | How many consecutive passes with no strict match a request goes through before the store is asked. A pass that matched, or a reopen, starts the count over. | number | `3` |
 | `AUTO_DOWNLOAD_AUDIOBOOK_MIN_SIZE_PERCENT` | A copy of an audiobook smaller than this share of the largest copy found for the same book is probably a lower-bitrate copy. It is tried after the others, and a single m4b that small is not preferred over a fuller set of chapter files. 0 turns the check off. | number | `67` |
@@ -1155,7 +1155,7 @@ Periodically sync the selected Hardcover shelves into requests.
 
 **Hardcover API Token**
 
-Bearer token for your Hardcover account. Leave blank to reuse the token from the Hardcover metadata provider.
+Bearer token for your Hardcover account. Leave blank to reuse the token from the Hardcover metadata provider. Each user can connect their own account instead, in which case their shelf syncs to requests they own and this token is the fallback for everyone else.
 
 - **Type:** string (secret)
 - **Default:** _none_
@@ -1271,7 +1271,7 @@ A release that failed or stalled is kept out of the search for this many days, t
 
 **Longest wait between searches for an unmatched request (days)**
 
-A request that no source has a match for is searched every cycle at first. After three passes in a row with no match it is searched once a day, then every two days, and at most this often apart. A match, or Sync now, starts it over. 0 searches every unmatched request every cycle.
+A request that no source has a match for is searched every cycle at first. After three passes in a row with no match it is searched once a day, then every two days, and at most this often apart. A match, or either sync button, starts it over. 0 searches every unmatched request every cycle.
 
 - **Type:** number
 - **Default:** `3`
