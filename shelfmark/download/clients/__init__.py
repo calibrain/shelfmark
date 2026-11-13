@@ -49,6 +49,8 @@ def with_retry(
     base_delay: float = 1.0,
     max_delay: float = 10.0,
     jitter: float = 0.5,
+    *,
+    extra_exceptions: tuple[type[Exception], ...] = (),
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
     """Retry API calls with exponential backoff.
 
@@ -57,6 +59,7 @@ def with_retry(
         base_delay: Initial delay in seconds (default 1.0)
         max_delay: Maximum delay cap in seconds (default 10.0)
         jitter: Random jitter factor 0-1 to add to delay (default 0.5)
+        extra_exceptions: Client-library exceptions that also allow a retry
 
     Retries on:
         - Connection errors
@@ -68,6 +71,8 @@ def with_retry(
         - Other exceptions (programming errors)
 
     """
+
+    retryable_exceptions = RETRYABLE_EXCEPTIONS + extra_exceptions
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
@@ -82,7 +87,7 @@ def with_retry(
                     if e.response is not None and e.response.status_code < _MIN_RETRYABLE_STATUS:
                         raise
                     last_exception = e
-                except RETRYABLE_EXCEPTIONS as e:
+                except retryable_exceptions as e:
                     last_exception = e
 
                 if attempt < max_attempts:
