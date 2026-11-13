@@ -1,11 +1,16 @@
 """Tests for CWA user linking/provisioning helpers."""
 
 import os
+import sqlite3
 import tempfile
 
 import pytest
 
-from shelfmark.core.cwa_user_sync import sync_cwa_users_from_rows, upsert_cwa_user
+from shelfmark.core.cwa_user_sync import (
+    connect_cwa_db,
+    sync_cwa_users_from_rows,
+    upsert_cwa_user,
+)
 from shelfmark.core.user_db import UserDB
 
 
@@ -189,3 +194,74 @@ def test_sync_prunes_cwa_users_missing_from_source(user_db):
 
     assert user_db.get_user(user_id=stale_cwa["id"]) is None
     assert user_db.get_user(user_id=local_builtin["id"]) is not None
+
+
+def _make_wal_app_db(path):
+    """Mimic Calibre-Web's app.db: WAL mode, one user, one write left in the WAL."""
+    writer = sqlite3.connect(path)
+    writer.execute("PRAGMA journal_mode=WAL")
+    writer.execute("PRAGMA wal_autocheckpoint=0")
+    writer.execute("CREATE TABLE user (name TEXT, password TEXT, role INTEGER, email TEXT)")
+    writer.execute("INSERT INTO user VALUES ('admin', 'old-hash', 1, NULL)")
+    writer.commit()
+    writer.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    # Not checkpointed: only visible to readers that read the WAL.
+    writer.execute("UPDATE user SET name = 'renamed', password = 'new-hash'")
+    writer.commit()
+    return writer
+
+
+def test_connect_cwa_db_sees_writes_still_in_the_wal(tmp_path):
+    db_path = tmp_path / "app.db"
+    writer = _make_wal_app_db(db_path)
+    try:
+        conn = connect_cwa_db(db_path)
+        try:
+            rows = conn.execute("SELECT name, password FROM user").fetchall()
+        finally:
+            conn.close()
+    finally:
+        writer.close()
+
+    assert rows == [("renamed", "new-hash")]
+
+
+def test_connect_cwa_db_is_read_only(tmp_path):
+    db_path = tmp_path / "app.db"
+    _make_wal_app_db(db_path).close()
+
+    conn = connect_cwa_db(db_path)
+    try:
+        with pytest.raises(sqlite3.OperationalError):
+            conn.execute("DELETE FROM user")
+    finally:
+        conn.close()
+
+
+def test_connect_cwa_db_falls_back_to_immutable_when_the_plain_open_fails(tmp_path, monkeypatch):
+    db_path = tmp_path / "app.db"
+    writer = _make_wal_app_db(db_path)
+
+    real_connect = sqlite3.connect
+    uris = []
+
+    def fake_connect(database, **kwargs):
+        uris.append(database)
+        if "immutable=1" not in database:
+            raise sqlite3.OperationalError("unable to open database file")
+        return real_connect(database, **kwargs)
+
+    monkeypatch.setattr("shelfmark.core.cwa_user_sync.sqlite3.connect", fake_connect)
+    try:
+        conn = connect_cwa_db(db_path)
+        try:
+            rows = conn.execute("SELECT name, password FROM user").fetchall()
+        finally:
+            conn.close()
+    finally:
+        writer.close()
+
+    assert uris[0].endswith("?mode=ro")
+    assert uris[1].endswith("?mode=ro&immutable=1")
+    # The fallback skips the WAL, so it only sees the last checkpoint.
+    assert rows == [("admin", "old-hash")]

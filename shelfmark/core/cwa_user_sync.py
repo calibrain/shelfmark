@@ -2,17 +2,52 @@
 
 from __future__ import annotations
 
+import os
+import sqlite3
 from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.auth_modes import AUTH_SOURCE_CWA, normalize_auth_source
 from shelfmark.core.external_user_linking import upsert_external_user
+from shelfmark.core.logger import setup_logger
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
+    from pathlib import Path
 
     from shelfmark.core.user_db import UserDB
 
+logger = setup_logger(__name__)
+
 _CWA_ALIAS_SUFFIX = "__cwa"
+
+
+def connect_cwa_db(db_path: str | os.PathLike[str] | Path) -> sqlite3.Connection:
+    """Open Calibre-Web's app.db read-only, including writes still in its WAL.
+
+    Calibre-Web Automated keeps app.db in WAL mode, so a password change or a
+    renamed user can sit in app.db-wal until the next checkpoint. ``immutable=1``
+    makes SQLite skip the WAL entirely, so it would read the old password hash.
+    A plain ``mode=ro`` open reads the WAL. ``immutable=1`` is only used as a
+    fallback when that open fails, for example on a read-only mount where
+    SQLite cannot use the -shm file.
+    """
+    uri = f"file:{os.fspath(db_path)}?mode=ro"
+    conn = None
+    try:
+        conn = sqlite3.connect(uri, uri=True)
+        conn.execute("PRAGMA schema_version").fetchone()
+    except sqlite3.OperationalError as exc:
+        if conn is not None:
+            conn.close()
+        logger.warning(
+            "CWA database %s cannot be read in place (%s); using an immutable snapshot, "
+            "which misses account changes CWA has not checkpointed yet. Mount the folder "
+            "that holds app.db, not the file alone, so SQLite can read app.db-wal.",
+            db_path,
+            exc,
+        )
+        conn = sqlite3.connect(f"{uri}&immutable=1", uri=True)
+    return conn
 
 
 def _normalize_email(value: object) -> str | None:
