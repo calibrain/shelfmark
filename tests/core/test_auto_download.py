@@ -1196,6 +1196,68 @@ class TestContentTypeAwareMatching:
 
         assert not auto_download.strict_match(release, _book(), content_type="ebook")
 
+    # Newznab releases, and Prowlarr ones outside MyAnonamouse, carry no format and the
+    # generic "book" content type, so the format named in the name is the only signal.
+    @staticmethod
+    def _usenet(title):
+        return _release(
+            title=title,
+            format=None,
+            content_type="book",
+            protocol=ReleaseProtocol.NZB,
+            seeders=None,
+        )
+
+    @staticmethod
+    def _ebook_format_match(release):
+        return auto_download._format_match(
+            release, "ebook", AUDIOBOOK_FORMATS, {"epub", "azw3", "mobi"}
+        )
+
+    def test_a_usenet_release_naming_its_format_matches_an_ebook_request(self):
+        release = self._usenet("Rick Rubin - The Creative Act (retail) (epub)")
+        book = _book(title="The Creative Act", authors=["Rick Rubin"])
+
+        assert auto_download.strict_match(release, book, content_type="ebook")
+
+    @pytest.mark.parametrize(
+        "title",
+        [
+            "Matt Dinniman - Dungeon Crawler Carl (retail) (epub)",
+            "Dungeon Crawler Carl [EPUB] - Matt Dinniman",
+            "Matt Dinniman - Dungeon Crawler Carl - azw3",
+            "Matt Dinniman - Dungeon Crawler Carl {MOBI}",
+        ],
+    )
+    def test_a_format_word_in_the_name_is_an_ebook_signal(self, title):
+        assert self._ebook_format_match(self._usenet(title))
+
+    @pytest.mark.parametrize(
+        "title",
+        [
+            "Matt Dinniman - Dungeon Crawler Carl (m4b)",
+            "Matt Dinniman - Dungeon Crawler Carl (epub) (Unabridged)",
+        ],
+    )
+    def test_an_audiobook_signal_still_fails_an_ebook_request(self, title):
+        assert not self._ebook_format_match(self._usenet(title))
+
+    def test_a_name_without_a_format_still_fails_an_ebook_request(self):
+        assert not self._ebook_format_match(
+            self._usenet("Matt Dinniman - Dungeon Crawler Carl (retail)")
+        )
+
+    @pytest.mark.parametrize(
+        "title",
+        [
+            "Matt Dinniman - Dungeon Crawler Carl (Mobile Edition)",
+            "Matt Dinniman - Dungeon Crawler Carl (Republished)",
+            "Matt Dinniman - Dungeon Crawler Carl (epubs)",
+        ],
+    )
+    def test_a_word_containing_a_format_is_not_an_ebook_signal(self, title):
+        assert not self._ebook_format_match(self._usenet(title))
+
     def test_ebook_ranking_prefers_epub_then_azw3_then_mobi(self):
         mobi = _release(format="mobi", seeders=50)
         azw3 = _release(format="azw3", seeders=1)
