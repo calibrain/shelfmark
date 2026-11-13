@@ -57,11 +57,12 @@ def _sanitize(name: str | None, max_length: int = 245) -> str:
     sanitized = INVALID_CHARS.sub("_", name)
     sanitized = re.sub(r"^[\s.]+|[\s.]+$", "", sanitized)  # Strip whitespace and dots
     sanitized = re.sub(r"_+", "_", sanitized)  # Collapse underscores
-    return sanitized[:max_length]
+    # Filesystem component limits count bytes; discard any partial final character.
+    return sanitized.encode("utf-8")[:max_length].decode("utf-8", errors="ignore")
 
 
 def sanitize_filename(name: str | None, max_length: int = 245) -> str:
-    """Sanitize a string for use as a filename or path component."""
+    """Sanitize a filename or path component within a UTF-8 byte limit."""
     return _sanitize(name, max_length)
 
 
