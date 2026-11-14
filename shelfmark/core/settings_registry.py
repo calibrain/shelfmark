@@ -1225,9 +1225,9 @@ def execute_action(
                                     tab_name=tab_name
                                 ).items()
                             }
-                            # Never hand an empty password value to an action
-                            # callback: let it fall back to the stored secret
-                            # exactly as when the key is absent.
+                            # Never hand an empty password value of this tab to
+                            # an action callback: let it fall back to the stored
+                            # secret exactly as when the key is absent.
                             for key, value in list(values_to_pass.items()):
                                 field = field_map.get(key)
                                 if (
