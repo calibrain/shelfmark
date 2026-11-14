@@ -281,8 +281,8 @@ def check_calibre(title: str) -> bool:
     """Check if a book is already in the calibre database."""
     import subprocess
 
-    cmd = f'calibredb list --search title:="{title}"'
-    result = subprocess.run(cmd, check=False, shell=True, capture_output=True, text=True)
+    cmd = ["calibredb", "list", "--search", f'title:="{title}"']
+    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
     output = result.stdout.strip()
     # calibredb output has header line "id title authors", count non-header lines
     lines = [l.strip() for l in output.split("\n") if l.strip()]
