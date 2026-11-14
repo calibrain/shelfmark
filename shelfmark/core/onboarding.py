@@ -596,6 +596,10 @@ def get_onboarding_config() -> dict[str, Any]:
                     value = getattr(field, "default", "")
                 else:
                     value = get_setting_value(field, field_tab_name)
+                if isinstance(field, PasswordField):
+                    # Passwords are masked in the UI and never echoed back to the API,
+                    # including the onboarding values dict the frontend reads.
+                    value = ""
                 all_values[field.key] = (
                     value if value is not None else getattr(field, "default", "")
                 )

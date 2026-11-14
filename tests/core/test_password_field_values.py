@@ -1,9 +1,11 @@
 """Password field values are masked in the API and never overwritten by onboarding."""
 
 from shelfmark.core.settings_registry import (
+    ActionButton,
     PasswordField,
     SettingsTab,
     TextField,
+    execute_action,
     serialize_field,
     serialize_tab,
 )
@@ -161,3 +163,68 @@ def test_save_onboarding_writes_non_empty_password_value(monkeypatch):
 
     assert result == {"success": True, "message": "Onboarding complete!"}
     assert any(payload.get("PASS_KEY") == "new-secret" for _, payload in save_calls)
+
+
+def test_get_onboarding_config_values_mask_password(monkeypatch):
+    import shelfmark.core.onboarding as onboarding
+
+    password_field = PasswordField(key="PASS_KEY", label="Password")
+    text_field = TextField(key="TEXT_KEY", label="Text", default="")
+
+    def _fake_get_setting_value(field, tab_name):
+        if isinstance(field, PasswordField):
+            return "super-secret"
+        if isinstance(field, TextField):
+            return "stored-text"
+        return field.default
+
+    monkeypatch.setattr("shelfmark.core.onboarding.get_setting_value", _fake_get_setting_value)
+    monkeypatch.setattr(
+        onboarding,
+        "get_onboarding_steps",
+        lambda: [
+            {
+                "id": "test_step",
+                "title": "Test Step",
+                "tab": "test_tab",
+                "get_fields": lambda: [text_field, password_field],
+            }
+        ],
+    )
+
+    config = onboarding.get_onboarding_config()
+
+    assert config["values"]["PASS_KEY"] == ""
+    assert config["values"]["TEXT_KEY"] == "stored-text"
+
+
+def test_execute_action_drops_empty_password_from_current_values(monkeypatch):
+    password_field = PasswordField(key="PW", label="Password")
+    url_field = TextField(key="URL", label="URL", default="")
+    captured: dict[str, object] = {}
+
+    def _callback(*, current_values):
+        captured["values"] = dict(current_values)
+        return {"success": True}
+
+    action = ActionButton(key="test_action", label="Test", callback=_callback)
+    tab = SettingsTab(
+        name="test_tab",
+        display_name="Test Tab",
+        fields=[password_field, url_field, action],
+    )
+    monkeypatch.setattr(
+        "shelfmark.core.settings_registry.get_settings_tab",
+        lambda name: tab if name == "test_tab" else None,
+    )
+
+    # Empty password is dropped so the callback falls back to the stored secret;
+    # the non-password value is passed through unchanged.
+    result = execute_action("test_tab", "test_action", current_values={"PW": "", "URL": "x"})
+    assert result == {"success": True}
+    assert captured["values"] == {"URL": "x"}
+
+    # A typed password is passed through unchanged.
+    result = execute_action("test_tab", "test_action", current_values={"PW": "typed"})
+    assert result == {"success": True}
+    assert captured["values"] == {"PW": "typed"}
