@@ -165,6 +165,22 @@ RUN apt-get update -o Acquire::Retries=5 && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
+# Drop Debian's software-GL stack (about 180MB installed) that Chromium does not
+# use. WebGL comes from Chromium's own bundled SwiftShader (via
+# --enable-unsafe-swiftshader in _get_browser_args), not from Mesa's llvmpipe.
+# On trixie these arrive as: chromium -> libgbm1 -> mesa-libgallium -> libllvm19
+# -> libz3-4, and xvfb -> libgl1 -> libglx-mesa0 -> libgl1-mesa-dri. libgbm1 and
+# libglx-mesa0 depend on them, so apt-get remove would take chromium or xvfb
+# along; dpkg --force-depends drops only these four and leaves the dependents.
+# dpkg only warns on a package that is not installed, so if the base or the
+# Chromium pin renames these, the purge quietly stops saving space.
+RUN dpkg --force-depends --purge \
+        libgl1-mesa-dri \
+        mesa-libgallium \
+        libllvm19 \
+        libz3-4 && \
+    chromium --version
+
 # Install the browser automation stack used by the full image
 RUN --mount=type=cache,target=/root/.cache/uv \
     --mount=from=uv,source=/uv,target=/usr/local/bin/uv \
