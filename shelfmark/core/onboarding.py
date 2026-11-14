@@ -13,6 +13,7 @@ from shelfmark.core.logger import setup_logger
 from shelfmark.core.settings_registry import (
     HeadingField,
     MultiSelectField,
+    PasswordField,
     SettingsField,
     get_setting_value,
     get_settings_field_map,
@@ -648,6 +649,9 @@ def save_onboarding_settings(values: dict[str, Any]) -> dict[str, Any]:
                 if key in _ONBOARDING_VIRTUAL_KEYS:
                     continue
                 if not _is_field_visible(field, values):
+                    continue
+                # Never overwrite a stored secret with an empty onboarding value.
+                if isinstance(field, PasswordField) and not values.get(key):
                     continue
                 if key in values:
                     tab_name = _get_field_tab_name(field, step_config["tab"])

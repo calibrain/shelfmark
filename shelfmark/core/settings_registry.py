@@ -1138,6 +1138,10 @@ def serialize_field(
         elif isinstance(field, TableField) and (value is None or not isinstance(value, list)):
             value = []
 
+        if isinstance(field, PasswordField):
+            # Passwords are masked in the UI and never echoed back to the API.
+            value = ""
+
         result["value"] = value if value is not None else ""
         result["fromEnv"] = is_value_from_env(field)
 
