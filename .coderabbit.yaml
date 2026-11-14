@@ -1,0 +1,8 @@
+# CodeRabbit's docstring pre-merge check counts every changed function,
+# including test functions. This project intentionally keeps test functions
+# self-documenting and disables ruff's D rules, so only the docstring check is
+# turned off; every other CodeRabbit check remains enabled.
+reviews:
+  pre_merge_checks:
+    docstrings:
+      mode: "off"
