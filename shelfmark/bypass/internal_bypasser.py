@@ -91,6 +91,18 @@ _HELPER_IDLE_TIMEOUT_DEFAULT = 180.0
 # How long to wait for a solved page to produce its document before the attempt is
 # abandoned. SeleniumBase's own get_page_source() allows one second; see _read_page_source.
 _PAGE_SOURCE_TIMEOUT_DEFAULT = 20.0
+# How often to ask whether a solved page has finished parsing, inside that same budget.
+_PAGE_LOAD_POLL_SECONDS = 0.25
+# Consecutive failed reads of the document state before falling back to the element read.
+# A page whose CDP calls keep failing will not start answering, and every retry spends
+# budget the caller needs.
+_PAGE_LOAD_MAX_READ_ERRORS = 3
+# One CDP call, not two: a navigation can commit between a readiness read and an HTML
+# read, so the old document would pass the check and the first chunk of the new one would
+# be returned. Same reasoning as the atomic snapshot in _wait_for_aa_download_page.
+_LOADED_DOCUMENT_EXPRESSION = (
+    "document.readyState === 'loading' ? '' : document.documentElement.outerHTML"
+)
 # Leave time inside the existing browser watchdog for challenge solving and cleanup.
 _AA_WAITING_ROOM_TIMEOUT_SECONDS = 300.0
 _AA_WAITING_ROOM_POLL_SECONDS = 1.0
@@ -855,13 +867,55 @@ async def _read_page_source(page: Any) -> str:
     challenge is often still navigating to the real content, so the read times out even
     though the solve succeeded: the whole attempt is retried, and the repeated requests
     are what earn a 429 from a host that was about to serve us.
+
+    The `html` element existing is not enough either: it is there as soon as the first
+    bytes are parsed. Anna's Archive streams the head and filters of a search page before
+    the results, and the bypass check passes on that prefix, so reading the element at
+    once returned about 120 KB of a 745 KB page with no results table in it. So within the
+    same budget, wait for `document.readyState` to leave "loading" and read the whole
+    document. If the budget runs out or the reads keep failing, return what the element
+    holds, which is what this returned before.
     """
     timeout = _coerce_non_negative_float(
         app_config.get("BYPASS_PAGE_SOURCE_TIMEOUT", _PAGE_SOURCE_TIMEOUT_DEFAULT),
         _PAGE_SOURCE_TIMEOUT_DEFAULT,
     )
+    deadline = time.monotonic() + timeout
     element = await page.find("html", timeout=timeout)
+    html = await _read_loaded_document(page, deadline)
+    if html is not None:
+        return html
     return await element.get_html_async()
+
+
+async def _read_loaded_document(page: Any, deadline: float) -> str | None:
+    """Return the document's HTML once it has finished parsing, or None by `deadline`.
+
+    The document is read at least once, so a spent budget still returns a page that has
+    already loaded.
+    """
+    errors = 0
+    while True:
+        try:
+            html = await page.evaluate(_LOADED_DOCUMENT_EXPRESSION)
+            # An empty string means still loading. SeleniumBase's evaluate() returns None
+            # when CDP sends back no value. Only a non-empty string is a document.
+            if isinstance(html, str) and html:
+                return html
+            errors = 0
+        except _CDP_OPERATION_ERRORS as e:
+            errors += 1
+            logger.debug("Reading the loaded document failed (%d): %s", errors, e)
+            if errors >= _PAGE_LOAD_MAX_READ_ERRORS:
+                logger.warning(
+                    "Could not read the loaded document after %d attempts; reading the page as it is",
+                    errors,
+                )
+                return None
+        if time.monotonic() >= deadline:
+            logger.warning("Page still loading after the page-source budget; reading it as it is")
+            return None
+        await asyncio.sleep(_PAGE_LOAD_POLL_SECONDS)
 
 
 async def _read_waiting_room_snapshot(
