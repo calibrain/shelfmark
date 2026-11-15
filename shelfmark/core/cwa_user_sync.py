@@ -5,6 +5,7 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
+from urllib.parse import quote
 
 from shelfmark.core.auth_modes import AUTH_SOURCE_CWA, normalize_auth_source
 from shelfmark.core.external_user_linking import upsert_external_user
@@ -75,7 +76,8 @@ def connect_cwa_db(db_path: str | os.PathLike[str] | Path) -> sqlite3.Connection
       in the WAL then, so the snapshot is current.
     """
     path = Path(db_path)
-    uri = f"file:{path}?mode=ro"
+    # Escape the path so characters such as "#" or "?" stay part of the filename.
+    uri = f"file:{quote(str(path))}?mode=ro"
 
     if _is_mounted_alone(path):
         _warn_stale_read(

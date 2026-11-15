@@ -339,3 +339,22 @@ def test_is_mounted_alone(monkeypatch, devices, expected):
     monkeypatch.setattr(cwa_user_sync.Path, "stat", fake_stat)
 
     assert cwa_user_sync._is_mounted_alone(cwa_user_sync.Path("/auth/app.db")) is expected
+
+
+@pytest.mark.parametrize("folder", ["cwa#backup", "cwa?x", "cwa%20", "cwa config"])
+def test_connect_cwa_db_handles_uri_characters_in_the_path(tmp_path, folder):
+    db_dir = tmp_path / folder
+    db_dir.mkdir()
+    writer = _make_wal_app_db(db_dir / "app.db")
+    try:
+        conn = connect_cwa_db(db_dir / "app.db")
+        try:
+            rows = conn.execute("SELECT name, password FROM user").fetchall()
+            with pytest.raises(sqlite3.OperationalError):
+                conn.execute("DELETE FROM user")
+        finally:
+            conn.close()
+    finally:
+        writer.close()
+
+    assert rows == [("renamed", "new-hash")]
