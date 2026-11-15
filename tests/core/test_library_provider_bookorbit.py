@@ -403,11 +403,41 @@ def test_fetch_reads_every_page_from_page_zero(configured: FakeConfig, server: _
     ]
 
 
-def test_fetch_stops_on_an_empty_later_page(configured: FakeConfig, server: _Server) -> None:
+def test_an_empty_page_before_the_reported_total_fails_the_read(
+    configured: FakeConfig, server: _Server
+) -> None:
+    # Accepted as the whole library, every book it never listed would look unowned.
     server.pages = {0: {"items": [_card("One")], "total": 50}, 1: {"items": [], "total": 50}}
 
-    assert len(_ebooks()) == 1
+    with pytest.raises(ValueError, match="reports 50 books but listed 1 of them"):
+        _ebooks()
     assert len(server.posts) == 2
+
+
+def test_a_page_short_of_the_reported_total_fails_the_read(
+    configured: FakeConfig, server: _Server
+) -> None:
+    server.pages = {
+        0: {"items": [_card("One"), _card("Two")], "total": 4},
+        1: {"items": [_card("Three")], "total": 4},
+    }
+
+    with pytest.raises(ValueError, match="reports 4 books but listed 3 of them"):
+        _ebooks()
+
+
+def test_a_count_that_drops_during_the_scan_fails_the_read(
+    configured: FakeConfig, server: _Server
+) -> None:
+    # A book deleted between two pages shifts every later one back, so the scan can step
+    # over a book it never sees. The drop in the count is the only sign of it.
+    server.pages = {
+        0: {"items": [_card("One"), _card("Two")], "total": 4},
+        1: {"items": [_card("Three")], "total": 3},
+    }
+
+    with pytest.raises(ValueError, match="reports 4 books but listed 3 of them"):
+        _ebooks()
 
 
 def test_a_key_that_reaches_no_library_is_an_error(configured: FakeConfig, server: _Server) -> None:
@@ -424,7 +454,7 @@ def test_a_library_that_reports_books_but_lists_none_is_an_error(
 ) -> None:
     server.pages = {0: {"items": [], "total": 5}}
 
-    with pytest.raises(ValueError, match="reports 5 books but listed none"):
+    with pytest.raises(ValueError, match="reports 5 books but listed 0 of them"):
         _ebooks()
 
 
@@ -514,7 +544,72 @@ def test_the_names_shown_for_each_format(fake_app_config: FakeConfig) -> None:
 
     assert ebook.describe() == f"BookOrbit ebooks at {_URL}"
     assert audiobook.describe() == f"BookOrbit audiobooks at {_URL}"
-    assert (ebook.fingerprint(), audiobook.fingerprint()) == (None, None)
+
+
+def test_the_fingerprint_names_the_server_and_the_key_without_holding_the_key(
+    fake_app_config: FakeConfig,
+) -> None:
+    fake_app_config.values.update(BOOKORBIT_URL=_URL, BOOKORBIT_API_KEY="bok_secret")
+    token = bookorbit.BookOrbitEbookLibrary().fingerprint()
+
+    assert token == bookorbit.BookOrbitEbookLibrary().fingerprint()
+    assert "bok_secret" not in str(token)
+    assert (
+        bookorbit.BookOrbitEbookLibrary({"BOOKORBIT_API_KEY": "bok_other"}).fingerprint() != token
+    )
+    assert (
+        bookorbit.BookOrbitEbookLibrary({"BOOKORBIT_URL": "http://other:3000"}).fingerprint()
+        != token
+    )
+
+
+# The Test button and the saved library
+
+
+def _two_servers(monkeypatch: pytest.MonkeyPatch) -> dict[str, _Server]:
+    servers = {_URL: _Server(), "http://other:3000": _Server()}
+    monkeypatch.setattr(bookorbit, "_session", lambda url, key: servers[url])
+    monkeypatch.setattr(bookorbit, "_PAGE_SIZE", 2)
+    return servers
+
+
+def test_a_test_with_unsaved_settings_does_not_answer_for_the_saved_library(
+    configured: FakeConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The Test button keeps what it indexed under the provider's name, where the saved
+    # settings' answers are cached too. Another server, tested and never saved, must not
+    # stand in for the saved one.
+    servers = _two_servers(monkeypatch)
+    servers[_URL].cards = [_card("Dune")]
+    form = {"BOOKORBIT_URL": "http://other:3000", "BOOKORBIT_API_KEY": "bok_other"}
+
+    assert library_index.test_connection("bookorbit_ebook", form)["success"] is True
+    assert library_index.is_in_library(_searching("Dune"), "ebook") is True
+
+
+def test_testing_the_saved_settings_still_primes_the_index(
+    configured: FakeConfig, server: _Server
+) -> None:
+    server.cards = [_card("Dune")]
+
+    assert library_index.test_connection("bookorbit_ebook", None)["success"] is True
+    assert library_index.is_in_library(_searching("Dune"), "ebook") is True
+    assert len(server.posts) == 1
+
+
+def test_a_saved_change_of_server_reindexes_at_the_next_lookup(
+    configured: FakeConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    servers = _two_servers(monkeypatch)
+    servers[_URL].cards = [_card("Dune")]
+    servers["http://other:3000"].cards = [_card("Dune Messiah")]
+
+    assert library_index.is_in_library(_searching("Dune"), "ebook") is True
+
+    configured.values["BOOKORBIT_URL"] = "http://other:3000"
+
+    assert library_index.is_in_library(_searching("Dune Messiah"), "ebook") is True
+    assert library_index.is_in_library(_searching("Dune"), "ebook") is False
 
 
 def test_fetch_entries_requires_the_url_and_the_key(fake_app_config: FakeConfig) -> None:

@@ -11,6 +11,7 @@ indexes only the books that hold a file of its format.
 
 from __future__ import annotations
 
+import hashlib
 import re
 from typing import TYPE_CHECKING, Any
 
@@ -84,6 +85,7 @@ def _fetch_cards(url: str, key: str) -> list[dict[str, Any]]:
         raise ValueError(msg)
 
     cards: list[dict[str, Any]] = []
+    reported = 0
     page = 0
     while True:
         resp = session.post(
@@ -102,13 +104,18 @@ def _fetch_cards(url: str, key: str) -> list[dict[str, Any]]:
         if not all(isinstance(card, dict) for card in items):
             msg = f"BookOrbit's book list (page {page}) holds something other than books"
             raise TypeError(msg)
-        if page == 0 and not items and total > 0:
-            msg = f"BookOrbit reports {total} books but listed none"
-            raise ValueError(msg)
+        reported = max(reported, total)
         cards.extend(items)
         if not items or (page + 1) * _PAGE_SIZE >= total:
             break
         page += 1
+
+    # A scan that ends short of the count the server reported (an empty or short page
+    # before the end) is not the whole library: taken as one, every book it never listed
+    # would look unowned and be requested again.
+    if len(cards) < reported:
+        msg = f"BookOrbit reports {reported} books but listed {len(cards)} of them"
+        raise ValueError(msg)
 
     # BookOrbit marks a book missing when its files cannot be found. All of them missing
     # is far more likely unmounted storage than an empty shelf, and indexing that as "owns
@@ -195,8 +202,14 @@ class _BookOrbitLibrary:
         url, _key = _config(self._overrides)
         return f"BookOrbit {self._content_type}s at {url}" if url else "BookOrbit"
 
-    def fingerprint(self) -> None:
-        return None
+    def fingerprint(self) -> str:
+        # BookOrbit offers no cheap change token for its content, so the token names the
+        # server and key instead. The Test button caches what it indexed under the same
+        # provider name as the saved settings; without this, a server tested and never
+        # saved would answer for the saved one until the cache expired, and a saved change
+        # of server or key would wait for it too.
+        url, key = _config(self._overrides)
+        return hashlib.sha256(f"{url}\n{key}".encode()).hexdigest()
 
     def fetch_entries(self) -> list[LibraryEntry]:
         url, key = _config(self._overrides)
