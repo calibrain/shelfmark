@@ -268,24 +268,62 @@ def test_page_load_loop_still_makes_one_attempt_on_a_spent_budget(monkeypatch, b
     assert attempts["n"] == 1
 
 
+_LOADED_DOCUMENT_EXPRESSION = (
+    "document.readyState === 'loading' ? '' : document.documentElement.outerHTML"
+)
+
+
 class _FakeElement:
+    def __init__(self, html: str = "<html>solved</html>") -> None:
+        self.html = html
+
     async def get_html_async(self) -> str:
-        return "<html>solved</html>"
+        return self.html
 
 
 class _FakePage:
-    """A page that only produces its document after `ready_after` seconds of waiting."""
+    """A page that only produces its document after `ready_after` seconds of waiting.
 
-    def __init__(self, ready_after: float = 0.0) -> None:
+    `states` scripts the document's readyState, one per read, the last one repeating. An
+    entry that is an exception is raised instead. A read while "loading" answers "", as
+    the real expression does; any other state answers `full`. The `html` element always
+    holds `partial`, so a test that gets `full` cannot have passed through the fallback.
+    The fixture removes sleeps, so the page progresses per read rather than per second.
+    Any other expression raises AssertionError, which the code under test does not catch,
+    so a typo in the expression fails the test instead of being absorbed.
+    """
+
+    def __init__(
+        self,
+        ready_after: float = 0.0,
+        *,
+        states: list[object] | None = None,
+        partial: str = "<html>solved</html>",
+        full: str = "<html>solved</html>",
+    ) -> None:
         self.ready_after = ready_after
         self.waited_with: list[float] = []
+        self.states = states if states is not None else ["complete"]
+        self.partial = partial
+        self.full = full
+        self.state_polls = 0
 
     async def find(self, selector: str, timeout: float = 1):
         self.waited_with.append(timeout)
         if timeout < self.ready_after:
             msg = f"Time ran out while waiting for: {{{selector}}}"
             raise TimeoutError(msg)
-        return _FakeElement()
+        return _FakeElement(self.partial)
+
+    async def evaluate(self, expression: str) -> object:
+        if expression != _LOADED_DOCUMENT_EXPRESSION:
+            msg = f"unexpected expression: {expression}"
+            raise AssertionError(msg)
+        state = self.states[min(self.state_polls, len(self.states) - 1)]
+        self.state_polls += 1
+        if isinstance(state, Exception):
+            raise state
+        return "" if state == "loading" else self.full
 
 
 def test_page_source_waits_longer_than_seleniumbases_one_second(bypass):
@@ -313,3 +351,99 @@ def test_page_source_timeout_is_configurable(bypass, monkeypatch):
     asyncio.run(bypass._read_page_source(page))
 
     assert page.waited_with == [45.0]
+
+
+_PARTIAL_SEARCH_PAGE = "<html><head><title>Search</title></head><body><div>filters"
+_FULL_SEARCH_PAGE = _PARTIAL_SEARCH_PAGE + "<table>results</table></div></body></html>"
+
+
+def test_page_source_waits_for_the_document_to_finish_loading(bypass):
+    """The `html` element exists before the page has arrived.
+
+    On 1.7.0 a cleared DDoS-Guard check returned 122,986 bytes of an Anna's Archive search
+    page of about 745,000, read while the results were still streaming in, and the user
+    was shown "No results found".
+    """
+    page = _FakePage(
+        states=["loading", "loading", "loading", "interactive"],
+        partial=_PARTIAL_SEARCH_PAGE,
+        full=_FULL_SEARCH_PAGE,
+    )
+
+    assert asyncio.run(bypass._read_page_source(page)) == _FULL_SEARCH_PAGE
+    assert page.state_polls == 4
+
+
+def test_page_source_falls_back_to_the_element_when_loading_outlasts_the_budget(
+    monkeypatch, bypass
+):
+    """A page that never finishes loading must be read as before, not raise or hang."""
+    clock = {"now": 0.0}
+    monkeypatch.setattr(bypass.time, "monotonic", lambda: clock["now"])
+    page = _FakePage(states=["loading"], partial=_PARTIAL_SEARCH_PAGE, full=_FULL_SEARCH_PAGE)
+    original_evaluate = page.evaluate
+
+    async def _evaluate_slowly(expression: str) -> object:
+        clock["now"] += 1.0
+        return await original_evaluate(expression)
+
+    page.evaluate = _evaluate_slowly
+
+    assert asyncio.run(bypass._read_page_source(page)) == _PARTIAL_SEARCH_PAGE
+    assert clock["now"] >= bypass._PAGE_SOURCE_TIMEOUT_DEFAULT
+    assert page.state_polls <= bypass._PAGE_SOURCE_TIMEOUT_DEFAULT + 1
+    # The budget is spent, so the second lookup gets the floor, not a negative timeout.
+    assert page.waited_with == [
+        bypass._PAGE_SOURCE_TIMEOUT_DEFAULT,
+        bypass._PAGE_SOURCE_FALLBACK_FIND_SECONDS,
+    ]
+
+
+class _StaleNodeElement:
+    """An element of a document the page has left: CDP no longer knows its node."""
+
+    async def get_html_async(self) -> str:
+        from seleniumbase.undetected.cdp_driver.connection import ProtocolException
+
+        raise ProtocolException("No node with given id found")
+
+
+def test_page_source_fallback_reads_the_document_the_page_is_on_now(monkeypatch, bypass):
+    """A navigation during the wait leaves the first `html` element stale.
+
+    Reading it raised a CDP error out of _read_page_source and failed the attempt, when
+    the page had a document to return.
+    """
+    clock = {"now": 0.0}
+    monkeypatch.setattr(bypass.time, "monotonic", lambda: clock["now"])
+    page = _FakePage(states=["loading"], partial=_PARTIAL_SEARCH_PAGE, full=_FULL_SEARCH_PAGE)
+    original_evaluate = page.evaluate
+    elements: list[object] = [_StaleNodeElement(), _FakeElement("<html>new page</html>")]
+
+    async def _evaluate_slowly(expression: str) -> object:
+        clock["now"] += 1.0
+        return await original_evaluate(expression)
+
+    async def _find(selector: str, timeout: float = 1) -> object:
+        page.waited_with.append(timeout)
+        return elements.pop(0)
+
+    page.evaluate = _evaluate_slowly
+    page.find = _find
+
+    assert asyncio.run(bypass._read_page_source(page)) == "<html>new page</html>"
+    assert elements == []
+
+
+def test_page_source_survives_a_cdp_error_while_waiting(bypass):
+    """One failed state read must not drop the page back to its half-loaded prefix."""
+    from seleniumbase.undetected.cdp_driver.connection import ProtocolException
+
+    page = _FakePage(
+        states=[ProtocolException("Execution context was destroyed"), "loading", "complete"],
+        partial=_PARTIAL_SEARCH_PAGE,
+        full=_FULL_SEARCH_PAGE,
+    )
+
+    assert asyncio.run(bypass._read_page_source(page)) == _FULL_SEARCH_PAGE
+    assert page.state_polls == 3
