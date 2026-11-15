@@ -409,21 +409,10 @@ def _test_audiobookshelf_library(current_values: dict[str, Any] | None = None) -
 
 
 def _test_bookorbit_library(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
-    """Action-button callback: read BookOrbit and count the ebooks and the audiobooks.
+    """Action-button callback: read BookOrbit and count the ebooks and the audiobooks."""
+    from shelfmark.core.library_providers import bookorbit
 
-    Both formats are tested whichever toggles are on: the button checks the URL and the
-    key, and the toggles only decide what the library check uses.
-    """
-    from shelfmark.core import library_index
-
-    results = [
-        library_index.test_connection(name, current_values)
-        for name in ("bookorbit_ebook", "bookorbit_audiobook")
-    ]
-    return {
-        "success": all(result["success"] for result in results),
-        "message": "; ".join(str(result["message"]).rstrip(".") for result in results),
-    }
+    return bookorbit.check_connection(current_values)
 
 
 @register_settings("general", "General", icon="settings", order=0)

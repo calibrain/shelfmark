@@ -588,28 +588,67 @@ def _two_servers(monkeypatch: pytest.MonkeyPatch) -> dict[str, _Server]:
     return servers
 
 
-def test_a_test_with_unsaved_settings_does_not_answer_for_the_saved_library(
-    configured: FakeConfig, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    # The Test button keeps what it indexed under the provider's name, where the saved
-    # settings' answers are cached too. Another server, tested and never saved, must not
-    # stand in for the saved one.
-    servers = _two_servers(monkeypatch)
-    servers[_URL].cards = [_card("Dune")]
-    form = {"BOOKORBIT_URL": "http://other:3000", "BOOKORBIT_API_KEY": "bok_other"}
-
-    assert library_index.test_connection("bookorbit_ebook", form)["success"] is True
-    assert library_index.is_in_library(_searching("Dune"), "ebook") is True
+_OTHER_FORM = {"BOOKORBIT_URL": "http://other:3000", "BOOKORBIT_API_KEY": "bok_other"}
 
 
-def test_testing_the_saved_settings_still_primes_the_index(
+def test_the_test_button_counts_both_formats_and_keeps_nothing(
     configured: FakeConfig, server: _Server
+) -> None:
+    server.cards = [_card("Dune"), _card("Dune Messiah", files=[_file("m4b")])]
+
+    assert bookorbit.check_connection(None) == {
+        "success": True,
+        "message": f"BookOrbit ebooks at {_URL}: indexed 1 item(s); "
+        f"BookOrbit audiobooks at {_URL}: indexed 1 item(s)",
+    }
+    assert library_index._cache == {}
+
+
+def test_the_test_button_fails_when_either_format_fails(
+    configured: FakeConfig, server: _Server, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     server.cards = [_card("Dune")]
 
-    assert library_index.test_connection("bookorbit_ebook", None)["success"] is True
+    def _unreadable(self: Any) -> list[Any]:
+        msg = "401 Client Error"
+        raise requests.HTTPError(msg)
+
+    monkeypatch.setattr(bookorbit.BookOrbitAudiobookLibrary, "fetch_entries", _unreadable)
+
+    assert bookorbit.check_connection(None) == {
+        "success": False,
+        "message": f"BookOrbit ebooks at {_URL}: indexed 1 item(s); "
+        f"BookOrbit audiobooks at {_URL}: 401 Client Error",
+    }
+
+
+def test_a_test_with_unsaved_settings_reads_them_and_does_not_answer_for_the_saved_library(
+    configured: FakeConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    servers = _two_servers(monkeypatch)
+    servers[_URL].cards = [_card("Dune")]
+
+    assert bookorbit.check_connection(_OTHER_FORM) == {
+        "success": True,
+        "message": "BookOrbit ebooks at http://other:3000: indexed 0 item(s); "
+        "BookOrbit audiobooks at http://other:3000: indexed 0 item(s)",
+    }
     assert library_index.is_in_library(_searching("Dune"), "ebook") is True
-    assert len(server.posts) == 1
+
+
+def test_a_test_with_unsaved_settings_does_not_answer_when_the_saved_server_is_down(
+    configured: FakeConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # On a failed read library_index falls back to the provider's earlier entries,
+    # whatever their fingerprint, so the Test must not have left any there.
+    servers = _two_servers(monkeypatch)
+    servers["http://other:3000"].cards = [_card("Dune")]
+    servers[_URL].status_code = 503
+
+    assert bookorbit.check_connection(_OTHER_FORM)["success"] is True
+    with pytest.raises(library_index.LibraryUnavailableError):
+        library_index.require_ready("ebook")
+    assert library_index.is_in_library(_searching("Dune"), "ebook") is False
 
 
 def test_a_saved_change_of_server_reindexes_at_the_next_lookup(
@@ -625,6 +664,20 @@ def test_a_saved_change_of_server_reindexes_at_the_next_lookup(
 
     assert library_index.is_in_library(_searching("Dune Messiah"), "ebook") is True
     assert library_index.is_in_library(_searching("Dune"), "ebook") is False
+
+
+def test_a_test_with_unsaved_settings_does_not_answer_when_the_saved_library_lacks_the_format(
+    configured: FakeConfig, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # The saved library holds no audiobooks, so its read comes back empty, and
+    # library_index takes an empty answer after a non-empty index for a failed read and
+    # falls back to that index, which must not be one a Test built from unsaved values.
+    servers = _two_servers(monkeypatch)
+    servers[_URL].cards = [_card("Dune")]
+    servers["http://other:3000"].cards = [_card("Dune", files=[_file("m4b")])]
+
+    assert bookorbit.check_connection(_OTHER_FORM)["success"] is True
+    assert library_index.is_in_library(_searching("Dune"), "audiobook") is False
 
 
 def test_fetch_entries_requires_the_url_and_the_key(fake_app_config: FakeConfig) -> None:

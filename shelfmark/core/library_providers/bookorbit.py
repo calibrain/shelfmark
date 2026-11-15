@@ -210,10 +210,8 @@ class _BookOrbitLibrary:
 
     def fingerprint(self) -> str:
         # BookOrbit offers no cheap change token for its content, so the token names the
-        # server and key instead. The Test button caches what it indexed under the same
-        # provider name as the saved settings; without this, a server tested and never
-        # saved would answer for the saved one until the cache expired, and a saved change
-        # of server or key would wait for it too.
+        # server and key instead: a saved change of either re-indexes at the next lookup
+        # rather than once the cache expires.
         url, key = _config(self._overrides)
         return hashlib.sha256(f"{url}\n{key}".encode()).hexdigest()
 
@@ -247,3 +245,27 @@ class BookOrbitAudiobookLibrary(_BookOrbitLibrary):
     content_types = frozenset({"audiobook"})
     _content_type = "audiobook"
     _enabled_key = "LIBRARY_CHECK_BOOKORBIT_AUDIOBOOK_ENABLED"
+
+
+def check_connection(overrides: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """The Test button: read both formats with the form's values and count them.
+
+    Both are read whichever toggles are on, since the button checks the URL and the key.
+    Unlike `library_index.test_connection`, which the other libraries' buttons use,
+    nothing read here is kept. The index is shared with the saved settings, and on a
+    failed or emptied read `library_index` falls back to a provider's earlier entries
+    whatever their fingerprint, so a server tested but never saved could answer for the
+    saved one.
+    """
+    results: list[tuple[bool, str]] = []
+    for provider in (BookOrbitEbookLibrary(overrides), BookOrbitAudiobookLibrary(overrides)):
+        try:
+            count = len(provider.fetch_entries())
+        except Exception as exc:  # noqa: BLE001 - surface any error to the user
+            results.append((False, f"{provider.describe()}: {exc}"))
+        else:
+            results.append((True, f"{provider.describe()}: indexed {count} item(s)"))
+    return {
+        "success": all(ok for ok, _message in results),
+        "message": "; ".join(message for _ok, message in results),
+    }

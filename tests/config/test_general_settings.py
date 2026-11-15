@@ -1,7 +1,5 @@
 """Tests for general settings definitions."""
 
-import pytest
-
 from shelfmark.config.settings import general_settings
 from shelfmark.core import settings_registry
 
@@ -53,28 +51,19 @@ def test_the_bookorbit_library_check_is_off_by_default():
     assert fields["test_bookorbit_library"].callback is not None
 
 
-@pytest.mark.parametrize(
-    ("audiobooks_readable", "success", "message"),
-    [
-        (True, True, "bookorbit_ebook: indexed 2 item(s); bookorbit_audiobook: indexed 2 item(s)"),
-        (False, False, "bookorbit_ebook: indexed 2 item(s); bookorbit_audiobook: 401 Client Error"),
-    ],
-)
-def test_the_bookorbit_test_button_checks_both_formats_with_the_unsaved_form_values(
-    monkeypatch, audiobooks_readable, success, message
-):
-    calls = []
+def test_the_bookorbit_test_button_reads_the_unsaved_form_values(monkeypatch):
+    seen = {}
 
-    def _fake_test_connection(provider_name, current_values):
-        calls.append((provider_name, current_values))
-        if provider_name == "bookorbit_audiobook" and not audiobooks_readable:
-            return {"success": False, "message": f"{provider_name}: 401 Client Error"}
-        return {"success": True, "message": f"{provider_name}: indexed 2 item(s)."}
+    def _fake_check_connection(current_values):
+        seen["values"] = current_values
+        return {"success": True, "message": "BookOrbit ebooks at http://bookorbit:3000: indexed 2"}
 
-    monkeypatch.setattr("shelfmark.core.library_index.test_connection", _fake_test_connection)
+    monkeypatch.setattr(
+        "shelfmark.core.library_providers.bookorbit.check_connection", _fake_check_connection
+    )
     form = {"BOOKORBIT_URL": "http://bookorbit:3000", "BOOKORBIT_API_KEY": "k"}
 
     result = settings_registry.execute_action("general", "test_bookorbit_library", form)
 
-    assert calls == [("bookorbit_ebook", form), ("bookorbit_audiobook", form)]
-    assert result == {"success": success, "message": message}
+    assert seen["values"] == form
+    assert result["success"] is True

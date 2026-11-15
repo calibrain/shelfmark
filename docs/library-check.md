@@ -72,11 +72,13 @@ BookOrbit lists without authors can still match by ISBN, but not by title and au
 A book BookOrbit marks as missing (its files can no longer be found) does not count as owned.
 If every book is missing, the storage is far more likely unavailable than the library empty,
 so the read counts as failed and the Hardcover sync and automatic downloads hold instead of
-requesting everything again. A list that ends short of the number of books BookOrbit reports
-counts as failed too, rather than as a smaller library. Books still being imported are not
-listed until they are done. A book added to BookOrbit shows up at the next refresh, or at once
-after **Test BookOrbit library**; values tested but never saved do not change what the check
-answers.
+requesting everything again. A list that ends short of the number of books BookOrbit reports,
+or whose count drops while it is read, counts as failed too, rather than as a smaller library.
+Books still being imported are not listed until they are done. A book added to BookOrbit shows
+up at the next refresh, at most ten minutes later. **Test BookOrbit library** only reads and
+counts: unlike the other libraries' buttons it keeps nothing, so values tested but never saved
+cannot change what the check answers, and changing the saved URL or key re-reads the library
+at the next lookup.
 
 ## How a match is decided
 
