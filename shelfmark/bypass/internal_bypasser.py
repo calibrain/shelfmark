@@ -97,6 +97,10 @@ _PAGE_LOAD_POLL_SECONDS = 0.25
 # A page whose CDP calls keep failing will not start answering, and every retry spends
 # budget the caller needs.
 _PAGE_LOAD_MAX_READ_ERRORS = 3
+# The least time the fallback gets to look the `html` element up again, even when the
+# budget is spent: enough for one real lookup on a page that is there. It matches
+# SeleniumBase's own default for find().
+_PAGE_SOURCE_FALLBACK_FIND_SECONDS = 1.0
 # One CDP call, not two: a navigation can commit between a readiness read and an HTML
 # read, so the old document would pass the check and the first chunk of the new one would
 # be returned. Same reasoning as the atomic snapshot in _wait_for_aa_download_page.
@@ -873,8 +877,8 @@ async def _read_page_source(page: Any) -> str:
     the results, and the bypass check passes on that prefix, so reading the element at
     once returned about 120 KB of a 745 KB page with no results table in it. So within the
     same budget, wait for `document.readyState` to leave "loading" and read the whole
-    document. If the budget runs out or the reads keep failing, return what the element
-    holds, which is what this returned before.
+    document. If the budget runs out or the reads keep failing, look the `html` element
+    up again and return what it holds, which is what this returned before.
     """
     timeout = _coerce_non_negative_float(
         app_config.get("BYPASS_PAGE_SOURCE_TIMEOUT", _PAGE_SOURCE_TIMEOUT_DEFAULT),
@@ -885,6 +889,11 @@ async def _read_page_source(page: Any) -> str:
     html = await _read_loaded_document(page, deadline)
     if html is not None:
         return html
+    # The page may have navigated while we polled, and the element found above would then
+    # belong to the document it left: reading it raises a stale-node error. Look it up
+    # again in whatever document is there now.
+    remaining = max(deadline - time.monotonic(), _PAGE_SOURCE_FALLBACK_FIND_SECONDS)
+    element = await page.find("html", timeout=remaining)
     return await element.get_html_async()
 
 

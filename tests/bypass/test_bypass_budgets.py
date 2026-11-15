@@ -392,6 +392,47 @@ def test_page_source_falls_back_to_the_element_when_loading_outlasts_the_budget(
     assert asyncio.run(bypass._read_page_source(page)) == _PARTIAL_SEARCH_PAGE
     assert clock["now"] >= bypass._PAGE_SOURCE_TIMEOUT_DEFAULT
     assert page.state_polls <= bypass._PAGE_SOURCE_TIMEOUT_DEFAULT + 1
+    # The budget is spent, so the second lookup gets the floor, not a negative timeout.
+    assert page.waited_with == [
+        bypass._PAGE_SOURCE_TIMEOUT_DEFAULT,
+        bypass._PAGE_SOURCE_FALLBACK_FIND_SECONDS,
+    ]
+
+
+class _StaleNodeElement:
+    """An element of a document the page has left: CDP no longer knows its node."""
+
+    async def get_html_async(self) -> str:
+        from seleniumbase.undetected.cdp_driver.connection import ProtocolException
+
+        raise ProtocolException("No node with given id found")
+
+
+def test_page_source_fallback_reads_the_document_the_page_is_on_now(monkeypatch, bypass):
+    """A navigation during the wait leaves the first `html` element stale.
+
+    Reading it raised a CDP error out of _read_page_source and failed the attempt, when
+    the page had a document to return.
+    """
+    clock = {"now": 0.0}
+    monkeypatch.setattr(bypass.time, "monotonic", lambda: clock["now"])
+    page = _FakePage(states=["loading"], partial=_PARTIAL_SEARCH_PAGE, full=_FULL_SEARCH_PAGE)
+    original_evaluate = page.evaluate
+    elements: list[object] = [_StaleNodeElement(), _FakeElement("<html>new page</html>")]
+
+    async def _evaluate_slowly(expression: str) -> object:
+        clock["now"] += 1.0
+        return await original_evaluate(expression)
+
+    async def _find(selector: str, timeout: float = 1) -> object:
+        page.waited_with.append(timeout)
+        return elements.pop(0)
+
+    page.evaluate = _evaluate_slowly
+    page.find = _find
+
+    assert asyncio.run(bypass._read_page_source(page)) == "<html>new page</html>"
+    assert elements == []
 
 
 def test_page_source_survives_a_cdp_error_while_waiting(bypass):
