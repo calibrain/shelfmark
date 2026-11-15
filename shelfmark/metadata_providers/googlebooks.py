@@ -47,7 +47,9 @@ logger = setup_logger(__name__)
 
 # A tag starts with a letter after "<" or "</", so "2 < 3 and a > b" is left alone.
 _HTML_TAG_RE = re.compile(r"</?[a-zA-Z][^<>]*>")
-_LINE_BREAK_RE = re.compile(r"<br\s*/?>", re.IGNORECASE)
+# A br with attributes is still a line break; the word boundary keeps out any other tag
+# whose name only starts with "br".
+_LINE_BREAK_RE = re.compile(r"<br\b[^<>]*>", re.IGNORECASE)
 _BLOCK_END_RE = re.compile(r"</(?:p|div|li|ul|ol|h[1-6]|blockquote)\s*>", re.IGNORECASE)
 _TRAILING_SPACE_RE = re.compile(r"[ \t]+\n")
 _EXTRA_BLANK_LINES_RE = re.compile(r"\n{3,}")

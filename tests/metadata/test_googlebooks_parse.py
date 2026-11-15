@@ -195,6 +195,14 @@ class TestGoogleBooksParseVolume:
 
         assert description == "First paragraph.\n\nSecond, with bold & italic.\nA new line."
 
+    def test_parse_volume_keeps_a_line_break_written_with_attributes(self):
+        """A `<br class="x">` was dropped as a plain tag and joined the lines ("FirstSecond")."""
+        assert self._description_of('First<br class="x">Second') == "First\nSecond"
+
+    def test_parse_volume_keeps_an_uppercase_self_closing_line_break(self):
+        """Tag names are case-insensitive in HTML, and `<BR/>` is common in older blurbs."""
+        assert self._description_of("First<BR/>Second") == "First\nSecond"
+
     def test_parse_volume_keeps_angle_brackets_that_are_not_tags(self):
         """Only something shaped like a tag is removed, never text around a < or >.
 
