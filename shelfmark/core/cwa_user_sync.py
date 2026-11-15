@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-import os
 import sqlite3
+from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from shelfmark.core.auth_modes import AUTH_SOURCE_CWA, normalize_auth_source
@@ -11,14 +11,37 @@ from shelfmark.core.external_user_linking import upsert_external_user
 from shelfmark.core.logger import setup_logger
 
 if TYPE_CHECKING:
+    import os
     from collections.abc import Iterable
-    from pathlib import Path
 
     from shelfmark.core.user_db import UserDB
 
 logger = setup_logger(__name__)
 
 _CWA_ALIAS_SUFFIX = "__cwa"
+
+# Logins and user syncs open app.db every time, so the warning about a stale
+# read is logged once per process and at debug level after that.
+_stale_read_warned = False
+
+
+def _warn_stale_read(message: str, *args: object) -> None:
+    global _stale_read_warned
+    log = logger.debug if _stale_read_warned else logger.warning
+    _stale_read_warned = True
+    log(message, *args)
+
+
+def _is_mounted_alone(db_path: Path) -> bool:
+    """Return True when app.db is bind-mounted as a file instead of with its folder.
+
+    A file mount hides the app.db-wal and app.db-shm that CWA writes next to it.
+    It shows up as the file sitting on another device than its directory.
+    """
+    try:
+        return db_path.stat().st_dev != db_path.parent.stat().st_dev
+    except OSError:
+        return False
 
 
 def connect_cwa_db(db_path: str | os.PathLike[str] | Path) -> sqlite3.Connection:
@@ -27,11 +50,31 @@ def connect_cwa_db(db_path: str | os.PathLike[str] | Path) -> sqlite3.Connection
     Calibre-Web Automated keeps app.db in WAL mode, so a password change or a
     renamed user can sit in app.db-wal until the next checkpoint. ``immutable=1``
     makes SQLite skip the WAL entirely, so it would read the old password hash.
-    A plain ``mode=ro`` open reads the WAL. ``immutable=1`` is only used as a
-    fallback when that open fails, for example on a read-only mount where
-    SQLite cannot use the -shm file.
+    A plain ``mode=ro`` open reads the WAL when the folder that holds app.db is
+    mounted, read-only or not.
+
+    ``immutable=1`` is still used when the WAL cannot be reached:
+
+    - app.db is mounted as a file. SQLite cannot see CWA's app.db-wal, and a
+      plain open would create an empty one of its own and read the same stale
+      data, so this logs a warning telling the user to mount the folder.
+    - the plain open fails. On a read-only folder mount this happens when CWA
+      is stopped and has removed app.db-wal and app.db-shm; nothing is waiting
+      in the WAL then, so the snapshot is current.
     """
-    uri = f"file:{os.fspath(db_path)}?mode=ro"
+    path = Path(db_path)
+    uri = f"file:{path}?mode=ro"
+
+    if _is_mounted_alone(path):
+        _warn_stale_read(
+            "CWA database %s is mounted as a single file, so Shelfmark cannot see "
+            "app.db-wal and misses account changes CWA has not checkpointed yet "
+            "(a new password, a renamed user). Mount the folder that holds app.db "
+            "to /auth instead.",
+            path,
+        )
+        return sqlite3.connect(f"{uri}&immutable=1", uri=True)
+
     conn = None
     try:
         conn = sqlite3.connect(uri, uri=True)
@@ -39,13 +82,15 @@ def connect_cwa_db(db_path: str | os.PathLike[str] | Path) -> sqlite3.Connection
     except sqlite3.OperationalError as exc:
         if conn is not None:
             conn.close()
-        logger.warning(
-            "CWA database %s cannot be read in place (%s); using an immutable snapshot, "
-            "which misses account changes CWA has not checkpointed yet. Mount the folder "
-            "that holds app.db, not the file alone, so SQLite can read app.db-wal.",
-            db_path,
-            exc,
-        )
+        if path.with_name(f"{path.name}-wal").exists():
+            _warn_stale_read(
+                "CWA database %s cannot be read in place (%s); using an immutable "
+                "snapshot, which misses account changes still in app.db-wal.",
+                path,
+                exc,
+            )
+        else:
+            logger.debug("CWA database %s opened as an immutable snapshot (%s)", path, exc)
         conn = sqlite3.connect(f"{uri}&immutable=1", uri=True)
     return conn
 

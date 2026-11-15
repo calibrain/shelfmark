@@ -6,6 +6,7 @@ import tempfile
 
 import pytest
 
+from shelfmark.core import cwa_user_sync
 from shelfmark.core.cwa_user_sync import (
     connect_cwa_db,
     sync_cwa_users_from_rows,
@@ -265,3 +266,51 @@ def test_connect_cwa_db_falls_back_to_immutable_when_the_plain_open_fails(tmp_pa
     assert uris[1].endswith("?mode=ro&immutable=1")
     # The fallback skips the WAL, so it only sees the last checkpoint.
     assert rows == [("admin", "old-hash")]
+
+
+@pytest.fixture
+def warnings(monkeypatch):
+    logged = []
+    monkeypatch.setattr(cwa_user_sync, "_stale_read_warned", False)
+    monkeypatch.setattr(cwa_user_sync.logger, "warning", lambda *args: logged.append(args))
+    return logged
+
+
+def test_connect_cwa_db_reads_a_file_mount_as_immutable_and_warns_once(
+    tmp_path, monkeypatch, warnings
+):
+    db_path = tmp_path / "app.db"
+    writer = _make_wal_app_db(db_path)
+    monkeypatch.setattr(cwa_user_sync, "_is_mounted_alone", lambda _path: True)
+    try:
+        for _ in range(3):
+            conn = connect_cwa_db(db_path)
+            rows = conn.execute("SELECT name, password FROM user").fetchall()
+            conn.close()
+    finally:
+        writer.close()
+
+    assert rows == [("admin", "old-hash")]
+    assert len(warnings) == 1
+    assert "mounted as a single file" in warnings[0][0]
+
+
+def test_connect_cwa_db_fallback_without_a_wal_does_not_warn(tmp_path, monkeypatch, warnings):
+    db_path = tmp_path / "app.db"
+    _make_wal_app_db(db_path).close()  # a clean close checkpoints and removes app.db-wal
+    assert not (tmp_path / "app.db-wal").exists()
+
+    real_connect = sqlite3.connect
+
+    def fake_connect(database, **kwargs):
+        if "immutable=1" not in database:
+            raise sqlite3.OperationalError("unable to open database file")
+        return real_connect(database, **kwargs)
+
+    monkeypatch.setattr("shelfmark.core.cwa_user_sync.sqlite3.connect", fake_connect)
+    conn = connect_cwa_db(db_path)
+    rows = conn.execute("SELECT name, password FROM user").fetchall()
+    conn.close()
+
+    assert rows == [("renamed", "new-hash")]
+    assert warnings == []
