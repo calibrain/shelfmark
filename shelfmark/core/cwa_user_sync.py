@@ -33,15 +33,26 @@ def _warn_stale_read(message: str, *args: object) -> None:
 
 
 def _is_mounted_alone(db_path: Path) -> bool:
-    """Return True when app.db is bind-mounted as a file instead of with its folder.
+    """Return True when app.db is bind-mounted as a file without its WAL files.
 
     A file mount hides the app.db-wal and app.db-shm that CWA writes next to it.
-    It shows up as the file sitting on another device than its directory.
+    It shows up as the file sitting on another device than its directory. If
+    app.db-wal and app.db-shm were mounted too, they sit on the same device as
+    app.db and the WAL can still be read.
     """
     try:
-        return db_path.stat().st_dev != db_path.parent.stat().st_dev
+        db_dev = db_path.stat().st_dev
+        if db_dev == db_path.parent.stat().st_dev:
+            return False
     except OSError:
         return False
+    for suffix in ("-wal", "-shm"):
+        try:
+            if db_path.with_name(db_path.name + suffix).stat().st_dev != db_dev:
+                return True
+        except OSError:
+            return True
+    return False
 
 
 def connect_cwa_db(db_path: str | os.PathLike[str] | Path) -> sqlite3.Connection:
@@ -55,9 +66,10 @@ def connect_cwa_db(db_path: str | os.PathLike[str] | Path) -> sqlite3.Connection
 
     ``immutable=1`` is still used when the WAL cannot be reached:
 
-    - app.db is mounted as a file. SQLite cannot see CWA's app.db-wal, and a
-      plain open would create an empty one of its own and read the same stale
-      data, so this logs a warning telling the user to mount the folder.
+    - app.db is mounted as a file without its WAL files. SQLite cannot see
+      CWA's app.db-wal, and a plain open would create an empty one of its own
+      and read the same stale data, so this logs a warning telling the user to
+      mount the folder.
     - the plain open fails. On a read-only folder mount this happens when CWA
       is stopped and has removed app.db-wal and app.db-shm; nothing is waiting
       in the WAL then, so the snapshot is current.

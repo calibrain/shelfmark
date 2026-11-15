@@ -314,3 +314,28 @@ def test_connect_cwa_db_fallback_without_a_wal_does_not_warn(tmp_path, monkeypat
 
     assert rows == [("renamed", "new-hash")]
     assert warnings == []
+
+
+@pytest.mark.parametrize(
+    ("devices", "expected"),
+    [
+        ({"auth": 1, "app.db": 1}, False),  # folder mount
+        ({"auth": 1, "app.db": 2}, True),  # app.db alone
+        ({"auth": 1, "app.db": 2, "app.db-wal": 2, "app.db-shm": 2}, False),  # with its WAL files
+        ({"auth": 1, "app.db": 2, "app.db-wal": 2}, True),  # app.db-shm missing
+        ({"auth": 1, "app.db": 2, "app.db-wal": 1, "app.db-shm": 1}, True),  # SQLite's own files
+    ],
+)
+def test_is_mounted_alone(monkeypatch, devices, expected):
+    class FakeStat:
+        def __init__(self, st_dev):
+            self.st_dev = st_dev
+
+    def fake_stat(self, **_kwargs):
+        if self.name not in devices:
+            raise FileNotFoundError(self)
+        return FakeStat(devices[self.name])
+
+    monkeypatch.setattr(cwa_user_sync.Path, "stat", fake_stat)
+
+    assert cwa_user_sync._is_mounted_alone(cwa_user_sync.Path("/auth/app.db")) is expected
