@@ -315,6 +315,10 @@ Consecutive failed Tor watchdog probes before the container is reset. 2 tolerate
 | `AUDIOBOOKSHELF_URL` | Base URL reachable from the Shelfmark container (not the public URL). Often the host LAN IP, e.g. http://10.0.0.91:13378. | string | _none_ |
 | `AUDIOBOOKSHELF_TOKEN` | API token from Audiobookshelf (Settings > Users > your user > API Token). | string (secret) | _none_ |
 | `AUDIOBOOKSHELF_LIBRARY_IDS` | Comma-separated library IDs to check. Leave blank for all book libraries. | string | _none_ |
+| `LIBRARY_CHECK_BOOKORBIT_EBOOK_ENABLED` | Ask your BookOrbit server which ebooks you already own, so search results mark them and synced and automatic downloads skip them. Read only, nothing is written to BookOrbit. | boolean | `false` |
+| `LIBRARY_CHECK_BOOKORBIT_AUDIOBOOK_ENABLED` | Ask your BookOrbit server which audiobooks you already own. Each format is checked on its own: an ebook in BookOrbit does not make its audiobook owned. | boolean | `false` |
+| `BOOKORBIT_URL` | Base URL reachable from the Shelfmark container, without /api/v1, e.g. http://bookorbit:3000. | string | _none_ |
+| `BOOKORBIT_API_KEY` | A read-only API key from BookOrbit 3.8.0 or later (Settings > You > API keys). Limit it to the libraries to check: the check sees only what the key sees. | string (secret) | _none_ |
 | `SUPPORTED_FORMATS` | Book formats to include in search results. ZIP/RAR archives are extracted automatically and book files are used if found. | string (comma-separated) | `epub,mobi,azw3,fb2,djvu,cbz,cbr` |
 | `SUPPORTED_AUDIOBOOK_FORMATS` | Audiobook formats to include in search results. ZIP/RAR archives are extracted automatically and audiobook files are used if found. | string (comma-separated) | `m4b,mp3,m4a,mp4,flac,ogg,wma,aac,wav,opus,zip,rar` |
 
@@ -400,6 +404,42 @@ API token from Audiobookshelf (Settings > Users > your user > API Token).
 Comma-separated library IDs to check. Leave blank for all book libraries.
 
 - **Type:** string
+- **Default:** _none_
+
+#### `LIBRARY_CHECK_BOOKORBIT_EBOOK_ENABLED`
+
+**Mark books already in your BookOrbit library**
+
+Ask your BookOrbit server which ebooks you already own, so search results mark them and synced and automatic downloads skip them. Read only, nothing is written to BookOrbit.
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `LIBRARY_CHECK_BOOKORBIT_AUDIOBOOK_ENABLED`
+
+**Mark audiobooks already in your BookOrbit library**
+
+Ask your BookOrbit server which audiobooks you already own. Each format is checked on its own: an ebook in BookOrbit does not make its audiobook owned.
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `BOOKORBIT_URL`
+
+**BookOrbit URL**
+
+Base URL reachable from the Shelfmark container, without /api/v1, e.g. http://bookorbit:3000.
+
+- **Type:** string
+- **Default:** _none_
+
+#### `BOOKORBIT_API_KEY`
+
+**BookOrbit API Key**
+
+A read-only API key from BookOrbit 3.8.0 or later (Settings > You > API keys). Limit it to the libraries to check: the check sees only what the key sees.
+
+- **Type:** string (secret)
 - **Default:** _none_
 
 #### `SUPPORTED_FORMATS`
