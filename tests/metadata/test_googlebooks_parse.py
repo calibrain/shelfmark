@@ -174,6 +174,39 @@ class TestGoogleBooksParseVolume:
 
         assert result is None
 
+    @staticmethod
+    def _description_of(description):
+        provider = GoogleBooksProvider(api_key="test-key")
+        result = provider._parse_volume(
+            {
+                "id": "volume-3",
+                "volumeInfo": {"title": "Described Book", "description": description},
+            }
+        )
+        assert result is not None
+        return result.description
+
+    def test_parse_volume_turns_html_description_into_plain_text(self):
+        """Google Books sends HTML and the UI renders it as text: users saw a literal <p>."""
+        description = self._description_of(
+            "<p>First paragraph.</p><p>Second, with <b>bold</b> &amp; <i>italic</i>."
+            "<br>A new line.</p>"
+        )
+
+        assert description == "First paragraph.\n\nSecond, with bold & italic.\nA new line."
+
+    def test_parse_volume_keeps_angle_brackets_that_are_not_tags(self):
+        """Only something shaped like a tag is removed, never text around a < or >.
+
+        A looser `<[^>]+>` would eat "< 3 and a >" here along with the real tags.
+        """
+        assert self._description_of("<p>2 < 3 and a > b</p>") == "2 < 3 and a > b"
+
+    def test_parse_volume_reports_an_empty_description_as_missing(self):
+        """A description with nothing left to show must not render as a blank block."""
+        assert self._description_of("") is None
+        assert self._description_of("<p> </p><br/>") is None
+
 
 class _FullPageSession:
     def __init__(self, count):
