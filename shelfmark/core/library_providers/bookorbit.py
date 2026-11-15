@@ -104,7 +104,13 @@ def _fetch_cards(url: str, key: str) -> list[dict[str, Any]]:
         if not all(isinstance(card, dict) for card in items):
             msg = f"BookOrbit's book list (page {page}) holds something other than books"
             raise TypeError(msg)
-        reported = max(reported, total)
+        if total < reported:
+            # A book deleted between two pages shifts every later one back by a place,
+            # so the scan steps over one it never sees, and a later addition can bring
+            # the count back up. A drop on any page is the only sign of it.
+            msg = f"BookOrbit's count dropped from {reported} to {total} during the scan"
+            raise ValueError(msg)
+        reported = total
         cards.extend(items)
         if not items or (page + 1) * _PAGE_SIZE >= total:
             break
