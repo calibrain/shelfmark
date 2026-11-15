@@ -263,6 +263,30 @@ def test_every_book_of_one_format_missing_is_a_real_state(
     assert len(_ebooks()) == 1
 
 
+def test_every_book_missing_with_no_earlier_index_holds_the_sync(
+    configured: FakeConfig, server: _Server
+) -> None:
+    server.cards = [_card("Dune", status="missing")]
+
+    with pytest.raises(library_index.LibraryUnavailableError, match="every BookOrbit book"):
+        library_index.require_ready("ebook")
+
+
+def test_a_failed_read_after_a_good_one_keeps_answering_from_the_earlier_index(
+    configured: FakeConfig, server: _Server
+) -> None:
+    # With an earlier index the failure does not hold the sync: library_index keeps
+    # answering from that index, strict callers included.
+    server.cards = [_card("Dune")]
+    assert library_index.is_in_library(_searching("Dune"), "ebook", strict=True) is True
+
+    server.cards = [_card("Dune", status="missing")]
+    library_index._cache["bookorbit_ebook"].fetched_at = 0.0  # past the ten-minute TTL
+
+    assert library_index.is_in_library(_searching("Dune"), "ebook", strict=True) is True
+    assert len(server.posts) == 2
+
+
 # Matching
 
 
