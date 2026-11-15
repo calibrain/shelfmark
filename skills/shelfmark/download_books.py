@@ -277,11 +277,23 @@ def clear_completed_downloads(page: Page) -> None:
     page.wait_for_timeout(2000)
 
 
+def calibre_title_search(title: str) -> str:
+    """A calibre search expression matching this exact title.
+
+    Calibre has its own query language: a term with spaces or quotes goes in
+    double quotes, and a quote or backslash inside it is escaped with a
+    backslash (manual, "Searching calibre"). Without that, a title containing
+    `"` ends the quoted term and the rest is read as more query syntax.
+    """
+    escaped = title.replace("\\", "\\\\").replace('"', '\\"')
+    return f'title:"{escaped}"'
+
+
 def check_calibre(title: str) -> bool:
     """Check if a book is already in the calibre database."""
     import subprocess
 
-    cmd = ["calibredb", "list", "--search", f'title:="{title}"']
+    cmd = ["calibredb", "list", "--search", calibre_title_search(title)]
     result = subprocess.run(cmd, check=False, capture_output=True, text=True)
     output = result.stdout.strip()
     # calibredb output has header line "id title authors", count non-header lines
