@@ -436,7 +436,22 @@ def test_a_count_that_drops_during_the_scan_fails_the_read(
         1: {"items": [_card("Three")], "total": 3},
     }
 
-    with pytest.raises(ValueError, match="reports 4 books but listed 3 of them"):
+    with pytest.raises(ValueError, match="count dropped from 4 to 3"):
+        _ebooks()
+
+
+def test_a_count_that_drops_then_rises_again_fails_the_read(
+    configured: FakeConfig, server: _Server
+) -> None:
+    # A is deleted after the first page, so the second starts at D and C is never seen;
+    # G is added before the third, so the count is back to 6 and six cards came in.
+    server.pages = {
+        0: {"items": [_card("A"), _card("B")], "total": 6},
+        1: {"items": [_card("D"), _card("E")], "total": 5},
+        2: {"items": [_card("F"), _card("G")], "total": 6},
+    }
+
+    with pytest.raises(ValueError, match="count dropped from 6 to 5"):
         _ebooks()
 
 
