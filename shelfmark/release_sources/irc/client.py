@@ -72,6 +72,16 @@ def has_control_characters(value: str) -> bool:
     return any((ord(char) < 0x20 and char != "\x01") or ord(char) == 0x7F for char in value)
 
 
+def bare_channel_name(value: str) -> str:
+    """Return a channel setting without the leading # the client adds itself.
+
+    The settings ask for the name without the prefix, but "#ebooks" is how a channel is
+    written everywhere else. Taken as is, it joined "##ebooks", a different and nearly
+    empty channel, and every search came back empty without an error.
+    """
+    return value.strip().lstrip("#").strip()
+
+
 class IRCConnectionError(IRCError):
     """Connection failed."""
 
