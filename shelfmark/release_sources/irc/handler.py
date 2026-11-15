@@ -11,7 +11,7 @@ from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.release_sources import DownloadHandler, register_handler
 
-from .client import has_control_characters
+from .client import bare_channel_name, has_control_characters
 from .connection_manager import connection_manager
 from .dcc import DCCError, download_dcc, safe_dcc_filename
 
@@ -92,7 +92,7 @@ class IRCDownloadHandler(DownloadHandler):
         server = _config_text("IRC_SERVER")
         port = _config_port("IRC_PORT", 6697)
         use_tls = _config_bool("IRC_USE_TLS", True)
-        channel = _config_text("IRC_CHANNEL")
+        channel = bare_channel_name(_config_text("IRC_CHANNEL"))
         nick = _config_text("IRC_NICK")
 
         if not server or not channel or not nick:
