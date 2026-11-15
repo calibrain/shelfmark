@@ -58,8 +58,10 @@ def test_title_is_one_argument_and_one_query_term(title):
     assert not kwargs.get("shell"), "a shell must not re-parse the title"
 
     term = command[3]
-    assert term.startswith('title:"') and term.endswith('"'), term
-    inner = term[len('title:"'):-1]
+    # `=` keeps it an exact-title search; without it calibre does "contains",
+    # so "Dune" would match "Dune Messiah" and the book would be skipped.
+    assert term.startswith('title:"=') and term.endswith('"'), term
+    inner = term[len('title:"='):-1]
     # Nothing inside the term may end it early: every quote and every
     # backslash is escaped, and unescaping gives the title back.
     assert _unescape(inner) == title
@@ -94,4 +96,13 @@ def _unescape(inner: str) -> str:
 
 def test_plain_title_is_unchanged_by_escaping():
     module = _load_module()
-    assert module.calibre_title_search("Mistborn") == 'title:"Mistborn"'
+    assert module.calibre_title_search("Mistborn") == 'title:"=Mistborn"'
+
+
+def test_search_stays_an_exact_title_match():
+    """A contains-search would treat "Dune" as present when only
+    "Dune Messiah" is in the library, and the download would be skipped."""
+    module = _load_module()
+    term = module.calibre_title_search("Dune")
+    assert term == 'title:"=Dune"', term
+    assert not term.startswith('title:"D'), "lost the exact-match marker"

@@ -286,7 +286,7 @@ def calibre_title_search(title: str) -> str:
     `"` ends the quoted term and the rest is read as more query syntax.
     """
     escaped = title.replace("\\", "\\\\").replace('"', '\\"')
-    return f'title:"{escaped}"'
+    return f'title:"={escaped}"'
 
 
 def check_calibre(title: str) -> bool:
