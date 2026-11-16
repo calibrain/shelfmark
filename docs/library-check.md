@@ -41,6 +41,10 @@ Audiobookshelf titles are often raw folder names such as `Alex Cross 02: Kiss th
 When the server reports a series for the item, the leading label and number are read as the
 series, not as a different book, so a search for `Kiss the Girls` still matches.
 
+With both the Calibre and Audiobookshelf checks on, the badge names the format you hold
+(**Ebook**, **Audiobook** or **Ebook + Audiobook**) rather than a plain **In library**, so you
+can tell whether the other format is still missing.
+
 ## How a match is decided
 
 In order of confidence:

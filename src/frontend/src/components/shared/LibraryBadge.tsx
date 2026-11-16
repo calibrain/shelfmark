@@ -19,13 +19,57 @@ interface LibraryBadgeProps {
   className?: string;
 }
 
-/** "Already in your library" badge. Renders nothing when the book is not held. */
-export function LibraryBadge({ library, overlay = false, className = '' }: LibraryBadgeProps) {
-  if (!isInLibrary(library)) return null;
+const FORMATS = [
+  { key: 'ebook', name: 'Ebook', short: 'Ebook' },
+  { key: 'audiobook', name: 'Audiobook', short: 'Audio' },
+] as const;
+
+const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+const listNames = (names: string[]) => names.join(' and ').toLowerCase();
+
+/**
+ * Badge text and tooltip. When more than one library check is enabled the badge names the
+ * format(s) held, so an ebook-only match is not mistaken for an audiobook one; with a single
+ * check it stays a plain "In library".
+ */
+export function libraryBadgeContent(
+  library: LibraryOwnership | null | undefined,
+  overlay = false,
+): { text: string; label: string } | null {
+  if (!library || !isInLibrary(library)) return null;
 
   const collectionOnly = isCollectionOnly(library);
-  const label = collectionOnly ? 'In your library, inside a collection' : 'Already in your library';
-  const text = collectionOnly ? 'In a collection' : 'In library';
+  if (Object.keys(library).length < 2) {
+    return collectionOnly
+      ? { text: 'In a collection', label: 'In your library, inside a collection' }
+      : { text: 'In library', label: 'Already in your library' };
+  }
+
+  const held = FORMATS.filter(({ key }) => library[key]);
+  const owned = held.filter(({ key }) => library[key] === 'owned').map(({ name }) => name);
+  const inCollection = held
+    .filter(({ key }) => library[key] === 'collection')
+    .map(({ name }) => name);
+  const formats = held.map((format) => (overlay ? format.short : format.name)).join(' + ');
+
+  const text = collectionOnly ? `In a collection (${formats})` : formats;
+  const label = capitalize(
+    [
+      owned.length ? `${listNames(owned)} already in your library` : '',
+      inCollection.length ? `${listNames(inCollection)} in your library, inside a collection` : '',
+    ]
+      .filter(Boolean)
+      .join('; '),
+  );
+  return { text, label };
+}
+
+/** "Already in your library" badge. Renders nothing when the book is not held. */
+export function LibraryBadge({ library, overlay = false, className = '' }: LibraryBadgeProps) {
+  const content = libraryBadgeContent(library, overlay);
+  if (!content) return null;
+  const { text, label } = content;
 
   const pill = overlay
     ? 'rounded-md border border-sky-700 bg-sky-600 px-1.5 py-0.5 text-[10px] font-bold text-white'
