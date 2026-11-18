@@ -101,6 +101,7 @@ def test_search_no_dcc_offer_releases_connection_and_caches_empty_result(monkeyp
     released_clients: list[object] = []
 
     class FakeClient:
+        is_connected = True
         online_servers = {"AudioBot"}
 
         def send_message(self, channel: str, message: str) -> None:
@@ -108,7 +109,12 @@ def test_search_no_dcc_offer_releases_connection_and_caches_empty_result(monkeyp
             self.message = message
 
         def wait_for_dcc(
-            self, *, timeout: float, result_type: bool, expected_senders: object = None
+            self,
+            *,
+            timeout: float,
+            result_type: bool,
+            expected_senders: object = None,
+            expected_query: object = None,
         ) -> None:
             return None
 
@@ -182,6 +188,7 @@ def test_audiobook_search_routes_to_configured_audiobook_channel_and_bot(monkeyp
     cache_calls: list[dict[str, object]] = []
 
     class FakeClient:
+        is_connected = True
         online_servers: set[str] = set()
 
         def send_message(self, channel: str, message: str) -> None:
@@ -189,7 +196,12 @@ def test_audiobook_search_routes_to_configured_audiobook_channel_and_bot(monkeyp
             self.message = message
 
         def wait_for_dcc(
-            self, *, timeout: float, result_type: bool, expected_senders: object = None
+            self,
+            *,
+            timeout: float,
+            result_type: bool,
+            expected_senders: object = None,
+            expected_query: object = None,
         ) -> None:
             return None
 
@@ -256,6 +268,7 @@ def test_audiobook_search_reuses_main_bot_when_only_channel_configured(monkeypat
     source = IRCReleaseSource()
 
     class FakeClient:
+        is_connected = True
         online_servers: set[str] = set()
 
         def send_message(self, channel: str, message: str) -> None:
@@ -263,7 +276,12 @@ def test_audiobook_search_reuses_main_bot_when_only_channel_configured(monkeypat
             self.message = message
 
         def wait_for_dcc(
-            self, *, timeout: float, result_type: bool, expected_senders: object = None
+            self,
+            *,
+            timeout: float,
+            result_type: bool,
+            expected_senders: object = None,
+            expected_query: object = None,
         ) -> None:
             return None
 
@@ -430,6 +448,7 @@ def _search_once(monkeypatch, settings: dict[str, str], content_type: str = "ebo
     cache_keys: list[str] = []
 
     class FakeClient:
+        is_connected = True
         online_servers: set[str] = set()
 
         def send_message(self, channel: str, message: str) -> None:
@@ -437,7 +456,12 @@ def _search_once(monkeypatch, settings: dict[str, str], content_type: str = "ebo
             self.message = message
 
         def wait_for_dcc(
-            self, *, timeout: float, result_type: bool, expected_senders: object = None
+            self,
+            *,
+            timeout: float,
+            result_type: bool,
+            expected_senders: object = None,
+            expected_query: object = None,
         ) -> None:
             return None
 
@@ -505,3 +529,91 @@ def test_audiobook_channel_setting_with_hash_prefix_joins_the_same_channel(monke
 
     assert prefixed == bare
     assert prefixed == ("bookz", "#bookz", ["irc.example.net:bookz:some book"])
+
+
+def _configured_search(monkeypatch, client):
+    """Wire a search to a fake client, with nothing cached and nothing recorded."""
+    import shelfmark.release_sources.irc.source as irc_source
+
+    cache_calls: list[object] = []
+    monkeypatch.setattr(
+        irc_source,
+        "_config_text",
+        lambda key: {
+            "IRC_SERVER": "irc.example.net",
+            "IRC_CHANNEL": "ebooks",
+            "IRC_NICK": "tester",
+            "IRC_SEARCH_BOT": "search",
+        }.get(key, ""),
+    )
+    irc_source._recent_message_sends.clear()
+    monkeypatch.setattr(irc_source, "_enforce_rate_limit", lambda: None)
+    monkeypatch.setattr(irc_source, "_emit_status", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        "shelfmark.release_sources.irc.cache.get_cached_results", lambda *_a, **_k: None
+    )
+    monkeypatch.setattr(
+        "shelfmark.release_sources.irc.cache.cache_results",
+        lambda *args, **_kwargs: cache_calls.append(args),
+    )
+    manager = "shelfmark.release_sources.irc.connection_manager.connection_manager"
+    monkeypatch.setattr(f"{manager}.get_connection", lambda **_kwargs: client)
+    monkeypatch.setattr(f"{manager}.release_connection", lambda _client: None)
+    return cache_calls
+
+
+def test_search_waits_for_a_results_file_named_for_its_own_query(monkeypatch):
+    waits: list[object] = []
+
+    class FakeClient:
+        is_connected = True
+        online_servers = {"AudioBot"}
+
+        def send_message(self, channel: str, message: str) -> None:
+            pass
+
+        def wait_for_dcc(self, **kwargs: object) -> None:
+            waits.append(kwargs.get("expected_query"))
+
+    source = IRCReleaseSource()
+    monkeypatch.setattr(source, "is_available", lambda: True)
+    _configured_search(monkeypatch, FakeClient())
+
+    source.search(
+        BookMetadata(provider="hardcover", provider_id="a", title="Some Title"), _plan("Some Title")
+    )
+
+    assert waits == ["Some Title"]
+
+
+def test_search_on_a_dropped_connection_is_an_error_and_is_not_cached(monkeypatch):
+    """A download closing the shared connection mid-search is not "no results".
+
+    Cached as an empty answer it hid the book for a day, and returned as an empty list it
+    counted towards the request's search backoff.
+    """
+    import pytest
+
+    from shelfmark.release_sources import SourceUnavailableError
+
+    class FakeClient:
+        is_connected = False
+        online_servers = {"AudioBot"}
+
+        def send_message(self, channel: str, message: str) -> None:
+            pass
+
+        def wait_for_dcc(self, **_kwargs: object) -> None:
+            return None
+
+    source = IRCReleaseSource()
+    monkeypatch.setattr(source, "is_available", lambda: True)
+    cache_calls = _configured_search(monkeypatch, FakeClient())
+
+    with pytest.raises(SourceUnavailableError):
+        source.search(
+            BookMetadata(provider="hardcover", provider_id="a", title="Some Title"),
+            _plan("Some Title"),
+        )
+
+    assert cache_calls == []

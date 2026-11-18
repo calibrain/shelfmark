@@ -86,6 +86,26 @@ class IRCConnectionError(IRCError):
     """Connection failed."""
 
 
+def _alnum(value: str) -> str:
+    return re.sub(r"[^0-9a-z]+", "", value.casefold())
+
+
+def results_file_matches_query(filename: str, query: str) -> bool:
+    """Return whether a search bot's results file was made for this query.
+
+    The bot names it ``<Bot>_results_for__<query>.txt.zip``, with punctuation turned into
+    underscores, so the two are compared on letters and digits only. One side may be a
+    truncation of the other. A name without ``_results_for`` is accepted: its naming is
+    unknown, so there is nothing to compare against.
+    """
+    _, found, rest = filename.partition("_results_for")
+    if not found:
+        return True
+    got = _alnum(re.sub(r"(\.(txt|zip|rar|7z))+$", "", rest, flags=re.IGNORECASE))
+    want = _alnum(query)
+    return bool(got) and (got.startswith(want) or want.startswith(got))
+
+
 class IRCClient:
     """Minimal IRC client for per-request IRC release searches."""
 
@@ -513,8 +533,14 @@ class IRCClient:
         *,
         result_type: bool = False,
         expected_senders: set[str] | None = None,
+        expected_query: str | None = None,
     ) -> DCCOffer | None:
-        """Wait for a DCC SEND offer. Returns None on timeout or no results."""
+        """Wait for a DCC SEND offer. Returns None on timeout or no results.
+
+        With ``expected_query``, a search-results offer made for another query is skipped.
+        Searches run side by side, so a late file for an earlier query would otherwise be
+        taken as this one's answer and cached under it.
+        """
         target_event = IRCEvent.SEARCH_RESULT if result_type else IRCEvent.BOOK_RESULT
         deadline = time.time() + timeout
 
@@ -529,8 +555,18 @@ class IRCClient:
                 except DCCError:
                     logger.exception("Rejected DCC offer")
                     continue
-                else:
-                    return offer
+                if (
+                    result_type
+                    and expected_query
+                    and not results_file_matches_query(offer.filename, expected_query)
+                ):
+                    logger.warning(
+                        "Ignoring results file for another query: %s (waiting for %r)",
+                        offer.filename,
+                        expected_query,
+                    )
+                    continue
+                return offer
 
             # Log other events for debugging
             if msg.event == IRCEvent.NO_RESULTS:

@@ -111,6 +111,7 @@ class IRCDownloadHandler(DownloadHandler):
             status_callback("cancelled", "Cancelled")
             return True
 
+        connection_manager.io_lock.acquire()
         try:
             # Phase 1: Get or reuse IRC connection
             status_callback("resolving", f"Connecting to {server}")
@@ -138,8 +139,11 @@ class IRCDownloadHandler(DownloadHandler):
             # Phase 3: Wait for DCC offer
             status_callback("resolving", "Waiting for bot response")
 
-            wait_kwargs = {"expected_senders": {expected_server}} if expected_server else {}
-            offer = client.wait_for_dcc(timeout=120.0, result_type=False, **wait_kwargs)
+            offer = client.wait_for_dcc(
+                timeout=120.0,
+                result_type=False,
+                expected_senders={expected_server} if expected_server else None,
+            )
 
             if not offer:
                 status_callback("error", "No response from bot")
@@ -195,6 +199,9 @@ class IRCDownloadHandler(DownloadHandler):
             if client:
                 connection_manager.close_connection(client)
             return None
+
+        finally:
+            connection_manager.io_lock.release()
 
     def cancel(self, task_id: str) -> bool:
         """Cancel an in-progress download (cleanup if cancel_flag fails)."""

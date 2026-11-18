@@ -25,3 +25,44 @@ def test_download_with_hash_prefixed_channel_setting_uses_the_bare_channel(monke
 
     assert manager.get_connection.call_args.kwargs["channel"] == "ebooks"
     client.send_message.assert_called_once_with("#ebooks", "!bot Author - Title.epub")
+
+
+def test_search_and_download_hold_the_connection_lock_for_the_whole_exchange(monkeypatch):
+    """A search and a download on one socket steal each other's replies, so they take turns."""
+    from shelfmark.release_sources.irc.connection_manager import connection_manager
+
+    held: list[bool] = []
+    client = MagicMock()
+    client.wait_for_dcc.return_value = None
+
+    def get_connection(**_kwargs):
+        held.append(connection_manager.io_lock.locked())
+        return client
+
+    monkeypatch.setattr(connection_manager, "get_connection", get_connection)
+    monkeypatch.setattr(connection_manager, "release_connection", lambda _client: None)
+    values = {"IRC_SERVER": "irc.example.test", "IRC_CHANNEL": "ebooks", "IRC_NICK": "reader"}
+    monkeypatch.setattr(irc_handler.config, "get", lambda key, default="": values.get(key, default))
+    task = DownloadTask(task_id="!bot Author - Title.epub", source="irc", title="t")
+
+    irc_handler.IRCDownloadHandler().download(task, Event(), lambda _p: None, lambda _s, _m: None)
+
+    assert held == [True]
+    assert not connection_manager.io_lock.locked()
+
+
+def test_download_releases_the_connection_lock_when_it_fails(monkeypatch):
+    from shelfmark.release_sources.irc.connection_manager import connection_manager
+
+    def get_connection(**_kwargs):
+        msg = "connection refused"
+        raise OSError(msg)
+
+    monkeypatch.setattr(connection_manager, "get_connection", get_connection)
+    values = {"IRC_SERVER": "irc.example.test", "IRC_CHANNEL": "ebooks", "IRC_NICK": "reader"}
+    monkeypatch.setattr(irc_handler.config, "get", lambda key, default="": values.get(key, default))
+    task = DownloadTask(task_id="!bot Author - Title.epub", source="irc", title="t")
+
+    irc_handler.IRCDownloadHandler().download(task, Event(), lambda _p: None, lambda _s, _m: None)
+
+    assert not connection_manager.io_lock.locked()

@@ -6,7 +6,7 @@ Searches IRC channels for ebook and audiobook releases.
 import tempfile
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, NoReturn
 
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
@@ -28,6 +28,7 @@ from shelfmark.release_sources import (
     ReleaseProtocol,
     ReleaseSource,
     SourceActionButton,
+    SourceUnavailableError,
     register_source,
 )
 
@@ -118,6 +119,11 @@ MAX_IDENTICAL_SENDS = 3
 IDENTICAL_SEND_WINDOW_SECONDS = 24 * 60 * 60  # 24 hours
 # message-send-key -> timestamps of recent posts of that exact message
 _recent_message_sends: dict[str, list[float]] = {}
+
+
+def _raise_connection_dropped() -> NoReturn:
+    msg = "IRC connection dropped during the search"
+    raise SourceUnavailableError(msg)
 
 
 def _enforce_rate_limit() -> None:
@@ -332,6 +338,7 @@ class IRCReleaseSource(ReleaseSource):
         _enforce_rate_limit()
 
         client = None
+        connection_manager.io_lock.acquire()
         try:
             # Get or reuse IRC connection
             _emit_status(f"Connecting to {server}...", phase="connecting")
@@ -355,9 +362,15 @@ class IRCReleaseSource(ReleaseSource):
             # "@search" from a differently-named results bot. The DCC endpoint/filename are
             # still validated, and wait_for_dcc falls back to the channel's server list.
             _emit_status(f"Connected to #{channel} - Waiting for results...", phase="searching")
-            offer = client.wait_for_dcc(timeout=60.0, result_type=True)
+            offer = client.wait_for_dcc(timeout=60.0, result_type=True, expected_query=query)
 
             online_servers = list(self._online_servers) if self._online_servers else None
+
+            if not offer and not client.is_connected:
+                # A failure elsewhere closed the connection mid-search. That says nothing
+                # about the book, so it is neither cached as "no results" nor counted as
+                # one; the request is searched again on the next pass.
+                _raise_connection_dropped()
 
             if not offer:
                 logger.info("No search results received")
@@ -406,6 +419,8 @@ class IRCReleaseSource(ReleaseSource):
                 audiobook_releases if requested == "audiobook" else ebook_releases, wanted_author
             )
 
+        except SourceUnavailableError:
+            raise
         except DCCError as e:
             logger.exception("DCC error during search")
             _emit_status(f"DCC error: {e}", phase="error")
@@ -421,6 +436,9 @@ class IRCReleaseSource(ReleaseSource):
 
         else:
             return releases
+
+        finally:
+            connection_manager.io_lock.release()
 
     def _build_query(self, book: BookMetadata, plan: ReleaseSearchPlan) -> str:
         """Build the line posted to the channel: a title, plus a surname.
