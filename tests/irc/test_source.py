@@ -674,4 +674,6 @@ def test_identical_searches_queued_on_the_lock_post_the_query_only_once(monkeypa
     first.join(5)
     second.join(5)
 
+    assert not first.is_alive()
+    assert not second.is_alive()  # a lock that was never released would leave it blocked
     assert len(sent) == 1
