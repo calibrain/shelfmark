@@ -294,7 +294,13 @@ def check_calibre(title: str) -> bool:
     import subprocess
 
     cmd = ["calibredb", "list", "--search", calibre_title_search(title)]
-    result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    try:
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    except OSError as exc:
+        # calibredb missing, not executable, or unloadable: the old shell call
+        # answered 127 and its empty output read as "not in the library".
+        print(f"warning: cannot run calibredb ({exc}); treating the book as absent")
+        return False
     output = result.stdout.strip()
     # calibredb output has header line "id title authors", count non-header lines
     lines = [l.strip() for l in output.split("\n") if l.strip()]

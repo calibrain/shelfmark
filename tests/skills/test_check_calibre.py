@@ -70,6 +70,16 @@ def test_title_is_one_argument_and_one_query_term(title):
     assert _every_quote_escaped(inner), inner
 
 
+@pytest.mark.parametrize("error", [FileNotFoundError("calibredb"), PermissionError("calibredb")])
+def test_missing_or_unusable_calibredb_reads_as_absent(error, capsys):
+    """A shell answered 127 and looked like "not in the library"; a missing or
+    unusable binary must not raise out of the batch."""
+    module = _load_module()
+    with patch.object(subprocess, "run", side_effect=error):
+        assert module.check_calibre("Dune") is False
+    assert "cannot run calibredb" in capsys.readouterr().out
+
+
 def _every_quote_escaped(inner: str) -> bool:
     i = 0
     while i < len(inner):
