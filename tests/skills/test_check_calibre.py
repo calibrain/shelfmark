@@ -17,7 +17,7 @@ def _load_module():
     # a bare test run may not.
     if "playwright.sync_api" not in sys.modules:
         try:
-            import playwright.sync_api  # noqa: F401
+            import playwright.sync_api
         except ModuleNotFoundError:
             playwright = types.ModuleType("playwright")
             sync_api = types.ModuleType("playwright.sync_api")
@@ -40,13 +40,15 @@ def _load_module():
         'Dune"; touch /tmp/pwned; echo "',
         "Neuromancer$(id)",
         "Snow Crash`whoami`",
-        "The \"Ball\" and The \"Chain\"",
+        'The "Ball" and The "Chain"',
         r"C:\Books\Dune",
     ],
 )
 def test_title_is_one_argument_and_one_query_term(title):
     module = _load_module()
-    completed = subprocess.CompletedProcess(args=[], returncode=0, stdout="id title authors\n", stderr="")
+    completed = subprocess.CompletedProcess(
+        args=[], returncode=0, stdout="id title authors\n", stderr=""
+    )
 
     with patch.object(subprocess, "run", return_value=completed) as run:
         module.check_calibre(title)
@@ -61,7 +63,7 @@ def test_title_is_one_argument_and_one_query_term(title):
     # `=` keeps it an exact-title search; without it calibre does "contains",
     # so "Dune" would match "Dune Messiah" and the book would be skipped.
     assert term.startswith('title:"=') and term.endswith('"'), term
-    inner = term[len('title:"='):-1]
+    inner = term[len('title:"=') : -1]
     # Nothing inside the term may end it early: every quote and every
     # backslash is escaped, and unescaping gives the title back.
     assert _unescape(inner) == title
