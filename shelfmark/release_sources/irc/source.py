@@ -312,34 +312,31 @@ class IRCReleaseSource(ReleaseSource):
                     self._filter_by_content_type(cached["releases"], requested), wanted_author
                 )
 
-        # Anti-spam cap: the exact same query may only be POSTED a limited number of times
-        # per window, even via refresh. Beyond that, serve whatever is cached rather than
-        # re-posting the identical message to the channel.
-        if _recent_send_count(query_key) >= MAX_IDENTICAL_SENDS:
-            logger.info(
-                "IRC query hit %s-send limit in window, not re-posting: %s",
-                MAX_IDENTICAL_SENDS,
-                query,
-            )
-            _emit_status(
-                "Search limit reached for this query — showing latest results", phase="complete"
-            )
-            cached = get_cached_results(query_key)
-            if cached:
-                self._online_servers = set(cached.get("online_servers", []))
-                return self._rank_by_author(
-                    self._filter_by_content_type(cached["releases"], requested), wanted_author
-                )
-            return []
-
-        logger.info("IRC search: %s", query)
-
-        # Enforce rate limit
-        _enforce_rate_limit()
-
         client = None
         connection_manager.io_lock.acquire()
         try:
+            # Anti-spam cap: the exact same query may only be POSTED a limited number of times
+            # per window, even via refresh. Beyond that, serve whatever is cached rather than
+            # re-posting the identical message to the channel.
+            if _recent_send_count(query_key) >= MAX_IDENTICAL_SENDS:
+                logger.info(
+                    "IRC query hit %s-send limit in window, not re-posting: %s",
+                    MAX_IDENTICAL_SENDS,
+                    query,
+                )
+                _emit_status(
+                    "Search limit reached for this query — showing latest results", phase="complete"
+                )
+                cached = get_cached_results(query_key)
+                if cached:
+                    self._online_servers = set(cached.get("online_servers", []))
+                    return self._rank_by_author(
+                        self._filter_by_content_type(cached["releases"], requested), wanted_author
+                    )
+                return []
+
+            logger.info("IRC search: %s", query)
+
             # Get or reuse IRC connection
             _emit_status(f"Connecting to {server}...", phase="connecting")
             client = connection_manager.get_connection(
@@ -352,6 +349,9 @@ class IRCReleaseSource(ReleaseSource):
 
             # Capture online servers (elevated users in channel)
             self._online_servers = client.online_servers
+
+            # Space real sends, not lock-queue entries (the lock may have been held a while).
+            _enforce_rate_limit()
 
             # Send search request (always addressed to the search bot, never bare)
             client.send_message(f"#{channel}", f"@{search_bot} {query}")
@@ -370,6 +370,7 @@ class IRCReleaseSource(ReleaseSource):
                 # A failure elsewhere closed the connection mid-search. That says nothing
                 # about the book, so it is neither cached as "no results" nor counted as
                 # one; the request is searched again on the next pass.
+                connection_manager.close_connection(client)
                 _raise_connection_dropped()
 
             if not offer:

@@ -87,15 +87,16 @@ class IRCConnectionError(IRCError):
 
 
 def _alnum(value: str) -> str:
-    return re.sub(r"[^0-9a-z]+", "", value.casefold())
+    return "".join(c for c in value.casefold() if c.isalnum())
 
 
 def results_file_matches_query(filename: str, query: str) -> bool:
     """Return whether a search bot's results file was made for this query.
 
     The bot names it ``<Bot>_results_for__<query>.txt.zip``, with punctuation turned into
-    underscores, so the two are compared on letters and digits only. One side may be a
-    truncation of the other. A name without ``_results_for`` is accepted: its naming is
+    underscores, so the two are compared on letters and digits only (any script). They must
+    be equal: a prefix match would take the results for "Dune Messiah" as the answer to
+    "Dune". A name without ``_results_for`` is accepted: its naming is
     unknown, so there is nothing to compare against.
     """
     _, found, rest = filename.partition("_results_for")
@@ -103,7 +104,7 @@ def results_file_matches_query(filename: str, query: str) -> bool:
         return True
     got = _alnum(re.sub(r"(\.(txt|zip|rar|7z))+$", "", rest, flags=re.IGNORECASE))
     want = _alnum(query)
-    return bool(got) and (got.startswith(want) or want.startswith(got))
+    return bool(got) and got == want
 
 
 class IRCClient:
@@ -384,12 +385,14 @@ class IRCClient:
                 try:
                     data = sock.recv(RECV_BUFFER)
                     if not data:
+                        self._connected = False
                         return  # Connection closed
                     self._buffer += data.decode("utf-8", errors="replace")
                 except TimeoutError:
                     continue  # Keep waiting (the deadline is re-checked above)
                 except OSError as e:
                     logger.warning("Socket error: %s", e)
+                    self._connected = False
                     return  # Connection error
         finally:
             if deadline is not None:

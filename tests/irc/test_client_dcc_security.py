@@ -138,5 +138,24 @@ def test_results_file_matches_query() -> None:
     assert results_file_matches_query(name(long), long)  # punctuation does not matter
     assert not results_file_matches_query(name(short), long)
     assert not results_file_matches_query(name(long), short)
+    # Results for a longer title are not the answer to a search for its start.
+    assert not results_file_matches_query(name("Dune Messiah"), "Dune")
+    assert results_file_matches_query(name("三体"), "三体")  # any script
     # A name that is not a results file has nothing to compare against.
     assert results_file_matches_query("Author - Book.epub", short)
+
+
+def test_recv_lines_marks_the_client_disconnected_when_the_peer_closes() -> None:
+    class ClosedSocket:
+        def gettimeout(self) -> None:
+            return None
+
+        def recv(self, _size: int) -> bytes:
+            return b""
+
+    client = IRCClient(nick="reader", server="irc.example.test", port=6697)
+    client._socket = ClosedSocket()  # type: ignore[assignment]
+    client._connected = True
+
+    assert list(client._recv_lines()) == []
+    assert not client.is_connected

@@ -559,6 +559,7 @@ def _configured_search(monkeypatch, client):
     manager = "shelfmark.release_sources.irc.connection_manager.connection_manager"
     monkeypatch.setattr(f"{manager}.get_connection", lambda **_kwargs: client)
     monkeypatch.setattr(f"{manager}.release_connection", lambda _client: None)
+    monkeypatch.setattr(f"{manager}.close_connection", lambda _client: None)
     return cache_calls
 
 
@@ -609,6 +610,11 @@ def test_search_on_a_dropped_connection_is_an_error_and_is_not_cached(monkeypatc
     source = IRCReleaseSource()
     monkeypatch.setattr(source, "is_available", lambda: True)
     cache_calls = _configured_search(monkeypatch, FakeClient())
+    closed: list[object] = []
+    monkeypatch.setattr(
+        "shelfmark.release_sources.irc.connection_manager.connection_manager.close_connection",
+        closed.append,
+    )
 
     with pytest.raises(SourceUnavailableError):
         source.search(
@@ -617,3 +623,55 @@ def test_search_on_a_dropped_connection_is_an_error_and_is_not_cached(monkeypatc
         )
 
     assert cache_calls == []
+    assert len(closed) == 1  # the dead client is not handed out again
+
+
+def test_identical_searches_queued_on_the_lock_post_the_query_only_once(monkeypatch):
+    """The send budget is checked once the lock is held, not before waiting for it."""
+    import threading
+
+    import shelfmark.release_sources.irc.source as irc_source
+
+    first_waiting = threading.Event()
+    release_first = threading.Event()
+    sent: list[str] = []
+
+    class FakeClient:
+        is_connected = True
+        online_servers = {"AudioBot"}
+
+        def send_message(self, channel: str, message: str) -> None:
+            sent.append(message)
+
+        def wait_for_dcc(self, **_kwargs: object) -> None:
+            return None
+
+    client = FakeClient()
+    _configured_search(monkeypatch, client)
+
+    def slow_get_connection(**_kwargs: object) -> FakeClient:
+        first_waiting.set()  # holding the lock, nothing sent yet
+        release_first.wait(5)
+        return client
+
+    monkeypatch.setattr(
+        "shelfmark.release_sources.irc.connection_manager.connection_manager.get_connection",
+        slow_get_connection,
+    )
+    monkeypatch.setattr(irc_source, "MAX_IDENTICAL_SENDS", 1)
+    book = BookMetadata(provider="hardcover", provider_id="a", title="Some Title")
+
+    def run() -> None:
+        IRCReleaseSource().search(book, _plan("Some Title"))
+
+    first = threading.Thread(target=run)
+    first.start()
+    assert first_waiting.wait(5)
+    second = threading.Thread(target=run)
+    second.start()
+    time.sleep(0.2)  # let it pass the pre-lock budget check and queue on the lock
+    release_first.set()
+    first.join(5)
+    second.join(5)
+
+    assert len(sent) == 1
