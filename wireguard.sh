@@ -117,6 +117,15 @@ fi
 set +x
 set -e
 
+# wg-quick re-runs itself through sudo (absent here) unless bash's $UID is 0, and bash
+# takes $UID from the environment when one is set. The legacy UID setting (e.g. Unraid's
+# UID=99) is for the app user, read by entrypoint.sh; drop it so wg-quick, here and in
+# the supervised healthcheck, sees the real root UID (#1730). Only an imported UID can
+# be unset; bash's own is readonly.
+if printenv UID >/dev/null 2>&1; then
+    unset UID
+fi
+
 WIREGUARD_CONFIG="${WIREGUARD_CONFIG:-/config/wg0.conf}"
 WIREGUARD_INTERFACE="${WIREGUARD_INTERFACE:-wg0}"
 WIREGUARD_ENFORCE_DNS_VALUE="${WIREGUARD_ENFORCE_DNS:-true}"
