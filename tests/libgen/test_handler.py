@@ -5,7 +5,7 @@ import threading
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from shelfmark.core.models import DownloadTask
+from shelfmark.core.models import DownloadTask, with_task_suffix
 from shelfmark.release_sources.libgen import handler as libgen_handler
 from shelfmark.release_sources.libgen.handler import LibgenHandler
 from tests.libgen import sample_html as html
@@ -53,14 +53,15 @@ def test_download_strips_prefix_resolves_and_writes(tmp_path):
         captured["selector"] = sel
         return _buf()
 
+    task = _task(f"libgen:{html.MD5_A}")
     result, _ = _run(
-        _task(f"libgen:{html.MD5_A}"),
+        task,
         tmp_path,
         mirrors_list=["https://libgen.li"],
         fetch_page=fetch_page,
         download_url=download_url,
     )
-    expected = tmp_path / f"{html.MD5_A}.cbr"
+    expected = tmp_path / with_task_suffix(f"{html.MD5_A}.cbr", task.task_id)
     assert result == str(expected)
     assert expected.exists()
     assert captured["link"] == f"https://libgen.li/get.php?md5={html.MD5_A}&key={html.GET_KEY}"
@@ -69,28 +70,30 @@ def test_download_strips_prefix_resolves_and_writes(tmp_path):
 
 
 def test_download_accepts_bare_md5_task_id(tmp_path):
+    task = _task(html.MD5_A)
     result, _ = _run(
-        _task(html.MD5_A),
+        task,
         tmp_path,
         mirrors_list=["https://libgen.li"],
         fetch_page=lambda url, timeout=(5, 10): html.ADS_HTML,
         download_url=lambda *a, **k: _buf(),
     )
-    assert result == str(tmp_path / f"{html.MD5_A}.cbr")
+    assert result == str(tmp_path / with_task_suffix(f"{html.MD5_A}.cbr", task.task_id))
 
 
 def test_download_falls_through_to_second_mirror(tmp_path):
     def fetch_page(url, timeout=(5, 10)):
         return None if "dead" in url else html.ADS_HTML
 
+    task = _task(f"libgen:{html.MD5_A}")
     result, _ = _run(
-        _task(f"libgen:{html.MD5_A}"),
+        task,
         tmp_path,
         mirrors_list=["https://dead.example", "https://libgen.li"],
         fetch_page=fetch_page,
         download_url=lambda *a, **k: _buf(),
     )
-    assert result == str(tmp_path / f"{html.MD5_A}.cbr")
+    assert result == str(tmp_path / with_task_suffix(f"{html.MD5_A}.cbr", task.task_id))
 
 
 def test_download_all_mirrors_fail_returns_none(tmp_path):
@@ -166,4 +169,4 @@ def test_hostile_md5_cannot_escape_tmp_dir(tmp_path):
         download_url=lambda *a, **k: _buf(),
     )
     assert result is None
-    assert not (tmp_path / "evil.epub").exists()
+    assert not list(tmp_path.glob("**/evil*.epub"))

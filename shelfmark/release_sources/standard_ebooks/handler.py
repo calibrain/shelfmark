@@ -1,15 +1,18 @@
 """Standard Ebooks download handler - downloads EPUBs from standardebooks.org."""
 
-import hashlib
 import io
-import re
 import zipfile
 from typing import TYPE_CHECKING
 
 from shelfmark.config.env import TMP_DIR
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import build_filename, normalize_format, resolve_staged_path
+from shelfmark.core.models import (
+    build_filename,
+    normalize_format,
+    resolve_staged_path,
+    with_task_suffix,
+)
 from shelfmark.download import http as downloader
 from shelfmark.release_sources import DownloadHandler, register_handler
 from shelfmark.release_sources.standard_ebooks import scraper
@@ -84,13 +87,7 @@ class StandardEbooksHandler(DownloadHandler):
             else:
                 book_name = build_filename(task.title, task.author, task.year, task.format or "epub")
 
-            raw_suffix = hashlib.sha1((task.task_id or "").encode("utf-8")).hexdigest()[:12]
-            suffix = re.sub(r"[^A-Za-z0-9_-]", "_", raw_suffix) or "task"
-            if "." in book_name:
-                stem, ext = book_name.rsplit(".", 1)
-                book_name = f"{stem}_{suffix}.{ext}"
-            else:
-                book_name = f"{book_name}_{suffix}"
+            book_name = with_task_suffix(book_name, task.task_id)
 
             book_path = resolve_staged_path(TMP_DIR, book_name)
             if book_path is None:

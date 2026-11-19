@@ -1,5 +1,6 @@
 """Data structures and models used across the application."""
 
+import hashlib
 import re
 import time
 from dataclasses import dataclass, field
@@ -59,6 +60,16 @@ def build_filename(
         filename = f"{filename}.{safe_fmt}"
 
     return filename
+
+
+def with_task_suffix(filename: str, task_id: str) -> str:
+    """Return a per-task staged filename derived from task_id, keeping the extension intact."""
+    raw_suffix = hashlib.sha1((task_id or "").encode("utf-8")).hexdigest()[:12]
+    suffix = re.sub(r"[^A-Za-z0-9_-]", "_", raw_suffix) or "task"
+    if "." in filename:
+        stem, ext = filename.rsplit(".", 1)
+        return f"{stem}_{suffix}.{ext}"
+    return f"{filename}_{suffix}"
 
 
 class QueueStatus(StrEnum):
