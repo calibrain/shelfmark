@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import urlparse
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 
 from shelfmark.core.cache import cache_key, cacheable, get_metadata_cache
 from shelfmark.core.config import config as app_config
@@ -525,6 +527,11 @@ HARDCOVER_RATE_BURST = 5
 HARDCOVER_RATE_PER_SECOND = 0.8
 HARDCOVER_RATE_LIMIT_ATTEMPTS = 3  # the first try plus two retries
 HARDCOVER_RETRY_AFTER_CAP_SECONDS = 30.0  # longer than this (spent daily quota): give up
+
+# Over some VPNs the first connection after a couple of idle minutes hangs until the timeout,
+# and the search came back empty (#1736). Open a new connection once more when that happens. Safe for mutations too: urllib3 only retries a failed connect, which never reached
+# Hardcover, and never resends a POST once the request went out (read=False).
+HARDCOVER_CONNECT_RETRY = Retry(total=1, connect=1, read=False, other=0)
 
 
 class _TokenBucket:
@@ -1133,6 +1140,7 @@ class HardcoverProvider(MetadataProvider):
         raw_key = api_key or app_config.get("HARDCOVER_API_KEY", "")
         self.api_key = _normalize_hardcover_api_key(raw_key)
         self.session = requests.Session()
+        self.session.mount(HARDCOVER_API_URL, HTTPAdapter(max_retries=HARDCOVER_CONNECT_RETRY))
         if self.api_key:
             self.session.headers.update(
                 {
