@@ -1196,6 +1196,68 @@ class TestContentTypeAwareMatching:
 
         assert not auto_download.strict_match(release, _book(), content_type="ebook")
 
+    # Newznab releases, and Prowlarr ones outside MyAnonamouse, carry no format and the
+    # generic "book" content type, so the format named in the name is the only signal.
+    @staticmethod
+    def _usenet(title):
+        return _release(
+            title=title,
+            format=None,
+            content_type="book",
+            protocol=ReleaseProtocol.NZB,
+            seeders=None,
+        )
+
+    @staticmethod
+    def _ebook_format_match(release):
+        return auto_download._format_match(
+            release, "ebook", AUDIOBOOK_FORMATS, {"epub", "azw3", "mobi"}
+        )
+
+    def test_a_usenet_release_naming_its_format_matches_an_ebook_request(self):
+        release = self._usenet("Rick Rubin - The Creative Act (retail) (epub)")
+        book = _book(title="The Creative Act", authors=["Rick Rubin"])
+
+        assert auto_download.strict_match(release, book, content_type="ebook")
+
+    @pytest.mark.parametrize(
+        "title",
+        [
+            "Matt Dinniman - Dungeon Crawler Carl (retail) (epub)",
+            "Dungeon Crawler Carl [EPUB] - Matt Dinniman",
+            "Matt Dinniman - Dungeon Crawler Carl - azw3",
+            "Matt Dinniman - Dungeon Crawler Carl {MOBI}",
+        ],
+    )
+    def test_a_format_word_in_the_name_is_an_ebook_signal(self, title):
+        assert self._ebook_format_match(self._usenet(title))
+
+    @pytest.mark.parametrize(
+        "title",
+        [
+            "Matt Dinniman - Dungeon Crawler Carl (m4b)",
+            "Matt Dinniman - Dungeon Crawler Carl (epub) (Unabridged)",
+        ],
+    )
+    def test_an_audiobook_signal_still_fails_an_ebook_request(self, title):
+        assert not self._ebook_format_match(self._usenet(title))
+
+    def test_a_name_without_a_format_still_fails_an_ebook_request(self):
+        assert not self._ebook_format_match(
+            self._usenet("Matt Dinniman - Dungeon Crawler Carl (retail)")
+        )
+
+    @pytest.mark.parametrize(
+        "title",
+        [
+            "Matt Dinniman - Dungeon Crawler Carl (Mobile Edition)",
+            "Matt Dinniman - Dungeon Crawler Carl (Republished)",
+            "Matt Dinniman - Dungeon Crawler Carl (epubs)",
+        ],
+    )
+    def test_a_word_containing_a_format_is_not_an_ebook_signal(self, title):
+        assert not self._ebook_format_match(self._usenet(title))
+
     def test_ebook_ranking_prefers_epub_then_azw3_then_mobi(self):
         mobi = _release(format="mobi", seeders=50)
         azw3 = _release(format="azw3", seeders=1)
@@ -2544,6 +2606,13 @@ class TestRetryAfterCooldown:
                 )
         return row
 
+    @pytest.fixture(autouse=True)
+    def _a_source_is_configured(self, monkeypatch):
+        """A reopen needs a source to search, so every case here has one unless it removes it."""
+        monkeypatch.setattr(
+            auto_download, "_configured_source_priority", lambda _ct: ["audiobookbay"]
+        )
+
     def _reopen(self, user_db, **kwargs):
         kwargs.setdefault("cooldown_days", 7)
         kwargs.setdefault("db_path", user_db._db_path)
@@ -2552,6 +2621,32 @@ class TestRetryAfterCooldown:
     @staticmethod
     def _user(user_db):
         return user_db.create_user(username="reader", role="user")
+
+    @pytest.mark.parametrize(
+        ("role", "auth_mode"),
+        [("admin", "builtin"), ("user", "none")],
+        ids=["admin-owned", "no-login"],
+    )
+    def test_a_request_with_no_usable_source_is_left_as_it_is(
+        self, user_db, monkeypatch, role, auth_mode
+    ):
+        """An exempt owner still needs a source, or the reopened request would sit unsearched."""
+        monkeypatch.setattr(auto_download, "_configured_source_priority", lambda _ct: [])
+        owner = user_db.create_user(username="owner", role=role)
+        row = self._request(user_db, owner["id"], provider_id="1", history="error")
+        policy = auto_download.OwnerPolicy(user_db, auth_mode=auth_mode)
+
+        assert self._reopen(user_db, owner_policy=policy) == 0
+
+        stored = user_db.get_request(row["id"])
+        assert stored["status"] == "fulfilled"
+        assert stored["delivery_state"] == "error"
+
+    def test_an_admin_owned_request_with_a_source_is_still_reopened(self, user_db):
+        admin = user_db.create_user(username="ops", role="admin")
+        self._request(user_db, admin["id"], provider_id="1", history="active")
+
+        assert self._reopen(user_db) == 1
 
     def test_an_interrupted_download_is_reopened_and_may_use_the_same_release(self, user_db):
         row = self._request(user_db, self._user(user_db)["id"], provider_id="1", history="active")
@@ -3565,7 +3660,11 @@ class TestSettleDeliveryStatesFromHistory:
         )
         assert self._state(user_db, rid) == "queued"
 
-    def test_the_stale_sweep_then_reopens_a_stalled_download(self, user_db):
+    def test_the_stale_sweep_then_reopens_a_stalled_download(self, user_db, monkeypatch):
+        """Once settled, a stalled download is reopened when a source can search it again."""
+        monkeypatch.setattr(
+            auto_download, "_configured_source_priority", lambda _ct: ["audiobookbay"]
+        )
         rid = self._fulfilled(
             user_db, state="downloading", delivery_updated_at="2026-10-16T20:56:38+00:00"
         )

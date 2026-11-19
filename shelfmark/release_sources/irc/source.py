@@ -31,7 +31,7 @@ from shelfmark.release_sources import (
     register_source,
 )
 
-from .client import has_control_characters
+from .client import bare_channel_name, has_control_characters
 from .connection_manager import connection_manager
 from .dcc import DCCError, download_dcc, safe_dcc_filename
 from .parser import SearchResult, extract_results_from_zip, parse_results_file
@@ -45,6 +45,11 @@ def _config_text(key: str) -> str:
     if value is None:
         return ""
     return str(value).strip()
+
+
+def _config_channel(key: str) -> str:
+    """Read a channel setting as the bare name, so "#ebooks" and "ebooks" are one channel."""
+    return bare_channel_name(_config_text(key))
 
 
 def _config_port(key: str, default: int) -> int:
@@ -179,7 +184,7 @@ class IRCReleaseSource(ReleaseSource):
         to the channel, which reads as spam and gets the nick banned.
         """
         server = _config_text("IRC_SERVER")
-        channel = _config_text("IRC_CHANNEL")
+        channel = _config_channel("IRC_CHANNEL")
         nick = _config_text("IRC_NICK")
         search_bot = _config_text("IRC_SEARCH_BOT")
         return bool(server and channel and nick and search_bot)
@@ -257,7 +262,7 @@ class IRCReleaseSource(ReleaseSource):
         server = _config_text("IRC_SERVER")
         port = _config_port("IRC_PORT", 6697)
         use_tls = _config_bool("IRC_USE_TLS", True)
-        channel = _config_text("IRC_CHANNEL")
+        channel = _config_channel("IRC_CHANNEL")
         nick = _config_text("IRC_NICK")
         search_bot = _config_text("IRC_SEARCH_BOT")
 
@@ -267,7 +272,7 @@ class IRCReleaseSource(ReleaseSource):
         # fall back to the main channel/bot — that is the common case, since most networks
         # (irchighway included) serve both formats from the one channel.
         if is_audiobook(content_type):
-            audiobook_channel = _config_text("IRC_AUDIOBOOK_CHANNEL")
+            audiobook_channel = _config_channel("IRC_AUDIOBOOK_CHANNEL")
             if audiobook_channel:
                 channel = audiobook_channel
                 audiobook_search_bot = _config_text("IRC_AUDIOBOOK_SEARCH_BOT")

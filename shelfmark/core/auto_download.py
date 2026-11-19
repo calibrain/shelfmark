@@ -181,11 +181,14 @@ def _format_match(
         # Reject things that are clearly an ebook and nothing else.
         return _audiobook_signal(release, audiobook_formats) and fmt not in EBOOK_FORMAT_MARKERS
 
-    title_l = (release.title or "").lower()
+    # A format named as a whole word anywhere in the name ("Dune.epub", "(epub)", "[EPUB]")
+    # counts: Newznab releases, and Prowlarr ones outside MyAnonamouse, carry no format and
+    # only the generic "book" content type, so the name is their only signal. Whole words
+    # only, so "Mobile" is not "mobi".
     has_ebook_signal = (
         fmt in ebook_formats
         or (release.content_type or "").lower() == "ebook"
-        or any(f".{ef}" in title_l for ef in ebook_formats)
+        or not ebook_formats.isdisjoint(_tokens(release.title))
     )
     return has_ebook_signal and not _audiobook_signal(release, audiobook_formats)
 
@@ -1394,15 +1397,12 @@ class OwnerPolicy:
         ]
 
     def may_fulfil(self, row: dict[str, Any]) -> bool:
-        """True when auto-download could fulfil ``row`` from at least one configured source."""
-        if self._bypass:
-            return True
-        user_id = coerce_int(row.get("user_id"), 0)
-        owner = self._owner(user_id) if user_id > 0 else None
-        if owner is None:
-            return False
-        if owner[0]:
-            return True
+        """True when auto-download could fulfil ``row`` from at least one configured source.
+
+        An exempt owner (an admin, a user with requests off, or any owner on an install
+        without login) may use every configured source, but still needs one: with none
+        usable for the content type, nothing would ever search the request.
+        """
         book_data = row.get("book_data")
         content_type = normalize_content_type(
             row.get("content_type")

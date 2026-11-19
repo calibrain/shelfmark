@@ -9,12 +9,15 @@ import importlib
 from contextlib import contextmanager, suppress
 from typing import TYPE_CHECKING, Protocol, TypeGuard
 
+from transmission_rpc.error import TransmissionConnectError
+
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
 from shelfmark.download.clients import (
     DownloadClient,
     DownloadStatus,
     register_client,
+    with_retry,
 )
 from shelfmark.download.clients._coercion import (
     coerce_optional_float,
@@ -36,6 +39,8 @@ except ImportError:
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
+
+    from transmission_rpc import Torrent
 
 logger = setup_logger(__name__)
 
@@ -294,6 +299,11 @@ class TransmissionClient(DownloadClient):
         else:
             return torrent_hash
 
+    @with_retry(extra_exceptions=(TransmissionConnectError,))
+    def _get_torrent(self, download_id: str) -> Torrent:
+        """Allow transient RPC outages to recover before reporting a failed download."""
+        return self._client.get_torrent(download_id)
+
     def get_status(self, download_id: str) -> DownloadStatus:
         """Get torrent status by hash.
 
@@ -305,7 +315,7 @@ class TransmissionClient(DownloadClient):
 
         """
         try:
-            torrent = self._client.get_torrent(download_id)
+            torrent = self._get_torrent(download_id)
 
             # Transmission status values:
             # 0: stopped

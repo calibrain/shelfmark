@@ -419,3 +419,89 @@ def test_search_send_budget_blocks_repost_and_returns_cache(monkeypatch):
 
     assert releases == [cached_release]
     assert source._online_servers == {"AudioBot"}
+
+
+def _search_once(monkeypatch, settings: dict[str, str], content_type: str = "ebook"):
+    """Run one uncached search and return what it joined, sent and cached."""
+    import shelfmark.release_sources.irc.source as irc_source
+
+    source = IRCReleaseSource()
+    connection_kwargs: dict[str, object] = {}
+    cache_keys: list[str] = []
+
+    class FakeClient:
+        online_servers: set[str] = set()
+
+        def send_message(self, channel: str, message: str) -> None:
+            self.channel = channel
+            self.message = message
+
+        def wait_for_dcc(
+            self, *, timeout: float, result_type: bool, expected_senders: object = None
+        ) -> None:
+            return None
+
+    client = FakeClient()
+
+    monkeypatch.setattr(irc_source, "_config_text", lambda key: settings.get(key, ""))
+    irc_source._recent_message_sends.clear()
+    monkeypatch.setattr(source, "is_available", lambda: True)
+    monkeypatch.setattr(irc_source, "_enforce_rate_limit", lambda: None)
+    monkeypatch.setattr(irc_source, "_emit_status", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(
+        "shelfmark.release_sources.irc.cache.get_cached_results",
+        lambda cache_key, *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "shelfmark.release_sources.irc.cache.cache_results",
+        lambda cache_key, title, releases, *, online_servers=None: cache_keys.append(cache_key),
+    )
+
+    def fake_get_connection(**kwargs: object) -> FakeClient:
+        connection_kwargs.update(kwargs)
+        return client
+
+    monkeypatch.setattr(
+        "shelfmark.release_sources.irc.connection_manager.connection_manager.get_connection",
+        fake_get_connection,
+    )
+    monkeypatch.setattr(
+        "shelfmark.release_sources.irc.connection_manager.connection_manager.release_connection",
+        lambda _client: None,
+    )
+
+    book = BookMetadata(provider="hardcover", provider_id="1", title="Some Book")
+    source.search(book, _plan("Some Book"), content_type=content_type)
+    return connection_kwargs["channel"], client.channel, cache_keys
+
+
+_BASE_SETTINGS = {
+    "IRC_SERVER": "irc.example.net",
+    "IRC_NICK": "tester",
+    "IRC_SEARCH_BOT": "search",
+}
+
+
+def test_channel_setting_with_hash_prefix_joins_the_same_channel(monkeypatch):
+    """A stored "#ebooks" joined "##ebooks", an almost empty channel, and found nothing.
+
+    The setting asks for the name without the #, but that is not how people write a
+    channel, and nothing reported the mistake.
+    """
+    bare = _search_once(monkeypatch, {**_BASE_SETTINGS, "IRC_CHANNEL": "ebooks"})
+    prefixed = _search_once(monkeypatch, {**_BASE_SETTINGS, "IRC_CHANNEL": " #ebooks "})
+
+    assert prefixed == bare
+    assert prefixed == ("ebooks", "#ebooks", ["irc.example.net:ebooks:some book"])
+
+
+def test_audiobook_channel_setting_with_hash_prefix_joins_the_same_channel(monkeypatch):
+    """The audiobook channel is read the same way as the main one, so it had the same trap."""
+    settings = {**_BASE_SETTINGS, "IRC_CHANNEL": "ebooks"}
+    bare = _search_once(monkeypatch, {**settings, "IRC_AUDIOBOOK_CHANNEL": "bookz"}, "audiobook")
+    prefixed = _search_once(
+        monkeypatch, {**settings, "IRC_AUDIOBOOK_CHANNEL": "#bookz"}, "audiobook"
+    )
+
+    assert prefixed == bare
+    assert prefixed == ("bookz", "#bookz", ["irc.example.net:bookz:some book"])

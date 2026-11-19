@@ -517,6 +517,21 @@ class TestSanitizeFilename:
         assert sanitize_filename("") == ""
         assert sanitize_filename(None) == ""
 
+    @pytest.mark.parametrize(
+        "name,max_length,expected",
+        [
+            ("aéz", 2, "a"),
+            ("aéz", 3, "aé"),
+            ("a界z", 3, "a"),
+            ("a界z", 4, "a界"),
+            ("a📚z", 4, "a"),
+            ("a📚z", 5, "a📚"),
+            ("é", 1, ""),
+        ],
+    )
+    def test_unicode_byte_limit_keeps_whole_characters(self, name, max_length, expected):
+        assert sanitize_filename(name, max_length=max_length) == expected
+
 
 class TestFormatSeriesPosition:
     """Tests for series position formatting."""
@@ -780,3 +795,16 @@ class TestFilesystemOperations:
         assert path is not None
         # Title component should be truncated
         assert len(path.stem) < 250
+
+    @pytest.mark.parametrize("character", ["Ж", "界", "📚"])
+    def test_long_unicode_names_can_be_saved(self, temp_library, character):
+        metadata = {"Author": character * 200, "Title": character * 200}
+        path = build_library_path(str(temp_library), "{Author}/{Title}", metadata, extension="epub")
+
+        assert len(path.parent.name.encode("utf-8")) <= 245
+        assert len(path.stem.encode("utf-8")) <= 245
+        assert path.suffix == ".epub"
+
+        path.parent.mkdir(parents=True)
+        path.write_bytes(b"book content")
+        assert path.read_bytes() == b"book content"
