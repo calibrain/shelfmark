@@ -878,15 +878,18 @@ def _build_source_url(slug: str) -> str | None:
     return f"https://hardcover.app/books/{slug}" if slug else None
 
 
-def _is_probably_series_position(subtitle: str) -> bool:
-    normalized = subtitle.strip().lower()
-
+def _is_series_position(text: str) -> bool:
     # Common patterns: "Book One", "Book 1", "Part 2", "Volume III", etc.
-    if re.match(
-        r"^(book|part|volume|vol\.?|episode)\s+([0-9]+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten)\b",
-        normalized,
-    ):
-        return True
+    return bool(
+        re.match(
+            r"^(book|part|volume|vol\.?|episode)\s+([0-9]+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten)\b",
+            text.strip().lower(),
+        )
+    )
+
+
+def _is_genre_descriptor(text: str) -> bool:
+    normalized = text.strip().lower()
 
     # e.g. "A Novel", "An Epic Fantasy", etc. These add noise to indexer queries.
     if normalized in {"a novel", "a novella", "a story", "a memoir"}:
@@ -1035,9 +1038,14 @@ def _compute_search_title(
         )
         if prefix_is_series or subtitle_is_suffix:
             # "Series: Book 1" names nothing to search for on either side of the colon.
-            if _is_probably_series_position(suffix):
+            if _is_series_position(suffix):
                 return None
-            return suffix if prefix_is_series else prefix
+            if prefix_is_series:
+                # "Series: A Novel" names no book either.
+                return None if _is_genre_descriptor(suffix) else suffix
+            # "Title: A Novel" only describes the book, so the prefix is the title.
+            # Returning None here would search the full title, ": A Novel" and all.
+            return prefix
 
     # Last resort: return a cleaned version of the title if we removed noise.
     if normalized_title and normalized_title.lower() != original_title.lower():

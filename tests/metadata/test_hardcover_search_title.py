@@ -89,6 +89,30 @@ class TestHardcoverComputeSearchTitle:
             is None
         )
 
+    @pytest.mark.parametrize(
+        ("title", "subtitle", "series", "expected"),
+        [
+            # Searched as the full title before, and MAM ANDs every word, so a torrent
+            # named without the descriptor never matched.
+            ("The Last Thing He Told Me: A Novel", "A Novel", None, "The Last Thing He Told Me"),
+            ("Educated: A Memoir", "A Memoir", None, "Educated"),
+            (
+                "No Plan B: A Jack Reacher Novel",
+                "A Jack Reacher Novel",
+                "Jack Reacher",
+                "No Plan B",
+            ),
+        ],
+    )
+    def test_a_genre_descriptor_subtitle_leaves_the_prefix(self, title, subtitle, series, expected):
+        assert _compute_search_title(title, subtitle, series_name=series) == expected
+
+    def test_a_series_followed_by_a_genre_descriptor_names_no_book(self):
+        assert (
+            _compute_search_title("Jack Reacher: A Novel", "A Novel", series_name="Jack Reacher")
+            is None
+        )
+
     def test_strips_series_prefix_when_series_name_available(self):
         assert (
             _compute_search_title("Mistborn: The Final Empire", None, series_name="Mistborn")
