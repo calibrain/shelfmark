@@ -2,6 +2,7 @@
 
 import hashlib
 import io
+import re
 import zipfile
 from typing import TYPE_CHECKING
 
@@ -83,12 +84,13 @@ class StandardEbooksHandler(DownloadHandler):
             else:
                 book_name = build_filename(task.title, task.author, task.year, task.format or "epub")
 
-            suffix = hashlib.sha1(task.task_id.encode("utf-8")).hexdigest()[:12]
+            raw_suffix = hashlib.sha1((task.task_id or "").encode("utf-8")).hexdigest()[:12]
+            suffix = re.sub(r"[^A-Za-z0-9_-]", "_", raw_suffix) or "task"
             if "." in book_name:
                 stem, ext = book_name.rsplit(".", 1)
-                book_name = f"{stem}-{suffix}.{ext}"
+                book_name = f"{stem}_{suffix}.{ext}"
             else:
-                book_name = f"{book_name}-{suffix}"
+                book_name = f"{book_name}_{suffix}"
 
             book_path = resolve_staged_path(TMP_DIR, book_name)
             if book_path is None:

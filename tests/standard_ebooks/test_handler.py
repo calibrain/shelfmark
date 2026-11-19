@@ -81,7 +81,7 @@ def test_download_success(tmp_path):
     assert result is not None
     result_path = Path(result)
     assert result_path.parent == tmp_path
-    assert result_path.name.startswith("mary-shelley_frankenstein-")
+    assert result_path.name.startswith("mary-shelley_frankenstein_")
     assert result_path.suffix == ".epub"
     assert result_path.exists()
     assert result_path.stat().st_size == len(epub.getbuffer())
@@ -113,7 +113,7 @@ def test_download_fallback_when_primary_fails(tmp_path):
     assert result is not None
     result_path = Path(result)
     assert result_path.parent == tmp_path
-    assert result_path.name.startswith("mary-shelley_frankenstein-")
+    assert result_path.name.startswith("mary-shelley_frankenstein_")
     assert result_path.suffix == ".epub"
     assert result_path.exists()
     assert len(calls) == 2
@@ -144,7 +144,7 @@ def test_download_html_error_page_rejected_and_fallback_used(tmp_path):
     assert result is not None
     result_path = Path(result)
     assert result_path.parent == tmp_path
-    assert result_path.name.startswith("mary-shelley_frankenstein-")
+    assert result_path.name.startswith("mary-shelley_frankenstein_")
     assert result_path.suffix == ".epub"
     assert result_path.exists()
     assert len(calls) == 2
@@ -163,7 +163,7 @@ def test_download_valid_minimal_epub_accepted(tmp_path):
     assert result is not None
     result_path = Path(result)
     assert result_path.parent == tmp_path
-    assert result_path.name.startswith("mary-shelley_frankenstein-")
+    assert result_path.name.startswith("mary-shelley_frankenstein_")
     assert result_path.suffix == ".epub"
     assert result_path.exists()
     assert result_path.stat().st_size == len(epub.getbuffer())
@@ -295,7 +295,6 @@ def test_download_fallback_private_source_url_reports_error(tmp_path):
 
 
 def test_concurrent_tasks_with_same_metadata_get_unique_staged_filenames(tmp_path):
-    epub = _valid_epub_buf()
     task_a = _task(task_id="standard_ebooks:author/title-a", title="Same Title", fmt="epub")
     task_b = _task(task_id="standard_ebooks:author/title-b", title="Same Title", fmt="epub")
 
@@ -314,3 +313,39 @@ def test_concurrent_tasks_with_same_metadata_get_unique_staged_filenames(tmp_pat
     assert path_a.suffix == ".epub" == path_b.suffix
     assert path_a.exists()
     assert path_b.exists()
+
+
+def test_staged_filename_stays_inside_tmp_dir_for_hostile_task_ids(tmp_path):
+    task_a = _task(task_id="standard_ebooks:../../evil", title="Same Title", fmt="epub")
+    task_b = _task(task_id="standard_ebooks:author/../other", title="Same Title", fmt="epub")
+
+    def fake_download(*args, **kwargs):
+        return _valid_epub_buf()
+
+    result_a, _ = _run(task_a, tmp_path, download_url_side_effect=fake_download)
+    result_b, _ = _run(task_b, tmp_path, download_url_side_effect=fake_download)
+
+    assert result_a is not None
+    assert result_b is not None
+    path_a = Path(result_a)
+    path_b = Path(result_b)
+    assert path_a.parent == tmp_path
+    assert path_b.parent == tmp_path
+    assert path_a.suffix == ".epub" == path_b.suffix
+    assert path_a.resolve().parent == tmp_path.resolve()
+    assert path_b.resolve().parent == tmp_path.resolve()
+    assert not list(tmp_path.parent.glob("evil*.epub"))
+
+
+def test_same_task_id_gives_same_staged_path_on_repeat_calls(tmp_path):
+    task = _task(task_id="standard_ebooks:author/repeat", title="Repeat", fmt="epub")
+
+    def fake_download(*args, **kwargs):
+        return _valid_epub_buf()
+
+    result_a, _ = _run(task, tmp_path, download_url_side_effect=fake_download)
+    result_b, _ = _run(task, tmp_path, download_url_side_effect=fake_download)
+
+    assert result_a == result_b
+    assert Path(result_a).parent == tmp_path
+    assert Path(result_a).suffix == ".epub"
