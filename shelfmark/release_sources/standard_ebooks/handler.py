@@ -1,5 +1,7 @@
 """Standard Ebooks download handler - downloads EPUBs from standardebooks.org."""
 
+import io
+import zipfile
 from typing import TYPE_CHECKING
 
 from shelfmark.config.env import TMP_DIR
@@ -20,6 +22,39 @@ logger = setup_logger(__name__)
 
 # Files under 1 KB are almost certainly empty error stubs rather than valid EPUB archives.
 _MIN_VALID_FILE_SIZE = 1024
+
+
+def _is_valid_epub(data: io.BytesIO) -> bool:
+    """Return True only if data is a real EPUB archive.
+
+    A valid EPUB must be a ZIP file containing a ``mimetype`` entry equal to
+    ``application/epub+zip`` and ``META-INF/container.xml``. Never raises.
+    """
+    try:
+        position = data.tell()
+        data.seek(0)
+        if not zipfile.is_zipfile(data):
+            return False
+        data.seek(0)
+        with zipfile.ZipFile(data) as archive:
+            try:
+                mimetype = archive.read("mimetype")
+            except KeyError:
+                return False
+            if mimetype.strip() != b"application/epub+zip":
+                return False
+            try:
+                archive.getinfo("META-INF/container.xml")
+            except KeyError:
+                return False
+        return True
+    except Exception:
+        return False
+    finally:
+        try:
+            data.seek(position)
+        except Exception:
+            pass
 
 
 @register_handler("standard_ebooks")
@@ -72,7 +107,13 @@ class StandardEbooksHandler(DownloadHandler):
                 referer=task.source_url,
             )
 
-            # Fallback: if constructed URL failed, inspect the book landing page
+            if data and (data.tell() < _MIN_VALID_FILE_SIZE or not _is_valid_epub(data)):
+                logger.warning(
+                    "Standard Ebooks download from primary URL was invalid, trying fallback"
+                )
+                data = None
+
+            # Fallback: if primary download failed or was invalid, inspect the book landing page
             if not data and not cancel_flag.is_set():
                 landing_url = task.source_url or f"{scraper.BASE_URL}/ebooks/{slug}"
                 status_callback("resolving", "Checking book page for download link")
@@ -91,6 +132,11 @@ class StandardEbooksHandler(DownloadHandler):
                             status_callback,
                             referer=landing_url,
                         )
+                        if data and (data.tell() < _MIN_VALID_FILE_SIZE or not _is_valid_epub(data)):
+                            logger.warning(
+                                "Standard Ebooks download from fallback URL was invalid"
+                            )
+                            data = None
 
             if cancel_flag.is_set():
                 status_callback("cancelled", "Cancelled")
@@ -98,11 +144,6 @@ class StandardEbooksHandler(DownloadHandler):
 
             if not data:
                 status_callback("error", "Failed to download from Standard Ebooks")
-                return None
-
-            if data.tell() < _MIN_VALID_FILE_SIZE:
-                logger.warning("Standard Ebooks file too small (%s bytes), treating as failure", data.tell())
-                status_callback("error", "Standard Ebooks download was incomplete or invalid")
                 return None
 
             data.seek(0)
