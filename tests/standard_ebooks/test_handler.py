@@ -272,6 +272,28 @@ def test_hostile_slug_cannot_escape_tmp_dir(tmp_path):
         assert Path(result).parent == tmp_dir
 
 
+def test_download_fallback_private_source_url_reports_error(tmp_path):
+    from shelfmark.download.network import UnsafeDestinationError
+
+    def fake_download(*args, **kwargs):
+        return None
+
+    def fake_fetch_page(url):
+        raise UnsafeDestinationError("private destination")
+
+    task = _task()
+    task.source_url = "http://127.0.0.1/ebooks/mary-shelley/frankenstein"
+    result, status = _run(
+        task,
+        tmp_path,
+        download_url_side_effect=fake_download,
+        fetch_page_side_effect=fake_fetch_page,
+    )
+
+    assert result is None
+    status.assert_any_call("error", "private destination")
+
+
 def test_concurrent_tasks_with_same_metadata_get_unique_staged_filenames(tmp_path):
     epub = _valid_epub_buf()
     task_a = _task(task_id="standard_ebooks:author/title-a", title="Same Title", fmt="epub")

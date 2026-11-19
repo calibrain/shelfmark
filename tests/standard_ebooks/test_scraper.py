@@ -176,7 +176,8 @@ def test_fetch_page_http_error_returns_none_for_fallback():
     assert res is None
 
 
-def test_fetch_page_private_url_raises_and_does_not_request():
+@pytest.mark.parametrize("url", ["http://127.0.0.1/x", "http://192.168.1.5/x"])
+def test_fetch_page_private_url_raises_and_does_not_request(url):
     with (
         patch.object(
             scraper.network,
@@ -186,8 +187,8 @@ def test_fetch_page_private_url_raises_and_does_not_request():
         patch("requests.get") as mock_get,
     ):
         with pytest.raises(UnsafeDestinationError):
-            scraper.fetch_page("http://127.0.0.1/secret")
-    mock_ensure.assert_called_once_with("http://127.0.0.1/secret")
+            scraper.fetch_page(url)
+    mock_ensure.assert_called_once_with(url)
     mock_get.assert_not_called()
 
 

@@ -111,8 +111,8 @@ def search_standard_ebooks(
     url = f"{base_url.rstrip('/')}/ebooks?query={quote_plus(trimmed)}&per-page={max_results}"
     try:
         html = fetch_page(url, timeout, raise_for_status=True)
-    except network.UnsafeDestinationError:
-        return []
+    except network.UnsafeDestinationError as exc:
+        raise SourceUnavailableError(f"Failed to fetch {url}: {exc}") from exc
     if html is None:
         return []
     return _parse_results(html, base_url, max_results=max_results)
