@@ -2,7 +2,7 @@ import type { FormEvent, KeyboardEvent } from 'react';
 import { useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 
-import { useMountEffect } from '../hooks/useMountEffect';
+import { useDependencyEffect, useMountEffect } from '../hooks/useMountEffect';
 import type { LoginCredentials } from '../types';
 import { buildOidcLoginUrl } from '../utils/authRedirect';
 import { withBasePath } from '../utils/basePath';
@@ -246,11 +246,13 @@ export const LoginForm = ({
     }
   }
 
-  useMountEffect(() => {
+  // Keyed on oidcAutoRedirect rather than run once at mount: LoginPage holds it
+  // false until the logo has loaded, so the redirect fires when it turns on.
+  useDependencyEffect(() => {
     if (oidcAutoRedirect && isOidc && !error && !oidcError) {
       window.location.href = oidcLoginUrl;
     }
-  });
+  }, [oidcAutoRedirect]);
 
   const handleSubmit = (e: FormEvent<HTMLFormElement>) => {
     e.preventDefault();
