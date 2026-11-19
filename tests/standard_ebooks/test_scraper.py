@@ -2,6 +2,11 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+import requests
+
+from shelfmark.download.network import UnsafeDestinationError
+from shelfmark.release_sources import SourceUnavailableError
 from shelfmark.release_sources.standard_ebooks import scraper
 from tests.standard_ebooks import sample_html as html
 
@@ -125,18 +130,83 @@ def test_search_standard_ebooks_empty_query():
     assert scraper.search_standard_ebooks("   ") == []
 
 
+def test_search_standard_ebooks_failed_request_raises():
+    with patch.object(
+        scraper,
+        "fetch_page",
+        side_effect=SourceUnavailableError("timeout"),
+    ):
+        with pytest.raises(SourceUnavailableError):
+            scraper.search_standard_ebooks("frankenstein")
+
+
+def test_search_standard_ebooks_non_200_raises():
+    mock_resp = MagicMock()
+    mock_resp.status_code = 404
+    with (
+        patch.object(scraper.network, "ensure_public_destination"),
+        patch("requests.get", return_value=mock_resp),
+    ):
+        with pytest.raises(SourceUnavailableError):
+            scraper.search_standard_ebooks("frankenstein")
+
+
 def test_fetch_page_success():
     mock_resp = MagicMock()
     mock_resp.status_code = 200
     mock_resp.text = "<html>ok</html>"
-    with patch("requests.get", return_value=mock_resp):
+    with (
+        patch.object(scraper.network, "ensure_public_destination") as mock_ensure,
+        patch("requests.get", return_value=mock_resp) as mock_get,
+    ):
         res = scraper.fetch_page("https://standardebooks.org/ebooks")
     assert res == "<html>ok</html>"
+    mock_ensure.assert_called_once_with("https://standardebooks.org/ebooks")
+    assert mock_get.call_args.kwargs["hooks"] == scraper.network.REDIRECT_GUARD_HOOKS
 
 
-def test_fetch_page_http_error():
+def test_fetch_page_http_error_returns_none_for_fallback():
     mock_resp = MagicMock()
     mock_resp.status_code = 404
-    with patch("requests.get", return_value=mock_resp):
+    with (
+        patch.object(scraper.network, "ensure_public_destination"),
+        patch("requests.get", return_value=mock_resp),
+    ):
         res = scraper.fetch_page("https://standardebooks.org/notfound")
     assert res is None
+
+
+def test_fetch_page_private_url_raises_and_does_not_request():
+    with (
+        patch.object(
+            scraper.network,
+            "ensure_public_destination",
+            side_effect=UnsafeDestinationError("private"),
+        ) as mock_ensure,
+        patch("requests.get") as mock_get,
+    ):
+        with pytest.raises(UnsafeDestinationError):
+            scraper.fetch_page("http://127.0.0.1/secret")
+    mock_ensure.assert_called_once_with("http://127.0.0.1/secret")
+    mock_get.assert_not_called()
+
+
+def test_fetch_page_uses_redirect_guard_hooks():
+    mock_resp = MagicMock()
+    mock_resp.status_code = 200
+    mock_resp.text = "<html>ok</html>"
+    with (
+        patch.object(scraper.network, "ensure_public_destination"),
+        patch("requests.get", return_value=mock_resp) as mock_get,
+    ):
+        scraper.fetch_page("https://standardebooks.org/ebooks")
+    assert mock_get.call_args.kwargs["hooks"] is scraper.network.REDIRECT_GUARD_HOOKS
+
+
+def test_fetch_page_request_exception_raises_on_search_path():
+    with (
+        patch.object(scraper.network, "ensure_public_destination"),
+        patch("requests.get", side_effect=requests.exceptions.Timeout("timeout")),
+    ):
+        with pytest.raises(SourceUnavailableError):
+            scraper.fetch_page("https://standardebooks.org/ebooks", raise_for_status=True)

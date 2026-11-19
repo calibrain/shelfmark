@@ -139,4 +139,5 @@ def test_get_column_config():
     keys = [c.key for c in config.columns]
     assert "extra.language" in keys
     assert "format" in keys
-    assert "size" in keys
+    assert "size" not in keys
+    assert config.grid_template == "minmax(0,2fr) 60px 80px"

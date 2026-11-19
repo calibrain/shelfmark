@@ -132,7 +132,7 @@ class StandardEbooksSource(ReleaseSource):
         return True
 
     def get_column_config(self) -> ReleaseColumnConfig:
-        """Language and format badges -- same standard layout as Libgen."""
+        """Language and format badges."""
         return ReleaseColumnConfig(
             columns=[
                 ColumnSchema(
@@ -153,14 +153,7 @@ class StandardEbooksSource(ReleaseSource):
                     color_hint=ColumnColorHint(type="map", value="format"),
                     uppercase=True,
                 ),
-                ColumnSchema(
-                    key="size",
-                    label="Size",
-                    render_type=ColumnRenderType.SIZE,
-                    align=ColumnAlign.CENTER,
-                    width="80px",
-                ),
             ],
-            grid_template="minmax(0,2fr) 60px 80px 80px",
+            grid_template="minmax(0,2fr) 60px 80px",
             supported_filters=["format", "language"],
         )

@@ -1,5 +1,6 @@
 """Standard Ebooks download handler - downloads EPUBs from standardebooks.org."""
 
+import hashlib
 import io
 import zipfile
 from typing import TYPE_CHECKING
@@ -81,6 +82,13 @@ class StandardEbooksHandler(DownloadHandler):
                 book_name = f"{slug.replace('/', '_')}.{normalize_format(task.format) or 'epub'}"
             else:
                 book_name = build_filename(task.title, task.author, task.year, task.format or "epub")
+
+            suffix = hashlib.sha1(task.task_id.encode("utf-8")).hexdigest()[:12]
+            if "." in book_name:
+                stem, ext = book_name.rsplit(".", 1)
+                book_name = f"{stem}-{suffix}.{ext}"
+            else:
+                book_name = f"{book_name}-{suffix}"
 
             book_path = resolve_staged_path(TMP_DIR, book_name)
             if book_path is None:

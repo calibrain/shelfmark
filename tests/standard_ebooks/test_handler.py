@@ -78,10 +78,13 @@ def test_download_success(tmp_path):
     task = _task()
     result, status = _run(task, tmp_path, download_url_side_effect=fake_download)
 
-    expected = tmp_path / "mary-shelley_frankenstein.epub"
-    assert result == str(expected)
-    assert expected.exists()
-    assert expected.stat().st_size == len(epub.getbuffer())
+    assert result is not None
+    result_path = Path(result)
+    assert result_path.parent == tmp_path
+    assert result_path.name.startswith("mary-shelley_frankenstein-")
+    assert result_path.suffix == ".epub"
+    assert result_path.exists()
+    assert result_path.stat().st_size == len(epub.getbuffer())
     assert "mary-shelley_frankenstein.epub" in captured["link"]
     status.assert_any_call("resolving", "Connecting to Standard Ebooks")
 
@@ -107,9 +110,12 @@ def test_download_fallback_when_primary_fails(tmp_path):
         fetch_page_side_effect=fake_fetch_page,
     )
 
-    expected = tmp_path / "mary-shelley_frankenstein.epub"
-    assert result == str(expected)
-    assert expected.exists()
+    assert result is not None
+    result_path = Path(result)
+    assert result_path.parent == tmp_path
+    assert result_path.name.startswith("mary-shelley_frankenstein-")
+    assert result_path.suffix == ".epub"
+    assert result_path.exists()
     assert len(calls) == 2
     status.assert_any_call("resolving", "Checking book page for download link")
 
@@ -135,9 +141,12 @@ def test_download_html_error_page_rejected_and_fallback_used(tmp_path):
         fetch_page_side_effect=fake_fetch_page,
     )
 
-    expected = tmp_path / "mary-shelley_frankenstein.epub"
-    assert result == str(expected)
-    assert expected.exists()
+    assert result is not None
+    result_path = Path(result)
+    assert result_path.parent == tmp_path
+    assert result_path.name.startswith("mary-shelley_frankenstein-")
+    assert result_path.suffix == ".epub"
+    assert result_path.exists()
     assert len(calls) == 2
     status.assert_any_call("resolving", "Checking book page for download link")
 
@@ -151,10 +160,13 @@ def test_download_valid_minimal_epub_accepted(tmp_path):
     task = _task()
     result, _ = _run(task, tmp_path, download_url_side_effect=fake_download)
 
-    expected = tmp_path / "mary-shelley_frankenstein.epub"
-    assert result == str(expected)
-    assert expected.exists()
-    assert expected.stat().st_size == len(epub.getbuffer())
+    assert result is not None
+    result_path = Path(result)
+    assert result_path.parent == tmp_path
+    assert result_path.name.startswith("mary-shelley_frankenstein-")
+    assert result_path.suffix == ".epub"
+    assert result_path.exists()
+    assert result_path.stat().st_size == len(epub.getbuffer())
 
 
 def test_download_all_attempts_fail_returns_none(tmp_path):
@@ -255,6 +267,28 @@ def test_hostile_slug_cannot_escape_tmp_dir(tmp_path):
         return _valid_epub_buf()
 
     result, _ = _run(task, tmp_dir, download_url_side_effect=fake_download)
-    assert not (tmp_path / "evil.epub").exists()
+    assert not list(tmp_path.glob("evil*.epub"))
     if result:
         assert Path(result).parent == tmp_dir
+
+
+def test_concurrent_tasks_with_same_metadata_get_unique_staged_filenames(tmp_path):
+    epub = _valid_epub_buf()
+    task_a = _task(task_id="standard_ebooks:author/title-a", title="Same Title", fmt="epub")
+    task_b = _task(task_id="standard_ebooks:author/title-b", title="Same Title", fmt="epub")
+
+    def fake_download(*args, **kwargs):
+        return _valid_epub_buf()
+
+    result_a, _ = _run(task_a, tmp_path, download_url_side_effect=fake_download)
+    result_b, _ = _run(task_b, tmp_path, download_url_side_effect=fake_download)
+
+    assert result_a is not None
+    assert result_b is not None
+    path_a = Path(result_a)
+    path_b = Path(result_b)
+    assert path_a != path_b
+    assert path_a.parent == tmp_path == path_b.parent
+    assert path_a.suffix == ".epub" == path_b.suffix
+    assert path_a.exists()
+    assert path_b.exists()

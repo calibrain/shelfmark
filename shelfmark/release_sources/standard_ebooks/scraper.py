@@ -15,7 +15,7 @@ import requests
 from shelfmark.core.logger import setup_logger
 from shelfmark.download import http as downloader
 from shelfmark.download import network
-from shelfmark.release_sources import BrowseRecord
+from shelfmark.release_sources import BrowseRecord, SourceUnavailableError
 
 if TYPE_CHECKING:
     pass
@@ -25,8 +25,18 @@ logger = setup_logger(__name__)
 BASE_URL = "https://standardebooks.org"
 
 
-def fetch_page(url: str, timeout: tuple[int, int] = (5, 15)) -> str | None:
-    """GET a Standard Ebooks page, returning text on HTTP 200 or None on failure."""
+def fetch_page(
+    url: str,
+    timeout: tuple[int, int] = (5, 15),
+    *,
+    raise_for_status: bool = False,
+) -> str | None:
+    """GET a Standard Ebooks page, returning text on HTTP 200 or None on failure.
+
+    When ``raise_for_status`` is True, request failures and non-200 responses raise
+    ``SourceUnavailableError``. Unsafe destinations always raise.
+    """
+    network.ensure_public_destination(url)
     headers = {**downloader.DOWNLOAD_HEADERS, "Referer": BASE_URL}
     try:
         response = requests.get(
@@ -36,12 +46,21 @@ def fetch_page(url: str, timeout: tuple[int, int] = (5, 15)) -> str | None:
             allow_redirects=True,
             proxies=network.get_proxies(url),
             verify=network.get_ssl_verify(url),
+            hooks=network.REDIRECT_GUARD_HOOKS,
         )
+    except network.UnsafeDestinationError:
+        raise
     except requests.exceptions.RequestException as exc:
         logger.debug("Standard Ebooks fetch failed for %s: %s", url, exc)
+        if raise_for_status:
+            raise SourceUnavailableError(f"Failed to fetch {url}: {exc}") from exc
         return None
     if response.status_code != HTTPStatus.OK:
         logger.debug("Standard Ebooks fetch %s returned %s", url, response.status_code)
+        if raise_for_status:
+            raise SourceUnavailableError(
+                f"Failed to fetch {url}: HTTP {response.status_code}"
+            )
         return None
     return response.text
 
@@ -90,7 +109,10 @@ def search_standard_ebooks(
         return []
 
     url = f"{base_url.rstrip('/')}/ebooks?query={quote_plus(trimmed)}&per-page={max_results}"
-    html = fetch_page(url, timeout)
+    try:
+        html = fetch_page(url, timeout, raise_for_status=True)
+    except network.UnsafeDestinationError:
+        return []
     if html is None:
         return []
     return _parse_results(html, base_url, max_results=max_results)
