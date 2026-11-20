@@ -92,6 +92,7 @@ CREATE TABLE IF NOT EXISTS download_history (
     final_status TEXT NOT NULL,
     status_message TEXT,
     download_path TEXT,
+    download_identity TEXT,
     retry_payload TEXT,
     queued_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     terminal_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -252,6 +253,7 @@ class UserDB:
                 self._migrate_download_history_queued_at(conn)
                 self._migrate_download_history_retry_payload(conn)
                 self._migrate_download_history_downloads(conn)
+                self._migrate_download_history_download_identity(conn)
                 conn.commit()
                 # WAL mode must be changed outside an open transaction.
                 conn.execute("PRAGMA journal_mode=WAL")
@@ -325,6 +327,13 @@ class UserDB:
         column_names = {str(col["name"]) for col in columns}
         if "downloads" not in column_names:
             conn.execute("ALTER TABLE download_history ADD COLUMN downloads INTEGER")
+
+    def _migrate_download_history_download_identity(self, conn: sqlite3.Connection) -> None:
+        """Ensure download_history.download_identity exists for checking local downloads."""
+        columns = conn.execute("PRAGMA table_info(download_history)").fetchall()
+        column_names = {str(col["name"]) for col in columns}
+        if "download_identity" not in column_names:
+            conn.execute("ALTER TABLE download_history ADD COLUMN download_identity TEXT")
 
     def create_user(
         self,

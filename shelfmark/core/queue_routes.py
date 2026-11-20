@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import binascii
+import os
 import sqlite3
 import unicodedata
 from pathlib import Path
@@ -11,7 +12,7 @@ from urllib.parse import quote
 
 from flask import Response, jsonify, request, send_file, session
 
-from shelfmark.core.download_history_service import DownloadHistoryService
+from shelfmark.core.delivered_files import open_delivered_file
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import build_filename
 from shelfmark.core.request_helpers import normalize_optional_text, normalize_positive_int
@@ -27,9 +28,11 @@ from shelfmark.download.zip_stream import stream_zip
 
 if TYPE_CHECKING:
     from collections.abc import Callable
+    from typing import BinaryIO
 
     from flask import Flask
 
+    from shelfmark.core.download_history_service import DownloadHistoryService
     from shelfmark.core.models import DownloadTask
     from shelfmark.core.user_db import UserDB
 
@@ -120,10 +123,64 @@ def _attachment_filename_options(download_name: str) -> dict[str, str]:
     return {"filename": download_name}
 
 
-def _zip_download_response(file_paths: list[str], task: DownloadTask) -> Response:
-    """Send a multi-file download (audiobook chapters, a pack) as one streamed ZIP."""
+def _delivered_opener(identities: dict[str, str]) -> Callable[[str], BinaryIO]:
+    """Open a file of a live download only while it is still the file delivered."""
+
+    def opener(path: str) -> BinaryIO:
+        handle = open_delivered_file(path, identities.get(path))
+        if handle is None:
+            msg = "a file of the download is not the file that was delivered"
+            raise OSError(msg)
+        return handle
+
+    return opener
+
+
+def _all_delivered(file_paths: list[str], identities: dict[str, str]) -> bool:
+    """Check every file of a download before anything is sent, holding one open at a time."""
+    for path in file_paths:
+        handle = open_delivered_file(path, identities.get(path))
+        if handle is None:
+            return False
+        handle.close()
+    return True
+
+
+def _send_delivered_file(handle: BinaryIO, download_name: str) -> Response:
+    """Send an already opened file, closing it if the response cannot be built."""
+    try:
+        result = os.fstat(handle.fileno())
+        response = send_file(
+            handle,
+            download_name=download_name,
+            as_attachment=True,
+            conditional=False,
+            last_modified=result.st_mtime,
+        )
+        # send_file cannot size an open file, so it would leave out the length (and with
+        # it download progress) and answer a Range request with the whole file.
+        response.content_length = result.st_size
+        response.make_conditional(
+            request.environ, accept_ranges=True, complete_length=result.st_size
+        )
+    except BaseException:
+        handle.close()
+        raise
+    return response
+
+
+def _zip_download_response(
+    file_paths: list[str], identities: dict[str, str], task: DownloadTask
+) -> Response:
+    """Send a multi-file download (audiobook chapters, a pack) as one streamed ZIP.
+
+    Each file is opened and checked again as the archive reaches it, so only one is
+    open at a time; one that changed after the check up front ends the archive there.
+    """
     download_name = build_filename(task.title or "download", task.author, task.year, "zip")
-    response = Response(stream_zip(file_paths), mimetype="application/zip")
+    response = Response(
+        stream_zip(file_paths, _delivered_opener(identities)), mimetype="application/zip"
+    )
     response.headers.set(
         "Content-Disposition", "attachment", **_attachment_filename_options(download_name)
     )
@@ -251,17 +308,14 @@ def register_queue_routes(
                         if history_row is not None:
                             owner_user_id = history_row.get("user_id")
                             if is_admin or owner_user_id == db_user_id:
-                                download_path = (
-                                    DownloadHistoryService._resolve_existing_download_path(
-                                        history_row.get("download_path")
-                                    )
+                                download_path = normalize_optional_text(
+                                    history_row.get("download_path")
                                 )
-                                if download_path:
-                                    return send_file(
-                                        download_path,
-                                        download_name=Path(download_path).name,
-                                        as_attachment=True,
-                                    )
+                                handle = open_delivered_file(
+                                    download_path, history_row.get("download_identity")
+                                )
+                                if download_path and handle is not None:
+                                    return _send_delivered_file(handle, Path(download_path).name)
 
                 # Book data not found or not available
                 return jsonify({"error": "File not found"}), 404
@@ -276,11 +330,17 @@ def register_queue_routes(
                 ):
                     return jsonify({"error": "File not found"}), 404
 
+            identities = book_info.download_identities if book_info is not None else {}
             if book_info is not None and len(file_paths) > 1:
-                return _zip_download_response(file_paths, book_info)
+                if not _all_delivered(file_paths, identities):
+                    return jsonify({"error": "File not found"}), 404
+                return _zip_download_response(file_paths, identities, book_info)
 
+            handle = open_delivered_file(file_paths[0], identities.get(file_paths[0]))
+            if handle is None:
+                return jsonify({"error": "File not found"}), 404
             file_name = book_info.get_filename() if book_info is not None else Path(book_id).name
-            return send_file(file_paths[0], download_name=file_name, as_attachment=True)
+            return _send_delivered_file(handle, file_name)
 
         except _OPERATIONAL_ERRORS as e:
             # The details are logged. The message of an OSError names the file's path on the server,

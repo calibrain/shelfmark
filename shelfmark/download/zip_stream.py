@@ -1,12 +1,14 @@
 """Stream several downloaded files to a client as one ZIP, without staging the archive."""
 
 import os
+import time
 import zipfile
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Callable, Iterator
+    from typing import BinaryIO
 
 _ZIP_STREAM_CHUNK_SIZE = 1024 * 1024
 
@@ -48,21 +50,43 @@ def zip_entry_names(paths: list[str]) -> list[tuple[Path, str]]:
     return [(file, file.relative_to(root).as_posix()) for file in files]
 
 
-def stream_zip(paths: list[str]) -> Iterator[bytes]:
+def _zip_info_from_stat(result: os.stat_result, arcname: str) -> zipfile.ZipInfo:
+    """Build an entry the way ZipInfo.from_file does, from a stat of the open file."""
+    date_time = time.localtime(result.st_mtime)[0:6]
+    if date_time[0] < 1980:
+        date_time = (1980, 1, 1, 0, 0, 0)
+    elif date_time[0] > 2107:
+        date_time = (2107, 12, 31, 23, 59, 59)
+    info = zipfile.ZipInfo(arcname, date_time)
+    info.external_attr = (result.st_mode & 0xFFFF) << 16
+    info.file_size = result.st_size
+    return info
+
+
+def stream_zip(
+    paths: list[str], opener: Callable[[str], BinaryIO] | None = None
+) -> Iterator[bytes]:
     """Yield an uncompressed ZIP of ``paths``, reading each file once in chunks.
 
     Stored, not deflated: audiobooks and ebooks are already compressed, so deflating
     them would cost CPU for next to nothing. ZIP64 kicks in per entry from the file
     size, which a multi-gigabyte audiobook needs.
+
+    ``opener``, when given, opens each path in place of a plain open, one file at a
+    time; it raises OSError to stop the archive there.
     """
     sink = _ChunkSink()
     with zipfile.ZipFile(sink, "w", compression=zipfile.ZIP_STORED, allowZip64=True) as archive:
         for path, arcname in zip_entry_names(paths):
-            info = zipfile.ZipInfo.from_file(path, arcname, strict_timestamps=False)
-            info.compress_type = zipfile.ZIP_STORED
-            with path.open("rb") as source, archive.open(info, "w") as target:
-                while chunk := source.read(_ZIP_STREAM_CHUNK_SIZE):
-                    target.write(chunk)
-                    yield from sink.drain()
+            opened = opener(str(path)) if opener is not None else path.open("rb")
+            with opened as source:
+                # From the open file, so a path swapped after it was opened cannot change
+                # the entry's size or time, or vanish mid-stream.
+                info = _zip_info_from_stat(os.fstat(source.fileno()), arcname)
+                info.compress_type = zipfile.ZIP_STORED
+                with archive.open(info, "w") as target:
+                    while chunk := source.read(_ZIP_STREAM_CHUNK_SIZE):
+                        target.write(chunk)
+                        yield from sink.drain()
             yield from sink.drain()
     yield from sink.drain()

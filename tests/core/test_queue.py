@@ -123,3 +123,40 @@ def test_a_terminal_task_can_still_be_requeued():
 
     assert queue.enqueue_existing("race-task") is True
     assert queue.get_task_status("race-task") == QueueStatus.QUEUED
+
+
+def test_finishing_a_download_records_the_identity_of_each_delivered_file(tmp_path):
+    first = tmp_path / "Part 1.mp3"
+    second = tmp_path / "Part 2.mp3"
+    first.write_bytes(b"one")
+    second.write_bytes(b"two")
+    queue = BookQueue()
+    task = _make_task("delivered-task")
+    task.download_paths = [str(first), str(second)]
+    queue.add(task)
+
+    queue.update_download_path("delivered-task", str(first))
+
+    recorded = queue.get_task("delivered-task")
+    assert recorded.download_path == str(first)
+    assert set(recorded.download_identities) == {str(first), str(second)}
+    assert all(recorded.download_identities.values())
+
+
+def test_no_identity_is_kept_when_the_file_list_changes_while_it_is_taken(tmp_path):
+    book = tmp_path / "book.epub"
+    book.write_bytes(b"epub")
+    queue = BookQueue()
+    task = _make_task("changing-task")
+    queue.add(task)
+
+    def identity_then_change(path):
+        task.download_paths = [str(tmp_path / "other.epub")]
+        return "1:2:3"
+
+    with patch("shelfmark.core.queue.file_identity", side_effect=identity_then_change):
+        queue.update_download_path("changing-task", str(book))
+
+    recorded = queue.get_task("changing-task")
+    assert recorded.download_path == str(book)
+    assert recorded.download_identities == {}

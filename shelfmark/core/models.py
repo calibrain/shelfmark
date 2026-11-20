@@ -197,6 +197,9 @@ class DownloadTask:
     # Every file the output step produced, download_path among them. Kept in memory
     # only: history persists download_path alone.
     download_paths: list[str] = field(default_factory=list)
+    # Identity of each delivered file (see core.delivered_files), taken when the
+    # download finished. A local download sends a file only while it still matches.
+    download_identities: dict[str, str] = field(default_factory=dict)
     last_error_message: str | None = None
     last_error_type: str | None = None
 
