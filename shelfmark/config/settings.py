@@ -408,6 +408,13 @@ def _test_audiobookshelf_library(current_values: dict[str, Any] | None = None) -
     return library_index.test_connection("audiobookshelf", current_values)
 
 
+def _test_bookorbit_library(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Action-button callback: read BookOrbit and count the ebooks and the audiobooks."""
+    from shelfmark.core.library_providers import bookorbit
+
+    return bookorbit.check_connection(current_values)
+
+
 @register_settings("general", "General", icon="settings", order=0)
 def general_settings() -> list[SettingsField]:
     """Core application settings."""
@@ -490,6 +497,48 @@ def general_settings() -> list[SettingsField]:
             label="Test Audiobookshelf library",
             description="Check that Shelfmark can reach Audiobookshelf and count the items.",
             callback=_test_audiobookshelf_library,
+        ),
+        CheckboxField(
+            key="LIBRARY_CHECK_BOOKORBIT_EBOOK_ENABLED",
+            label="Mark books already in your BookOrbit library",
+            description=(
+                "Ask your BookOrbit server which ebooks you already own, so search results mark "
+                "them and synced and automatic downloads skip them. Read only, nothing is "
+                "written to BookOrbit."
+            ),
+            default=False,
+        ),
+        CheckboxField(
+            key="LIBRARY_CHECK_BOOKORBIT_AUDIOBOOK_ENABLED",
+            label="Mark audiobooks already in your BookOrbit library",
+            description=(
+                "Ask your BookOrbit server which audiobooks you already own. Each format is "
+                "checked on its own: an ebook in BookOrbit does not make its audiobook owned."
+            ),
+            default=False,
+        ),
+        TextField(
+            key="BOOKORBIT_URL",
+            label="BookOrbit URL",
+            description=(
+                "Base URL reachable from the Shelfmark container, without /api/v1, e.g. "
+                "http://bookorbit:3000."
+            ),
+            placeholder="http://bookorbit:3000",
+        ),
+        PasswordField(
+            key="BOOKORBIT_API_KEY",
+            label="BookOrbit API Key",
+            description=(
+                "A read-only API key from BookOrbit 3.8.0 or later (Settings > You > API keys). "
+                "Limit it to the libraries to check: the check sees only what the key sees."
+            ),
+        ),
+        ActionButton(
+            key="test_bookorbit_library",
+            label="Test BookOrbit library",
+            description="Check that Shelfmark can reach BookOrbit and count its ebooks and audiobooks.",
+            callback=_test_bookorbit_library,
         ),
         HeadingField(
             key="search_defaults_heading",

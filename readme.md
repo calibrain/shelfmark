@@ -22,7 +22,7 @@ Works great alongside the following library tools, with support for automatic im
 - **Flexible Search** - Search metadata providers (Hardcover, Open Library, Google Books, DNB, Databáze knih, Moly.hu) for rich book and audiobook discovery, or query configured sources directly
 - **Multi-User & Requests** - Share your instance with others, let users browse and request books, and manage approvals with configurable notifications
 - **Authentication** - Built-in login, OIDC single sign-on, proxy auth, and Calibre-Web database support
-- **Library Check** - Optionally mark search results you already own in a Calibre or Audiobookshelf library, so you don't download a second copy. See [Library Check](docs/library-check.md)
+- **Library Check** - Optionally mark search results you already own in a Calibre, Audiobookshelf or BookOrbit library, so you don't download a second copy. See [Library Check](docs/library-check.md)
 - **Hardcover Sync** - Optionally pull a Hardcover shelf in as requests and download the books without an admin picking a release. Off by default. See [Hardcover Sync](docs/hardcover-sync.md)
 - **Real-Time Progress** - Unified download queue with live status updates across all sources
 - **Network Flexibility** - Configurable proxy support, DNS settings, and optional Cloudflare handling for protected sources
@@ -261,7 +261,7 @@ Shelfmark is a manual search and download tool, the entry point to your book lib
 
 Shelfmark intentionally does not:
 
-- **Manage your library** - it never edits, tags or reorganises what you already own. The optional [Library Check](docs/library-check.md) only reads your Calibre or Audiobookshelf library to mark results you already have
+- **Manage your library** - it never edits, tags or reorganises what you already own. The optional [Library Check](docs/library-check.md) only reads your Calibre, Audiobookshelf or BookOrbit library to mark results you already have
 - **Integrate with library software beyond delivery** - what happens after delivery is up to your library tool
 - **Monitor authors, series, or new releases** - there is no watching for new books. The optional [Hardcover Sync](docs/hardcover-sync.md) is the one background job: it turns a Hardcover shelf you choose into requests, and it is off by default
 - **Queue future downloads** - if a book isn't available now, Shelfmark won't watch for it. Hardcover Sync retries a request on a schedule, which is the closest it gets
