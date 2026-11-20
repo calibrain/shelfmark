@@ -26,6 +26,9 @@ logger = setup_logger(__name__)
 _OPERATIONAL_ERRORS = (OSError, RuntimeError, TypeError, ValueError, sqlite3.Error)
 _IMPORT_OPERATIONAL_ERRORS = (ImportError, *_OPERATIONAL_ERRORS)
 
+# The setting that holds a user's own account token for a provider that has accounts.
+_ACCOUNT_TOKEN_SETTINGS = {"hardcover": "HARDCOVER_SYNC_TOKEN"}
+
 
 def _resolve_metadata_provider(provider_name: str) -> MetadataProvider:
     """Validate, instantiate and return a ready metadata provider.
@@ -104,6 +107,33 @@ def register_metadata_routes(
         Otherwise only an admin may use them.
         """
         return resolve_auth_mode() == "none" or bool(session.get("is_admin", False))
+
+    def _own_account_provider(provider_name: str) -> MetadataProvider | None:
+        """The provider signed in as the current user's own account, or None if they have none."""
+        setting = _ACCOUNT_TOKEN_SETTINGS.get(provider_name)
+        db_user_id = get_session_db_user_id(session)
+        if setting is None or db_user_id is None:
+            return None
+        token = app_config.get_user_override(setting, user_id=db_user_id)
+        if not isinstance(token, str) or not token.strip():
+            return None
+        from shelfmark.metadata_providers import get_provider
+
+        provider = get_provider(provider_name, api_key=token.strip(), own_account=True)
+        return provider if provider.is_available() else None
+
+    def _resolve_account_provider(provider_name: str) -> MetadataProvider | None:
+        """The provider to use for this session's own lists and shelves, or None.
+
+        A user who connected their own account (their Hardcover token) uses that. Otherwise the
+        instance account answers, but only for an admin or when no authentication is configured.
+        """
+        own = _own_account_provider(provider_name)
+        if own is not None:
+            return own
+        if not _session_may_use_provider_account():
+            return None
+        return _resolve_metadata_provider(provider_name)
 
     @app.route("/api/metadata/providers", methods=["GET"])
     @login_required
@@ -336,9 +366,10 @@ def register_metadata_routes(
 
             # Extract custom search field values from query params
             fields: dict[str, Any] = {}
-            may_use_account = _session_may_use_provider_account()
+            account_fields = getattr(provider, "account_search_fields", frozenset())
+            account_provider = _resolve_account_provider(provider.name) if account_fields else None
             for search_field in provider.search_fields:
-                if search_field.key in provider.account_search_fields and not may_use_account:
+                if search_field.key in account_fields and account_provider is None:
                     continue
                 value = request.args.get(search_field.key)
                 if value is not None:
@@ -366,6 +397,8 @@ def register_metadata_routes(
                 fields=fields,
                 user_id=db_user_id,
             )
+            if account_provider is not None and any(key in fields for key in account_fields):
+                provider = account_provider
             search_result = provider.search_paginated(options)
 
             # Convert BookMetadata objects to dicts
@@ -432,11 +465,11 @@ def register_metadata_routes(
             if not provider or not provider.is_available():
                 return jsonify({"options": []})
 
-            if (
-                field_key in provider.account_search_fields
-                and not _session_may_use_provider_account()
-            ):
-                return jsonify({"options": []})
+            if field_key in provider.account_search_fields:
+                account_provider = _resolve_account_provider(provider.name)
+                if account_provider is None:
+                    return jsonify({"options": []})
+                provider = account_provider
 
             options = provider.get_search_field_options(field_key, query=query_text or None)
             return jsonify({"options": options})
@@ -490,8 +523,8 @@ def register_metadata_routes(
     @_handle_target_errors("Failed to load book targets")
     def api_metadata_book_targets(provider: str, book_id: str) -> Response | tuple[Response, int]:
         """Get provider-managed list/status targets for a specific book."""
-        prov = _resolve_metadata_provider(provider)
-        if not _session_may_use_provider_account():
+        prov = _resolve_account_provider(provider)
+        if prov is None:
             return jsonify({"options": []})
         return jsonify({"options": prov.get_book_targets(book_id)})
 
@@ -500,7 +533,7 @@ def register_metadata_routes(
     @_handle_target_errors("Failed to load book targets")
     def api_metadata_book_targets_batch(provider: str) -> Response | tuple[Response, int]:
         """Get provider-managed list/status targets for multiple books."""
-        prov = _resolve_metadata_provider(provider)
+        prov = _resolve_account_provider(provider)
 
         payload = request.get_json(silent=True) or {}
         raw_ids = payload.get("book_ids", []) if isinstance(payload, dict) else []
@@ -509,7 +542,7 @@ def register_metadata_routes(
 
         book_ids = [str(bid) for bid in raw_ids[:50]]
 
-        if not _session_may_use_provider_account():
+        if prov is None:
             return jsonify({"results": {book_id: [] for book_id in book_ids}})
         return jsonify({"results": prov.get_book_targets_batch(book_ids)})
 
@@ -520,9 +553,11 @@ def register_metadata_routes(
         provider: str, book_id: str
     ) -> Response | tuple[Response, int]:
         """Set whether a book belongs to a provider-managed list or shelf."""
-        if not _session_may_use_provider_account():
-            return jsonify({"error": "Admin access required"}), 403
-        prov = _resolve_metadata_provider(provider)
+        prov = _resolve_account_provider(provider)
+        if prov is None:
+            return jsonify(
+                {"error": "Connect your own account in your settings to change lists and shelves"}
+            ), 403
 
         payload = request.get_json(silent=True) or {}
         target = str(payload.get("target", "")).strip() if isinstance(payload, dict) else ""
