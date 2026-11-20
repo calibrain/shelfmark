@@ -277,12 +277,30 @@ def clear_completed_downloads(page: Page) -> None:
     page.wait_for_timeout(2000)
 
 
+def calibre_title_search(title: str) -> str:
+    """A calibre search expression matching this exact title.
+
+    Calibre has its own query language: a term with spaces or quotes goes in
+    double quotes, and a quote or backslash inside it is escaped with a
+    backslash (manual, "Searching calibre"). Without that, a title containing
+    `"` ends the quoted term and the rest is read as more query syntax.
+    """
+    escaped = title.replace("\\", "\\\\").replace('"', '\\"')
+    return f'title:"={escaped}"'
+
+
 def check_calibre(title: str) -> bool:
     """Check if a book is already in the calibre database."""
     import subprocess
 
-    cmd = f'calibredb list --search title:="{title}"'
-    result = subprocess.run(cmd, check=False, shell=True, capture_output=True, text=True)
+    cmd = ["calibredb", "list", "--search", calibre_title_search(title)]
+    try:
+        result = subprocess.run(cmd, check=False, capture_output=True, text=True)
+    except OSError as exc:
+        # calibredb missing, not executable, or unloadable: the old shell call
+        # answered 127 and its empty output read as "not in the library".
+        print(f"warning: cannot run calibredb ({exc}); treating the book as absent")
+        return False
     output = result.stdout.strip()
     # calibredb output has header line "id title authors", count non-header lines
     lines = [l.strip() for l in output.split("\n") if l.strip()]
