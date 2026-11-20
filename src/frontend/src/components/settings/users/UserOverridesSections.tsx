@@ -5,13 +5,19 @@ import type { DeliveryPreferencesResponse } from '../../../services/api';
 import type { ActionResult, SettingsTab } from '../../../types/settings';
 import { toTrimmedTextValue } from './fieldHelpers';
 import type { PerUserSettings } from './types';
+import { UserHardcoverOverridesSection } from './UserHardcoverOverridesSection';
 import { UserNotificationOverridesSection } from './UserNotificationOverridesSection';
 import { UserOverridesSection } from './UserOverridesSection';
 import { UserRequestPolicyOverridesSection } from './UserRequestPolicyOverridesSection';
 import { UserSearchPreferencesSection } from './UserSearchPreferencesSection';
 
 type UserOverrideScope = 'admin' | 'self';
-type UserOverrideSectionId = 'delivery' | 'search' | 'notifications' | 'requestPolicy';
+type UserOverrideSectionId =
+  | 'delivery'
+  | 'search'
+  | 'notifications'
+  | 'hardcover'
+  | 'requestPolicy';
 
 interface UserOverridesSectionsProps {
   scope: UserOverrideScope;
@@ -19,12 +25,14 @@ interface UserOverridesSectionsProps {
   deliveryPreferences: DeliveryPreferencesResponse | null;
   searchPreferences: DeliveryPreferencesResponse | null;
   notificationPreferences: DeliveryPreferencesResponse | null;
+  hardcoverPreferences?: DeliveryPreferencesResponse | null;
   isUserOverridable: (key: keyof PerUserSettings) => boolean;
   userSettings: PerUserSettings;
   setUserSettings: (updater: (prev: PerUserSettings) => PerUserSettings) => void;
   usersTab?: SettingsTab;
   globalUsersSettingsValues?: Record<string, unknown>;
   onTestNotificationRoutes?: (routes: Array<Record<string, unknown>>) => Promise<ActionResult>;
+  onRevealSecret?: (key: string) => Promise<string>;
 }
 
 interface UserOverrideSectionDefinition {
@@ -41,6 +49,7 @@ const USER_OVERRIDE_SECTION_DEFINITIONS: UserOverrideSectionDefinition[] = [
   { id: 'delivery', adminOnly: false },
   { id: 'search', adminOnly: false },
   { id: 'notifications', adminOnly: false },
+  { id: 'hardcover', adminOnly: false },
   { id: 'requestPolicy', adminOnly: true },
 ];
 
@@ -53,6 +62,7 @@ const USER_OVERRIDE_SECTION_META: Record<UserOverrideSectionId, UserOverrideSect
   delivery: { id: 'delivery', adminOnly: false },
   search: { id: 'search', adminOnly: false },
   notifications: { id: 'notifications', adminOnly: false },
+  hardcover: { id: 'hardcover', adminOnly: false },
   requestPolicy: { id: 'requestPolicy', adminOnly: true },
 };
 
@@ -109,12 +119,14 @@ export const UserOverridesSections = ({
   deliveryPreferences,
   searchPreferences,
   notificationPreferences,
+  hardcoverPreferences,
   isUserOverridable,
   userSettings,
   setUserSettings,
   usersTab,
   globalUsersSettingsValues,
   onTestNotificationRoutes,
+  onRevealSecret,
 }: UserOverridesSectionsProps) => {
   const activeSections = normalizeUserOverrideSections(sections, scope);
 
@@ -171,6 +183,25 @@ export const UserOverridesSections = ({
             isUserOverridable={isUserOverridable}
             userSettings={userSettings}
             setUserSettings={setUserSettings}
+          />
+        ),
+      });
+      return;
+    }
+
+    if (sectionId === 'hardcover') {
+      if (!hardcoverPreferences) {
+        return;
+      }
+      sectionNodes.push({
+        id: sectionId,
+        node: (
+          <UserHardcoverOverridesSection
+            hardcoverPreferences={hardcoverPreferences}
+            isUserOverridable={isUserOverridable}
+            userSettings={userSettings}
+            setUserSettings={setUserSettings}
+            onRevealSecret={onRevealSecret}
           />
         ),
       });
