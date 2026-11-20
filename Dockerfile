@@ -4,7 +4,7 @@ ARG BUILDPLATFORM
 ARG BUILDARCH
 
 # Frontend build stage.
-FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:ebfe2f90462722a7a4de65e91990e97fe0d401c70e0e762c5b53302f905ec1c1 AS frontend-builder
+FROM --platform=$BUILDPLATFORM node:24-alpine@sha256:116b800c3754b440ee0aa3ed2f20f5bf3d99a554bfd9adeea09ea8017f6e85f5 AS frontend-builder
 
 # Helpful debug output to see what platforms BuildKit thinks it's using
 RUN echo "BUILDPLATFORM=$BUILDPLATFORM BUILDARCH=$BUILDARCH TARGETPLATFORM=$TARGETPLATFORM TARGETARCH=$TARGETARCH"
@@ -28,7 +28,7 @@ RUN npm run build
 # than copied into the image. A COPY here would land ~24 MB in a `base` layer that
 # every published image inherits, and a later `rm` cannot take it back out again --
 # a RUN adds a layer, it does not rewrite the one underneath.
-FROM ghcr.io/astral-sh/uv:0.13.8@sha256:5cc1805e2426484abca4ad46ea783bab281fdb225fd82d8ce6d66a81254bac85 AS uv
+FROM ghcr.io/astral-sh/uv:0.13.9@sha256:d3b601f0c7b118bc1753febf7c41cc80981df678445e0254284eecf84db79a7d AS uv
 
 # Use python-slim as the base image
 FROM python:3.14.10-slim@sha256:9aaa474097d094040649f2162a627c0049b408f52138d980916788d80f04802f AS base
