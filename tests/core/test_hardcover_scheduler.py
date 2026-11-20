@@ -77,6 +77,22 @@ def test_run_once_reports_busy_while_another_run_holds_the_lock():
     assert scheduler.run_once() == {"status": "unconfigured"}
 
 
+class _FakeUserDB:
+    """Only what the sweep needs: the user list it enumerates tokens over."""
+
+    def __init__(self, users=None, pending=None):
+        """Hold the users the sweep lists and the requests it reads as pending."""
+        self._users = users or []
+        self._pending = pending or []
+
+    def list_users(self):
+        return list(self._users)
+
+    def list_requests(self, *, status):
+        assert status == "pending"
+        return list(self._pending)
+
+
 class TestRunOnce:
     @pytest.fixture
     def calls(self, monkeypatch):
@@ -95,7 +111,7 @@ class TestRunOnce:
         return recorded
 
     def test_scheduled_run_skips_sync_when_disabled(self, calls):
-        user_db, queue_release = object(), object()
+        user_db, queue_release = _FakeUserDB(), object()
         scheduler.configure(user_db, queue_release, "/data/users.db")
 
         result = scheduler.run_once()
@@ -114,28 +130,147 @@ class TestRunOnce:
         ]
 
     def test_forced_run_syncs_regardless_of_toggle(self, calls):
-        user_db = object()
+        user_db = _FakeUserDB()
         scheduler.configure(user_db, object(), "/data/users.db")
 
         result = scheduler.run_once(force=True)
 
-        assert result == {"status": "ok", "sync": {"added": 1}, "auto_download": {"queued": 1}}
+        assert result["status"] == "ok"
+        assert result["sync"] == {
+            "added": 1,
+            "skipped": 0,
+            "in_library": 0,
+            "errors": 0,
+            "accounts": 1,
+        }
+        assert result["auto_download"] == {"queued": 1}
         assert calls["sync"] == [(user_db, {"db_path": "/data/users.db"})]
         # Sync now searches every request, whatever the no-match backoff says.
         assert calls["auto"][0][1]["ignore_backoff"] is True
 
     def test_scheduled_run_syncs_when_enabled(self, monkeypatch, calls):
         _configure(monkeypatch, HARDCOVER_SYNC_ENABLED=True)
-        user_db = object()
+        user_db = _FakeUserDB()
         scheduler.configure(user_db, object(), None)
 
         result = scheduler.run_once()
 
-        assert result["sync"] == {"added": 1}
+        assert result["sync"]["added"] == 1
         assert calls["sync"] == [(user_db, {"db_path": None})]
 
+    def test_every_connected_account_syncs_before_the_app_level_token(self, monkeypatch, calls):
+        """Connected accounts sync lowest id first, then the app-level token."""
+        _configure(monkeypatch, HARDCOVER_SYNC_ENABLED=True)
+        user_db = _FakeUserDB([{"id": 7}, {"id": 3}, {"id": 9}])
+        monkeypatch.setattr(
+            "shelfmark.core.hardcover_sync._user_token",
+            lambda user_id: "token" if user_id in {3, 7} else "",
+        )
+        monkeypatch.setattr("shelfmark.core.hardcover_sync.has_app_level_token", lambda: True)
+        scheduler.configure(user_db, object(), "/data/users.db")
+
+        result = scheduler.run_once()
+
+        # Lowest id first, then the app-level pass with no user id.
+        assert [kwargs.get("user_id") for _db, kwargs in calls["sync"]] == [3, 7, None]
+        assert result["sync"]["added"] == 3
+        assert result["sync"]["accounts"] == 3
+
+    def test_admin_scope_syncs_only_admin_accounts_and_their_requests(self, monkeypatch, calls):
+        user_db = _FakeUserDB(
+            [{"id": 1, "role": "admin"}, {"id": 3, "role": "user"}, {"id": 7, "role": "user"}],
+            pending=[{"id": 10, "user_id": 1}, {"id": 11, "user_id": 3}, {"id": 12, "user_id": 7}],
+        )
+        monkeypatch.setattr("shelfmark.core.hardcover_sync._user_token", lambda _user_id: "token")
+        monkeypatch.setattr("shelfmark.core.hardcover_sync.has_app_level_token", lambda: True)
+        scheduler.configure(user_db, object(), "/data/users.db")
+
+        result = scheduler.run_once(force=True, scope="admin")
+
+        # The admin's own account, then the app-level pass; users 3 and 7 are not synced.
+        assert [kwargs.get("user_id") for _db, kwargs in calls["sync"]] == [1, None]
+        assert result["sync"]["accounts"] == 2
+        assert calls["auto"][0][1]["only_request_ids"] == frozenset({10})
+
+    def test_admin_scope_with_only_user_tokens_and_no_app_token_is_not_an_error(
+        self, monkeypatch, calls
+    ):
+        """Sync (admin) with only users' tokens and no app token counts no error."""
+        user_db = _FakeUserDB([{"id": 1, "role": "admin"}, {"id": 3, "role": "user"}])
+        monkeypatch.setattr(
+            "shelfmark.core.hardcover_sync._user_token",
+            lambda user_id: "token" if user_id == 3 else "",
+        )
+        monkeypatch.setattr("shelfmark.core.hardcover_sync.has_app_level_token", lambda: False)
+        scheduler.configure(user_db, object(), "/data/users.db")
+
+        result = scheduler.run_once(force=True, scope="admin")
+
+        assert calls["sync"] == []
+        assert result["sync"]["errors"] == 0
+        assert result["sync"]["accounts"] == 0
+
+    def test_all_scope_does_not_limit_auto_download(self, monkeypatch, calls):
+        user_db = _FakeUserDB([{"id": 1, "role": "admin"}, {"id": 3, "role": "user"}])
+        monkeypatch.setattr("shelfmark.core.hardcover_sync._user_token", lambda _user_id: "token")
+        monkeypatch.setattr("shelfmark.core.hardcover_sync.has_app_level_token", lambda: True)
+        scheduler.configure(user_db, object(), "/data/users.db")
+
+        scheduler.run_once(force=True, scope="all")
+
+        assert [kwargs.get("user_id") for _db, kwargs in calls["sync"]] == [1, 3, None]
+        assert "only_request_ids" not in calls["auto"][0][1]
+
+    def test_app_level_pass_is_skipped_when_only_accounts_are_connected(self, monkeypatch, calls):
+        _configure(monkeypatch, HARDCOVER_SYNC_ENABLED=True)
+        user_db = _FakeUserDB([{"id": 7}, {"id": 3}])
+        monkeypatch.setattr("shelfmark.core.hardcover_sync._user_token", lambda _user_id: "token")
+        monkeypatch.setattr("shelfmark.core.hardcover_sync.has_app_level_token", lambda: False)
+        scheduler.configure(user_db, object(), None)
+
+        result = scheduler.run_once()
+
+        assert [kwargs.get("user_id") for _db, kwargs in calls["sync"]] == [3, 7]
+        assert result["sync"]["accounts"] == 2
+        assert result["sync"]["errors"] == 0
+
+    def test_app_level_pass_still_runs_when_nobody_connected_an_account(self, monkeypatch, calls):
+        _configure(monkeypatch, HARDCOVER_SYNC_ENABLED=True)
+        user_db = _FakeUserDB([{"id": 1}])
+        monkeypatch.setattr("shelfmark.core.hardcover_sync._user_token", lambda _user_id: "")
+        monkeypatch.setattr("shelfmark.core.hardcover_sync.has_app_level_token", lambda: False)
+        scheduler.configure(user_db, object(), None)
+
+        result = scheduler.run_once()
+
+        assert [kwargs.get("user_id") for _db, kwargs in calls["sync"]] == [None]
+        assert result["sync"]["accounts"] == 1
+
+    def test_one_failing_account_does_not_stop_the_sweep(self, monkeypatch, calls):
+        """An account whose sync raises is counted as an error and the rest still sync."""
+        _configure(monkeypatch, HARDCOVER_SYNC_ENABLED=True)
+        user_db = _FakeUserDB([{"id": 1}, {"id": 2}])
+        monkeypatch.setattr("shelfmark.core.hardcover_sync._user_token", lambda _user_id: "token")
+        monkeypatch.setattr("shelfmark.core.hardcover_sync.has_app_level_token", lambda: True)
+
+        def _sync(user_db_arg, **kwargs):
+            """Fail user 1's sync and record every other call."""
+            if kwargs.get("user_id") == 1:
+                raise RuntimeError("bad token")
+            calls["sync"].append((user_db_arg, kwargs))
+            return {"added": 1}
+
+        monkeypatch.setattr("shelfmark.core.hardcover_sync.sync_wishlist", _sync)
+        scheduler.configure(user_db, object(), None)
+
+        result = scheduler.run_once()
+
+        assert [kwargs.get("user_id") for _db, kwargs in calls["sync"]] == [2, None]
+        assert result["sync"]["added"] == 2
+        assert result["sync"]["errors"] == 1
+
     def test_lock_is_released_after_a_run(self, calls):
-        scheduler.configure(object(), object(), None)
+        scheduler.configure(_FakeUserDB(), object(), None)
 
         scheduler.run_once()
 
@@ -166,7 +301,7 @@ class TestTriggerAsync:
 
         assert scheduler.trigger_async(force=force) is True
         assert finished.wait(timeout=5)
-        assert seen == [{"force": force}]
+        assert seen == [{"force": force, "scope": "all"}]
 
 
 class _Clock:
