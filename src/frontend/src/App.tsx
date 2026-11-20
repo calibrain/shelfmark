@@ -88,6 +88,7 @@ import { bookSupportsTargets } from './utils/bookTargetLoader';
 import { buildSearchQuery } from './utils/buildSearchQuery';
 import { wasDownloadQueuedAfterResponseError } from './utils/downloadRecovery';
 import { getDynamicOptionGroup } from './utils/dynamicFieldOptions';
+import { retryRequestId } from './utils/failedDownloadButton';
 import { resolveDefaultLanguageCodes } from './utils/languageFilters';
 import { getConfiguredMetadataProviderForContentType } from './utils/metadataProviders';
 import { getEffectiveMetadataSort } from './utils/metadataSort';
@@ -1213,6 +1214,12 @@ function App() {
     ],
   );
 
+  /**
+   * Queue a release from the release modal.
+   *
+   * A release that failed for a reopened request is queued through that request, so the
+   * download fulfils it. If the request has closed since, the release is downloaded plainly.
+   */
   const executeReleaseDownload = useCallback(
     async (
       book: Book,
@@ -1222,12 +1229,41 @@ function App() {
       options?: ReleaseDownloadOptions,
     ): Promise<void> => {
       const requestStartedAtSeconds = Date.now() / 1000;
+      // Retry on a release that failed for a reopened request goes through that request, so
+      // the download fulfils it (#1681). The request already names who it is for, so an
+      // explicit recipient takes precedence and the release is queued plainly for them.
+      const requestId =
+        onBehalfOfUserId === undefined
+          ? retryRequestId(currentStatus.error?.[release.source_id])
+          : undefined;
       try {
         trackRelease(book.id, release.source_id);
-        await downloadRelease(
-          buildReleaseDownloadPayload(book, release, releaseContentType, options),
-          onBehalfOfUserId,
-        );
+        try {
+          await downloadRelease(
+            buildReleaseDownloadPayload(book, release, releaseContentType, {
+              ...options,
+              requestId,
+            }),
+            onBehalfOfUserId,
+          );
+        } catch (requestError) {
+          // The request was closed or changed since the release failed: download it plainly.
+          // A race is possible if two clients retry the same request at the same moment. The
+          // plain copy can reach the queue before the request-linked one, which then rolls the
+          // request back to pending while the unlinked download runs. That needs near
+          // simultaneous retries, so it is unlikely and accepted here.
+          if (
+            requestId === undefined ||
+            !isApiResponseError(requestError) ||
+            requestError.code !== 'stale_transition'
+          ) {
+            throw requestError;
+          }
+          await downloadRelease(
+            buildReleaseDownloadPayload(book, release, releaseContentType, options),
+            onBehalfOfUserId,
+          );
+        }
         await fetchStatus();
         removeBookFromActiveList(book);
       } catch (error) {
@@ -1307,6 +1343,7 @@ function App() {
       }
     },
     [
+      currentStatus.error,
       fetchStatus,
       openRequestConfirmation,
       refreshRequestPolicy,

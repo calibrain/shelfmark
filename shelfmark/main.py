@@ -635,6 +635,7 @@ register_release_routes(
     load_policy_settings=_load_policy_settings_for_routes,
     resolve_status_scope=_resolve_status_scope,
     attach_library_ownership=_attach_library_ownership,
+    emit_request_updates=_emit_request_updates,
 )
 
 

@@ -8,6 +8,8 @@ export interface ReleaseDownloadOptions {
   bookPlan?: PackBook[];
   /** Files from the pack the user chose to skip (release-relative paths). */
   ignoredFiles?: string[];
+  /** The reopened request this release failed for; the download is queued through it. */
+  requestId?: number;
 }
 
 /** Download count for a release, preferring what the release itself reports. */
@@ -73,6 +75,9 @@ export function buildReleaseDownloadPayload(
   }
   if (options.ignoredFiles && options.ignoredFiles.length > 0) {
     payload.ignored_files = options.ignoredFiles;
+  }
+  if (options.requestId) {
+    payload.request_id = options.requestId;
   }
   return payload;
 }
