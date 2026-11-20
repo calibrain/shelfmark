@@ -21,7 +21,7 @@ dependencies = [
     "rarfile",
     "qbittorrent-api>=2026.10.1",
     "transmission-rpc",
-    "authlib>=1.9.6,<1.10",
+    "authlib>=1.9.8,<1.10",
     # Authlib validates ID tokens with joserfc and raises its errors, so the OIDC routes
     # catch joserfc's InvalidClaimError. authlib.jose is deprecated and goes in Authlib 2.0.
     "joserfc>=1.8.0",
@@ -36,7 +36,7 @@ dependencies = [
 browser = [
     "pyvirtualdisplay",
     "pyautogui",
-    "seleniumbase==4.58.0",
+    "seleniumbase==4.58.1",
     "python-xlib",
 ]
 
