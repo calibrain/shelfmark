@@ -53,11 +53,38 @@ def test_a_search_result_nested_in_a_document_carries_the_series_too():
     assert book.series_name == "The Mistborn Saga: The Original Trilogy"
 
 
-def test_the_search_title_is_unchanged_by_the_series():
+def test_a_series_named_unlike_the_title_prefix_leaves_the_search_title():
     book = _provider()._parse_search_result(_hit())
 
     assert book is not None
     assert book.search_title == "Mistborn"
+
+
+def _series(name: str) -> dict:
+    return {"position": 1.0, "series": {"id": 1, "name": name, "primary_books_count": 3}}
+
+
+def test_a_series_prefix_is_dropped_from_a_search_result_like_from_a_full_record():
+    book = _provider()._parse_search_result(
+        _hit(title="Mistborn: The Final Empire", featured_series=_series("Mistborn"))
+    )
+
+    assert book is not None
+    assert book.search_title == "The Final Empire"
+
+
+def test_a_series_followed_by_a_genre_descriptor_is_not_searched_as_the_series():
+    # Without the series, #1728's fix would search "Jack Reacher" and match any volume.
+    book = _provider()._parse_search_result(
+        _hit(
+            title="Jack Reacher: A Novel",
+            subtitle="A Novel",
+            featured_series=_series("Jack Reacher"),
+        )
+    )
+
+    assert book is not None
+    assert book.search_title is None
 
 
 def test_a_hit_with_a_null_document_and_no_series_is_still_parsed():

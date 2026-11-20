@@ -1,3 +1,5 @@
+import { useState } from 'react';
+
 import { LoginForm } from '../components/LoginForm';
 import type { LoginCredentials } from '../types';
 import { withBasePath } from '../utils/basePath';
@@ -22,6 +24,10 @@ export const LoginPage = ({
   oidcAutoRedirect,
 }: LoginPageProps) => {
   const logoUrl = withBasePath('/logo.png');
+  // Navigating away cancels a logo that is still loading, and Firefox then shows
+  // it as a broken image until the OIDC provider answers. Hold the auto-redirect
+  // until the logo has loaded or failed; a failure must not block sign-in.
+  const [logoSettled, setLogoSettled] = useState(false);
 
   return (
     <div
@@ -38,7 +44,13 @@ export const LoginPage = ({
           }}
         >
           <div className="mb-5 text-center">
-            <img src={logoUrl} alt="Logo" className="mx-auto h-12 w-12" />
+            <img
+              src={logoUrl}
+              alt="Logo"
+              className="mx-auto h-12 w-12"
+              onLoad={() => setLogoSettled(true)}
+              onError={() => setLogoSettled(true)}
+            />
           </div>
           <LoginForm
             onSubmit={onLogin}
@@ -47,7 +59,7 @@ export const LoginPage = ({
             authMode={authMode}
             oidcButtonLabel={oidcButtonLabel}
             hideLocalAuth={hideLocalAuth}
-            oidcAutoRedirect={oidcAutoRedirect}
+            oidcAutoRedirect={oidcAutoRedirect && logoSettled}
           />
         </div>
       </div>

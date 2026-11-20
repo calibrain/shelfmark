@@ -185,7 +185,9 @@ def _apply_cf_bypass(url: str, headers: dict) -> dict:
 
 
 # Network settings
-REQUEST_TIMEOUT = (5, 10)  # (connect, read)
+# Anna's Archive's slow servers pause well past 10s, mid-file or before the first byte (#1732).
+# Keep the read below the orchestrator's 5-minute stall timeout, which ends a stuck download.
+REQUEST_TIMEOUT = (5, 60)  # (connect, read)
 MAX_DOWNLOAD_RETRIES = 2
 MAX_RESUME_ATTEMPTS = 3
 
