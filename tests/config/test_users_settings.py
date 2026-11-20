@@ -100,6 +100,16 @@ def test_visible_self_settings_sections_field_defaults_and_options():
     ]
 
 
+def test_on_save_users_drops_a_stored_hardcover_section_instead_of_refusing_it():
+    """The Hardcover section follows HARDCOVER_SYNC_ENABLED; an old saved list may name it."""
+    result = users_settings_module._on_save_users(
+        {"VISIBLE_SELF_SETTINGS_SECTIONS": ["delivery", "hardcover", "notifications"]}
+    )
+
+    assert result["error"] is False
+    assert result["values"]["VISIBLE_SELF_SETTINGS_SECTIONS"] == ["delivery", "notifications"]
+
+
 def test_users_tab_registers_custom_components():
     fields = _field_map("users")
 
