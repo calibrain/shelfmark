@@ -22,6 +22,7 @@ This document lists all configuration options that can be set via environment va
 - [AudiobookBay](#audiobookbay)
 - [Libgen Search](#libgen-search)
 - [Webshare.cz](#websharecz)
+- [Chomikuj.pl](#chomikujpl)
 - [IRC](#irc)
 - [Download Clients](#download-clients)
 - [Metadata Providers](#metadata-providers)
@@ -2213,6 +2214,79 @@ Maximum number of files to request per search (1-200). Results are then filtered
 - **Type:** number
 - **Default:** `50`
 - **Constraints:** min: 1, max: 200
+
+</details>
+
+## Chomikuj.pl
+
+| Variable | Description | Type | Default |
+|----------|-------------|------|---------|
+| `CHOMIKUJ_ENABLED` | Search Chomikuj.pl's Documents collection and download matching ebooks with your own Chomikuj account. Chomikuj results often include PDF; enabling PDF under Supported Book Formats can show more results, while unsupported formats may be filtered out. | boolean | `false` |
+| `CHOMIKUJ_USERNAME` | Your Chomikuj.pl login. | string | _none_ |
+| `CHOMIKUJ_PASSWORD` | Your Chomikuj.pl password. | string (secret) | _none_ |
+| `CHOMIKUJ_ALLOW_TRANSFER_SPEND` | Allow downloading or previewing paid Chomikuj.pl files. Previewing a paid file can spend transfer from your Chomikuj.pl account. | boolean | `true` |
+| `CHOMIKUJ_MAX_RESULTS` | Maximum number of files to request per search (1-200). Results are then filtered to your supported ebook formats. | number | `50` |
+| `CHOMIKUJ_BASE_URL` | Chomikuj.pl base URL used for API requests. | string | `https://mobile.chomikuj.pl` |
+
+<details>
+<summary>Detailed descriptions</summary>
+
+#### `CHOMIKUJ_ENABLED`
+
+**Enable Chomikuj.pl**
+
+Search Chomikuj.pl's Documents collection and download matching ebooks with your own Chomikuj account. Chomikuj results often include PDF; enabling PDF under Supported Book Formats can show more results, while unsupported formats may be filtered out.
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `CHOMIKUJ_USERNAME`
+
+**Username or Email**
+
+Your Chomikuj.pl login.
+
+- **Type:** string
+- **Default:** _none_
+- **Required:** Yes
+
+#### `CHOMIKUJ_PASSWORD`
+
+**Password**
+
+Your Chomikuj.pl password.
+
+- **Type:** string (secret)
+- **Default:** _none_
+- **Required:** Yes
+
+#### `CHOMIKUJ_ALLOW_TRANSFER_SPEND`
+
+**Allow Spending Transfer**
+
+Allow downloading or previewing paid Chomikuj.pl files. Previewing a paid file can spend transfer from your Chomikuj.pl account.
+
+- **Type:** boolean
+- **Default:** `true`
+
+#### `CHOMIKUJ_MAX_RESULTS`
+
+**Max Results**
+
+Maximum number of files to request per search (1-200). Results are then filtered to your supported ebook formats.
+
+- **Type:** number
+- **Default:** `50`
+- **Constraints:** min: 1, max: 200
+
+#### `CHOMIKUJ_BASE_URL`
+
+**Base URL**
+
+Chomikuj.pl base URL used for API requests.
+
+- **Type:** string
+- **Default:** `https://mobile.chomikuj.pl`
 
 </details>
 
