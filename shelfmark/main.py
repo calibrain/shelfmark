@@ -200,6 +200,7 @@ try:
         PasswordAttemptLimiter,
         register_self_user_routes,
     )
+    from shelfmark.core.series_gap_routes import register_series_gap_routes
 
     register_oidc_routes(app, user_db)
     register_admin_routes(app, user_db)
@@ -213,6 +214,7 @@ try:
             clear=lambda username: clear_failed_logins(username),  # noqa: PLW0108
         ),
     )
+    register_series_gap_routes(app, user_db)
 except (sqlite3.OperationalError, OSError) as e:
     logger.warning(
         "User database initialization failed: %s. Multi-user authentication features will be disabled. Ensure CONFIG_DIR (%s) exists and is writable.",
