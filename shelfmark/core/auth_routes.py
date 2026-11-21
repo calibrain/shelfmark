@@ -6,7 +6,6 @@ shared by everything that imports them (``main`` re-exports the names).
 
 from __future__ import annotations
 
-import os
 import sqlite3
 from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING, Any
@@ -14,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 from flask import jsonify, request, session
 
 from shelfmark.core.config import config as app_config
-from shelfmark.core.cwa_user_sync import upsert_cwa_user
+from shelfmark.core.cwa_user_sync import connect_cwa_db, upsert_cwa_user
 from shelfmark.core.logger import setup_logger
 
 if TYPE_CHECKING:
@@ -289,9 +288,7 @@ def register_auth_routes(
                     return jsonify({"error": "Database configuration error"}), 500
 
                 try:
-                    db_path = os.fspath(cwa_db_path)
-                    db_uri = f"file:{db_path}?mode=ro&immutable=1"
-                    conn = sqlite3.connect(db_uri, uri=True)
+                    conn = connect_cwa_db(cwa_db_path)
                     cur = conn.cursor()
                     cur.execute(
                         "SELECT password, role, email FROM user WHERE name = ?", (username,)
