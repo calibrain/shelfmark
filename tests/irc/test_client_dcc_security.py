@@ -212,6 +212,7 @@ def test_wait_for_dcc_timeout_marks_the_query_stale(monkeypatch) -> None:
     monkeypatch.setattr(client, "read_messages", lambda **_: iter([]))
 
     assert client.wait_for_dcc(timeout=0, result_type=True, expected_query="Q") is None
+    assert client.last_wait_timed_out
     assert "Q" in client._stale_queries
 
 

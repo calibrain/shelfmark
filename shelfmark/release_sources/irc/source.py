@@ -418,8 +418,7 @@ class IRCReleaseSource(ReleaseSource):
                 connection_manager.close_connection(client)
                 _raise_connection_dropped()
 
-            left = _deadline_left()
-            if not offer and wait_timeout < 60.0 and left is not None and left < 1.0:
+            if not offer and wait_timeout < 60.0 and client.last_wait_timed_out:
                 # The deadline cut the wait short and the bot may still answer, so this is
                 # not "no results". The client marks the query timed out, so a late answer
                 # is skipped by the next search.

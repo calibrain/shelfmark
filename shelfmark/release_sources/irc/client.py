@@ -154,6 +154,9 @@ class IRCClient:
         self._connected = False
         # Queries whose wait timed out: a late answer to one of them may still arrive.
         self._stale_queries: set[str] = set()
+        # Whether the last wait_for_dcc returned None because its timeout ran out,
+        # rather than on an answer such as a "Sorry" notice.
+        self.last_wait_timed_out = False
 
         # Track online servers (elevated users in channel)
         self.online_servers: set[str] = set()
@@ -565,6 +568,7 @@ class IRCClient:
         """
         target_event = IRCEvent.SEARCH_RESULT if result_type else IRCEvent.BOOK_RESULT
         deadline = time.time() + timeout
+        self.last_wait_timed_out = False
 
         for msg in self.read_messages(deadline=deadline):
             if msg.event == target_event:
@@ -626,6 +630,7 @@ class IRCClient:
 
         if time.time() >= deadline:
             logger.warning("Timeout waiting for DCC offer")
+            self.last_wait_timed_out = True
             if result_type and expected_query:
                 self._stale_queries.add(expected_query)
         return None

@@ -833,23 +833,31 @@ def test_a_failed_results_transfer_is_unavailable_and_keeps_the_connection(monke
 
 
 class _WaitingClient:
-    """Answers nothing: the wait runs to its timeout. Or, with `sorry`, says no results."""
+    """Answers nothing: the wait runs to its timeout. Or, with `sorry`, says no results.
+
+    `sorry_left` delays the "Sorry" until that many seconds of the wait remain.
+    """
 
     is_connected = True
     online_servers: set[str] = set()
 
-    def __init__(self, *, sorry: bool = False) -> None:
-        self.sorry = sorry
+    def __init__(self, *, sorry: bool = False, sorry_left: float | None = None) -> None:
+        self.sorry = sorry or sorry_left is not None
+        self.sorry_left = sorry_left
         self.sent: list[str] = []
         self.timeouts: list[float] = []
+        self.last_wait_timed_out = False
 
     def send_message(self, _channel: str, message: str) -> None:
         self.sent.append(message)
 
     def wait_for_dcc(self, *, timeout: float, **_kwargs: object) -> None:
         self.timeouts.append(timeout)
+        self.last_wait_timed_out = not self.sorry
         if not self.sorry:
             time.sleep(timeout)
+        elif self.sorry_left is not None:
+            time.sleep(max(0.0, timeout - self.sorry_left))
 
 
 def test_the_wait_for_results_stops_at_the_search_deadline_and_is_not_cached(monkeypatch):
@@ -886,4 +894,15 @@ def test_a_real_no_results_inside_a_shortened_wait_is_still_cached(monkeypatch):
 
     assert error is None
     assert client.timeouts[0] < 60
+    assert len(cache_calls) == 1
+
+
+def test_a_no_results_reply_just_before_the_deadline_is_cached(monkeypatch):
+    from shelfmark.core import search_deadline
+
+    client = _WaitingClient(sorry_left=0.3)  # under the 1s margin once the wait ends
+    with search_deadline.search_deadline(1.5):
+        cache_calls, error = _search_with(monkeypatch, client)
+
+    assert error is None
     assert len(cache_calls) == 1
