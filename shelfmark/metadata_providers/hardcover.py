@@ -13,6 +13,8 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from urllib.parse import urlparse
 
 import requests
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 
 from shelfmark.core.cache import cache_key, cacheable, get_metadata_cache
 from shelfmark.core.config import config as app_config
@@ -526,6 +528,11 @@ HARDCOVER_RATE_PER_SECOND = 0.8
 HARDCOVER_RATE_LIMIT_ATTEMPTS = 3  # the first try plus two retries
 HARDCOVER_RETRY_AFTER_CAP_SECONDS = 30.0  # longer than this (spent daily quota): give up
 
+# Over some VPNs the first connection after a couple of idle minutes hangs until the timeout,
+# and the search came back empty (#1736). Open a new connection once more when that happens. Safe for mutations too: urllib3 only retries a failed connect, which never reached
+# Hardcover, and never resends a POST once the request went out (read=False).
+HARDCOVER_CONNECT_RETRY = Retry(total=1, connect=1, read=False, other=0)
+
 
 class _TokenBucket:
     """Thread-safe token bucket. ``acquire`` blocks until a request may go out.
@@ -878,15 +885,18 @@ def _build_source_url(slug: str) -> str | None:
     return f"https://hardcover.app/books/{slug}" if slug else None
 
 
-def _is_probably_series_position(subtitle: str) -> bool:
-    normalized = subtitle.strip().lower()
-
+def _is_series_position(text: str) -> bool:
     # Common patterns: "Book One", "Book 1", "Part 2", "Volume III", etc.
-    if re.match(
-        r"^(book|part|volume|vol\.?|episode)\s+([0-9]+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten)\b",
-        normalized,
-    ):
-        return True
+    return bool(
+        re.match(
+            r"^(book|part|volume|vol\.?|episode)\s+([0-9]+|[ivxlcdm]+|one|two|three|four|five|six|seven|eight|nine|ten)\b",
+            text.strip().lower(),
+        )
+    )
+
+
+def _is_genre_descriptor(text: str) -> bool:
+    normalized = text.strip().lower()
 
     # e.g. "A Novel", "An Epic Fantasy", etc. These add noise to indexer queries.
     if normalized in {"a novel", "a novella", "a story", "a memoir"}:
@@ -1035,9 +1045,14 @@ def _compute_search_title(
         )
         if prefix_is_series or subtitle_is_suffix:
             # "Series: Book 1" names nothing to search for on either side of the colon.
-            if _is_probably_series_position(suffix):
+            if _is_series_position(suffix):
                 return None
-            return suffix if prefix_is_series else prefix
+            if prefix_is_series:
+                # "Series: A Novel" names no book either.
+                return None if _is_genre_descriptor(suffix) else suffix
+            # "Title: A Novel" only describes the book, so the prefix is the title.
+            # Returning None here would search the full title, ": A Novel" and all.
+            return prefix
 
     # Last resort: return a cleaned version of the title if we removed noise.
     if normalized_title and normalized_title.lower() != original_title.lower():
@@ -1133,6 +1148,7 @@ class HardcoverProvider(MetadataProvider):
         raw_key = api_key or app_config.get("HARDCOVER_API_KEY", "")
         self.api_key = _normalize_hardcover_api_key(raw_key)
         self.session = requests.Session()
+        self.session.mount(HARDCOVER_API_URL, HTTPAdapter(max_retries=HARDCOVER_CONNECT_RETRY))
         if self.api_key:
             self.session.headers.update(
                 {
@@ -2981,10 +2997,11 @@ class HardcoverProvider(MetadataProvider):
 
             # Extract subtitle if available in search results
             subtitle = item.get("subtitle")
-            search_title = _compute_search_title(title, subtitle)
             series_id, series_name, series_position, series_count = _featured_series_fields(
                 item.get("featured_series") or (item.get("document") or {}).get("featured_series")
             )
+            # Without the series, "Jack Reacher: A Novel" would be searched as "Jack Reacher".
+            search_title = _compute_search_title(title, subtitle, series_name=series_name)
 
             if matched_title and matched_title != title:
                 # The subtitle belongs to the original title, not to the translation.
