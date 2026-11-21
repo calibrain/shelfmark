@@ -6,13 +6,14 @@ Searches IRC channels for ebook and audiobook releases.
 import tempfile
 import time
 from pathlib import Path
-from typing import TYPE_CHECKING, ClassVar
+from typing import TYPE_CHECKING, ClassVar, NoReturn
 
 if TYPE_CHECKING:
     from shelfmark.core.search_plan import ReleaseSearchPlan
     from shelfmark.metadata_providers import BookMetadata
 
 from shelfmark.api.websocket import ws_manager
+from shelfmark.core import search_deadline
 from shelfmark.core.author_match import author_affinity, search_surname
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -28,10 +29,11 @@ from shelfmark.release_sources import (
     ReleaseProtocol,
     ReleaseSource,
     SourceActionButton,
+    SourceUnavailableError,
     register_source,
 )
 
-from .client import bare_channel_name, has_control_characters
+from .client import IRCError, bare_channel_name, has_control_characters
 from .connection_manager import connection_manager
 from .dcc import DCCError, download_dcc, safe_dcc_filename
 from .parser import SearchResult, extract_results_from_zip, parse_results_file
@@ -118,6 +120,36 @@ MAX_IDENTICAL_SENDS = 3
 IDENTICAL_SEND_WINDOW_SECONDS = 24 * 60 * 60  # 24 hours
 # message-send-key -> timestamps of recent posts of that exact message
 _recent_message_sends: dict[str, list[float]] = {}
+
+
+def _raise_connection_dropped() -> NoReturn:
+    msg = "IRC connection dropped during the search"
+    raise SourceUnavailableError(msg)
+
+
+def _deadline_left() -> float | None:
+    """Seconds the search deadline has left, or None outside a search."""
+    deadline = search_deadline.current()
+    return deadline.remaining if deadline else None
+
+
+def _raise_out_of_time() -> NoReturn:
+    msg = "The IRC search ran out of time; try again shortly"
+    raise SourceUnavailableError(msg)
+
+
+def _within_deadline(seconds: float) -> float:
+    """``seconds``, cut to what the search deadline has left. Raises once it is spent.
+
+    The API waits on the search, so a phase that outlives the deadline turns into a
+    gateway timeout for the user.
+    """
+    left = _deadline_left()
+    if left is None:
+        return seconds
+    if left < 1.0:  # too little left to start another phase
+        _raise_out_of_time()
+    return min(seconds, left)
 
 
 def _enforce_rate_limit() -> None:
@@ -306,33 +338,47 @@ class IRCReleaseSource(ReleaseSource):
                     self._filter_by_content_type(cached["releases"], requested), wanted_author
                 )
 
-        # Anti-spam cap: the exact same query may only be POSTED a limited number of times
-        # per window, even via refresh. Beyond that, serve whatever is cached rather than
-        # re-posting the identical message to the channel.
-        if _recent_send_count(query_key) >= MAX_IDENTICAL_SENDS:
-            logger.info(
-                "IRC query hit %s-send limit in window, not re-posting: %s",
-                MAX_IDENTICAL_SENDS,
-                query,
-            )
-            _emit_status(
-                "Search limit reached for this query — showing latest results", phase="complete"
-            )
-            cached = get_cached_results(query_key)
-            if cached:
-                self._online_servers = set(cached.get("online_servers", []))
-                return self._rank_by_author(
-                    self._filter_by_content_type(cached["releases"], requested), wanted_author
-                )
-            return []
-
-        logger.info("IRC search: %s", query)
-
-        # Enforce rate limit
-        _enforce_rate_limit()
-
         client = None
+        if not connection_manager.io_lock.acquire(blocking=False):
+            _emit_status("Waiting for the IRC connection...", phase="searching")
+            deadline = search_deadline.current()
+            timeout = deadline.remaining if deadline else 180.0
+            if not connection_manager.io_lock.acquire(timeout=timeout):
+                msg = "IRC is busy, try again shortly"
+                raise SourceUnavailableError(msg)
         try:
+            # An identical search queued ahead of us may have just cached the answer.
+            if not expand_search:
+                cached = get_cached_results(query_key)
+                if cached:
+                    _emit_status("Using cached results", phase="complete")
+                    self._online_servers = set(cached.get("online_servers", []))
+                    return self._rank_by_author(
+                        self._filter_by_content_type(cached["releases"], requested), wanted_author
+                    )
+
+            # Anti-spam cap: the exact same query may only be POSTED a limited number of times
+            # per window, even via refresh. Beyond that, serve whatever is cached rather than
+            # re-posting the identical message to the channel.
+            if _recent_send_count(query_key) >= MAX_IDENTICAL_SENDS:
+                logger.info(
+                    "IRC query hit %s-send limit in window, not re-posting: %s",
+                    MAX_IDENTICAL_SENDS,
+                    query,
+                )
+                _emit_status(
+                    "Search limit reached for this query — showing latest results", phase="complete"
+                )
+                cached = get_cached_results(query_key)
+                if cached:
+                    self._online_servers = set(cached.get("online_servers", []))
+                    return self._rank_by_author(
+                        self._filter_by_content_type(cached["releases"], requested), wanted_author
+                    )
+                return []
+
+            logger.info("IRC search: %s", query)
+
             # Get or reuse IRC connection
             _emit_status(f"Connecting to {server}...", phase="connecting")
             client = connection_manager.get_connection(
@@ -346,6 +392,10 @@ class IRCReleaseSource(ReleaseSource):
             # Capture online servers (elevated users in channel)
             self._online_servers = client.online_servers
 
+            # Space real sends, not lock-queue entries (the lock may have been held a while).
+            _enforce_rate_limit()
+            wait_timeout = _within_deadline(60.0)  # nothing is sent once the time is spent
+
             # Send search request (always addressed to the search bot, never bare)
             client.send_message(f"#{channel}", f"@{search_bot} {query}")
             _record_message_sent(query_key)
@@ -355,9 +405,26 @@ class IRCReleaseSource(ReleaseSource):
             # "@search" from a differently-named results bot. The DCC endpoint/filename are
             # still validated, and wait_for_dcc falls back to the channel's server list.
             _emit_status(f"Connected to #{channel} - Waiting for results...", phase="searching")
-            offer = client.wait_for_dcc(timeout=60.0, result_type=True)
+            offer = client.wait_for_dcc(
+                timeout=wait_timeout, result_type=True, expected_query=query
+            )
 
             online_servers = list(self._online_servers) if self._online_servers else None
+
+            if not offer and not client.is_connected:
+                # The server dropped the link mid-search. That says nothing about the
+                # book, so it is neither cached as "no results" nor counted as one; the
+                # request is searched again on the next pass.
+                connection_manager.close_connection(client)
+                _raise_connection_dropped()
+
+            left = _deadline_left()
+            if not offer and wait_timeout < 60.0 and left is not None and left < 1.0:
+                # The deadline cut the wait short and the bot may still answer, so this is
+                # not "no results". The client marks the query timed out, so a late answer
+                # is skipped by the next search.
+                connection_manager.release_connection(client)
+                _raise_out_of_time()
 
             if not offer:
                 logger.info("No search results received")
@@ -373,7 +440,7 @@ class IRCReleaseSource(ReleaseSource):
             _emit_status(f"Connected to #{channel} - Downloading results...", phase="downloading")
             with tempfile.TemporaryDirectory() as tmpdir:
                 result_path = Path(tmpdir) / safe_dcc_filename(offer.filename)
-                download_dcc(offer, result_path, timeout=30.0)
+                download_dcc(offer, result_path, timeout=_within_deadline(30.0))
 
                 # Parse results
                 if result_path.suffix.lower() == ".zip":
@@ -406,12 +473,22 @@ class IRCReleaseSource(ReleaseSource):
                 audiobook_releases if requested == "audiobook" else ebook_releases, wanted_author
             )
 
-        except DCCError as e:
-            logger.exception("DCC error during search")
-            _emit_status(f"DCC error: {e}", phase="error")
+        except SourceUnavailableError:
+            raise
+        except (IRCError, OSError) as e:
+            logger.warning("IRC search failed: %s", e)
             if client:
                 connection_manager.close_connection(client)
-            return []
+            msg = f"IRC search unavailable: {e}"
+            raise SourceUnavailableError(msg) from e
+        except DCCError as e:
+            # The results transfer failed, which says nothing about the book. The DCC
+            # socket failed, not the IRC one, so the connection is handed back.
+            logger.warning("DCC error during search: %s", e)
+            if client:
+                connection_manager.release_connection(client)
+            msg = f"IRC results transfer failed: {e}"
+            raise SourceUnavailableError(msg) from e
         except Exception as e:
             logger.exception("IRC search failed")
             _emit_status(f"Search failed: {e}", phase="error")
@@ -421,6 +498,9 @@ class IRCReleaseSource(ReleaseSource):
 
         else:
             return releases
+
+        finally:
+            connection_manager.io_lock.release()
 
     def _build_query(self, book: BookMetadata, plan: ReleaseSearchPlan) -> str:
         """Build the line posted to the channel: a title, plus a surname.

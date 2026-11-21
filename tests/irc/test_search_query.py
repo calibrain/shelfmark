@@ -160,6 +160,7 @@ def test_search_posts_the_surname_and_ranks_the_cached_answer(monkeypatch):
     sent: list[str] = []
 
     class FakeClient:
+        is_connected = True
         online_servers: set[str] = {"OnlineBot"}
 
         def send_message(self, _channel: str, message: str) -> None:

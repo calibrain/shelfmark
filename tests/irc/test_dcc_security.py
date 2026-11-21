@@ -80,3 +80,21 @@ def test_download_dcc_rejects_private_endpoint_before_socket_connect(
             DCCOffer(filename="book.epub", ip="127.0.0.1", port=1234, size=1),
             tmp_path / "book.epub",
         )
+
+
+def test_download_dcc_turns_a_reset_mid_transfer_into_a_dcc_error(monkeypatch, tmp_path) -> None:
+    """A reset on the DCC socket must not look like the IRC connection failing."""
+    from shelfmark.release_sources.irc.dcc import DCCError
+
+    class ResetSocket:
+        def settimeout(self, _t: float) -> None: ...
+        def connect(self, _addr: object) -> None: ...
+        def close(self) -> None: ...
+        def recv(self, _n: int) -> bytes:
+            raise ConnectionResetError
+
+    monkeypatch.setattr(socket, "socket", lambda *_a: ResetSocket())
+    offer = DCCOffer(filename="a.epub", ip="8.8.8.8", port=443, size=10)
+
+    with pytest.raises(DCCError):
+        download_dcc(offer, tmp_path / "a.epub", timeout=1.0)
