@@ -11,6 +11,7 @@ from shelfmark.core.models import (
     build_filename,
     normalize_format,
     resolve_staged_path,
+    with_task_suffix,
 )
 from shelfmark.download import network
 from shelfmark.release_sources import (
@@ -127,6 +128,7 @@ class DirectDownloadHandler(DownloadHandler):
                     book_info.year,
                     book_info.format,
                 )
+            book_name = with_task_suffix(book_name, book_info.id)
             book_path = resolve_staged_path(TMP_DIR, book_name)
 
             # Check cancellation before download
