@@ -127,6 +127,31 @@ def _raise_connection_dropped() -> NoReturn:
     raise SourceUnavailableError(msg)
 
 
+def _deadline_left() -> float | None:
+    """Seconds the search deadline has left, or None outside a search."""
+    deadline = search_deadline.current()
+    return deadline.remaining if deadline else None
+
+
+def _raise_out_of_time() -> NoReturn:
+    msg = "The IRC search ran out of time; try again shortly"
+    raise SourceUnavailableError(msg)
+
+
+def _within_deadline(seconds: float) -> float:
+    """``seconds``, cut to what the search deadline has left. Raises once it is spent.
+
+    The API waits on the search, so a phase that outlives the deadline turns into a
+    gateway timeout for the user.
+    """
+    left = _deadline_left()
+    if left is None:
+        return seconds
+    if left < 1.0:  # too little left to start another phase
+        _raise_out_of_time()
+    return min(seconds, left)
+
+
 def _enforce_rate_limit() -> None:
     """Ensure minimum time between searches."""
     global _last_search_time
@@ -369,6 +394,7 @@ class IRCReleaseSource(ReleaseSource):
 
             # Space real sends, not lock-queue entries (the lock may have been held a while).
             _enforce_rate_limit()
+            wait_timeout = _within_deadline(60.0)  # nothing is sent once the time is spent
 
             # Send search request (always addressed to the search bot, never bare)
             client.send_message(f"#{channel}", f"@{search_bot} {query}")
@@ -379,7 +405,9 @@ class IRCReleaseSource(ReleaseSource):
             # "@search" from a differently-named results bot. The DCC endpoint/filename are
             # still validated, and wait_for_dcc falls back to the channel's server list.
             _emit_status(f"Connected to #{channel} - Waiting for results...", phase="searching")
-            offer = client.wait_for_dcc(timeout=60.0, result_type=True, expected_query=query)
+            offer = client.wait_for_dcc(
+                timeout=wait_timeout, result_type=True, expected_query=query
+            )
 
             online_servers = list(self._online_servers) if self._online_servers else None
 
@@ -389,6 +417,14 @@ class IRCReleaseSource(ReleaseSource):
                 # request is searched again on the next pass.
                 connection_manager.close_connection(client)
                 _raise_connection_dropped()
+
+            left = _deadline_left()
+            if not offer and wait_timeout < 60.0 and left is not None and left < 1.0:
+                # The deadline cut the wait short and the bot may still answer, so this is
+                # not "no results". The client marks the query timed out, so a late answer
+                # is skipped by the next search.
+                connection_manager.release_connection(client)
+                _raise_out_of_time()
 
             if not offer:
                 logger.info("No search results received")
@@ -404,7 +440,7 @@ class IRCReleaseSource(ReleaseSource):
             _emit_status(f"Connected to #{channel} - Downloading results...", phase="downloading")
             with tempfile.TemporaryDirectory() as tmpdir:
                 result_path = Path(tmpdir) / safe_dcc_filename(offer.filename)
-                download_dcc(offer, result_path, timeout=30.0)
+                download_dcc(offer, result_path, timeout=_within_deadline(30.0))
 
                 # Parse results
                 if result_path.suffix.lower() == ".zip":
@@ -446,11 +482,13 @@ class IRCReleaseSource(ReleaseSource):
             msg = f"IRC search unavailable: {e}"
             raise SourceUnavailableError(msg) from e
         except DCCError as e:
-            logger.exception("DCC error during search")
-            _emit_status(f"DCC error: {e}", phase="error")
+            # The results transfer failed, which says nothing about the book. The DCC
+            # socket failed, not the IRC one, so the connection is handed back.
+            logger.warning("DCC error during search: %s", e)
             if client:
-                connection_manager.close_connection(client)
-            return []
+                connection_manager.release_connection(client)
+            msg = f"IRC results transfer failed: {e}"
+            raise SourceUnavailableError(msg) from e
         except Exception as e:
             logger.exception("IRC search failed")
             _emit_status(f"Search failed: {e}", phase="error")

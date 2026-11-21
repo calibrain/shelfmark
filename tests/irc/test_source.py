@@ -779,3 +779,111 @@ def test_a_denied_search_is_unavailable_not_no_results(monkeypatch):
         source.search(BookMetadata(provider="hardcover", provider_id="a", title="T"), _plan("T"))
 
     assert cache_calls == []
+
+
+def _search_with(monkeypatch, client):
+    """Run one search against `client`; return (cache calls, error or None)."""
+    from shelfmark.release_sources import SourceUnavailableError
+
+    cache_calls = _configured_search(monkeypatch, client)
+    source = IRCReleaseSource()
+    monkeypatch.setattr(source, "is_available", lambda: True)
+    try:
+        source.search(BookMetadata(provider="hardcover", provider_id="a", title="T"), _plan("T"))
+    except SourceUnavailableError as e:
+        return cache_calls, e
+    return cache_calls, None
+
+
+def test_a_failed_results_transfer_is_unavailable_and_keeps_the_connection(monkeypatch):
+    import shelfmark.release_sources.irc.source as irc_source
+    from shelfmark.release_sources.irc.dcc import DCCError, DCCOffer
+
+    class OfferingClient:
+        is_connected = True
+        online_servers: set[str] = set()
+
+        def send_message(self, _channel: str, _message: str) -> None:
+            pass
+
+        def wait_for_dcc(self, **_kwargs: object) -> DCCOffer:
+            return DCCOffer(filename="Bot_results_for__T.txt.zip", ip="8.8.8.8", port=443, size=1)
+
+    def reset(*_args: object, **_kwargs: object) -> None:
+        msg = "Failed reading from 8.8.8.8:443: connection reset"
+        raise DCCError(msg)
+
+    monkeypatch.setattr(irc_source, "download_dcc", reset)
+    closed: list[object] = []
+    manager = "shelfmark.release_sources.irc.connection_manager.connection_manager"
+    cache_calls = _configured_search(monkeypatch, OfferingClient())
+    monkeypatch.setattr(f"{manager}.close_connection", closed.append)
+    source = IRCReleaseSource()
+    monkeypatch.setattr(source, "is_available", lambda: True)
+
+    import pytest
+
+    from shelfmark.release_sources import SourceUnavailableError
+
+    with pytest.raises(SourceUnavailableError, match="transfer failed"):
+        source.search(BookMetadata(provider="hardcover", provider_id="a", title="T"), _plan("T"))
+
+    assert cache_calls == []
+    assert closed == []  # the IRC side is fine
+
+
+class _WaitingClient:
+    """Answers nothing: the wait runs to its timeout. Or, with `sorry`, says no results."""
+
+    is_connected = True
+    online_servers: set[str] = set()
+
+    def __init__(self, *, sorry: bool = False) -> None:
+        self.sorry = sorry
+        self.sent: list[str] = []
+        self.timeouts: list[float] = []
+
+    def send_message(self, _channel: str, message: str) -> None:
+        self.sent.append(message)
+
+    def wait_for_dcc(self, *, timeout: float, **_kwargs: object) -> None:
+        self.timeouts.append(timeout)
+        if not self.sorry:
+            time.sleep(timeout)
+
+
+def test_the_wait_for_results_stops_at_the_search_deadline_and_is_not_cached(monkeypatch):
+    from shelfmark.core import search_deadline
+
+    client = _WaitingClient()
+    with search_deadline.search_deadline(1.5):
+        cache_calls, error = _search_with(monkeypatch, client)
+
+    assert error is not None
+    assert "ran out of time" in str(error)
+    assert client.timeouts and client.timeouts[0] <= 1.5
+    assert cache_calls == []
+
+
+def test_nothing_is_sent_once_the_search_deadline_is_spent(monkeypatch):
+    from shelfmark.core import search_deadline
+
+    client = _WaitingClient()
+    with search_deadline.search_deadline(0.5):
+        cache_calls, error = _search_with(monkeypatch, client)
+
+    assert error is not None
+    assert client.sent == []
+    assert cache_calls == []
+
+
+def test_a_real_no_results_inside_a_shortened_wait_is_still_cached(monkeypatch):
+    from shelfmark.core import search_deadline
+
+    client = _WaitingClient(sorry=True)
+    with search_deadline.search_deadline(30):
+        cache_calls, error = _search_with(monkeypatch, client)
+
+    assert error is None
+    assert client.timeouts[0] < 60
+    assert len(cache_calls) == 1
