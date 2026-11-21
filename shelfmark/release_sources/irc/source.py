@@ -13,6 +13,7 @@ if TYPE_CHECKING:
     from shelfmark.metadata_providers import BookMetadata
 
 from shelfmark.api.websocket import ws_manager
+from shelfmark.core import search_deadline
 from shelfmark.core.author_match import author_affinity, search_surname
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
@@ -32,7 +33,7 @@ from shelfmark.release_sources import (
     register_source,
 )
 
-from .client import bare_channel_name, has_control_characters
+from .client import IRCError, bare_channel_name, has_control_characters
 from .connection_manager import connection_manager
 from .dcc import DCCError, download_dcc, safe_dcc_filename
 from .parser import SearchResult, extract_results_from_zip, parse_results_file
@@ -313,8 +314,24 @@ class IRCReleaseSource(ReleaseSource):
                 )
 
         client = None
-        connection_manager.io_lock.acquire()
+        if not connection_manager.io_lock.acquire(blocking=False):
+            _emit_status("Waiting for the IRC connection...", phase="searching")
+            deadline = search_deadline.current()
+            timeout = deadline.remaining if deadline else 180.0
+            if not connection_manager.io_lock.acquire(timeout=timeout):
+                msg = "IRC is busy, try again shortly"
+                raise SourceUnavailableError(msg)
         try:
+            # An identical search queued ahead of us may have just cached the answer.
+            if not expand_search:
+                cached = get_cached_results(query_key)
+                if cached:
+                    _emit_status("Using cached results", phase="complete")
+                    self._online_servers = set(cached.get("online_servers", []))
+                    return self._rank_by_author(
+                        self._filter_by_content_type(cached["releases"], requested), wanted_author
+                    )
+
             # Anti-spam cap: the exact same query may only be POSTED a limited number of times
             # per window, even via refresh. Beyond that, serve whatever is cached rather than
             # re-posting the identical message to the channel.
@@ -367,9 +384,9 @@ class IRCReleaseSource(ReleaseSource):
             online_servers = list(self._online_servers) if self._online_servers else None
 
             if not offer and not client.is_connected:
-                # A failure elsewhere closed the connection mid-search. That says nothing
-                # about the book, so it is neither cached as "no results" nor counted as
-                # one; the request is searched again on the next pass.
+                # The server dropped the link mid-search. That says nothing about the
+                # book, so it is neither cached as "no results" nor counted as one; the
+                # request is searched again on the next pass.
                 connection_manager.close_connection(client)
                 _raise_connection_dropped()
 
@@ -422,6 +439,12 @@ class IRCReleaseSource(ReleaseSource):
 
         except SourceUnavailableError:
             raise
+        except (IRCError, OSError) as e:
+            logger.warning("IRC search failed: %s", e)
+            if client:
+                connection_manager.close_connection(client)
+            msg = f"IRC search unavailable: {e}"
+            raise SourceUnavailableError(msg) from e
         except DCCError as e:
             logger.exception("DCC error during search")
             _emit_status(f"DCC error: {e}", phase="error")

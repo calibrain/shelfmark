@@ -588,7 +588,7 @@ def test_search_waits_for_a_results_file_named_for_its_own_query(monkeypatch):
 
 
 def test_search_on_a_dropped_connection_is_an_error_and_is_not_cached(monkeypatch):
-    """A download closing the shared connection mid-search is not "no results".
+    """The server dropping the link mid-search is not "no results".
 
     Cached as an empty answer it hid the book for a day, and returned as an empty list it
     counted towards the request's search backoff.
@@ -677,3 +677,105 @@ def test_identical_searches_queued_on_the_lock_post_the_query_only_once(monkeypa
     assert not first.is_alive()
     assert not second.is_alive()  # a lock that was never released would leave it blocked
     assert len(sent) == 1
+
+
+def test_search_gives_up_waiting_for_a_busy_connection_at_the_deadline(monkeypatch):
+    import pytest
+
+    from shelfmark.core import search_deadline
+    from shelfmark.release_sources import SourceUnavailableError
+    from shelfmark.release_sources.irc.connection_manager import connection_manager
+
+    _configured_search(monkeypatch, object())
+    source = IRCReleaseSource()
+    monkeypatch.setattr(source, "is_available", lambda: True)
+    book = BookMetadata(provider="hardcover", provider_id="a", title="Some Title")
+
+    connection_manager.io_lock.acquire()  # a download is mid-request
+    try:
+        started = time.monotonic()
+        with search_deadline.search_deadline(0.3), pytest.raises(SourceUnavailableError):
+            source.search(book, _plan("Some Title"))
+        assert time.monotonic() - started < 5
+    finally:
+        connection_manager.io_lock.release()
+
+
+def test_search_rechecks_the_cache_once_it_has_the_lock(monkeypatch):
+    """A search queued behind an identical one is answered by the cache it just filled."""
+    sent: list[str] = []
+
+    class FakeClient:
+        is_connected = True
+        online_servers: set[str] = set()
+
+        def send_message(self, _channel: str, message: str) -> None:
+            sent.append(message)
+
+    _configured_search(monkeypatch, FakeClient())
+    answers = iter([None, {"releases": [], "online_servers": []}])  # miss, then filled
+    monkeypatch.setattr(
+        "shelfmark.release_sources.irc.cache.get_cached_results", lambda *_a: next(answers)
+    )
+    source = IRCReleaseSource()
+    monkeypatch.setattr(source, "is_available", lambda: True)
+
+    source.search(BookMetadata(provider="hardcover", provider_id="a", title="T"), _plan("T"))
+
+    assert sent == []
+
+
+def test_a_connection_failure_is_unavailable_not_no_results(monkeypatch):
+    """Failing to connect or to send says nothing about the book, so it is never cached."""
+    import pytest
+
+    from shelfmark.release_sources import SourceUnavailableError
+
+    class BrokenClient:
+        is_connected = True
+        online_servers: set[str] = set()
+
+        def send_message(self, _channel: str, _message: str) -> None:
+            raise BrokenPipeError
+
+    cache_calls = _configured_search(monkeypatch, BrokenClient())
+    closed: list[object] = []
+    monkeypatch.setattr(
+        "shelfmark.release_sources.irc.connection_manager.connection_manager.close_connection",
+        closed.append,
+    )
+    source = IRCReleaseSource()
+    monkeypatch.setattr(source, "is_available", lambda: True)
+
+    with pytest.raises(SourceUnavailableError):
+        source.search(BookMetadata(provider="hardcover", provider_id="a", title="T"), _plan("T"))
+
+    assert cache_calls == []
+    assert len(closed) == 1
+
+
+def test_a_denied_search_is_unavailable_not_no_results(monkeypatch):
+    import pytest
+
+    from shelfmark.release_sources import SourceUnavailableError
+    from shelfmark.release_sources.irc.client import IRCError
+
+    class DeniedClient:
+        is_connected = True
+        online_servers: set[str] = set()
+
+        def send_message(self, _channel: str, _message: str) -> None:
+            pass
+
+        def wait_for_dcc(self, **_kwargs: object) -> None:
+            msg = "Search results already waiting to be recieved. Search denied."
+            raise IRCError(msg)
+
+    cache_calls = _configured_search(monkeypatch, DeniedClient())
+    source = IRCReleaseSource()
+    monkeypatch.setattr(source, "is_available", lambda: True)
+
+    with pytest.raises(SourceUnavailableError, match="Search denied"):
+        source.search(BookMetadata(provider="hardcover", provider_id="a", title="T"), _plan("T"))
+
+    assert cache_calls == []

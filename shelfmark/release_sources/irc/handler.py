@@ -111,6 +111,7 @@ class IRCDownloadHandler(DownloadHandler):
             status_callback("cancelled", "Cancelled")
             return True
 
+        lock_held = True
         connection_manager.io_lock.acquire()
         try:
             # Phase 1: Get or reuse IRC connection
@@ -150,7 +151,13 @@ class IRCDownloadHandler(DownloadHandler):
                 connection_manager.release_connection(client)
                 return None
 
-            if check_cancelled():
+            # The transfer runs on its own DCC socket, so the IRC connection is free again.
+            connection_manager.release_connection(client)
+            connection_manager.io_lock.release()
+            lock_held = False
+
+            if cancel_flag.is_set():
+                status_callback("cancelled", "Cancelled")
                 return None
 
             # Phase 4: Download via DCC
@@ -174,9 +181,6 @@ class IRCDownloadHandler(DownloadHandler):
                 timeout=60.0,
             )
 
-            # Release connection for reuse (don't close it)
-            connection_manager.release_connection(client)
-
             if cancel_flag.is_set():
                 # Clean up partial download
                 staging_path.unlink(missing_ok=True)
@@ -187,21 +191,22 @@ class IRCDownloadHandler(DownloadHandler):
             return str(staging_path)
 
         except DCCError as e:
+            # The DCC socket failed, not the IRC one.
             logger.exception("DCC error")
             status_callback("error", str(e))
-            if client:
-                connection_manager.close_connection(client)
             return None
 
         except Exception as e:
             logger.exception("Download failed")
             status_callback("error", f"Download failed: {e}")
-            if client:
+            # Only drop a connection we still own; after the offer it was already released.
+            if client and lock_held:
                 connection_manager.close_connection(client)
             return None
 
         finally:
-            connection_manager.io_lock.release()
+            if lock_held:
+                connection_manager.io_lock.release()
 
     def cancel(self, task_id: str) -> bool:
         """Cancel an in-progress download (cleanup if cancel_flag fails)."""

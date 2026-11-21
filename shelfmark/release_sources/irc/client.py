@@ -7,6 +7,7 @@ import re
 import socket
 import ssl
 import time
+import unicodedata
 from contextlib import suppress
 from dataclasses import dataclass, field
 from enum import Enum, auto
@@ -40,6 +41,7 @@ class IRCEvent(Enum):
     SEARCH_RESULT = auto()  # DCC SEND with "_results_for"
     BOOK_RESULT = auto()  # DCC SEND for actual book
     NO_RESULTS = auto()  # "Sorry" notice
+    SEARCH_DENIED = auto()  # "Search denied" notice: an earlier results file is unreceived
     BAD_SERVER = auto()  # "try another server" notice
     SEARCH_ACCEPTED = auto()  # "has been accepted" notice
     MATCHES_FOUND = auto()  # "X matches" notice
@@ -87,7 +89,9 @@ class IRCConnectionError(IRCError):
 
 
 def _alnum(value: str) -> str:
-    return "".join(c for c in value.casefold() if c.isalnum())
+    # NFKD + dropping combining marks makes "é" equal "e" however the bot encoded it.
+    decomposed = unicodedata.normalize("NFKD", value.casefold())
+    return "".join(c for c in decomposed if c.isalnum() and not unicodedata.combining(c))
 
 
 def results_file_matches_query(filename: str, query: str) -> bool:
@@ -95,16 +99,26 @@ def results_file_matches_query(filename: str, query: str) -> bool:
 
     The bot names it ``<Bot>_results_for__<query>.txt.zip``, with punctuation turned into
     underscores, so the two are compared on letters and digits only (any script). They must
-    be equal: a prefix match would take the results for "Dune Messiah" as the answer to
-    "Dune". A name without ``_results_for`` is accepted: its naming is
+    be equal: a prefix match would take the results for "Emma Austen" as the answer to
+    "Emma". A name without ``_results_for`` is accepted: its naming is
     unknown, so there is nothing to compare against.
     """
     _, found, rest = filename.partition("_results_for")
     if not found:
         return True
     got = _alnum(re.sub(r"(\.(txt|zip|rar|7z))+$", "", rest, flags=re.IGNORECASE))
-    want = _alnum(query)
-    return bool(got) and got == want
+    # The bot turns a non-ASCII letter into "_" ("Les_Mis_rables"), so also try without them.
+    ascii_only = query.encode("ascii", "ignore").decode()
+    return bool(got) and got in {_alnum(query), _alnum(ascii_only)}
+
+
+_IRC_FORMATTING = re.compile(r"\x03(\d{1,2}(,\d{1,2})?)?|[\x02\x0f\x16\x1d\x1f]")
+
+
+def notice_query(text: str) -> str | None:
+    """The query a search bot's notice names: ``... your search for "<query>" ...``."""
+    match = re.search(r'search for "([^"]*)"', _IRC_FORMATTING.sub("", text))
+    return match.group(1) if match else None
 
 
 class IRCClient:
@@ -138,6 +152,8 @@ class IRCClient:
         self._socket: socket.socket | None = None
         self._buffer = ""
         self._connected = False
+        # Queries whose wait timed out: a late answer to one of them may still arrive.
+        self._stale_queries: set[str] = set()
 
         # Track online servers (elevated users in channel)
         self.online_servers: set[str] = set()
@@ -443,6 +459,8 @@ class IRCClient:
 
         # NOTICE messages
         if msg.command == "NOTICE" or "NOTICE" in raw:
+            if "Search denied" in trailing:
+                return IRCEvent.SEARCH_DENIED
             if "Sorry" in trailing:
                 return IRCEvent.NO_RESULTS
             if "try another server" in trailing:
@@ -540,9 +558,10 @@ class IRCClient:
     ) -> DCCOffer | None:
         """Wait for a DCC SEND offer. Returns None on timeout or no results.
 
-        With ``expected_query``, a search-results offer made for another query is skipped.
-        Searches run side by side, so a late file for an earlier query would otherwise be
-        taken as this one's answer and cached under it.
+        With ``expected_query``, a results file or "Sorry" notice that belongs to an earlier
+        query whose wait timed out is skipped, so a late answer is not cached under this
+        one. Anything else is accepted: the bot's naming is not known well enough to
+        reject a file on a mismatch alone.
         """
         target_event = IRCEvent.SEARCH_RESULT if result_type else IRCEvent.BOOK_RESULT
         deadline = time.time() + timeout
@@ -562,6 +581,9 @@ class IRCClient:
                     result_type
                     and expected_query
                     and not results_file_matches_query(offer.filename, expected_query)
+                    and any(
+                        results_file_matches_query(offer.filename, q) for q in self._stale_queries
+                    )
                 ):
                     logger.warning(
                         "Ignoring results file for another query: %s (waiting for %r)",
@@ -572,7 +594,20 @@ class IRCClient:
                 return offer
 
             # Log other events for debugging
+            if msg.event == IRCEvent.SEARCH_DENIED and result_type:
+                # The bot refused to search at all, so this is not "no results".
+                raise IRCError(_IRC_FORMATTING.sub("", msg.trailing or "Search denied"))
             if msg.event == IRCEvent.NO_RESULTS:
+                named = notice_query(msg.trailing or "")
+                if (
+                    result_type
+                    and expected_query
+                    and named is not None
+                    and _alnum(named) != _alnum(expected_query)
+                    and any(_alnum(named) == _alnum(q) for q in self._stale_queries)
+                ):
+                    logger.warning("Ignoring a late no-results notice for another query")
+                    continue
                 logger.info("Server reports no results")
                 return None
             if msg.event == IRCEvent.BAD_SERVER:
@@ -591,6 +626,8 @@ class IRCClient:
 
         if time.time() >= deadline:
             logger.warning("Timeout waiting for DCC offer")
+            if result_type and expected_query:
+                self._stale_queries.add(expected_query)
         return None
 
     @property
