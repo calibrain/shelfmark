@@ -15,8 +15,8 @@ interface UseSearchOptions {
   authRequired: boolean;
   onSearchReset?: () => void;
   contentType?: ContentType;
-  // Called when a universal-mode plain text search (no fields, no provider override)
-  // finds nothing in the metadata provider.
+  // Called when a universal-mode plain text search (no provider fields) finds nothing in
+  // the metadata provider.
   // Return true if the caller took over (e.g. opened a direct source search).
   onNoMetadataResults?: (query: string) => boolean;
 }
@@ -267,7 +267,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
             setTotalFound(0);
             setResultsSourceUrl(undefined);
             setResultsSourceTitle(undefined);
-            const isPlainTextSearch = searchQuery && !hasFieldValues && !providerOverride;
+            const isPlainTextSearch = searchQuery && !hasFieldValues;
             if (!(isPlainTextSearch && onNoMetadataResults?.(searchQuery))) {
               showToast('No results found', 'error');
             }
