@@ -104,6 +104,9 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
   const [resultsSourceUrl, setResultsSourceUrl] = useState<string | undefined>();
   const [resultsSourceTitle, setResultsSourceTitle] = useState<string | undefined>();
 
+  // Bumped by every search and reset, so a search that finishes late can tell it is stale.
+  const searchGenerationRef = useRef(0);
+
   // Store last search params for loadMore
   const lastSearchParamsRef = useRef<{
     query: string;
@@ -196,6 +199,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
       providerOverride?: string;
       sort?: string;
     }) => {
+      const searchGeneration = ++searchGenerationRef.current;
       const effectiveContentType = contentTypeOverride ?? contentType;
       const searchMode = (searchModeOverride ?? config?.search_mode) || 'universal';
 
@@ -267,8 +271,9 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
             setTotalFound(0);
             setResultsSourceUrl(undefined);
             setResultsSourceTitle(undefined);
-            const isPlainTextSearch = searchQuery && !hasFieldValues;
-            if (!(isPlainTextSearch && onNoMetadataResults?.(searchQuery))) {
+            const shouldFallBack =
+              searchQuery && !hasFieldValues && searchGeneration === searchGenerationRef.current;
+            if (!(shouldFallBack && onNoMetadataResults?.(searchQuery))) {
               showToast('No results found', 'error');
             }
           }
@@ -329,6 +334,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
 
   const handleResetSearch = useCallback(
     (config: AppConfig | null) => {
+      searchGenerationRef.current += 1;
       setBooks([]);
       setSearchInput('');
       setShowAdvanced(false);
