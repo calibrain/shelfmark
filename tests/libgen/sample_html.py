@@ -122,7 +122,7 @@ EDGE_SEARCH_HTML = f"""
   <tr><th>Title</th><th>Author(s)</th><th>Publisher</th><th>Year</th><th>Language</th>
       <th>Pages</th><th>Size</th><th>Ext.</th><th>Mirrors</th></tr>
   <tr>
-    <td><a href="edition.php?id=1">Introduction to <i>Algorithms</i></a><br/>
+    <td><a href="edition.php?id=1">Introduction to <i>Algorithms</i> <font color="black">Third Edition</font> <font>1984</font></a><br/>
       <a href="edition.php?id=1"><i><font color="green">9780262033848</font></i></a></td>
     <td>John (Jack) Smith (Author); Ann Lee (Translator)</td>
     <td>MIT</td><td>2009</td><td>English</td><td>1300</td><td>5&nbsp;MB</td><td>pdf</td>

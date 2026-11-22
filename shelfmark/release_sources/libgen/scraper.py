@@ -178,11 +178,20 @@ _AUTHOR_ROLE_RE = re.compile(
 )
 
 
+_ISBN_RE = re.compile(r"\d{9}[\dXx]|\d{13}")
+
+
+def _is_isbn_list(text: str) -> bool:
+    tokens = [t.replace("-", "") for t in re.split(r"[;,\s]+", text) if t]
+    return bool(tokens) and all(_ISBN_RE.fullmatch(t) for t in tokens)
+
+
 def _title_text(cell: Tag) -> str:
     """Title cell text without the series link, ISBN link and type/ID badges libgen.li adds."""
     cell = copy.copy(cell)  # decompose() below must not edit the caller's soup
-    for isbns in cell.find_all("font"):  # the ISBN link renders its numbers in <font>
-        isbns.decompose()
+    for font in cell.find_all("font"):  # the ISBN link renders its numbers in <font>
+        if _is_isbn_list(font.get_text(strip=True)):
+            font.decompose()
     for link in cell.find_all("a", href=re.compile(r"edition\.php|file\.php")):
         text = _cell_text(link)
         if text:

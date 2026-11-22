@@ -131,7 +131,7 @@ def test_parse_results_author_drops_role_suffix_and_trailing_comma():
 
 def test_parse_results_title_keeps_nested_markup_in_the_title_link():
     records = scraper._parse_results(html.EDGE_SEARCH_HTML, "https://libgen.li")
-    assert records[0].title == "Introduction to Algorithms"
+    assert records[0].title == "Introduction to Algorithms Third Edition 1984"
 
 
 def test_parse_results_keeps_unlinked_bold_title():
