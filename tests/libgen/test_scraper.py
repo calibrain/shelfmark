@@ -114,3 +114,16 @@ def test_search_libgen_falls_through_dead_mirror():
 def test_search_libgen_all_mirrors_dead_returns_empty():
     with patch.object(scraper, "fetch_page", return_value=None):
         assert scraper.search_libgen("q", ["https://a", "https://b"], max_results=25) == []
+
+
+def test_parse_results_title_drops_series_isbn_and_badges():
+    records = scraper._parse_results(html.DECORATED_SEARCH_HTML, "https://libgen.li")
+    assert [r.title for r in records] == ["Тіні забутих предків", "Мастер и Маргарита"]
+
+
+def test_parse_results_author_drops_role_suffix_and_trailing_comma():
+    records = scraper._parse_results(html.DECORATED_SEARCH_HTML, "https://libgen.li")
+    assert [r.author for r in records] == [
+        "Коцюбинський, Михайло Михайлович",
+        "Булгаков, Михаил; Bulgakov, M.",
+    ]

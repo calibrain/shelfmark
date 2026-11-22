@@ -80,3 +80,33 @@ ADS_HTML = f"""
 ADS_HTML_NO_GET = """
 <html><body><p>File not found.</p></body></html>
 """
+
+MD5_E = "e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5"
+MD5_F = "f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6f6"
+
+# Real libgen.li title cells: a bold series link, the edition link holding the title, a
+# second edition link holding the ISBNs, then type/ID badges. Authors carry role suffixes.
+DECORATED_SEARCH_HTML = f"""
+<html><body>
+<table id="tablelibgen">
+  <tr><th>Title</th><th>Author(s)</th><th>Publisher</th><th>Year</th><th>Language</th>
+      <th>Pages</th><th>Size</th><th>Ext.</th><th>Mirrors</th></tr>
+  <tr>
+    <td><b><a href="series.php?id=251695">Українська класика   </a></b><br/>
+      <a href="edition.php?id=3425811" title="ID: 2608256">Тіні забутих предків <i></i></a><br/>
+      <a href="edition.php?id=3425811"><i><font color="green"> 9660334362; 9789660334366</font></i></a>
+      <nobr><span class="badge badge-primary"><a title="Book">b</a></span>
+      <span class="badge badge-secondary">f 2641056</span></nobr></td>
+    <td><a href="author.php?id=294010">Коцюбинський, Михайло Михайлович(Author)</a></td>
+    <td>Фоліо</td><td>2016</td><td>Ukrainian</td><td>184</td><td>184&nbsp;kB</td><td>epub</td>
+    <td><a href="/get.php?md5={MD5_E}">Libgen</a></td>
+  </tr>
+  <tr>
+    <td>Мастер и Маргарита <nobr><span class="badge">b</span><span class="badge">f 99</span></nobr></td>
+    <td>Булгаков, Михаил; Bulgakov, M. (Translator),</td>
+    <td>X</td><td>1990</td><td>Russian</td><td>400</td><td>1&nbsp;MB</td><td>fb2</td>
+    <td><a href="/get.php?md5={MD5_F}">Libgen</a></td>
+  </tr>
+</table>
+</body></html>
+"""

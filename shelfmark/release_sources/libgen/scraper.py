@@ -168,6 +168,25 @@ def _cell_text(cell: Tag) -> str:
     return re.sub(r"\s+", " ", cell.get_text(" ", strip=True)).strip()
 
 
+# Author cells append roles like "(Author)" / "(Translator)" to each name.
+_AUTHOR_ROLE_RE = re.compile(r"\s*\([^()]*\)")
+
+
+def _title_text(cell: Tag) -> str:
+    """Title cell text without the series link, ISBN link and type/ID badges libgen.li adds."""
+    for link in cell.find_all("a", href=re.compile(r"edition\.php|file\.php")):
+        text = re.sub(r"\s+", " ", "".join(link.find_all(string=True, recursive=False))).strip()
+        if text:
+            return text
+    for extra in cell.find_all(["nobr", "b"]):
+        extra.decompose()
+    return _cell_text(cell)
+
+
+def _author_text(cell: Tag) -> str | None:
+    return _AUTHOR_ROLE_RE.sub("", _cell_text(cell)).strip(" ,;") or None
+
+
 def _parse_results(html: str, base_url: str) -> list[BrowseRecord] | None:
     """Parse a libgen search page.
 
@@ -200,14 +219,14 @@ def _parse_results(html: str, base_url: str) -> list[BrowseRecord] | None:
             continue  # spacer/section rows carry no md5
         md5 = md5_match.group(1).lower()
 
-        title = _cell_text(cells[0])
+        title = _title_text(cells[0])
         fmt = _cell_text(cells[-2]).lower() or None
         size = _cell_text(cells[-3]) or None
 
         author = None
         language = None
         if len(cells) >= 9:  # full row: middle metadata columns are present
-            author = _cell_text(cells[1]) or None
+            author = _author_text(cells[1])
             language = normalize_language(_cell_text(cells[4]))
 
         records.append(
