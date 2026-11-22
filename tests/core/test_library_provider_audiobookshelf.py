@@ -90,6 +90,24 @@ def test_item_to_entry_tokenizes_title_author_and_path() -> None:
     assert entry.external_ids == frozenset()
 
 
+def test_item_to_entry_keeps_the_id_title_author_and_tags() -> None:
+    item = {
+        "id": "li_8gch9ve09orgn4fdz8",
+        "relPath": "Terry Goodkind/Wizards First Rule",
+        "media": {
+            "metadata": {"title": "SOT 01: Wizards First Rule", "authorName": "Terry Goodkind"},
+            "tags": ["fantasy", "", 3, "ebook-in-library"],
+        },
+    }
+
+    entry = audiobookshelf._item_to_entry(item)
+
+    assert entry.item_id == "li_8gch9ve09orgn4fdz8"
+    assert entry.title == "SOT 01: Wizards First Rule"  # as Audiobookshelf shows it
+    assert entry.author == "Terry Goodkind"
+    assert entry.tags == {"fantasy", "ebook-in-library"}
+
+
 def test_item_to_entry_indexes_both_forms_of_an_isbn10() -> None:
     entry = audiobookshelf._item_to_entry(_item("Carl", "Dinniman", isbn="059382024X"))
 

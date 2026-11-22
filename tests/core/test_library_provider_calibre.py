@@ -143,6 +143,22 @@ def test_indexes_titles_authors_series_and_identifiers(
     assert (draft.isbns, draft.asins, draft.external_ids) == (frozenset(), frozenset(), frozenset())
 
 
+def test_entries_carry_the_book_id_title_and_first_author(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "metadata.db"
+    _make_library(path)
+    _configure(monkeypatch, path)
+
+    entries = calibre.CalibreLibrary().fetch_entries()
+
+    omens = _by_token(entries, "omens")
+    assert (omens.item_id, omens.title, omens.author) == ("2", "Good Omens", "Terry Pratchett")
+    draft = _by_token(entries, "draft")
+    assert (draft.item_id, draft.title, draft.author) == ("3", "Untitled Draft", "")
+    assert all(entry.tags == frozenset() for entry in entries)
+
+
 def test_reads_a_read_only_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     path = tmp_path / "metadata.db"
     _make_library(path)

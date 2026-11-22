@@ -20,6 +20,7 @@ from shelfmark.core.request_helpers import coerce_int, is_plain_email_address
 from shelfmark.core.request_policy import parse_policy_mode, validate_policy_rules
 from shelfmark.core.settings_registry import (
     FieldBase,
+    PasswordField,
     SelectField,
     TextField,
     load_config_file,
@@ -32,6 +33,10 @@ from shelfmark.core.user_settings_overrides import (
 )
 from shelfmark.core.user_settings_overrides import (
     get_settings_registry as _get_settings_registry,
+)
+from shelfmark.core.user_settings_overrides import (
+    is_masked_secret,
+    mask_secret_value,
 )
 from shelfmark.core.utils import get_global_destination, resolve_user_destination_override
 
@@ -136,6 +141,17 @@ def validate_user_settings(
                 continue
 
             value = raw_value
+
+            # The masked placeholder came back from a listing untouched: the stored
+            # secret stays as it is rather than being replaced by the placeholder.
+            if is_masked_secret(field_map[key][0], value):
+                continue
+
+            # A secret is a string; anything else would be stored as is and break its readers.
+            if isinstance(field_map[key][0], PasswordField) and not isinstance(value, str):
+                errors.append(f"Invalid value for {key}: must be a string")
+                continue
+
             if self_service_user is not None:
                 value, self_service_error = _validate_self_service_value(
                     key, raw_value, overridable_map[key][0], self_service_user
@@ -343,13 +359,14 @@ def register_admin_settings_routes(
     @app.route("/api/admin/settings/overrides-summary", methods=["GET"])
     @require_admin
     def admin_settings_overrides_summary() -> ResponseReturnValue:
+        """Which users override each overridable setting on one tab, for the admin view."""
         settings_registry = _get_settings_registry()
 
         tab_name = (request.args.get("tab") or "downloads").strip()
         if not settings_registry.get_settings_tab(tab_name):
             return jsonify({"error": f"Unknown settings tab: {tab_name}"}), 404
 
-        overridable_keys = list(settings_registry.get_user_overridable_fields(tab_name=tab_name))
+        overridable_fields = settings_registry.get_user_overridable_fields(tab_name=tab_name)
         keys_payload: dict[str, dict[str, Any]] = {}
 
         for user_record in user_db.list_users():
@@ -357,7 +374,7 @@ def register_admin_settings_routes(
             if not isinstance(user_settings, dict):
                 continue
 
-            for key in overridable_keys:
+            for key, (field, _tab) in overridable_fields.items():
                 if key not in user_settings or user_settings[key] is None:
                     continue
                 entry = keys_payload.setdefault(key, {"count": 0, "users": []})
@@ -365,7 +382,7 @@ def register_admin_settings_routes(
                     {
                         "userId": user_record["id"],
                         "username": user_record["username"],
-                        "value": user_settings[key],
+                        "value": mask_secret_value(field, user_settings[key]),
                     }
                 )
 
@@ -377,6 +394,7 @@ def register_admin_settings_routes(
     @app.route("/api/admin/users/<int:user_id>/effective-settings", methods=["GET"])
     @require_admin
     def admin_get_effective_settings(user_id: int) -> ResponseReturnValue:
+        """A user's effective value and its source for every user-overridable setting."""
         user = user_db.get_user(user_id=user_id)
         if not user:
             return jsonify({"error": "User not found"}), 404
@@ -403,6 +421,6 @@ def register_admin_settings_routes(
                 if key in tab_config:
                     source = "global_config"
 
-            effective[key] = {"value": value, "source": source}
+            effective[key] = {"value": mask_secret_value(field, value), "source": source}
 
         return jsonify(effective)
