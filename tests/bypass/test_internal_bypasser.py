@@ -747,3 +747,33 @@ def test_helper_watchdog_waits_while_its_parent_is_alive(monkeypatch):
     internal_bypasser._watch_parent_process(999, interval=0.5)
 
     assert sleeps == [0.5, 0.5]
+
+
+def test_host_resolver_rules_use_the_system_resolvers_address_family(monkeypatch):
+    """An IPv6-only host (e.g. NAT64) must not be pinned to an unreachable IPv4 address."""
+    import socket
+
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    answers = {
+        "aa.v6": [(socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("64:ff9b::ba02:a3ae", 443, 0, 0))],
+        "aa.v4": [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("186.2.163.174", 443))],
+    }
+    calls: list[dict[str, object]] = []
+
+    def _getaddrinfo(host, port, *args, **kwargs):
+        calls.append({"args": args, **kwargs})
+        return answers[host]
+
+    monkeypatch.setattr(
+        internal_bypasser.network,
+        "get_available_aa_urls",
+        lambda: ["https://aa.v6", "https://aa.v4"],
+    )
+    monkeypatch.setattr(internal_bypasser.socket, "getaddrinfo", _getaddrinfo)
+
+    assert internal_bypasser._build_host_resolver_rules() == [
+        "MAP aa.v6 [64:ff9b::ba02:a3ae]",
+        "MAP aa.v4 186.2.163.174",
+    ]
+    assert all(socket.AF_INET not in call["args"] and "family" not in call for call in calls)

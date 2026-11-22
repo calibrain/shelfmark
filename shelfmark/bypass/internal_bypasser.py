@@ -846,10 +846,12 @@ def _build_host_resolver_rules() -> list[str]:
                 continue
 
             try:
-                results = socket.getaddrinfo(hostname, 443, socket.AF_INET)
+                results = socket.getaddrinfo(hostname, 443, type=socket.SOCK_STREAM)
                 if results:
-                    ip = results[0][4][0]
-                    host_rules.append(f"MAP {hostname} {ip}")
+                    family, _, _, _, sockaddr = results[0]
+                    ip = str(sockaddr[0])
+                    target = f"[{ip}]" if family == socket.AF_INET6 else ip
+                    host_rules.append(f"MAP {hostname} {target}")
                     logger.debug("Chrome: Pre-resolved %s -> %s", hostname, ip)
                 else:
                     logger.warning("Chrome: No addresses returned for %s", hostname)
