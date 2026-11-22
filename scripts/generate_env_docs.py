@@ -204,7 +204,7 @@ def _generate_bootstrap_env_docs() -> list[str]:
         },
         {
             "name": "SHELFMARK_API_KEY_READONLY",
-            "description": "Optional second API key for dashboards and monitors. Send it like SHELFMARK_API_KEY. It can only GET /api/stats (counters only, no titles or user names). Every other request, and any write, is refused with 403, and it never gets a session. Unset = off.",
+            "description": "Optional second API key for dashboards and monitors. Send it like SHELFMARK_API_KEY. It can only GET /api/stats (counters and scheduler health, no titles or user names). Every other request, and any write, is refused with 403, and it never gets a session. Unset = off.",
             "type": "string",
             "default": "unset",
         },

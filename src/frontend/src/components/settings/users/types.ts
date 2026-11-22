@@ -16,6 +16,7 @@ export interface PerUserSettings {
   DEFAULT_RELEASE_SOURCE?: string;
   DEFAULT_RELEASE_SOURCE_AUDIOBOOK?: string;
   USER_NOTIFICATION_ROUTES?: Array<Record<string, unknown>>;
+  HARDCOVER_SYNC_TOKEN?: string;
   REQUESTS_ENABLED?: boolean;
   REQUEST_POLICY_DEFAULT_EBOOK?: string;
   REQUEST_POLICY_DEFAULT_AUDIOBOOK?: string;
