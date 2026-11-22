@@ -266,14 +266,13 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
               contentType: effectiveContentType,
             };
           } else {
+            if (searchGeneration !== searchGenerationRef.current) return;
             setBooks([]);
             setHasMore(false);
             setTotalFound(0);
             setResultsSourceUrl(undefined);
             setResultsSourceTitle(undefined);
-            const shouldFallBack =
-              searchQuery && !hasFieldValues && searchGeneration === searchGenerationRef.current;
-            if (!(shouldFallBack && onNoMetadataResults?.(searchQuery))) {
+            if (!(searchQuery && !hasFieldValues && onNoMetadataResults?.(searchQuery))) {
               showToast('No results found', 'error');
             }
           }

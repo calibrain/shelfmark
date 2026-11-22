@@ -2383,13 +2383,14 @@ function App() {
   // stopping at "No results found".
   useDependencyEffect(() => {
     noMetadataFallbackRef.current = (query: string) => {
+      if (releaseBook || fulfillingRequest) return false;
       const syntheticBook = manualSearchAllowed ? buildManualSearchBook(query) : null;
       if (!syntheticBook) return false;
       setReleaseBook(syntheticBook);
       showToast('Not in the book catalogue, searching sources directly', 'info');
       return true;
     };
-  }, [manualSearchAllowed, showToast]);
+  }, [manualSearchAllowed, showToast, releaseBook, fulfillingRequest]);
 
   // Unified search dispatch: intercepts manual search mode, otherwise runs normal search
   const handleSearchDispatch = useCallback(() => {
