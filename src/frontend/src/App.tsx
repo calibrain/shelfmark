@@ -34,7 +34,7 @@ import { useAuth } from './hooks/useAuth';
 import { useDownloadTracking } from './hooks/useDownloadTracking';
 import { useLatestCallback } from './hooks/useLatestCallback';
 import { useMediaQuery } from './hooks/useMediaQuery';
-import { useMountEffect } from './hooks/useMountEffect';
+import { useDependencyEffect, useMountEffect } from './hooks/useMountEffect';
 import { useRealtimeStatus } from './hooks/useRealtimeStatus';
 import { useRequestPolicy } from './hooks/useRequestPolicy';
 import { useRequests } from './hooks/useRequests';
@@ -89,6 +89,7 @@ import { buildSearchQuery } from './utils/buildSearchQuery';
 import { wasDownloadQueuedAfterResponseError } from './utils/downloadRecovery';
 import { getDynamicOptionGroup } from './utils/dynamicFieldOptions';
 import { resolveDefaultLanguageCodes } from './utils/languageFilters';
+import { buildManualSearchBook } from './utils/manualSearchBook';
 import { getConfiguredMetadataProviderForContentType } from './utils/metadataProviders';
 import { getEffectiveMetadataSort } from './utils/metadataSort';
 import { isRecord } from './utils/objectHelpers';
@@ -477,6 +478,14 @@ function App() {
     ],
   );
 
+  // Set once manual search availability is known (further down); read by the
+  // no-metadata-results fallback below so useSearch can stay above that code.
+  const noMetadataFallbackRef = useRef<((query: string) => boolean) | null>(null);
+  const handleNoMetadataResults = useCallback(
+    (query: string) => noMetadataFallbackRef.current?.(query) ?? false,
+    [],
+  );
+
   // Search state and handlers
   const {
     books,
@@ -508,6 +517,7 @@ function App() {
     authRequired,
     onSearchReset: clearTracking,
     contentType: effectiveContentType,
+    onNoMetadataResults: handleNoMetadataResults,
   });
 
   // When a book is removed from the Hardcover list currently being browsed, remove it from results
@@ -2364,19 +2374,22 @@ function App() {
   );
 
   const handleManualSearch = useCallback(() => {
-    const trimmed = searchInput.trim();
-    if (!trimmed) return;
-    const manualId = `manual_${Date.now()}`;
-    const syntheticBook: Book = {
-      id: manualId,
-      title: trimmed,
-      author: '',
-      provider: 'manual',
-      provider_id: manualId,
-      search_title: trimmed,
-    };
-    setReleaseBook(syntheticBook);
+    const syntheticBook = buildManualSearchBook(searchInput);
+    if (syntheticBook) setReleaseBook(syntheticBook);
   }, [searchInput]);
+
+  // The metadata catalogue often has nothing for non-English titles (e.g. Ukrainian),
+  // while the release sources do. Fall straight through to a source search instead of
+  // stopping at "No results found".
+  useDependencyEffect(() => {
+    noMetadataFallbackRef.current = (query: string) => {
+      const syntheticBook = manualSearchAllowed ? buildManualSearchBook(query) : null;
+      if (!syntheticBook) return false;
+      setReleaseBook(syntheticBook);
+      showToast('Not in the book catalogue, searching sources directly', 'info');
+      return true;
+    };
+  }, [manualSearchAllowed, showToast]);
 
   // Unified search dispatch: intercepts manual search mode, otherwise runs normal search
   const handleSearchDispatch = useCallback(() => {

@@ -15,6 +15,9 @@ interface UseSearchOptions {
   authRequired: boolean;
   onSearchReset?: () => void;
   contentType?: ContentType;
+  // Called when a universal-mode text search finds nothing in the metadata provider.
+  // Return true if the caller took over (e.g. opened a direct source search).
+  onNoMetadataResults?: (query: string) => boolean;
 }
 
 // Search field values for universal mode (provider-specific fields)
@@ -67,6 +70,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
     authRequired,
     onSearchReset,
     contentType = 'ebook',
+    onNoMetadataResults,
   } = options;
   const navigate = useNavigate();
 
@@ -262,7 +266,9 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
             setTotalFound(0);
             setResultsSourceUrl(undefined);
             setResultsSourceTitle(undefined);
-            showToast('No results found', 'error');
+            if (!(searchQuery && onNoMetadataResults?.(searchQuery))) {
+              showToast('No results found', 'error');
+            }
           }
         } catch (error) {
           handleSearchError(error, 'Search failed');
@@ -315,6 +321,7 @@ export function useSearch(options: UseSearchOptions): UseSearchReturn {
       contentType,
       advancedFilters,
       sortBooksByDownloads,
+      onNoMetadataResults,
     ],
   );
 
