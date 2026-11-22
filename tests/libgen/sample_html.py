@@ -110,3 +110,29 @@ DECORATED_SEARCH_HTML = f"""
 </table>
 </body></html>
 """
+
+MD5_G = "a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7"
+MD5_H = "b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8"
+
+# Edge cases: italic markup inside the title link, a nickname in parentheses, and an
+# unlinked bold title that is not a series.
+EDGE_SEARCH_HTML = f"""
+<html><body>
+<table id="tablelibgen">
+  <tr><th>Title</th><th>Author(s)</th><th>Publisher</th><th>Year</th><th>Language</th>
+      <th>Pages</th><th>Size</th><th>Ext.</th><th>Mirrors</th></tr>
+  <tr>
+    <td><a href="edition.php?id=1">Introduction to <i>Algorithms</i></a><br/>
+      <a href="edition.php?id=1"><i><font color="green">9780262033848</font></i></a></td>
+    <td>John (Jack) Smith (Author); Ann Lee (Translator)</td>
+    <td>MIT</td><td>2009</td><td>English</td><td>1300</td><td>5&nbsp;MB</td><td>pdf</td>
+    <td><a href="/get.php?md5={MD5_G}">Libgen</a></td>
+  </tr>
+  <tr>
+    <td><b>Collected Poems</b><nobr><span class="badge">f 99</span></nobr></td>
+    <td>A. Poet</td><td>X</td><td>2000</td><td>English</td><td>80</td><td>1&nbsp;MB</td><td>epub</td>
+    <td><a href="/get.php?md5={MD5_H}">Libgen</a></td>
+  </tr>
+</table>
+</body></html>
+"""

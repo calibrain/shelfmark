@@ -127,3 +127,18 @@ def test_parse_results_author_drops_role_suffix_and_trailing_comma():
         "Коцюбинський, Михайло Михайлович",
         "Булгаков, Михаил; Bulgakov, M.",
     ]
+
+
+def test_parse_results_title_keeps_nested_markup_in_the_title_link():
+    records = scraper._parse_results(html.EDGE_SEARCH_HTML, "https://libgen.li")
+    assert records[0].title == "Introduction to Algorithms"
+
+
+def test_parse_results_keeps_unlinked_bold_title():
+    records = scraper._parse_results(html.EDGE_SEARCH_HTML, "https://libgen.li")
+    assert records[1].title == "Collected Poems"
+
+
+def test_parse_results_author_keeps_non_role_parentheses():
+    records = scraper._parse_results(html.EDGE_SEARCH_HTML, "https://libgen.li")
+    assert records[0].author == "John (Jack) Smith; Ann Lee"

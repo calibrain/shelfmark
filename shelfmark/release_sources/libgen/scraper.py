@@ -6,6 +6,7 @@ plain HTTP -- these mirrors are not behind DDoS-Guard, so no browser/bypasser is
 needed. All shelfmark-stateful behaviour lives in source.py/handler.py.
 """
 
+import copy
 import re
 from http import HTTPStatus
 from urllib.parse import quote, urlsplit
@@ -168,18 +169,29 @@ def _cell_text(cell: Tag) -> str:
     return re.sub(r"\s+", " ", cell.get_text(" ", strip=True)).strip()
 
 
-# Author cells append roles like "(Author)" / "(Translator)" to each name.
-_AUTHOR_ROLE_RE = re.compile(r"\s*\([^()]*\)")
+# Author cells append a role to each name, e.g. "(Author)" / "(Translator)". Only these
+# labels are stripped so parenthesised parts of a name, like a nickname, survive.
+_AUTHOR_ROLE_RE = re.compile(
+    r"\s*\((?:author|translator|editor|illustrator|compiler|contributor|narrator|"
+    r"commentator|foreword|introduction|afterword|redactor)\)",
+    re.IGNORECASE,
+)
 
 
 def _title_text(cell: Tag) -> str:
     """Title cell text without the series link, ISBN link and type/ID badges libgen.li adds."""
+    cell = copy.copy(cell)  # decompose() below must not edit the caller's soup
+    for isbns in cell.find_all("font"):  # the ISBN link renders its numbers in <font>
+        isbns.decompose()
     for link in cell.find_all("a", href=re.compile(r"edition\.php|file\.php")):
-        text = re.sub(r"\s+", " ", "".join(link.find_all(string=True, recursive=False))).strip()
+        text = _cell_text(link)
         if text:
             return text
-    for extra in cell.find_all(["nobr", "b"]):
-        extra.decompose()
+    for badges in cell.find_all("nobr"):
+        badges.decompose()
+    for series in cell.find_all("b"):
+        if series.find("a", href=re.compile(r"series\.php")):
+            series.decompose()
     return _cell_text(cell)
 
 
