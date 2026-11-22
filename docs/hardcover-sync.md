@@ -8,7 +8,7 @@ Hardcover Sync pulls books from your [Hardcover](https://hardcover.app) reading 
 
 ### Shelf sync
 
-On a schedule, Shelfmark reads the selected Hardcover shelf (by default **Want to Read**) through the Hardcover metadata provider and creates a **pending** request for each book that is not already known. Requests carry Hardcover's metadata, including the cover, and are owned by the lowest-id admin account.
+On a schedule, Shelfmark reads the selected Hardcover shelf (by default **Want to Read**) through the Hardcover metadata provider and creates a **pending** request for each book that is not already known. Requests carry Hardcover's metadata, including the cover. Requests from the token on this tab are owned by the lowest-id admin account; requests from a user's own token are theirs (see [Per-user accounts](#per-user-accounts)).
 
 A book is skipped when:
 
@@ -45,7 +45,7 @@ Hardcover allows a short burst of lookups and then answers 429. Each pass paces 
 
 A download that fails, or is interrupted (a restart while it was queued, say), does not stay that way forever. Once the request has sat there for **Retry failed downloads after (days)** (7 by default), it goes back to pending and the next pass searches again. Each pass reopens at most five, oldest first, so a backlog is spread out instead of hitting your sources at once. An interrupted download may pick the same release again, since a torrent already in your client is joined instead of added twice. A download that itself failed, or that Shelfmark's stall timer cancelled, has its release remembered and skipped next time (not when the download client could not be reached or refused Shelfmark's login: that says nothing about the release), and the request is given up on after three failed retries. Requests you or an admin cancelled are never retried, and neither are rejected ones: both are decisions. Set the value to 0 to turn retries off.
 
-A request that no source has a match for is not searched every cycle for ever. After three passes in a row with no match it is searched once a day, then every two days, and no further apart than **Longest wait between searches for an unmatched request (days)** (3 by default, 0 searches every unmatched request every cycle). A match, a search that failed (which says nothing about the book) or **Sync now** starts it over.
+A request that no source has a match for is not searched every cycle for ever. After three passes in a row with no match it is searched once a day, then every two days, and no further apart than **Longest wait between searches for an unmatched request (days)** (3 by default, 0 searches every unmatched request every cycle). A match, a search that failed (which says nothing about the book) or either sync button starts it over.
 **Trying another release sooner.** Set **Try another release after a failed download (minutes)** (off by default) and a download that fails, or that is given up on (stalled, or no seeders when **Give Up With No Seeders** is on), does not wait for the days above. Between sync cycles Shelfmark looks for such requests, reopens them after that many minutes and searches again, for those requests only. The release that failed is skipped, and a request is still given up on after three failed attempts.
 
 **Sources known to be dead are tried last.** When choosing among matching releases, a Soulseek peer whose transfers failed in the last three days and who delivered nothing in that time comes after the others. AudiobookBay shows no seed counts, so the comments on its five best posts are read, and a post where comments say it has no seeders comes after the others. Nothing is excluded: if a dead-looking release is the only match, it is still tried.
@@ -66,12 +66,29 @@ Both shelf sync and automatic downloads ask the libraries you have enabled under
 
 The check **fails closed** here: if an enabled library cannot be read and has not been read before, the sync cycle is skipped and an automatic download is held, and the request stays pending until the next cycle. Skipping is the safe side, because carrying on would request or download books the library already holds. Badges in search results still fail open.
 
+## Per-user accounts
+
+Every user can connect their own Hardcover account instead of sharing one. The token
+field is user overridable, so it appears under **My Account, Hardcover Account** for each
+user. The section is shown exactly when **Enable scheduled sync** is on; it is not one of
+the **Visible Self-Settings Sections** on the Users tab. While sync is off the section is
+hidden and a token a user already saved is kept. Scheduled runs don't sync while it is off;
+an admin can still sync users' accounts by hand with **Sync (all)**.
+
+When a user connects a token, each scheduled run syncs their shelf on their own token and
+the requests it creates are owned by them, deduplicated against their own requests rather
+than the whole instance. Accounts are synced one at a time, so a token that has expired or
+an API error on one account does not stop the others.
+
+The app-level token still runs as its own pass afterwards, owned by the lowest-id admin,
+which is what a single-account install keeps doing with no change.
+
 ## Settings
 
 | Key | Label | Default | Notes |
 |-----|-------|---------|-------|
 | `HARDCOVER_SYNC_ENABLED` | Enable scheduled sync | Off | Runs shelf sync on the interval below |
-| `HARDCOVER_SYNC_TOKEN` | Hardcover API Token | — | Leave blank to reuse the Hardcover metadata provider's token |
+| `HARDCOVER_SYNC_TOKEN` | Hardcover API Token | — | Leave blank to reuse the Hardcover metadata provider's token. Each user can connect their own account instead, see [Per-user accounts](#per-user-accounts) |
 | `HARDCOVER_SYNC_STATUSES` | Shelves to sync | Want to Read | Hardcover reading status to pull from |
 | `HARDCOVER_SYNC_CONTENT_TYPE` | Request as | Audiobooks | `Audiobooks`, `Ebooks`, or `Ebooks and audiobooks` — the last creates one request of each per shelf book, each checked against its own library |
 | `HARDCOVER_SYNC_INTERVAL` | Sync interval | 6 | Combined with the unit below |
@@ -88,9 +105,10 @@ The check **fails closed** here: if an enabled library cannot be read and has no
 | `AUTO_DOWNLOAD_EXISTENCE_CHECK_ENABLED` | Mark audiobooks no store sells | Off | See [Audiobooks no store sells](#audiobooks-no-store-sells). Needs the Audiobookshelf URL and token |
 | `AUTO_DOWNLOAD_EXISTENCE_CHECK_AFTER_PASSES` | Look the book up after (unmatched passes) | 3 | Consecutive passes without a strict match before the stores are asked |
 
-One action button sits at the bottom of the tab:
+Two action buttons sit at the bottom of the tab. Both run immediately using the saved settings, even when scheduled sync is off; automatic downloads still require their own toggle.
 
-- **Sync now** runs a sync and automatic-download pass immediately using the saved settings. Sync runs even when scheduled sync is off; automatic downloads still require their own toggle.
+- **Sync (admin)** syncs the admins' own accounts and the app-level token, then auto-downloads only the requests an admin owns. Users' accounts and requests are left alone.
+- **Sync (all)** syncs every connected account, admins' and users', then runs automatic downloads for every pending Hardcover request, the same as a scheduled cycle.
 
 ## Request Flow
 
@@ -104,7 +122,9 @@ Only requests whose provider is Hardcover are considered for automatic downloads
 
 The scheduler starts with the app and waits **60 seconds** before its first cycle. Each cycle runs a shelf sync (when scheduled sync is enabled) followed by an automatic-download pass (when that is enabled), then sleeps for the configured interval. Intervals shorter than 60 seconds are raised to 60 seconds so a typo cannot hammer the Hardcover API. If the interval cannot be read at all, the scheduler logs the error and tries again after six hours instead of stopping. When neither toggle is on the scheduler idles.
 
-Only one run happens at a time. If a scheduled cycle is in progress, **Sync now** reports that a sync is already running.
+Only one run happens at a time. If a scheduled cycle is in progress, either sync button reports that a sync is already running.
+
+Each request's release search during a cycle runs under the same time limit as a search from the UI (`RELEASE_SEARCH_TIMEOUT`). A cycle that is still running after most of the interval (80%, and never less than an hour, so 4.8 hours at the default six) is treated as stuck: the scheduler stops waiting for it, logs an error, counts the cycle as failed in `/api/health`, and lets the next cycle or **Sync now** run. The stuck cycle itself stops at its next request. If three stuck cycles are still running at once, no new cycle starts until one of them exits. Whatever it did not get to waits for the next cycle.
 
 ## Troubleshooting
 
@@ -114,4 +134,4 @@ Only one run happens at a time. If a scheduled cycle is in progress, **Sync now*
 
 **Books you own keep being added** — enable the library check for the format you request (see [Library Check](library-check.md)) and use its test button. A library that cannot be read shows up in the log as a skipped cycle.
 
-**Too many requests at once** — the first sync of a large shelf creates one request per book, and the per-user pending limit from **Users & Requests** does not apply to synced requests. Start with a shelf you are happy to see in the queue in full.
+**Too many requests at once** — the first sync of a large shelf creates one request per book, and the per-user pending limit from **Users & Requests** does not apply to synced requests, including those from a user's own account. Start with a shelf you are happy to see in the queue in full.
