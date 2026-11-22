@@ -190,7 +190,7 @@ def _title_text(cell: Tag) -> str:
     """Title cell text without the series link, ISBN link and type/ID badges libgen.li adds."""
     cell = copy.copy(cell)  # decompose() below must not edit the caller's soup
     for font in cell.find_all("font"):  # the ISBN link renders its numbers in <font>
-        if _is_isbn_list(font.get_text(strip=True)):
+        if _is_isbn_list(font.get_text(" ", strip=True)):
             font.decompose()
     for link in cell.find_all("a", href=re.compile(r"edition\.php|file\.php")):
         text = _cell_text(link)

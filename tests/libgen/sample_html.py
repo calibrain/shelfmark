@@ -113,6 +113,7 @@ DECORATED_SEARCH_HTML = f"""
 
 MD5_G = "a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7a7"
 MD5_H = "b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8b8"
+MD5_I = "c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9c9"
 
 # Edge cases: italic markup inside the title link, a nickname in parentheses, and an
 # unlinked bold title that is not a series.
@@ -132,6 +133,11 @@ EDGE_SEARCH_HTML = f"""
     <td><b>Collected Poems</b><nobr><span class="badge">f 99</span></nobr></td>
     <td>A. Poet</td><td>X</td><td>2000</td><td>English</td><td>80</td><td>1&nbsp;MB</td><td>epub</td>
     <td><a href="/get.php?md5={MD5_H}">Libgen</a></td>
+  </tr>
+  <tr>
+    <td>Example<font>9780262033848<br/>9780131103627</font></td>
+    <td>B. Writer</td><td>X</td><td>2001</td><td>English</td><td>90</td><td>1&nbsp;MB</td><td>epub</td>
+    <td><a href="/get.php?md5={MD5_I}">Libgen</a></td>
   </tr>
 </table>
 </body></html>

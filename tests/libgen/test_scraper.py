@@ -139,6 +139,11 @@ def test_parse_results_keeps_unlinked_bold_title():
     assert records[1].title == "Collected Poems"
 
 
+def test_parse_results_drops_isbn_font_split_by_line_breaks():
+    records = scraper._parse_results(html.EDGE_SEARCH_HTML, "https://libgen.li")
+    assert records[2].title == "Example"
+
+
 def test_parse_results_author_keeps_non_role_parentheses():
     records = scraper._parse_results(html.EDGE_SEARCH_HTML, "https://libgen.li")
     assert records[0].author == "John (Jack) Smith; Ann Lee"
