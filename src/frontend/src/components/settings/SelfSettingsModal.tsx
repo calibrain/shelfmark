@@ -6,6 +6,7 @@ import { useMountEffect } from '../../hooks/useMountEffect';
 import type { AdminUser, DeliveryPreferencesResponse } from '../../services/api';
 import {
   getSelfUserEditContext,
+  getSelfUserSecret,
   testSelfNotificationPreferences,
   updateSelfUser,
 } from '../../services/api';
@@ -124,6 +125,8 @@ const SelfSettingsModalSession = ({
   );
   const [notificationPreferences, setNotificationPreferences] =
     useState<DeliveryPreferencesResponse | null>(null);
+  const [hardcoverPreferences, setHardcoverPreferences] =
+    useState<DeliveryPreferencesResponse | null>(null);
   const [visibleSections, setVisibleSections] = useState(DEFAULT_SELF_USER_OVERRIDE_SECTIONS);
 
   const [editPassword, setEditPassword] = useState('');
@@ -133,8 +136,8 @@ const SelfSettingsModalSession = ({
   const [themeValue, setThemeValue] = useState(getStoredThemePreference());
 
   const preferenceGroups = useMemo(
-    () => [deliveryPreferences, searchPreferences, notificationPreferences],
-    [deliveryPreferences, searchPreferences, notificationPreferences],
+    () => [deliveryPreferences, searchPreferences, notificationPreferences, hardcoverPreferences],
+    [deliveryPreferences, searchPreferences, notificationPreferences, hardcoverPreferences],
   );
   const {
     userSettings,
@@ -145,6 +148,7 @@ const SelfSettingsModalSession = ({
     applyUserOverridesContext,
   } = useUserOverridesState({ preferenceGroups });
 
+  /** Load the user's edit context, or show an error in place of the form if that fails. */
   const loadEditContext = useCallback(async () => {
     setIsLoading(true);
     setLoadError(null);
@@ -156,6 +160,7 @@ const SelfSettingsModalSession = ({
       setDeliveryPreferences(context.deliveryPreferences || null);
       setSearchPreferences(context.searchPreferences || null);
       setNotificationPreferences(context.notificationPreferences || null);
+      setHardcoverPreferences(context.hardcoverPreferences || null);
       setVisibleSections(
         normalizeUserOverrideSections(context.visibleUserSettingsSections, 'self'),
       );
@@ -200,6 +205,20 @@ const SelfSettingsModalSession = ({
   const handleTestNotificationRoutes = useCallback((routes: Array<Record<string, unknown>>) => {
     return testSelfNotificationPreferences(routes);
   }, []);
+
+  const handleRevealSecret = useCallback(
+    async (key: string) => {
+      try {
+        const secret = await getSelfUserSecret(key);
+        return secret.value;
+      } catch (error) {
+        // PasswordField keeps the value hidden; say why the eye did nothing.
+        onShowToast?.(getErrorMessage(error, 'Could not load the saved value'), 'error');
+        throw error;
+      }
+    },
+    [onShowToast],
+  );
 
   const handleSave = useCallback(async () => {
     if (!editingUser || !originalUser) {
@@ -383,10 +402,12 @@ const SelfSettingsModalSession = ({
                           deliveryPreferences={deliveryPreferences}
                           searchPreferences={searchPreferences}
                           notificationPreferences={notificationPreferences}
+                          hardcoverPreferences={hardcoverPreferences}
                           isUserOverridable={isUserOverridable}
                           userSettings={userSettings}
                           setUserSettings={setUserSettings}
                           onTestNotificationRoutes={handleTestNotificationRoutes}
+                          onRevealSecret={handleRevealSecret}
                         />
                       ),
                     }}

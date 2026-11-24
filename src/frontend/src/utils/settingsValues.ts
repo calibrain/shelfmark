@@ -2,6 +2,13 @@ import type { SelectOption, SettingsField, SettingsTab } from '../types/settings
 
 export type SettingsValues = Record<string, Record<string, unknown>>;
 
+/**
+ * What the backend puts in place of a stored PasswordField value in payloads that
+ * list settings. Sent back unchanged on save it means "keep what is stored"; the
+ * real value only comes from an explicit reveal request.
+ */
+export const SECRET_PLACEHOLDER = '********';
+
 type ValueBearingField = Exclude<
   SettingsField,
   { type: 'ActionButton' } | { type: 'HeadingField' } | { type: 'CustomComponentField' }
