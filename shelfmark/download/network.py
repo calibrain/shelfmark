@@ -769,6 +769,9 @@ _PROXY_VARIABLES = (
     "no_proxy",
 )
 _proxy_env_lock = threading.Lock()
+# The NO_PROXY / no_proxy values the deployment gave, kept because applying a proxy writes
+# its own entries into the same variables and turning the proxy off must put these back.
+_deployment_no_proxy: dict[str, str] = {}
 
 
 def proxy_environment() -> dict[str, str]:
@@ -804,8 +807,11 @@ def apply_proxy_environment() -> None:
     one that was already in the environment when Shelfmark found it, such as a proxy given
     in the container's own environment, is left alone, except that under a tunnel its
     ``NO_PROXY`` is replaced by ``*``: a proxy from the container's environment would carry
-    traffic around the tunnel. The ones it writes are recorded with ``set_process_env`` so
-    the Settings fields of the same names don't read as "set via env".
+    traffic around the tunnel. A ``NO_PROXY`` or ``no_proxy`` the container set is kept too,
+    with the local-address rule added to it in both cases, because requests reads the
+    lowercase one first and it would otherwise hide that rule; it goes back to the
+    container's value when no proxy is set. The ones it writes are recorded with
+    ``set_process_env`` so the Settings fields of the same names don't read as "set via env".
     """
     from shelfmark.core.settings_registry import is_process_written_env, set_process_env
 
@@ -814,7 +820,25 @@ def apply_proxy_environment() -> None:
         # order they take the lock, or an older value computed first could land last.
         desired = proxy_environment()
         tunnel = bool(tunnel_egress())
+        for name in ("NO_PROXY", "no_proxy"):
+            value = os.environ.get(name)
+            if value is not None and not is_process_written_env(name):
+                _deployment_no_proxy[name] = value
+        if _deployment_no_proxy and desired.get("NO_PROXY", "*") != "*":
+            entries = [
+                entry.strip()
+                for value in (*_deployment_no_proxy.values(), desired["NO_PROXY"])
+                for entry in value.split(",")
+                if entry.strip()
+            ]
+            desired["NO_PROXY"] = desired["no_proxy"] = ",".join(dict.fromkeys(entries))
         for name in _PROXY_VARIABLES:
+            if name in _deployment_no_proxy:
+                if desired.get(name):
+                    set_process_env(name, desired[name])
+                else:
+                    os.environ[name] = _deployment_no_proxy[name]
+                continue
             given = name in os.environ and not is_process_written_env(name)
             if given and not (tunnel and name in desired):
                 continue

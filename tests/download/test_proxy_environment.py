@@ -21,6 +21,7 @@ def settings(monkeypatch):
     from shelfmark.core import settings_registry
 
     monkeypatch.setattr(settings_registry, "_PROCESS_WRITTEN_ENV", {})
+    monkeypatch.setattr(network, "_deployment_no_proxy", {}, raising=False)
     network.app_config.get("PROXY_MODE")  # load the settings registry before patching
     values = {"PROXY_MODE": "http", "HTTP_PROXY": _PROXY, "HTTPS_PROXY": "", "NO_PROXY": ""}
     monkeypatch.setattr(network.app_config, "get", lambda key, default="": values.get(key, default))
@@ -154,6 +155,41 @@ def test_a_proxy_from_the_container_environment_is_left_alone(settings, monkeypa
     network.apply_proxy_environment()
 
     assert os.environ["HTTP_PROXY"] == "http://container-proxy:3128"
+
+
+@pytest.mark.parametrize("name", ["no_proxy", "NO_PROXY"])
+def test_a_no_proxy_from_the_container_does_not_hide_the_local_rule(settings, monkeypatch, name):
+    """requests reads ``no_proxy`` before ``NO_PROXY``, so each case carries both lists."""
+    import os
+
+    from requests.utils import get_environ_proxies
+
+    monkeypatch.setenv(name, "partner.example.org")
+
+    network.apply_proxy_environment()
+
+    assert get_environ_proxies("http://192.168.1.20:8080/") == {}
+    assert get_environ_proxies("http://qbittorrent.local/") == {}
+    assert get_environ_proxies("https://partner.example.org/") == {}
+    assert get_environ_proxies("https://api.hardcover.app/")["https"] == _PROXY
+    assert os.environ["no_proxy"] == os.environ["NO_PROXY"]
+
+
+@pytest.mark.parametrize("name", ["no_proxy", "NO_PROXY"])
+def test_the_containers_no_proxy_comes_back_when_the_proxy_is_turned_off(
+    settings, monkeypatch, name
+):
+    """With no proxy in Settings there is no local rule to add, so its own value is restored."""
+    import os
+
+    monkeypatch.setenv(name, "partner.example.org")
+    network.apply_proxy_environment()
+    settings["PROXY_MODE"] = "none"
+
+    network.apply_proxy_environment()
+
+    assert os.environ[name] == "partner.example.org"
+    assert not {"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"} & set(os.environ)
 
 
 def test_an_older_save_cannot_apply_over_a_newer_one(settings, monkeypatch):
