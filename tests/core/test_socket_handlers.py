@@ -11,6 +11,8 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.core.sessions import sign_in
+
 
 @pytest.fixture(scope="module")
 def main_module():
@@ -27,12 +29,8 @@ def client(main_module):
     return main_module.app.test_client()
 
 
-def _login(client, *, user_id="alice", db_user_id: int | None = 7, is_admin=False) -> None:
-    with client.session_transaction() as sess:
-        sess["user_id"] = user_id
-        sess["is_admin"] = is_admin
-        if db_user_id is not None:
-            sess["db_user_id"] = db_user_id
+def _login(client, *, user_id="alice", db_user_id: int | None = None, is_admin=False) -> dict:
+    return sign_in(client, user_id=user_id, db_user_id=db_user_id, is_admin=is_admin)
 
 
 def _socket(main_module, client):
@@ -74,7 +72,7 @@ class TestConnect:
         assert join.call_args.kwargs == {"is_admin": True, "db_user_id": None}
 
     def test_a_user_gets_their_own_status_with_release_details_hidden(self, main_module, client):
-        _login(client, user_id="alice", db_user_id=7)
+        alice = _login(client, user_id="alice")
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             with patch.object(main_module.backend, "queue_status", return_value=_STATUS) as status:
                 with patch(
@@ -86,8 +84,8 @@ class TestConnect:
                         socket.disconnect()
 
         assert events == [("status_update", {"redacted": {}})]
-        status.assert_called_once_with(user_id=7)
-        assert join.call_args.kwargs == {"is_admin": False, "db_user_id": 7}
+        status.assert_called_once_with(user_id=alice["id"])
+        assert join.call_args.kwargs == {"is_admin": False, "db_user_id": alice["id"]}
 
     def test_a_visitor_with_no_session_gets_an_empty_status(self, main_module, client):
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):

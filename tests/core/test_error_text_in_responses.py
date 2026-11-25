@@ -14,6 +14,8 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.core.sessions import sign_in
+
 _LEAK = "/srv/shelfmark/secret/path token=abc123"
 
 
@@ -37,10 +39,7 @@ def _boom(*_args, **_kwargs):
 
 
 def _admin_session(client) -> None:
-    with client.session_transaction() as sess:
-        sess["user_id"] = "alice"
-        sess["is_admin"] = True
-        sess["db_user_id"] = 7
+    sign_in(client, user_id="alice", is_admin=True)
 
 
 class _Source:

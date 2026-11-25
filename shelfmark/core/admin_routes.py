@@ -35,12 +35,15 @@ from shelfmark.core.auth_modes import (
 from shelfmark.core.config import config as app_config
 from shelfmark.core.cwa_user_sync import sync_cwa_users_from_rows
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.request_helpers import get_session_db_user_id
+from shelfmark.core.session_auth import SESSION_NONCE_KEY, stamp_session_nonce
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from flask.typing import ResponseReturnValue
 
+    from shelfmark.api.websocket import WebSocketManager
     from shelfmark.core.user_db import UserDB
 
 P = ParamSpec("P")
@@ -90,6 +93,7 @@ def _sanitize_user(user: dict) -> dict:
     """Remove sensitive fields from user dict before returning to client."""
     sanitized = dict(user)
     sanitized.pop("password_hash", None)
+    sanitized.pop(SESSION_NONCE_KEY, None)
     return sanitized
 
 
@@ -167,8 +171,22 @@ def _sync_all_cwa_users(user_db: UserDB) -> dict[str, int]:
     return sync_cwa_users_from_rows(user_db, rows)
 
 
-def register_admin_routes(app: Flask, user_db: UserDB) -> None:
+def register_admin_routes(
+    app: Flask,
+    user_db: UserDB,
+    *,
+    ws_manager: WebSocketManager | None = None,
+) -> None:
     """Register admin user management routes on the Flask app."""
+
+    def _disconnect_live_sockets(user_id: int) -> None:
+        """Drop the user's open Socket.IO connections so they reconnect under the new rules.
+
+        A socket joined its room with the session it connected with; reconnecting checks
+        that session again (see socket_handlers).
+        """
+        if ws_manager is not None:
+            ws_manager.disconnect_user(user_id)
 
     def _require_admin(
         f: Callable[P, ResponseReturnValue],
@@ -411,6 +429,12 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         if user_fields:
             user_db.update_user(user_id, **user_fields)
 
+        # A new password revokes the user's sessions (update_user rotates the nonce). An admin
+        # setting their own password keeps the session they did it from.
+        is_self = get_session_db_user_id(session) == user_id
+        if role_changed or (password_hash is not None and not is_self):
+            _disconnect_live_sockets(user_id)
+
         if validated_settings is not None:
             user_db.set_user_settings(user_id, validated_settings)
             # Ensure runtime reads see updated per-user overrides immediately.
@@ -426,6 +450,8 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
         updated = user_db.get_user(user_id=user_id)
         if not isinstance(updated, dict):
             return jsonify({"error": "User not found"}), 404
+        if password_hash is not None and is_self:
+            stamp_session_nonce(session, updated)
         result = _serialize_user(
             updated,
             g.auth_mode,
@@ -513,5 +539,6 @@ def register_admin_routes(app: Flask, user_db: UserDB) -> None:
             ), 400
 
         user_db.delete_user(user_id)
+        _disconnect_live_sockets(user_id)
         logger.info("Admin deleted user %s: %s", user_id, user["username"])
         return jsonify({"success": True})

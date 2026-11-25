@@ -2,6 +2,7 @@
 
 import json
 import os
+import secrets
 import sqlite3
 import threading
 import time
@@ -41,7 +42,8 @@ CREATE TABLE IF NOT EXISTS users (
     oidc_subject  TEXT UNIQUE,
     auth_source   TEXT NOT NULL DEFAULT 'builtin',
     role          TEXT NOT NULL DEFAULT 'user',
-    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    created_at    TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    session_nonce TEXT
 );
 
 CREATE TABLE IF NOT EXISTS user_settings (
@@ -164,6 +166,16 @@ def _book_data_with_failed_release(request_row: dict[str, Any]) -> dict[str, Any
     return {**book_data, "failed_releases": [*tried, {"source": source, "source_id": source_id}]}
 
 
+def new_session_nonce() -> str:
+    """Return a fresh value for users.session_nonce.
+
+    A session cookie carries the nonce its user had at sign-in, and stops working once the
+    nonce changes. It is random rather than a counter so that a users.db rebuilt from scratch,
+    which hands out the same user ids again, cannot match a cookie from the old database.
+    """
+    return secrets.token_hex(16)
+
+
 def get_users_db_path(config_dir: str | None = None) -> str:
     """Return the configured users database path."""
     root = config_dir or os.environ.get("CONFIG_DIR", "/config")
@@ -248,6 +260,7 @@ class UserDB:
             try:
                 conn.executescript(_CREATE_TABLES_SQL)
                 self._migrate_auth_source_column(conn)
+                self._migrate_session_nonce_column(conn)
                 self._migrate_request_delivery_columns(conn)
                 self._migrate_download_history_queued_at(conn)
                 self._migrate_download_history_retry_payload(conn)
@@ -271,6 +284,21 @@ class UserDB:
         # Defensive cleanup for any legacy null/blank values.
         conn.execute(
             "UPDATE users SET auth_source = 'builtin' WHERE auth_source IS NULL OR auth_source = ''"
+        )
+
+    def _migrate_session_nonce_column(self, conn: sqlite3.Connection) -> None:
+        """Ensure users.session_nonce exists and every user has one.
+
+        Rows that had none get a fresh nonce, so session cookies issued before the
+        column existed no longer match and their holders sign in again.
+        """
+        columns = conn.execute("PRAGMA table_info(users)").fetchall()
+        column_names = {str(col["name"]) for col in columns}
+        if "session_nonce" not in column_names:
+            conn.execute("ALTER TABLE users ADD COLUMN session_nonce TEXT")
+        conn.execute(
+            "UPDATE users SET session_nonce = lower(hex(randomblob(16))) "
+            "WHERE session_nonce IS NULL OR session_nonce = ''"
         )
 
     def _migrate_request_delivery_columns(self, conn: sqlite3.Connection) -> None:
@@ -345,9 +373,10 @@ class UserDB:
             try:
                 cursor = conn.execute(
                     """INSERT INTO users (
-                           username, email, display_name, password_hash, oidc_subject, auth_source, role
+                           username, email, display_name, password_hash, oidc_subject, auth_source,
+                           role, session_nonce
                        )
-                       VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         username,
                         email,
@@ -356,6 +385,7 @@ class UserDB:
                         oidc_subject,
                         auth_source,
                         role,
+                        new_session_nonce(),
                     ),
                 )
                 conn.commit()
@@ -470,6 +500,12 @@ class UserDB:
                     raise ValueError(msg)
                 for column, value in kwargs.items():
                     conn.execute(self._USER_UPDATE_STATEMENTS[column], (value, user_id))
+                if "password_hash" in kwargs:
+                    # A new password ends every session signed in with the old one.
+                    conn.execute(
+                        "UPDATE users SET session_nonce = ? WHERE id = ?",
+                        (new_session_nonce(), user_id),
+                    )
                 conn.commit()
                 self._drop_user_cache()
             finally:

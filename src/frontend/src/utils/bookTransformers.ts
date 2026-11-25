@@ -112,6 +112,38 @@ export function transformMetadataToBook(data: MetadataBookData): Book {
   };
 }
 
+type SeriesFields = Pick<Book, 'series_id' | 'series_name' | 'series_position' | 'series_count'>;
+
+/**
+ * Series fields for a listed book once its full record has been fetched.
+ *
+ * A book can belong to several series, but the full record carries only one
+ * (Hardcover's featured series). When the listed book already names a series,
+ * as it does in a series view, it is kept so the modals and the download name
+ * match what is on screen. The full record only fills what is missing.
+ */
+export function mergeSeriesFields(book: SeriesFields, fullBook: SeriesFields): SeriesFields {
+  if (!book.series_id && !book.series_name) {
+    return {
+      series_id: fullBook.series_id,
+      series_name: fullBook.series_name,
+      series_position: fullBook.series_position,
+      series_count: fullBook.series_count,
+    };
+  }
+
+  const sameSeries = book.series_id
+    ? book.series_id === fullBook.series_id
+    : book.series_name === fullBook.series_name;
+  const fromFullBook: SeriesFields = sameSeries ? fullBook : {};
+  return {
+    series_id: book.series_id || fromFullBook.series_id,
+    series_name: book.series_name || fromFullBook.series_name,
+    series_position: book.series_position ?? fromFullBook.series_position,
+    series_count: book.series_count ?? fromFullBook.series_count,
+  };
+}
+
 const toOptionalText = (value: unknown): string | undefined => {
   if (typeof value === 'string' && value.trim()) {
     return value.trim();

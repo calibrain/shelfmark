@@ -1,5 +1,6 @@
-"""Request hooks for the two ways a request can be authenticated without logging in: the
-SHELFMARK_API_KEY credentials and the reverse proxy's identity headers.
+"""Request hooks for the two ways a request can be authenticated without logging in (the
+SHELFMARK_API_KEY credentials and the reverse proxy's identity headers), and the hook that
+checks a signed-in session against users.db on every request.
 """
 
 from __future__ import annotations
@@ -14,6 +15,7 @@ from shelfmark.core.config import config as app_config
 from shelfmark.core.external_user_linking import upsert_external_user
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import normalize_optional_text
+from shelfmark.core.session_auth import revalidate_session
 from shelfmark.core.stats_routes import STATS_PATH
 
 if TYPE_CHECKING:
@@ -56,12 +58,13 @@ def register_auth_middleware(
     resolve_auth_mode: Callable[[], str],
     get_user_db: Callable[[], UserDB | None],
 ) -> None:
-    """Register the API-key and proxy-auth ``before_request`` hooks and the cookie-stripping
-    ``after_request`` hook.
+    """Register the API-key, proxy-auth and session-revalidation ``before_request`` hooks and
+    the cookie-stripping ``after_request`` hook.
 
     Call this at the place the hooks should take in the hook order: ``before_request`` hooks run
     in registration order, ``after_request`` hooks in reverse. The API-key hook must come first
-    because the proxy hook skips requests it already authenticated.
+    because the later hooks skip requests it already authenticated, and the session check must
+    run before any route reads the session.
     """
 
     @app.before_request
@@ -267,6 +270,23 @@ def register_auth_middleware(
             return jsonify({"error": "Authentication error"}), 500
         else:
             return None
+
+    @app.before_request
+    def session_revalidation_middleware() -> Response | tuple[Response, int] | None:
+        """Sign out or refresh a session whose user changed in users.db since sign-in.
+
+        The routes trust ``session["is_admin"]`` and ``session["user_id"]``, which sign-in
+        copied into the cookie; this keeps them true to the user's current row, so a
+        demotion, deletion or password change ends what the old cookie could do.
+        """
+        if g.get("api_key_auth"):
+            return None
+        try:
+            revalidate_session(session, user_db=get_user_db(), auth_mode=resolve_auth_mode())
+        except _OPERATIONAL_ERRORS:
+            logger.exception("Session revalidation error")
+            return jsonify({"error": "Authentication error"}), 500
+        return None
 
     @app.after_request
     def strip_cookie_for_api_key_requests(response: Response) -> Response:

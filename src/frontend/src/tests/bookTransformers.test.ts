@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 
 import { isMetadataBook, type Release } from '../types/index';
 import {
+  mergeSeriesFields,
   transformMetadataToBook,
   transformReleaseToDirectBook,
   transformSourceRecordToBook,
@@ -102,5 +103,39 @@ describe('bookTransformers.transformMetadataToBook', () => {
 
   it('leaves library undefined when the API sends none', () => {
     expect(transformMetadataToBook(metadata).library).toBeUndefined();
+  });
+});
+
+describe('bookTransformers.mergeSeriesFields', () => {
+  const featured = {
+    series_id: '1098',
+    series_name: 'Sherlock Holmes',
+    series_position: 3,
+    series_count: 10,
+  };
+
+  it('keeps the series the book was listed in over the featured one', () => {
+    const viewed = {
+      series_id: '4786',
+      series_name: 'The Adventures of Sherlock Holmes',
+      series_position: 1,
+      series_count: 12,
+    };
+
+    expect(mergeSeriesFields(viewed, featured)).toEqual(viewed);
+  });
+
+  it('takes the full record series when the listed book has none', () => {
+    expect(mergeSeriesFields({}, featured)).toEqual(featured);
+  });
+
+  it('fills missing fields only from the same series', () => {
+    expect(mergeSeriesFields({ series_name: 'Sherlock Holmes' }, featured)).toEqual(featured);
+    expect(mergeSeriesFields({ series_id: '4786', series_position: 1 }, featured)).toEqual({
+      series_id: '4786',
+      series_name: undefined,
+      series_position: 1,
+      series_count: undefined,
+    });
   });
 });

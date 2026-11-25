@@ -15,6 +15,7 @@ import pytest
 
 from shelfmark.core.models import DownloadTask, QueueStatus
 from shelfmark.core.viewer_redaction import public_download_id
+from tests.core.sessions import forge_session, sign_in, skip_session_check
 
 
 @pytest.fixture(scope="module")
@@ -33,13 +34,7 @@ def client(main_module):
 
 
 def _set_session(client, *, user_id: str, db_user_id: int | None, is_admin: bool) -> None:
-    with client.session_transaction() as sess:
-        sess["user_id"] = user_id
-        sess["is_admin"] = is_admin
-        if db_user_id is not None:
-            sess["db_user_id"] = db_user_id
-        elif "db_user_id" in sess:
-            del sess["db_user_id"]
+    sign_in(client, user_id=user_id, db_user_id=db_user_id, is_admin=is_admin)
 
 
 def _create_user(main_module, *, prefix: str, role: str = "user") -> dict:
@@ -511,9 +506,12 @@ class TestActivityRoutes:
 
     def test_dismiss_requires_db_identity(self, main_module, client):
         user = _create_user(main_module, prefix="reader")
-        _set_session(client, user_id=user["username"], db_user_id=None, is_admin=False)
+        forge_session(client, user_id=user["username"], is_admin=False)
 
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+        with (
+            patch.object(main_module, "get_auth_mode", return_value="builtin"),
+            skip_session_check(),
+        ):
             with patch("shelfmark.core.activity_routes.logger.warning") as mock_warning:
                 response = client.post(
                     "/api/activity/dismiss",
@@ -1002,7 +1000,7 @@ class TestActivityRoutes:
 
     def test_no_auth_dismiss_many_ignores_stale_session_db_identity(self, main_module, client):
         stale_db_user_id = 999999999
-        _set_session(
+        forge_session(
             client, user_id="stale-session-user", db_user_id=stale_db_user_id, is_admin=False
         )
 
@@ -1071,9 +1069,12 @@ class TestActivityRoutes:
     def test_dismiss_many_with_stale_db_identity_returns_identity_unavailable(
         self, main_module, client
     ):
-        _set_session(client, user_id="stale-session-user", db_user_id=999999999, is_admin=False)
+        forge_session(client, user_id="stale-session-user", db_user_id=999999999, is_admin=False)
 
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+        with (
+            patch.object(main_module, "get_auth_mode", return_value="builtin"),
+            skip_session_check(),
+        ):
             response = client.post(
                 "/api/activity/dismiss-many",
                 json={"items": [{"item_type": "download", "item_key": "download:test-stale"}]},
@@ -1087,6 +1088,8 @@ class TestActivityRoutes:
     ):
         user = _create_user(main_module, prefix="reader")
         _set_session(client, user_id=user["username"], db_user_id=user["id"], is_admin=False)
+        # The session check answers from the user cache, so only the route's lookup fails.
+        main_module.user_db.get_user_cached(user_id=user["id"])
 
         with (
             patch.object(main_module, "get_auth_mode", return_value="builtin"),
@@ -1112,9 +1115,12 @@ class TestActivityRoutes:
 
     def test_clear_history_logs_identity_failure(self, main_module, client):
         admin = _create_user(main_module, prefix="admin", role="admin")
-        _set_session(client, user_id=admin["username"], db_user_id=None, is_admin=True)
+        forge_session(client, user_id=admin["username"], is_admin=True)
 
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+        with (
+            patch.object(main_module, "get_auth_mode", return_value="builtin"),
+            skip_session_check(),
+        ):
             with patch("shelfmark.core.activity_routes.logger.warning") as mock_warning:
                 response = client.delete("/api/activity/history")
 

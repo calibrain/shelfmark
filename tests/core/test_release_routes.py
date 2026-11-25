@@ -54,6 +54,7 @@ def _login_user(client, main_module, *, is_admin: bool = False) -> dict:
         sess["user_id"] = user["username"]
         sess["is_admin"] = is_admin
         sess["db_user_id"] = user["id"]
+        sess["session_nonce"] = user["session_nonce"]
     return user
 
 

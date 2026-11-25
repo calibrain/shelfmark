@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
+from tests.core.sessions import sign_in
+
 
 @pytest.fixture(scope="module")
 def main_module():
@@ -30,10 +32,7 @@ def _create_user(main_module, *, prefix: str, role: str) -> dict:
 
 
 def _set_session(client, *, user_id: str, db_user_id: int, is_admin: bool) -> None:
-    with client.session_transaction() as sess:
-        sess["user_id"] = user_id
-        sess["db_user_id"] = db_user_id
-        sess["is_admin"] = is_admin
+    sign_in(client, user_id=user_id, db_user_id=db_user_id, is_admin=is_admin)
 
 
 class TestNotificationsSettingsApi:

@@ -18,6 +18,7 @@ import pytest
 
 from shelfmark.core.models import DownloadTask
 from shelfmark.core.viewer_redaction import viewer_download_id
+from tests.core.sessions import forge_session, sign_in, skip_session_check
 
 
 @pytest.fixture(scope="module")
@@ -35,12 +36,8 @@ def client(main_module):
     return main_module.app.test_client()
 
 
-def _login(client, *, user_id="alice", db_user_id: int | None = 7, is_admin=False) -> None:
-    with client.session_transaction() as sess:
-        sess["user_id"] = user_id
-        sess["is_admin"] = is_admin
-        if db_user_id is not None:
-            sess["db_user_id"] = db_user_id
+def _login(client, *, user_id="alice", db_user_id: int | None = None, is_admin=False) -> None:
+    sign_in(client, user_id=user_id, db_user_id=db_user_id, is_admin=is_admin)
 
 
 def _create_user(main_module, *, prefix: str) -> dict:
@@ -247,8 +244,8 @@ class TestCancel:
         assert resp.status_code == 404
 
     def test_a_user_without_a_database_identity_is_a_403(self, main_module, client):
-        _login(client, user_id="ghost", db_user_id=None)
-        with _builtin(main_module):
+        forge_session(client, user_id="ghost", is_admin=False)
+        with _builtin(main_module), skip_session_check():
             with patch.object(main_module.backend.book_queue, "get_task", return_value=_task()):
                 resp = client.delete("/api/download/task-1/cancel")
 
@@ -312,8 +309,8 @@ class TestPriority:
         assert resp.get_json() == {"error": "Invalid priority value"}
 
     def test_a_user_without_a_database_identity_is_a_403(self, main_module, client):
-        _login(client, user_id="ghost", db_user_id=None)
-        with _builtin(main_module):
+        forge_session(client, user_id="ghost", is_admin=False)
+        with _builtin(main_module), skip_session_check():
             resp = client.put("/api/queue/task-1/priority", json={"priority": 1})
 
         assert resp.status_code == 403
@@ -432,8 +429,8 @@ class TestQueueViews:
         assert resp.get_json() == {"active_downloads": ["a", "b"]}
 
     def test_both_views_refuse_a_user_without_a_database_identity(self, main_module, client):
-        _login(client, user_id="ghost", db_user_id=None)
-        with _builtin(main_module):
+        forge_session(client, user_id="ghost", is_admin=False)
+        with _builtin(main_module), skip_session_check():
             order = client.get("/api/queue/order")
             active = client.get("/api/downloads/active")
 
@@ -454,8 +451,8 @@ class TestQueueViews:
 
 class TestStatus:
     def test_a_user_without_a_database_identity_gets_an_empty_object(self, main_module, client):
-        _login(client, user_id="ghost", db_user_id=None)
-        with _builtin(main_module):
+        forge_session(client, user_id="ghost", is_admin=False)
+        with _builtin(main_module), skip_session_check():
             resp = client.get("/api/status")
 
         assert resp.status_code == 200

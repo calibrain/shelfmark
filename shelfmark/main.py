@@ -76,6 +76,7 @@ from shelfmark.core.request_helpers import (
 from shelfmark.core.requests_service import (
     sync_delivery_states_from_queue_status,
 )
+from shelfmark.core.session_auth import revalidate_session
 from shelfmark.core.settings_routes import register_settings_routes
 from shelfmark.core.socket_handlers import register_socket_handlers
 from shelfmark.core.socketio_origins import build_cors_allowed_origins
@@ -202,7 +203,7 @@ try:
     )
 
     register_oidc_routes(app, user_db)
-    register_admin_routes(app, user_db)
+    register_admin_routes(app, user_db, ws_manager=ws_manager)
     register_self_user_routes(
         app,
         user_db,
@@ -644,8 +645,16 @@ register_settings_routes(app, login_required)
 register_onboarding_routes(app, login_required)
 
 
+def _revalidate_socket_session() -> bool:
+    """Check the session of a Socket.IO event against users.db (no before_request runs there)."""
+    return revalidate_session(session, user_db=user_db, auth_mode=get_auth_mode())
+
+
 register_socket_handlers(
-    socketio, ws_manager=ws_manager, resolve_status_scope=_resolve_status_scope
+    socketio,
+    ws_manager=ws_manager,
+    resolve_status_scope=_resolve_status_scope,
+    revalidate_session=_revalidate_socket_session,
 )
 
 

@@ -10,6 +10,7 @@ from unittest.mock import patch
 import pytest
 
 from shelfmark.core.config import config as app_config
+from tests.core.sessions import sign_in
 
 _DEBUG_OVERRIDES: dict[str, object] = {"DEBUG": True, "USING_EXTERNAL_BYPASSER": True}
 _ORIGINAL_CONFIG_GET = app_config.get
@@ -43,9 +44,7 @@ def client(main_module):
 
 
 def _set_session(client, *, user_id: str, is_admin: bool) -> None:
-    with client.session_transaction() as sess:
-        sess["user_id"] = user_id
-        sess["is_admin"] = is_admin
+    sign_in(client, user_id=user_id, is_admin=is_admin)
 
 
 @pytest.fixture
