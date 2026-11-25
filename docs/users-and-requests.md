@@ -24,7 +24,7 @@ A local admin account is required as a fallback. See [OIDC](oidc.md) for provide
 
 User accounts are synced from your Calibre-Web `app.db`. If a local user with a matching email already exists, the CWA identity will be linked to that account. Roles are kept in sync with CWA. Users removed from CWA are cleaned up on the next sync.
 
-Requires mounting your Calibre-Web `app.db` to `/auth/app.db`.
+Requires mounting the folder that holds your Calibre-Web `app.db` to `/auth` (read-only is fine). Mounting `app.db` alone hides `app.db-wal`, where recent account changes wait, so Shelfmark would not see a new password until Calibre-Web checkpoints it. The mount gives Shelfmark read access to the whole folder, including the `.key` file Calibre-Web uses to encrypt its stored passwords.
 
 ### If a method's requirements go missing
 

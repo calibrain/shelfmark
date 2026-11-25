@@ -1,11 +1,17 @@
 """Tests for CWA user linking/provisioning helpers."""
 
 import os
+import sqlite3
 import tempfile
 
 import pytest
 
-from shelfmark.core.cwa_user_sync import sync_cwa_users_from_rows, upsert_cwa_user
+from shelfmark.core import cwa_user_sync
+from shelfmark.core.cwa_user_sync import (
+    connect_cwa_db,
+    sync_cwa_users_from_rows,
+    upsert_cwa_user,
+)
 from shelfmark.core.user_db import UserDB
 
 
@@ -189,3 +195,166 @@ def test_sync_prunes_cwa_users_missing_from_source(user_db):
 
     assert user_db.get_user(user_id=stale_cwa["id"]) is None
     assert user_db.get_user(user_id=local_builtin["id"]) is not None
+
+
+def _make_wal_app_db(path):
+    """Mimic Calibre-Web's app.db: WAL mode, one user, one write left in the WAL."""
+    writer = sqlite3.connect(path)
+    writer.execute("PRAGMA journal_mode=WAL")
+    writer.execute("PRAGMA wal_autocheckpoint=0")
+    writer.execute("CREATE TABLE user (name TEXT, password TEXT, role INTEGER, email TEXT)")
+    writer.execute("INSERT INTO user VALUES ('admin', 'old-hash', 1, NULL)")
+    writer.commit()
+    writer.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+    # Not checkpointed: only visible to readers that read the WAL.
+    writer.execute("UPDATE user SET name = 'renamed', password = 'new-hash'")
+    writer.commit()
+    return writer
+
+
+def test_connect_cwa_db_sees_writes_still_in_the_wal(tmp_path):
+    db_path = tmp_path / "app.db"
+    writer = _make_wal_app_db(db_path)
+    try:
+        conn = connect_cwa_db(db_path)
+        try:
+            rows = conn.execute("SELECT name, password FROM user").fetchall()
+        finally:
+            conn.close()
+    finally:
+        writer.close()
+
+    assert rows == [("renamed", "new-hash")]
+
+
+def test_connect_cwa_db_is_read_only(tmp_path):
+    db_path = tmp_path / "app.db"
+    _make_wal_app_db(db_path).close()
+
+    conn = connect_cwa_db(db_path)
+    try:
+        with pytest.raises(sqlite3.OperationalError):
+            conn.execute("DELETE FROM user")
+    finally:
+        conn.close()
+
+
+def test_connect_cwa_db_falls_back_to_immutable_when_the_plain_open_fails(tmp_path, monkeypatch):
+    db_path = tmp_path / "app.db"
+    writer = _make_wal_app_db(db_path)
+
+    real_connect = sqlite3.connect
+    uris = []
+
+    def fake_connect(database, **kwargs):
+        uris.append(database)
+        if "immutable=1" not in database:
+            raise sqlite3.OperationalError("unable to open database file")
+        return real_connect(database, **kwargs)
+
+    monkeypatch.setattr("shelfmark.core.cwa_user_sync.sqlite3.connect", fake_connect)
+    try:
+        conn = connect_cwa_db(db_path)
+        try:
+            rows = conn.execute("SELECT name, password FROM user").fetchall()
+        finally:
+            conn.close()
+    finally:
+        writer.close()
+
+    assert uris[0].endswith("?mode=ro")
+    assert uris[1].endswith("?mode=ro&immutable=1")
+    # The fallback skips the WAL, so it only sees the last checkpoint.
+    assert rows == [("admin", "old-hash")]
+
+
+@pytest.fixture
+def warnings(monkeypatch):
+    logged = []
+    monkeypatch.setattr(cwa_user_sync, "_stale_read_warned", False)
+    monkeypatch.setattr(cwa_user_sync.logger, "warning", lambda *args: logged.append(args))
+    return logged
+
+
+def test_connect_cwa_db_reads_a_file_mount_as_immutable_and_warns_once(
+    tmp_path, monkeypatch, warnings
+):
+    db_path = tmp_path / "app.db"
+    writer = _make_wal_app_db(db_path)
+    monkeypatch.setattr(cwa_user_sync, "_is_mounted_alone", lambda _path: True)
+    try:
+        for _ in range(3):
+            conn = connect_cwa_db(db_path)
+            rows = conn.execute("SELECT name, password FROM user").fetchall()
+            conn.close()
+    finally:
+        writer.close()
+
+    assert rows == [("admin", "old-hash")]
+    assert len(warnings) == 1
+    assert "mounted as a single file" in warnings[0][0]
+
+
+def test_connect_cwa_db_fallback_without_a_wal_does_not_warn(tmp_path, monkeypatch, warnings):
+    db_path = tmp_path / "app.db"
+    _make_wal_app_db(db_path).close()  # a clean close checkpoints and removes app.db-wal
+    assert not (tmp_path / "app.db-wal").exists()
+
+    real_connect = sqlite3.connect
+
+    def fake_connect(database, **kwargs):
+        if "immutable=1" not in database:
+            raise sqlite3.OperationalError("unable to open database file")
+        return real_connect(database, **kwargs)
+
+    monkeypatch.setattr("shelfmark.core.cwa_user_sync.sqlite3.connect", fake_connect)
+    conn = connect_cwa_db(db_path)
+    rows = conn.execute("SELECT name, password FROM user").fetchall()
+    conn.close()
+
+    assert rows == [("renamed", "new-hash")]
+    assert warnings == []
+
+
+@pytest.mark.parametrize(
+    ("devices", "expected"),
+    [
+        ({"auth": 1, "app.db": 1}, False),  # folder mount
+        ({"auth": 1, "app.db": 2}, True),  # app.db alone
+        ({"auth": 1, "app.db": 2, "app.db-wal": 2, "app.db-shm": 2}, False),  # with its WAL files
+        ({"auth": 1, "app.db": 2, "app.db-wal": 2}, True),  # app.db-shm missing
+        ({"auth": 1, "app.db": 2, "app.db-wal": 1, "app.db-shm": 1}, True),  # SQLite's own files
+    ],
+)
+def test_is_mounted_alone(monkeypatch, devices, expected):
+    class FakeStat:
+        def __init__(self, st_dev):
+            self.st_dev = st_dev
+
+    def fake_stat(self, **_kwargs):
+        if self.name not in devices:
+            raise FileNotFoundError(self)
+        return FakeStat(devices[self.name])
+
+    monkeypatch.setattr(cwa_user_sync.Path, "stat", fake_stat)
+
+    assert cwa_user_sync._is_mounted_alone(cwa_user_sync.Path("/auth/app.db")) is expected
+
+
+@pytest.mark.parametrize("folder", ["cwa#backup", "cwa?x", "cwa%20", "cwa config"])
+def test_connect_cwa_db_handles_uri_characters_in_the_path(tmp_path, folder):
+    db_dir = tmp_path / folder
+    db_dir.mkdir()
+    writer = _make_wal_app_db(db_dir / "app.db")
+    try:
+        conn = connect_cwa_db(db_dir / "app.db")
+        try:
+            rows = conn.execute("SELECT name, password FROM user").fetchall()
+            with pytest.raises(sqlite3.OperationalError):
+                conn.execute("DELETE FROM user")
+        finally:
+            conn.close()
+    finally:
+        writer.close()
+
+    assert rows == [("renamed", "new-hash")]

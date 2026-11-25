@@ -242,12 +242,16 @@ Integrate with your identity provider (Authelia, Authentik, Keycloak, etc.) for 
 
 **4. Calibre-Web Database**
 
-If you're running Calibre-Web, you can reuse its user database by mounting it:
+If you're running Calibre-Web, you can reuse its user database by mounting the folder that holds its `app.db`:
 
 ```yaml
 volumes:
-  - /path/to/calibre-web/app.db:/auth/app.db:ro
+  - /path/to/calibre-web/:/auth/:ro
 ```
+
+Mount the folder, not `app.db` alone. Calibre-Web Automated writes account changes (a new password, a renamed user) to `app.db-wal` next to `app.db` first, and Shelfmark only sees them when that file is mounted too. With `app.db` mounted alone, Shelfmark logs a warning and reads the database as it was at the last checkpoint, so a user who just changed their password can't sign in with it yet.
+
+This gives Shelfmark read access to everything in that folder, not only `app.db`. In a Calibre-Web setup that includes `.key`, the key Calibre-Web uses to encrypt the passwords it stores, and the Google Drive credentials if you use that feature.
 
 ### Multi-User Support
 
