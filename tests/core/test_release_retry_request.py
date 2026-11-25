@@ -61,6 +61,7 @@ def _login(client, user: dict) -> None:
         sess["user_id"] = user["username"]
         sess["is_admin"] = user["role"] == "admin"
         sess["db_user_id"] = user["id"]
+        sess["session_nonce"] = user["session_nonce"]
 
 
 def _reopened_request(main_module, owner: dict, *, status: str = "pending") -> dict:
