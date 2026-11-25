@@ -75,16 +75,50 @@ def _dotted(node: ast.expr) -> str:
     return ""
 
 
-def _note_hand_passed(found: set[str], argument: str, value: ast.expr) -> None:
+def _aliases(tree: ast.AST) -> dict[str, str]:
+    """Names a module binds to something else's dotted path, so a call can be resolved.
+
+    ``import requests as r`` gives ``r -> requests``; ``from requests import get as g``
+    gives ``g -> requests.get``; ``from urllib import request`` gives
+    ``request -> urllib.request``. A plain ``import requests`` binds the name it already is.
+    """
+    aliases: dict[str, str] = {}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.asname:
+                    aliases[alias.asname] = alias.name
+        elif isinstance(node, ast.ImportFrom) and node.module and node.level == 0:
+            for alias in node.names:
+                if alias.name != "*":
+                    aliases[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+    return aliases
+
+
+def _resolve(node: ast.expr, aliases: dict[str, str]) -> str:
+    """``_dotted`` with the first name replaced by what it was imported as."""
+    name = _dotted(node)
+    head, dot, rest = name.partition(".")
+    return f"{aliases.get(head, head)}{dot}{rest}" if name else ""
+
+
+def _note_hand_passed(
+    found: set[str], argument: str, value: ast.expr, aliases: dict[str, str]
+) -> None:
     """Record ``verify=get_ssl_verify(...)`` or ``proxies=get_proxies(...)`` passed by hand."""
     helper = _SESSION_ARGUMENTS.get(argument)
-    if helper and isinstance(value, ast.Call) and _dotted(value.func).rpartition(".")[2] == helper:
+    if (
+        helper
+        and isinstance(value, ast.Call)
+        and _resolve(value.func, aliases).rpartition(".")[2] == helper
+    ):
         found.add(f"{argument}={helper}()")
 
 
 def _uses(tree: ast.AST) -> set[str]:
     """What a module uses to reach the network on its own, as short names."""
     found: set[str] = set()
+    aliases = _aliases(tree)
     for node in ast.walk(tree):
         if isinstance(node, ast.Import):
             found.update(alias.name for alias in node.names if alias.name in _CLIENT_LIBRARIES)
@@ -98,12 +132,12 @@ def _uses(tree: ast.AST) -> set[str]:
             # request kwargs built as a dict literal: {"verify": get_ssl_verify(url), ...}
             for key, value in zip(node.keys, node.values, strict=True):
                 if isinstance(key, ast.Constant) and isinstance(key.value, str):
-                    _note_hand_passed(found, key.value, value)
+                    _note_hand_passed(found, key.value, value, aliases)
         elif isinstance(node, ast.Call):
             for keyword in node.keywords:
                 if keyword.arg:
-                    _note_hand_passed(found, keyword.arg, keyword.value)
-            name = _dotted(node.func)
+                    _note_hand_passed(found, keyword.arg, keyword.value, aliases)
+            name = _resolve(node.func, aliases)
             base, _, attr = name.rpartition(".")
             if base == "requests" and attr in _REQUESTS_CALLS | _REQUESTS_SESSIONS:
                 found.add(name)
@@ -184,4 +218,41 @@ def test_the_scan_catches_each_kind_of_bypass(tmp_path):
         ("shelfmark/planted.py", "socket.socket"),
         ("shelfmark/planted.py", "verify=get_ssl_verify()"),
         ("shelfmark/planted.py", "proxies=get_proxies()"),
+    }
+
+
+def test_the_scan_resolves_import_aliases(tmp_path):
+    """``from requests import get`` and ``import requests as r`` are the same bypass."""
+    package = tmp_path / "shelfmark"
+    package.mkdir()
+    (package / "aliased.py").write_text(
+        "import requests as r\n"
+        "import socket as s\n"
+        "import urllib.request as ur\n"
+        "from requests import get, post as send, Session as S\n"
+        "from socket import create_connection\n"
+        "from urllib import request\n"
+        "from shelfmark.download.network import get_ssl_verify as ssl_verify\n"
+        "get('https://example.com')\n"
+        "send('https://example.com')\n"
+        "S()\n"
+        "r.put('https://example.com')\n"
+        "s.socket()\n"
+        "create_connection(('example.com', 80))\n"
+        "ur.urlopen('https://example.com')\n"
+        "request.build_opener()\n"
+        "r.Session().get('https://example.com', verify=ssl_verify('x'))\n",
+        encoding="utf-8",
+    )
+
+    assert scan(package, tmp_path) == {
+        ("shelfmark/aliased.py", "requests.get"),
+        ("shelfmark/aliased.py", "requests.post"),
+        ("shelfmark/aliased.py", "requests.Session"),
+        ("shelfmark/aliased.py", "requests.put"),
+        ("shelfmark/aliased.py", "socket.socket"),
+        ("shelfmark/aliased.py", "urllib.request"),
+        ("shelfmark/aliased.py", "urllib.request.urlopen"),
+        ("shelfmark/aliased.py", "urllib.request.build_opener"),
+        ("shelfmark/aliased.py", "verify=get_ssl_verify()"),
     }
