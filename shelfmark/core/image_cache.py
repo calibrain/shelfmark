@@ -590,6 +590,7 @@ class ImageCacheService:
 
         """
         cached_data: tuple[bytes, str] | None = None
+        response: requests.Response | None = None
         try:
             response = self._fetch_safe_response(url)
             if response is None:
@@ -638,6 +639,11 @@ class ImageCacheService:
             return None
         else:
             return cached_data
+        finally:
+            # The body is streamed; every exit, including the early returns above, must
+            # give the pooled connection back instead of waiting for garbage collection.
+            if response is not None:
+                response.close()
 
 
 # Singleton instance (initialized lazily when config is available)

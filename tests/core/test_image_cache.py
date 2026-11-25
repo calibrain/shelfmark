@@ -1,5 +1,6 @@
 """Tests for targeted image cache safety and fetch fallbacks."""
 
+import pytest
 import requests
 
 from shelfmark.core.image_cache import ImageCacheService
@@ -73,6 +74,52 @@ def test_fetch_and_cache_returns_none_on_request_exception(tmp_path, monkeypatch
 
     assert cache.fetch_and_cache("cover-1", "https://example.com/cover.jpg") is None
     assert "cover-1" not in cache._index
+
+
+class _StreamedImage:
+    """A final image response that records whether it was closed."""
+
+    is_redirect = False
+
+    def __init__(self, status=200, content_type="image/png", chunks=(b"x",)):
+        self.status_code = status
+        self.headers = {"content-type": content_type}
+        self._chunks = chunks
+        self.closed = False
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise requests.exceptions.HTTPError("bad", response=self)
+
+    def iter_content(self, chunk_size=8192):
+        yield from self._chunks
+
+    def close(self):
+        self.closed = True
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        _StreamedImage(status=404),
+        _StreamedImage(content_type="text/html"),
+        _StreamedImage(chunks=(b"",)),
+        _StreamedImage(chunks=(b"x" * 8192,)),
+        _StreamedImage(),
+    ],
+    ids=["http-error", "not-an-image", "empty-body", "too-large", "cached"],
+)
+def test_fetch_and_cache_closes_the_final_response_on_every_exit(
+    tmp_path, monkeypatch, response
+) -> None:
+    cache = ImageCacheService(tmp_path)
+    monkeypatch.setattr("shelfmark.core.image_cache.MAX_IMAGE_SIZE", 100)
+    monkeypatch.setattr(cache, "_prepare_safe_url", lambda url: url)
+    monkeypatch.setattr(_shared_session(), "get", lambda *_a, **_k: response)
+
+    cache.fetch_and_cache("cover-close", "https://example.com/cover.png")
+
+    assert response.closed is True
 
 
 def test_cover_cache_key_depends_on_the_url_only() -> None:
