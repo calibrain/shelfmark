@@ -563,6 +563,7 @@ export type DownloadReleasePayload = {
   multi_book?: boolean; // Split a multi-book pack into one book per subfolder/file
   book_plan?: PackBook[]; // The split the user approved before download
   ignored_files?: string[]; // Pack files the user chose to skip
+  request_id?: number; // Queue through this reopened request instead of a plain download
 };
 
 /** Inspect a release's file list before download (same body as downloadRelease). */

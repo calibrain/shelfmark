@@ -1,7 +1,11 @@
 import { describe, it, expect } from 'vitest';
 
 import type { Book } from '../types';
-import { addFailedRelease, failedDownloadButtonState } from '../utils/failedDownloadButton';
+import {
+  addFailedRelease,
+  failedDownloadButtonState,
+  retryRequestId,
+} from '../utils/failedDownloadButton';
 
 const failed = (fields: Partial<Book>): Book => ({
   id: 'rel-1',
@@ -54,5 +58,17 @@ describe('addFailedRelease', () => {
 
   it('marks the book failed when no failed release can be retried', () => {
     expect(addFailedRelease(get, final)).toEqual({ text: 'Failed', state: 'error' });
+  });
+});
+
+describe('retryRequestId', () => {
+  it('gives the request a failed release belongs to, so Retry goes through it', () => {
+    expect(retryRequestId(failed({ request_id: 7 }))).toBe(7);
+  });
+
+  it('gives nothing for a failure with no request, or no failure at all', () => {
+    expect(retryRequestId(failed({ request_id: 0, retry_available: true }))).toBeUndefined();
+    expect(retryRequestId(failed({}))).toBeUndefined();
+    expect(retryRequestId(undefined)).toBeUndefined();
   });
 });

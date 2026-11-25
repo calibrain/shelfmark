@@ -66,4 +66,15 @@ describe('buildReleaseDownloadPayload', () => {
     expect(payload.multi_book).toBe(true);
     expect(payload.book_plan).toEqual(plan);
   });
+
+  it('names the reopened request a retried release belongs to', () => {
+    const payload = buildReleaseDownloadPayload(book, release, 'audiobook', { requestId: 12 });
+    expect(payload.request_id).toBe(12);
+  });
+
+  it('leaves the request out of a plain download', () => {
+    expect(buildReleaseDownloadPayload(book, release, 'audiobook')).not.toHaveProperty(
+      'request_id',
+    );
+  });
 });

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 import sqlite3
+from http import HTTPStatus
 from typing import TYPE_CHECKING, Any
 
 from flask import jsonify, request, session
@@ -16,6 +17,7 @@ from shelfmark.core.release_inspect_routes import register_release_inspect_route
 from shelfmark.core.request_helpers import (
     coerce_bool,
     get_session_db_user_id,
+    normalize_positive_int,
 )
 from shelfmark.core.request_policy import (
     DEFAULT_SUPPORTED_CONTENT_TYPES,
@@ -26,6 +28,7 @@ from shelfmark.core.request_policy import (
     normalize_source,
     resolve_policy_mode,
 )
+from shelfmark.core.requests_service import RequestServiceError, retry_request_release
 from shelfmark.core.utils import AUDIOBOOK_FORMATS
 from shelfmark.download import orchestrator as backend
 from shelfmark.download import warmup
@@ -152,6 +155,32 @@ _RELEASE_LISTING_REFUSED_MODES = frozenset({PolicyMode.REQUEST_BOOK, PolicyMode.
 def _release_listing_block_response(mode: PolicyMode) -> tuple[Response, int]:
     """Build the 403 for a release listing the user's policy mode refuses."""
     return _policy_block_response(mode, error="Release listing not allowed by policy")
+
+
+# Keys of a download call that say how to queue it, not what the release is.
+_ROUTING_KEYS = frozenset({"priority", "on_behalf_of_user_id", "request_id"})
+
+# An approved pack's file plan. It can run past the size a request may store, so a retry
+# queues it with the download and keeps it out of the request's own release data.
+_PLAN_KEYS = frozenset({"book_plan", "ignored_files"})
+
+
+def _retry_refusal(status_code: int, code: str | None) -> tuple[Response, int]:
+    """A fixed answer for a refused Retry, chosen by status and code, never the error text."""
+    if code == "stale_transition":
+        message = "This request is no longer pending"
+    elif code == "queue_failed":
+        message = "Could not queue the release"
+    elif status_code == HTTPStatus.FORBIDDEN:
+        message = "You can't retry this request"
+    elif status_code == HTTPStatus.NOT_FOUND:
+        message = "Request not found"
+    else:
+        message = "Could not retry the request"
+    payload: dict[str, Any] = {"error": message}
+    if code is not None:
+        payload["code"] = code
+    return jsonify(payload), status_code
 
 
 class _ReleasePolicy:
@@ -375,6 +404,7 @@ def register_release_routes(
     load_policy_settings: Callable[[], dict[str, Any]],
     resolve_status_scope: Callable[..., tuple[bool, int | None, bool]],
     attach_library_ownership: Callable[[Any, dict[str, Any]], None],
+    emit_request_updates: Callable[[list[dict[str, Any]]], None] | None = None,
 ) -> None:
     """Register the release listing, download, source list and source record routes."""
     policy = _ReleasePolicy(
@@ -384,6 +414,64 @@ def register_release_routes(
     )
 
     register_release_inspect_routes(app, login_required, policy_gate=policy.payload_listing_gate)
+
+    def _queue_for_request(
+        raw_request_id: object, release_payload: dict[str, Any], data: dict[str, Any]
+    ) -> Response | tuple[Response, int]:
+        """Queue a release through the reopened request it failed for (#1681).
+
+        The policy check has already passed, so the caller may download this release
+        directly; the request service checks they are an admin or the request's owner and
+        that the request is still pending. Without login there is no session user, so the
+        admin that owns synced requests and approves auto-downloads is used, as auto-download
+        does.
+        """
+        request_id = normalize_positive_int(raw_request_id)
+        if request_id is None:
+            return jsonify({"error": "Invalid request_id"}), 400
+        if data.get("on_behalf_of_user_id") not in (None, ""):
+            return jsonify({"error": "request_id already names who the download is for"}), 400
+        user_db = get_user_db()
+        if user_db is None:
+            return jsonify({"error": "User database unavailable"}), 503
+
+        if resolve_auth_mode() == "none":
+            from shelfmark.core.hardcover_sync import resolve_request_owner
+
+            actor_user_id, is_admin = resolve_request_owner(user_db), True
+        else:
+            actor_user_id = get_session_db_user_id(session)
+            is_admin = bool(session.get("is_admin", False))
+
+        release_data = {
+            key: value
+            for key, value in release_payload.items()
+            if key not in _ROUTING_KEYS | _PLAN_KEYS
+        }
+        plan = {key: release_payload[key] for key in _PLAN_KEYS if key in release_payload}
+
+        def queue_with_plan(
+            queued_release: dict[str, Any], priority: int, **kwargs: Any
+        ) -> tuple[bool, str | None]:
+            """Queue the release with its pack plan, which the request does not store."""
+            return backend.queue_release({**queued_release, **plan}, priority, **kwargs)
+
+        try:
+            updated = retry_request_release(
+                user_db,
+                request_id=request_id,
+                actor_user_id=actor_user_id,
+                is_admin=is_admin,
+                queue_release=queue_with_plan,
+                release_data=release_data,
+            )
+        except RequestServiceError as exc:
+            logger.warning("Retry of request #%s refused: %s", request_id, exc)
+            return _retry_refusal(exc.status_code, exc.code)
+        logger.info("Request #%s queued again from Retry", updated["id"])
+        if emit_request_updates is not None:
+            emit_request_updates([updated])
+        return jsonify({"status": "queued", "priority": 0, "request_id": updated["id"]})
 
     @app.route("/api/releases/download", methods=["POST"])
     @login_required
@@ -430,6 +518,10 @@ def register_release_routes(
             if inferred_content_type and data.get("content_type") is None:
                 release_payload = dict(data)
                 release_payload["content_type"] = resolved_content_type
+
+            # Retry on a failed release of a reopened request goes through that request.
+            if data.get("request_id") not in (None, ""):
+                return _queue_for_request(data["request_id"], release_payload, data)
 
             logger.info(
                 "Download request received. keys=%s downloads=%s extra.downloads=%s",

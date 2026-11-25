@@ -713,6 +713,44 @@ def fulfil_request(
     return claimed_request
 
 
+def retry_request_release(
+    user_db: UserDB,
+    *,
+    request_id: int,
+    actor_user_id: int | None,
+    is_admin: bool,
+    queue_release: Callable[..., tuple[bool, str | None]],
+    release_data: object,
+) -> dict[str, Any]:
+    """Queue a release again for a reopened request, through request fulfilment (#1681).
+
+    Retry on a failed release of a reopened request comes here instead of a plain download,
+    so the download is linked to the request and closes it when the book arrives. An admin
+    may retry any pending request, its owner only their own; the caller has already checked
+    that the person may download this release directly. Whoever pressed Retry is recorded
+    as the reviewer.
+    """
+    ensure_request_access(
+        user_db,
+        request_id=request_id,
+        actor_user_id=actor_user_id,
+        is_admin=is_admin,
+    )
+    if actor_user_id is None:
+        msg = "User identity is unavailable for request workflow"
+        raise RequestServiceError(msg, status_code=403, code="user_identity_unavailable")
+    if not isinstance(release_data, dict):
+        msg = "release_data must be an object"
+        raise RequestServiceError(msg, status_code=400)
+    return fulfil_request(
+        user_db,
+        request_id=request_id,
+        admin_user_id=actor_user_id,
+        queue_release=queue_release,
+        release_data=release_data,
+    )
+
+
 def reopen_failed_request(
     user_db: UserDB,
     *,
