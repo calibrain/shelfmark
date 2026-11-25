@@ -278,3 +278,44 @@ def test_an_explicit_verify_is_kept_on_every_hop(settings, sent_hops):
     network.NetworkSession().get("https://auth.example.com/", verify=True)
 
     assert sent_hops == [("https://auth.example.com/", True)]
+
+
+def test_redirect_state_is_kept_per_greenlet(settings, monkeypatch):
+    """Two requests in flight on one thread, as under gevent, do not share explicit proxies.
+
+    The state used to be a ``threading.local()``. Created before gevent patched threading
+    (gunicorn with ``--preload``) it was one value for every greenlet, so a request that
+    passed its own proxies could lose them on a redirect while another request was in flight.
+    """
+    gevent = pytest.importorskip("gevent")
+    import requests
+
+    session = network.NetworkSession()
+    hops = {}
+
+    def fake_send(self, request, **kwargs):
+        # Let the other request start before this one follows its redirect.
+        gevent.sleep(0)
+        hops[request.url] = network.NetworkSession.rebuild_proxies(
+            session, _redirect_hop("https://indexer.example.com/getnzb/1"), kwargs["proxies"]
+        )
+        response = requests.Response()
+        response.status_code = 200
+        response.url = request.url
+        response.request = request
+        return response
+
+    monkeypatch.setattr(requests.Session, "send", fake_send)
+
+    gevent.joinall(
+        [
+            gevent.spawn(
+                session.get, "http://192.168.1.20/explicit", proxies={"https": "http://chosen:1"}
+            ),
+            gevent.spawn(session.get, "http://192.168.1.20/plain"),
+        ],
+        raise_error=True,
+    )
+
+    assert hops["http://192.168.1.20/explicit"].get("https") == "http://chosen:1"
+    assert hops["http://192.168.1.20/plain"] == {"http": _PROXY, "https": _PROXY}

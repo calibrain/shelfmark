@@ -4,10 +4,10 @@ import fnmatch
 import http.cookiejar
 import ipaddress
 import socket
-import threading
 import time
 import urllib.parse
 import urllib.request
+from contextvars import ContextVar
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from socket import AddressFamily, SocketKind
@@ -173,9 +173,14 @@ def _direct_if_bypassed(url: str) -> dict[str, None] | dict[str, str]:
     return {}
 
 
-# Whether the request on this thread was given explicit proxies; redirects are followed on
-# the thread that made the request, so rebuild_proxies() can read it.
-_redirect_state = threading.local()
+# Whether the request in this context was given explicit proxies and an explicit verify, as
+# (proxies, verify). Redirects are followed in the context that made the request, so
+# rebuild_proxies() and send() can read it. A ContextVar keeps one value per thread and per
+# greenlet, whether or not gevent has patched threading yet (with gunicorn's --preload this
+# module is imported first), so overlapping requests cannot see each other's flags.
+_redirect_state: ContextVar[tuple[bool, bool]] = ContextVar(
+    "shelfmark_redirect_state", default=(False, False)
+)
 
 
 class NetworkRules:
@@ -197,16 +202,11 @@ class NetworkRules:
             kwargs["proxies"] = get_proxies(target) or _direct_if_bypassed(target)
         if not explicit_verify:
             kwargs["verify"] = get_ssl_verify(target)
-        previous = (
-            getattr(_redirect_state, "explicit_proxies", False),
-            getattr(_redirect_state, "explicit_verify", False),
-        )
-        _redirect_state.explicit_proxies = explicit
-        _redirect_state.explicit_verify = explicit_verify
+        token = _redirect_state.set((explicit, explicit_verify))
         try:
             return super().request(method, url, *args, **kwargs)  # type: ignore[misc]
         finally:
-            _redirect_state.explicit_proxies, _redirect_state.explicit_verify = previous
+            _redirect_state.reset(token)
 
     def send(self, request: Any, **kwargs: Any) -> Any:
         """Send one hop, with ``verify`` chosen for that hop's own URL.
@@ -217,7 +217,7 @@ class NetworkRules:
         a CA bundle from the environment where verification is on. A ``verify`` the caller
         passed explicitly is kept.
         """
-        if not getattr(_redirect_state, "explicit_verify", False):
+        if not _redirect_state.get()[1]:
             url = str(request.url)
             if get_ssl_verify(url):
                 if kwargs.get("verify") is False:
@@ -236,7 +236,7 @@ class NetworkRules:
         download with Redirect on) went out direct with a proxy configured. Proxies a
         caller passed explicitly are kept. ``send()`` does the same for ``verify``.
         """
-        if getattr(_redirect_state, "explicit_proxies", False):
+        if _redirect_state.get()[0]:
             return super().rebuild_proxies(prepared_request, proxies)  # type: ignore[misc]
         url = str(prepared_request.url)
         configured = get_proxies(url)
