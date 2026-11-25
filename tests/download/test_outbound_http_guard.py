@@ -75,15 +75,26 @@ def _dotted(node: ast.expr) -> str:
     return ""
 
 
-def _aliases(tree: ast.AST) -> dict[str, str]:
-    """Names a module binds to something else's dotted path, so a call can be resolved.
+_SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
+
+# One (is a class body, mapping) pair per enclosing scope, outermost first.
+Aliases = list[tuple[bool, dict[str, str]]]
+
+
+def _own_aliases(scope: ast.AST) -> dict[str, str]:
+    """Names ``scope`` itself binds to something else's dotted path.
 
     ``import requests as r`` gives ``r -> requests``; ``from requests import get as g``
     gives ``g -> requests.get``; ``from urllib import request`` gives
     ``request -> urllib.request``. A plain ``import requests`` binds the name it already is.
+    An import inside a function or class nested in ``scope`` belongs to that scope, not this.
     """
     aliases: dict[str, str] = {}
-    for node in ast.walk(tree):
+    pending = list(ast.iter_child_nodes(scope))
+    while pending:
+        node = pending.pop()
+        if isinstance(node, _SCOPES):
+            continue
         if isinstance(node, ast.Import):
             for alias in node.names:
                 if alias.asname:
@@ -92,25 +103,27 @@ def _aliases(tree: ast.AST) -> dict[str, str]:
             for alias in node.names:
                 if alias.name != "*":
                     aliases[alias.asname or alias.name] = f"{node.module}.{alias.name}"
+        pending.extend(ast.iter_child_nodes(node))
     return aliases
 
 
-def _resolve(node: ast.expr, aliases: dict[str, str]) -> str:
-    """``_dotted`` with the first name replaced by what it was imported as."""
+def _resolve(node: ast.expr, scopes: Aliases) -> str:
+    """``_dotted`` with the first name replaced by what the nearest scope imported it as."""
     name = _dotted(node)
     head, dot, rest = name.partition(".")
-    return f"{aliases.get(head, head)}{dot}{rest}" if name else ""
+    for _, aliases in reversed(scopes):
+        if head in aliases:
+            return f"{aliases[head]}{dot}{rest}"
+    return name
 
 
-def _note_hand_passed(
-    found: set[str], argument: str, value: ast.expr, aliases: dict[str, str]
-) -> None:
+def _note_hand_passed(found: set[str], argument: str, value: ast.expr, scopes: Aliases) -> None:
     """Record ``verify=get_ssl_verify(...)`` or ``proxies=get_proxies(...)`` passed by hand."""
     helper = _SESSION_ARGUMENTS.get(argument)
     if (
         helper
         and isinstance(value, ast.Call)
-        and _resolve(value.func, aliases).rpartition(".")[2] == helper
+        and _resolve(value.func, scopes).rpartition(".")[2] == helper
     ):
         found.add(f"{argument}={helper}()")
 
@@ -118,40 +131,57 @@ def _note_hand_passed(
 def _uses(tree: ast.AST) -> set[str]:
     """What a module uses to reach the network on its own, as short names."""
     found: set[str] = set()
-    aliases = _aliases(tree)
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Import):
-            found.update(alias.name for alias in node.names if alias.name in _CLIENT_LIBRARIES)
-        elif isinstance(node, ast.ImportFrom) and node.module:
-            found.update(
-                library
-                for library in _CLIENT_LIBRARIES
-                if node.module == library or node.module.startswith(f"{library}.")
-            )
-        elif isinstance(node, ast.Dict):
-            # request kwargs built as a dict literal: {"verify": get_ssl_verify(url), ...}
-            for key, value in zip(node.keys, node.values, strict=True):
-                if isinstance(key, ast.Constant) and isinstance(key.value, str):
-                    _note_hand_passed(found, key.value, value, aliases)
-        elif isinstance(node, ast.Call):
-            for keyword in node.keywords:
-                if keyword.arg:
-                    _note_hand_passed(found, keyword.arg, keyword.value, aliases)
-            name = _resolve(node.func, aliases)
-            base, _, attr = name.rpartition(".")
-            if (base == "requests.api" and attr in _REQUESTS_CALLS) or (
-                base == "requests.sessions" and attr in _REQUESTS_SESSIONS
-            ):
-                found.add(name)
-            elif base == "requests" and attr in _REQUESTS_CALLS | _REQUESTS_SESSIONS:
-                found.add(name)
-            elif base == "httpx" and attr in _HTTPX_CALLS:
-                found.add(name)
-            elif base == "socket" and attr in _SOCKET_CALLS:
-                found.add("socket.socket")
-            elif name in {"urllib.request.urlopen", "urllib.request.build_opener"}:
-                found.add(name)
+    _walk(tree, [(False, _own_aliases(tree))], found)
     return found
+
+
+def _walk(node: ast.AST, scopes: Aliases, found: set[str]) -> None:
+    """Record what ``node`` and everything under it uses, resolving names scope by scope.
+
+    A class body's names are not visible inside its methods, so a function drops them.
+    """
+    if isinstance(node, ast.ClassDef):
+        scopes = [*scopes, (True, _own_aliases(node))]
+    elif isinstance(node, _SCOPES):
+        scopes = [*(s for s in scopes if not s[0]), (False, _own_aliases(node))]
+    _note(node, scopes, found)
+    for child in ast.iter_child_nodes(node):
+        _walk(child, scopes, found)
+
+
+def _note(node: ast.AST, scopes: Aliases, found: set[str]) -> None:
+    """Record what this one node uses, if anything."""
+    if isinstance(node, ast.Import):
+        found.update(alias.name for alias in node.names if alias.name in _CLIENT_LIBRARIES)
+    elif isinstance(node, ast.ImportFrom) and node.module:
+        found.update(
+            library
+            for library in _CLIENT_LIBRARIES
+            if node.module == library or node.module.startswith(f"{library}.")
+        )
+    elif isinstance(node, ast.Dict):
+        # request kwargs built as a dict literal: {"verify": get_ssl_verify(url), ...}
+        for key, value in zip(node.keys, node.values, strict=True):
+            if isinstance(key, ast.Constant) and isinstance(key.value, str):
+                _note_hand_passed(found, key.value, value, scopes)
+    elif isinstance(node, ast.Call):
+        for keyword in node.keywords:
+            if keyword.arg:
+                _note_hand_passed(found, keyword.arg, keyword.value, scopes)
+        name = _resolve(node.func, scopes)
+        base, _, attr = name.rpartition(".")
+        if (base == "requests.api" and attr in _REQUESTS_CALLS) or (
+            base == "requests.sessions" and attr in _REQUESTS_SESSIONS
+        ):
+            found.add(name)
+        elif base == "requests" and attr in _REQUESTS_CALLS | _REQUESTS_SESSIONS:
+            found.add(name)
+        elif base == "httpx" and attr in _HTTPX_CALLS:
+            found.add(name)
+        elif base == "socket" and attr in _SOCKET_CALLS:
+            found.add("socket.socket")
+        elif name in {"urllib.request.urlopen", "urllib.request.build_opener"}:
+            found.add(name)
 
 
 def scan(package: Path, root: Path) -> set[tuple[str, str]]:
@@ -260,6 +290,75 @@ def test_the_scan_resolves_import_aliases(tmp_path):
         ("shelfmark/aliased.py", "urllib.request.build_opener"),
         ("shelfmark/aliased.py", "verify=get_ssl_verify()"),
     }
+
+
+def test_an_alias_imported_in_a_function_stays_in_that_function(tmp_path):
+    """A function-local or class-level import is a hit where it is used, and only there."""
+    package = tmp_path / "shelfmark"
+    package.mkdir()
+    (package / "scoped.py").write_text(
+        "import requests\n"
+        "\n"
+        "def fetch():\n"
+        "    import requests as r\n"
+        "    return r.get('https://example.com')\n"
+        "\n"
+        "def other(r):\n"
+        "    return r.get('https://example.com')\n"
+        "\n"
+        "def shadowed():\n"
+        "    from somewhere import get\n"
+        "    return get()\n"
+        "\n"
+        "def uses_module_level():\n"
+        "    return requests.post('https://example.com')\n"
+        "\n"
+        "class Holder:\n"
+        "    from requests import put\n"
+        "    put('https://example.com')\n"
+        "    def run(self):\n"
+        "        return put('https://example.com')\n",
+        encoding="utf-8",
+    )
+
+    # The class-body call is a hit; the method's ``put`` cannot see the class namespace.
+    assert scan(package, tmp_path) == {
+        ("shelfmark/scoped.py", "requests.get"),
+        ("shelfmark/scoped.py", "requests.post"),
+        ("shelfmark/scoped.py", "requests.put"),
+    }
+
+
+def test_a_class_level_import_is_not_visible_inside_its_methods(tmp_path):
+    """Python resolves a name in a method from the function and the module, never the class."""
+    package = tmp_path / "shelfmark"
+    package.mkdir()
+    (package / "klass.py").write_text(
+        "class Holder:\n"
+        "    from requests import put\n"
+        "    def run(self, put):\n"
+        "        return put('https://example.com')\n",
+        encoding="utf-8",
+    )
+
+    assert scan(package, tmp_path) == set()
+
+
+def test_an_alias_does_not_reach_a_sibling_function(tmp_path):
+    """The aliased name is only a hit where it was imported, so ``r`` elsewhere is not one."""
+    package = tmp_path / "shelfmark"
+    package.mkdir()
+    (package / "sibling.py").write_text(
+        "def fetch():\n"
+        "    import requests as r\n"
+        "    return 1\n"
+        "\n"
+        "def other(r):\n"
+        "    return r.get('https://example.com')\n",
+        encoding="utf-8",
+    )
+
+    assert scan(package, tmp_path) == set()
 
 
 def test_the_scan_catches_requests_submodule_calls(tmp_path):
