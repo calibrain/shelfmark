@@ -85,6 +85,7 @@ import { buildLoginRedirectPath, getReturnToFromSearch } from './utils/authRedir
 import { withBasePath } from './utils/basePath';
 import { emitBookTargetChange } from './utils/bookTargetEvents';
 import { bookSupportsTargets } from './utils/bookTargetLoader';
+import { mergeSeriesFields } from './utils/bookTransformers';
 import { buildSearchQuery } from './utils/buildSearchQuery';
 import { wasDownloadQueuedAfterResponseError } from './utils/downloadRecovery';
 import { getDynamicOptionGroup } from './utils/dynamicFieldOptions';
@@ -996,10 +997,7 @@ function App() {
         setSelectedBook({
           ...metadataBook,
           description: fullBook.description || metadataBook.description,
-          series_id: fullBook.series_id || metadataBook.series_id,
-          series_name: fullBook.series_name,
-          series_position: fullBook.series_position,
-          series_count: fullBook.series_count,
+          ...mergeSeriesFields(metadataBook, fullBook),
         });
       } catch (error) {
         console.error('Failed to load book description, using search data:', error);
@@ -1618,10 +1616,7 @@ function App() {
         setReleaseBook({
           ...book,
           description: fullBook.description || book.description,
-          series_id: fullBook.series_id || book.series_id,
-          series_name: fullBook.series_name,
-          series_position: fullBook.series_position,
-          series_count: fullBook.series_count,
+          ...mergeSeriesFields(book, fullBook),
         });
       } catch (error) {
         console.error('Failed to load book description, using search data:', error);
