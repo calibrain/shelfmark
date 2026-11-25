@@ -167,6 +167,24 @@ def test_the_environment_no_proxy_carries_the_local_rule_for_requests(monkeypatc
     assert should_bypass_proxies(url, no_proxy=network.no_proxy_for_environment()) is bypassed
 
 
+@pytest.mark.parametrize("no_proxy", ["*", "*, example.org", "example.org,*"])
+def test_a_lone_wildcard_in_no_proxy_bypasses_every_host_for_requests(monkeypatch, no_proxy):
+    """``*`` is bypass-all for the session and must stay so for code reading NO_PROXY."""
+    from requests.utils import should_bypass_proxies
+
+    network = _set_proxy_config(monkeypatch, NO_PROXY=no_proxy)
+
+    assert network.should_bypass_proxy("https://api.hardcover.app/") is True
+    assert network.no_proxy_for_environment() == "*"
+    assert should_bypass_proxies("https://api.hardcover.app/", no_proxy="*") is True
+    assert (
+        should_bypass_proxies(
+            "https://api.hardcover.app/", no_proxy=network.no_proxy_for_environment()
+        )
+        is True
+    )
+
+
 @pytest.mark.parametrize("mode", ["USING_TOR", "USING_WIREGUARD"])
 def test_a_saved_proxy_is_not_used_when_a_tunnel_routes_the_traffic(monkeypatch, mode):
     """Tor and WireGuard route everything themselves; a LAN proxy would carry it around them."""

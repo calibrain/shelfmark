@@ -697,9 +697,13 @@ def no_proxy_for_environment() -> str:
 
     requests matches ``NO_PROXY`` entries as IPv4 networks or as name suffixes, so the
     private ranges and internal TLDs come first, then each No Proxy pattern, with a
-    leading ``*.`` written as ``.`` because that is the form requests understands.
+    leading ``*.`` written as ``.`` because that is the form requests understands. A lone
+    ``*`` means every host and requests only honours it as the whole value, so it is
+    returned by itself.
     """
     patterns = [f".{p[2:]}" if p.startswith("*.") else p for p in _get_no_proxy_patterns()]
+    if "*" in patterns:
+        return "*"
     return ",".join(dict.fromkeys([*_LOCAL_NO_PROXY, *patterns]))
 
 
