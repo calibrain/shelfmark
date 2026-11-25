@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 
 from shelfmark.core.config import config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.utils import is_audiobook
 from shelfmark.release_sources import DownloadHandler, register_handler
 
 from .client import bare_channel_name, has_control_characters
@@ -93,6 +94,12 @@ class IRCDownloadHandler(DownloadHandler):
         port = _config_port("IRC_PORT", 6697)
         use_tls = _config_bool("IRC_USE_TLS", True)
         channel = bare_channel_name(_config_text("IRC_CHANNEL"))
+        # An audiobook is searched in the audiobook channel when one is set
+        # (source.py), so the bot that offered it is there: ask for it there too.
+        if is_audiobook(task.content_type):
+            audiobook_channel = bare_channel_name(_config_text("IRC_AUDIOBOOK_CHANNEL"))
+            if audiobook_channel:
+                channel = audiobook_channel
         nick = _config_text("IRC_NICK")
 
         if not server or not channel or not nick:
