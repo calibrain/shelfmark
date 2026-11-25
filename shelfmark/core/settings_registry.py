@@ -1138,6 +1138,10 @@ def serialize_field(
         elif isinstance(field, TableField) and (value is None or not isinstance(value, list)):
             value = []
 
+        if isinstance(field, PasswordField):
+            # Passwords are masked in the UI and never echoed back to the API.
+            value = ""
+
         result["value"] = value if value is not None else ""
         result["fromEnv"] = is_value_from_env(field)
 
@@ -1213,7 +1217,26 @@ def execute_action(
                     # Check if callback accepts current_values parameter
                     sig = inspect.signature(settings_field.callback)
                     if "current_values" in sig.parameters:
-                        return settings_field.callback(current_values=current_values or {})
+                        values_to_pass = dict(current_values or {})
+                        if values_to_pass:
+                            field_map = {
+                                key: field
+                                for key, (field, _) in get_settings_field_map(
+                                    tab_name=tab_name
+                                ).items()
+                            }
+                            # Never hand an empty password value of this tab to
+                            # an action callback: let it fall back to the stored
+                            # secret exactly as when the key is absent.
+                            for key, value in list(values_to_pass.items()):
+                                field = field_map.get(key)
+                                if (
+                                    field is not None
+                                    and isinstance(field, PasswordField)
+                                    and not value
+                                ):
+                                    values_to_pass.pop(key, None)
+                        return settings_field.callback(current_values=values_to_pass)
                     return settings_field.callback()
                 except Exception as e:
                     logger.exception("Action %s failed", action_key)
