@@ -77,8 +77,9 @@ def _dotted(node: ast.expr) -> str:
 
 _SCOPES = (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef, ast.Lambda)
 
-# One (is a class body, mapping) pair per enclosing scope, outermost first.
-Aliases = list[tuple[bool, dict[str, str]]]
+# One (is a class body, import aliases, other bound names) triple per enclosing scope,
+# outermost first.
+Aliases = list[tuple[bool, dict[str, str], set[str]]]
 
 
 def _own_aliases(scope: ast.AST) -> dict[str, str]:
@@ -88,9 +89,11 @@ def _own_aliases(scope: ast.AST) -> dict[str, str]:
     gives ``g -> requests.get``; ``from urllib import request`` gives
     ``request -> urllib.request``. A plain ``import requests`` binds the name it already is.
     An import inside a function or class nested in ``scope`` belongs to that scope, not this.
+    Statements are read in source order, so a later import of the same name replaces an
+    earlier one, as it does when Python runs them.
     """
     aliases: dict[str, str] = {}
-    pending = list(ast.iter_child_nodes(scope))
+    pending = list(reversed(list(ast.iter_child_nodes(scope))))
     while pending:
         node = pending.pop()
         if isinstance(node, _SCOPES):
@@ -103,17 +106,52 @@ def _own_aliases(scope: ast.AST) -> dict[str, str]:
             for alias in node.names:
                 if alias.name != "*":
                     aliases[alias.asname or alias.name] = f"{node.module}.{alias.name}"
-        pending.extend(ast.iter_child_nodes(node))
+        pending.extend(reversed(list(ast.iter_child_nodes(node))))
     return aliases
+
+
+def _own_bindings(scope: ast.AST) -> set[str]:
+    """Names ``scope`` binds other than by import: parameters, assignments, nested defs.
+
+    A name bound here hides an import alias of the same name from an outer scope, so
+    ``def fetch(r): r.get(url)`` is not a call on a module-level ``import requests as r``.
+    This is a best effort at Python's scoping, enough for the shapes the code uses.
+    """
+    bound: set[str] = set()
+    if isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Lambda)):
+        args = scope.args
+        for argument in (*args.posonlyargs, *args.args, *args.kwonlyargs, args.vararg, args.kwarg):
+            if argument is not None:
+                bound.add(argument.arg)
+    pending = list(ast.iter_child_nodes(scope))
+    while pending:
+        node = pending.pop()
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            bound.add(node.name)
+        if isinstance(node, _SCOPES):
+            continue
+        if isinstance(node, ast.Name) and isinstance(node.ctx, ast.Store):
+            bound.add(node.id)
+        elif isinstance(node, ast.ExceptHandler) and node.name:
+            bound.add(node.name)
+        pending.extend(ast.iter_child_nodes(node))
+    return bound
+
+
+def _scope_entry(node: ast.AST) -> tuple[bool, dict[str, str], set[str]]:
+    """The ``Aliases`` entry for the scope ``node`` opens."""
+    return (isinstance(node, ast.ClassDef), _own_aliases(node), _own_bindings(node))
 
 
 def _resolve(node: ast.expr, scopes: Aliases) -> str:
     """``_dotted`` with the first name replaced by what the nearest scope imported it as."""
     name = _dotted(node)
     head, dot, rest = name.partition(".")
-    for _, aliases in reversed(scopes):
+    for _, aliases, bound in reversed(scopes):
         if head in aliases:
             return f"{aliases[head]}{dot}{rest}"
+        if head in bound:
+            return name
     return name
 
 
@@ -131,7 +169,7 @@ def _note_hand_passed(found: set[str], argument: str, value: ast.expr, scopes: A
 def _uses(tree: ast.AST) -> set[str]:
     """What a module uses to reach the network on its own, as short names."""
     found: set[str] = set()
-    _walk(tree, [(False, _own_aliases(tree))], found)
+    _walk(tree, [(False, _own_aliases(tree), _own_bindings(tree))], found)
     return found
 
 
@@ -139,14 +177,21 @@ def _walk(node: ast.AST, scopes: Aliases, found: set[str]) -> None:
     """Record what ``node`` and everything under it uses, resolving names scope by scope.
 
     A class body's names are not visible inside its methods, so a function drops them.
+    Defaults, decorators, annotations and base classes run where the function or class is
+    defined, so only the body sees the scope it opens.
     """
-    if isinstance(node, ast.ClassDef):
-        scopes = [*scopes, (True, _own_aliases(node))]
-    elif isinstance(node, _SCOPES):
-        scopes = [*(s for s in scopes if not s[0]), (False, _own_aliases(node))]
     _note(node, scopes, found)
+    if not isinstance(node, _SCOPES):
+        for child in ast.iter_child_nodes(node):
+            _walk(child, scopes, found)
+        return
+    if isinstance(node, ast.ClassDef):
+        inner = [*scopes, _scope_entry(node)]
+    else:
+        inner = [*(s for s in scopes if not s[0]), _scope_entry(node)]
+    body = node.body if isinstance(node.body, list) else [node.body]
     for child in ast.iter_child_nodes(node):
-        _walk(child, scopes, found)
+        _walk(child, inner if any(child is statement for statement in body) else scopes, found)
 
 
 def _note(node: ast.AST, scopes: Aliases, found: set[str]) -> None:
@@ -387,3 +432,51 @@ def test_the_scan_catches_requests_submodule_calls(tmp_path):
         ("shelfmark/submodules.py", "requests.sessions.Session"),
         ("shelfmark/submodules.py", "requests.sessions.session"),
     }
+
+
+def test_imports_are_read_in_source_order(tmp_path):
+    """The last import of a name is the one a later call uses."""
+    package = tmp_path / "shelfmark"
+    package.mkdir()
+    (package / "ordered.py").write_text(
+        "from shelfmark.download.network import get_session as client\n"
+        "import requests as client\n"
+        "client.get('https://example.com')\n",
+        encoding="utf-8",
+    )
+
+    assert scan(package, tmp_path) == {("shelfmark/ordered.py", "requests.get")}
+
+
+def test_a_parameter_hides_a_module_alias_of_the_same_name(tmp_path):
+    """``def fetch(r)`` is not a call on ``import requests as r``, but the module's own use is."""
+    package = tmp_path / "shelfmark"
+    package.mkdir()
+    (package / "shadowed.py").write_text(
+        "import requests as r\n"
+        "\n"
+        "def fetch(r):\n"
+        "    return r.get('https://example.com')\n"
+        "\n"
+        "def direct():\n"
+        "    return r.post('https://example.com')\n",
+        encoding="utf-8",
+    )
+
+    assert scan(package, tmp_path) == {("shelfmark/shadowed.py", "requests.post")}
+
+
+def test_a_default_runs_in_the_scope_that_defines_the_function(tmp_path):
+    """An import in the body does not change what the default expression calls."""
+    package = tmp_path / "shelfmark"
+    package.mkdir()
+    (package / "defaults.py").write_text(
+        "import requests as r\n"
+        "\n"
+        "def fetch(response=r.get('https://example.com')):\n"
+        "    from shelfmark.download.network import get_session as r\n"
+        "    return r.get('https://example.com')\n",
+        encoding="utf-8",
+    )
+
+    assert scan(package, tmp_path) == {("shelfmark/defaults.py", "requests.get")}
