@@ -139,7 +139,11 @@ def _uses(tree: ast.AST) -> set[str]:
                     _note_hand_passed(found, keyword.arg, keyword.value, aliases)
             name = _resolve(node.func, aliases)
             base, _, attr = name.rpartition(".")
-            if base == "requests" and attr in _REQUESTS_CALLS | _REQUESTS_SESSIONS:
+            if (base == "requests.api" and attr in _REQUESTS_CALLS) or (
+                base == "requests.sessions" and attr in _REQUESTS_SESSIONS
+            ):
+                found.add(name)
+            elif base == "requests" and attr in _REQUESTS_CALLS | _REQUESTS_SESSIONS:
                 found.add(name)
             elif base == "httpx" and attr in _HTTPX_CALLS:
                 found.add(name)
@@ -255,4 +259,32 @@ def test_the_scan_resolves_import_aliases(tmp_path):
         ("shelfmark/aliased.py", "urllib.request.urlopen"),
         ("shelfmark/aliased.py", "urllib.request.build_opener"),
         ("shelfmark/aliased.py", "verify=get_ssl_verify()"),
+    }
+
+
+def test_the_scan_catches_requests_submodule_calls(tmp_path):
+    """``requests.get`` is ``requests.api.get``; ``requests.Session`` is in ``requests.sessions``."""
+    package = tmp_path / "shelfmark"
+    package.mkdir()
+    (package / "submodules.py").write_text(
+        "import requests.api\n"
+        "import requests.sessions\n"
+        "import requests.api as api\n"
+        "from requests.api import post\n"
+        "from requests.sessions import Session\n"
+        "requests.api.get('https://example.com')\n"
+        "requests.sessions.Session()\n"
+        "requests.sessions.session()\n"
+        "api.put('https://example.com')\n"
+        "post('https://example.com')\n"
+        "Session()\n",
+        encoding="utf-8",
+    )
+
+    assert scan(package, tmp_path) == {
+        ("shelfmark/submodules.py", "requests.api.get"),
+        ("shelfmark/submodules.py", "requests.api.put"),
+        ("shelfmark/submodules.py", "requests.api.post"),
+        ("shelfmark/submodules.py", "requests.sessions.Session"),
+        ("shelfmark/submodules.py", "requests.sessions.session"),
     }
