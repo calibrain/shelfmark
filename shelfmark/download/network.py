@@ -149,16 +149,26 @@ def get_ssl_verify(url: str = "") -> bool:
     return True
 
 
+def _goes_direct(url: str) -> bool:
+    """Whether no proxy of any kind, Settings or environment, may carry a request to ``url``.
+
+    True under Tor or WireGuard, whose iptables rules route the traffic themselves, and for
+    a local or No Proxy host.
+    """
+    return bool(tunnel_egress()) or should_bypass_proxy(url)
+
+
 def _direct_if_bypassed(url: str) -> dict[str, None] | dict[str, str]:
-    """Proxies for a request ``get_proxies`` sent nowhere: direct when the host is bypassed.
+    """Proxies for a request ``get_proxies`` sent nowhere: direct when ``_goes_direct``.
 
     An empty mapping lets requests fill in ``HTTP_PROXY``/``HTTPS_PROXY``/``ALL_PROXY`` from
-    the environment, which would send a local or No Proxy host to an environment proxy.
-    ``None`` for each scheme keeps requests from adding one; it drops the ``None`` entries
-    once merged, so the request goes direct. With no proxy configured in Settings and a
-    host that isn't bypassed, the mapping stays empty and an environment proxy still applies.
+    the environment, which would send a tunnelled, local or No Proxy request to an
+    environment proxy. ``None`` for each scheme keeps requests from adding one; it drops the
+    ``None`` entries once merged, so the request goes direct. With no proxy configured in
+    Settings and nothing forcing it direct, the mapping stays empty and an environment proxy
+    still applies.
     """
-    if should_bypass_proxy(url):
+    if _goes_direct(url):
         return {"http": None, "https": None, "all": None}
     return {}
 
@@ -232,7 +242,7 @@ class NetworkRules:
         configured = get_proxies(url)
         if configured:
             return super().rebuild_proxies(prepared_request, configured)  # type: ignore[misc]
-        if should_bypass_proxy(url):
+        if _goes_direct(url):
             prepared_request.headers.pop("Proxy-Authorization", None)
             return {}
         return super().rebuild_proxies(prepared_request, {})  # type: ignore[misc]

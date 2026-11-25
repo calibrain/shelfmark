@@ -184,6 +184,62 @@ def test_a_saved_proxy_is_not_used_when_a_tunnel_routes_the_traffic(monkeypatch,
     assert network.get_proxies("https://example.com") == {}
 
 
+@pytest.mark.parametrize("mode", ["USING_TOR", "USING_WIREGUARD"])
+def test_an_environment_proxy_is_not_used_when_a_tunnel_routes_the_traffic(monkeypatch, mode):
+    """With no proxy in Settings, requests would still read HTTP_PROXY; a tunnel forbids that."""
+    import requests
+
+    from shelfmark.config import env
+
+    network = _set_proxy_config(
+        monkeypatch, PROXY_MODE="none", NO_PROXY="", USING_TOR=mode == "USING_TOR"
+    )
+    monkeypatch.setattr(env, "USING_WIREGUARD", mode == "USING_WIREGUARD")
+    monkeypatch.setenv("HTTP_PROXY", "http://env-proxy.example.com:3128")
+    monkeypatch.setenv("HTTPS_PROXY", "http://env-proxy.example.com:3128")
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+
+    seen: list[dict] = []
+
+    class Recorder(requests.adapters.BaseAdapter):
+        def send(self, request, **kwargs):
+            seen.append(kwargs.get("proxies"))
+            response = requests.Response()
+            response.status_code = 200
+            response.url = request.url
+            return response
+
+        def close(self):
+            pass
+
+    session = network.NetworkSession()
+    session.mount("https://", Recorder())
+    session.mount("http://", Recorder())
+
+    session.get("https://example.com/")
+
+    assert not seen[0]
+
+
+def test_a_redirect_hop_does_not_pick_up_an_environment_proxy_under_a_tunnel(monkeypatch):
+    """rebuild_proxies() reads the environment for a hop unless the session says direct."""
+    import requests
+
+    from shelfmark.config import env
+
+    network = _set_proxy_config(monkeypatch, PROXY_MODE="none", NO_PROXY="", USING_TOR=True)
+    monkeypatch.setattr(env, "USING_WIREGUARD", False)
+    monkeypatch.setenv("HTTPS_PROXY", "http://env-proxy.example.com:3128")
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+
+    session = network.NetworkSession()
+    hop = requests.Request("GET", "https://other.example.org/").prepare()
+
+    assert session.rebuild_proxies(hop, {}) == {}
+
+
 def test_a_saved_proxy_is_used_without_a_tunnel(monkeypatch):
     """With neither tunnel on, the proxy from Settings applies as before."""
     from shelfmark.config import env
