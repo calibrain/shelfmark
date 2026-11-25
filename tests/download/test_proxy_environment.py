@@ -156,6 +156,44 @@ def test_a_proxy_from_the_container_environment_is_left_alone(settings, monkeypa
     assert os.environ["HTTP_PROXY"] == "http://container-proxy:3128"
 
 
+def test_an_older_save_cannot_apply_over_a_newer_one(settings, monkeypatch):
+    """The environment is computed under the lock, so saves apply in the order they lock.
+
+    The first save reads proxy A and stalls. A second save of proxy B starts meanwhile.
+    Computed outside the lock, B finishes first and A then overwrites it.
+    """
+    import os
+    import threading
+
+    stalled = threading.Event()
+    resume = threading.Event()
+    first = []
+    real = network.proxy_environment
+
+    def stalling_proxy_environment():
+        computed = real()
+        if not first:
+            first.append(True)
+            stalled.set()
+            resume.wait(timeout=5)
+        return computed
+
+    monkeypatch.setattr(network, "proxy_environment", stalling_proxy_environment)
+    older = threading.Thread(target=network.apply_proxy_environment)
+    older.start()
+    assert stalled.wait(timeout=5)
+
+    settings["HTTP_PROXY"] = "http://newer-proxy.example.com:3128"
+    newer = threading.Thread(target=network.apply_proxy_environment)
+    newer.start()
+    newer.join(timeout=1)  # finishes at once without the lock; waits for it with it
+    resume.set()
+    older.join(timeout=5)
+    newer.join(timeout=5)
+
+    assert os.environ["HTTP_PROXY"] == "http://newer-proxy.example.com:3128"
+
+
 def test_a_settings_save_applies_the_variables(settings, monkeypatch):
     """update_settings() brings the environment in step after writing the settings."""
     from shelfmark.core import settings_registry

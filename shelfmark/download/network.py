@@ -809,9 +809,11 @@ def apply_proxy_environment() -> None:
     """
     from shelfmark.core.settings_registry import is_process_written_env, set_process_env
 
-    desired = proxy_environment()
-    tunnel = bool(tunnel_egress())
     with _proxy_env_lock:
+        # Read the settings under the lock too: two saves that overlap must apply in the
+        # order they take the lock, or an older value computed first could land last.
+        desired = proxy_environment()
+        tunnel = bool(tunnel_egress())
         for name in _PROXY_VARIABLES:
             given = name in os.environ and not is_process_written_env(name)
             if given and not (tunnel and name in desired):
