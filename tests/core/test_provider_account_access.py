@@ -8,6 +8,7 @@ from unittest.mock import patch
 import pytest
 
 from shelfmark.metadata_providers.hardcover import HardcoverProvider
+from tests.core.sessions import sign_in
 
 
 @pytest.fixture(scope="module")
@@ -73,9 +74,7 @@ def client(main_module, provider):
 
 
 def _session(client, *, is_admin: bool) -> None:
-    with client.session_transaction() as sess:
-        sess["user_id"] = "someone"
-        sess["is_admin"] = is_admin
+    sign_in(client, user_id="someone", is_admin=is_admin)
 
 
 def _as(main_module, client, *, is_admin: bool, auth_mode: str = "builtin"):

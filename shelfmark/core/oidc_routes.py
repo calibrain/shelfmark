@@ -22,6 +22,7 @@ from shelfmark.core.oidc_auth import (
     parse_group_claims,
     provision_oidc_user,
 )
+from shelfmark.core.session_auth import stamp_session_nonce
 from shelfmark.download.network import get_ssl_verify
 
 if TYPE_CHECKING:
@@ -356,6 +357,7 @@ def register_oidc_routes(app: Flask, user_db: UserDB) -> None:
             session["user_id"] = user["username"]
             session["is_admin"] = user.get("role") == "admin"
             session["db_user_id"] = user["id"]
+            stamp_session_nonce(session, user)
             session.permanent = True
 
             logger.info("OIDC login successful: %s (admin=%s)", user["username"], is_admin)

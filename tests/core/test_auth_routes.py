@@ -551,16 +551,22 @@ class TestAuthCheck:
             sess["user_id"] = "alice"
             sess["db_user_id"] = user["id"]
             sess["is_admin"] = False
+            sess["session_nonce"] = user["session_nonce"]
         with _mode(main_module, "builtin"):
             body = client.get("/api/auth/check").get_json()
         assert body["authenticated"] is True
         assert body["is_admin"] is False
         assert body["username"] == "alice"
 
-    def test_cwa_session_admin_flag_comes_from_the_session(self, main_module, client):
+    def test_cwa_session_admin_flag_comes_from_the_linked_users_role(
+        self, main_module, client, temp_user_db
+    ):
+        user = temp_user_db.create_user(username="cwa_fake", auth_source="cwa", role="admin")
         with client.session_transaction() as sess:
             sess["user_id"] = "cwa_fake"
-            sess["is_admin"] = True
+            sess["db_user_id"] = user["id"]
+            sess["is_admin"] = False
+            sess["session_nonce"] = user["session_nonce"]
         with _mode(main_module, "cwa"):
             body = client.get("/api/auth/check").get_json()
         assert body == {
@@ -643,6 +649,9 @@ class TestAuthCheck:
             sess["user_id"] = "alice"
             sess["db_user_id"] = user["id"]
             sess["is_admin"] = False
+            sess["session_nonce"] = user["session_nonce"]
+        # The session check answers from the user cache, so only the route's lookup fails.
+        temp_user_db.get_user_cached(user_id=user["id"])
 
         def boom(**kwargs):
             raise sqlite3.Error("fake")

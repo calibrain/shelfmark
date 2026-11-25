@@ -186,6 +186,7 @@ class TestLoginSemantics:
             sess["user_id"] = "alice"
             sess["db_user_id"] = user["id"]
             sess["is_admin"] = True
+            sess["session_nonce"] = user["session_nonce"]
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
             response = client.get("/api/auth/check")

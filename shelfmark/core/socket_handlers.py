@@ -5,10 +5,11 @@ from __future__ import annotations
 import sqlite3
 from typing import TYPE_CHECKING
 
-from flask import request
+from flask import request, session
 from flask_socketio import emit
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.request_helpers import get_session_db_user_id
 from shelfmark.core.viewer_redaction import redact_status
 from shelfmark.download import orchestrator as backend
 
@@ -35,11 +36,21 @@ def register_socket_handlers(
     *,
     ws_manager: WebSocketManager,
     resolve_status_scope: Callable[..., tuple[bool, int | None, bool]],
+    revalidate_session: Callable[[], object],
 ) -> None:
     """Register the connect, disconnect and request_status handlers.
 
     ``resolve_status_scope`` stays in ``main.py`` because the HTTP routes use it too.
+    ``revalidate_session`` checks the session against users.db: Socket.IO events do not
+    pass through Flask's ``before_request`` hooks, so the handlers call it themselves.
     """
+
+    def _revalidate() -> None:
+        try:
+            revalidate_session()
+        except _OPERATIONAL_ERRORS:
+            logger.exception("Socket.IO session revalidation error")
+            session.clear()
 
     @socketio.on("connect")
     def handle_connect() -> None:
@@ -50,12 +61,14 @@ def register_socket_handlers(
         ws_manager.client_connected()
 
         # Join appropriate room based on authenticated user session
+        _revalidate()
         is_admin, db_user_id, can_access_status = resolve_status_scope()
         sid = _get_request_sid()
         if sid is None:
             logger.warning("Socket.IO connect event missing sid")
             return
         ws_manager.join_user_room(sid, is_admin=is_admin, db_user_id=db_user_id)
+        ws_manager.set_sid_user(sid, get_session_db_user_id(session))
 
         # Send initial status to the newly connected client (filtered)
         try:
@@ -86,6 +99,7 @@ def register_socket_handlers(
     def handle_status_request() -> None:
         """Handle manual status request from client."""
         try:
+            _revalidate()
             is_admin, db_user_id, can_access_status = resolve_status_scope()
             sid = _get_request_sid()
             if sid is None:
@@ -93,6 +107,7 @@ def register_socket_handlers(
                 emit("status_update", {})
                 return
             ws_manager.sync_user_room(sid, is_admin=is_admin, db_user_id=db_user_id)
+            ws_manager.set_sid_user(sid, get_session_db_user_id(session))
 
             if not can_access_status:
                 emit("status_update", {})

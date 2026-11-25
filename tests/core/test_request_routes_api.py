@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from shelfmark.core.notifications import NotificationEvent
+from tests.core.sessions import forge_session, sign_in, skip_session_check
 
 
 @pytest.fixture(scope="module")
@@ -27,13 +28,7 @@ def client(main_module):
 
 
 def _set_session(client, *, user_id: str, db_user_id: int | None, is_admin: bool) -> None:
-    with client.session_transaction() as sess:
-        sess["user_id"] = user_id
-        sess["is_admin"] = is_admin
-        if db_user_id is not None:
-            sess["db_user_id"] = db_user_id
-        elif "db_user_id" in sess:
-            del sess["db_user_id"]
+    sign_in(client, user_id=user_id, db_user_id=db_user_id, is_admin=is_admin)
 
 
 def _create_user(main_module, *, prefix: str, role: str = "user") -> dict:
@@ -108,6 +103,7 @@ class TestDownloadPolicyGuards:
         with client.session_transaction() as sess:
             sess["user_id"] = user["username"]
             sess["db_user_id"] = user["id"]
+            sess["session_nonce"] = user["session_nonce"]
             sess.pop("is_admin", None)
 
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
@@ -2408,13 +2404,12 @@ class TestRequestCreationEdgeCases:
         assert resp.json["request_level"] == "release"
 
     def test_without_db_user_id_returns_403(self, main_module, client):
-        with client.session_transaction() as sess:
-            sess["user_id"] = "some-user"
-            sess["is_admin"] = False
-            if "db_user_id" in sess:
-                del sess["db_user_id"]
+        forge_session(client, user_id="some-user", is_admin=False)
 
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+        with (
+            patch.object(main_module, "get_auth_mode", return_value="builtin"),
+            skip_session_check(),
+        ):
             resp = client.post(
                 "/api/requests",
                 json={
@@ -2954,13 +2949,12 @@ class TestAdminFulfilEdgeCases:
         assert fulfil_resp.json["release_data"]["source_id"] == "better-r"
 
     def test_admin_without_db_user_id_returns_403(self, main_module, client):
-        with client.session_transaction() as sess:
-            sess["user_id"] = "admin-user"
-            sess["is_admin"] = True
-            if "db_user_id" in sess:
-                del sess["db_user_id"]
+        forge_session(client, user_id="admin-user", is_admin=True)
 
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+        with (
+            patch.object(main_module, "get_auth_mode", return_value="builtin"),
+            skip_session_check(),
+        ):
             resp = client.post("/api/admin/requests/1/fulfil", json={})
 
         assert resp.status_code == 403

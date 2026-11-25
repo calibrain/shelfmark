@@ -23,6 +23,7 @@ from shelfmark.core.auth_modes import (
 )
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.session_auth import SESSION_NONCE_KEY, stamp_session_nonce
 from shelfmark.core.user_settings_overrides import (
     build_user_preferences_payload as _build_user_preferences_payload,
 )
@@ -101,6 +102,7 @@ def _get_self_edit_capabilities(user: Mapping[str, Any]) -> dict[str, Any]:
 def _serialize_self_user(user: Mapping[str, Any], auth_mode: str) -> dict[str, Any]:
     payload = dict(user)
     payload.pop("password_hash", None)
+    payload.pop(SESSION_NONCE_KEY, None)
     payload["auth_source"] = normalize_auth_source(
         payload.get("auth_source"),
         payload.get("oidc_subject"),
@@ -502,6 +504,9 @@ def register_self_user_routes(
         updated = user_db.get_user(user_id=user_id)
         if not updated:
             return jsonify({"error": "User not found"}), 404
+        if password_hash is not None:
+            # The new password signed out every other session; this one stays signed in.
+            stamp_session_nonce(session, updated)
 
         result = _serialize_self_user(updated, g.auth_mode)
         result["settings"] = user_db.get_user_settings(user_id)

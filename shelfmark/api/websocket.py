@@ -5,7 +5,7 @@ from __future__ import annotations
 import threading
 from typing import TYPE_CHECKING, Any
 
-from flask_socketio import SocketIO, join_room, leave_room
+from flask_socketio import SocketIO, disconnect, join_room, leave_room
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.viewer_redaction import viewer_download_id
@@ -29,6 +29,7 @@ class WebSocketManager:
         self._connection_lock = threading.Lock()
         self._user_rooms: dict[str, int] = {}  # room_name -> ref count
         self._sid_rooms: dict[str, str] = {}  # sid -> room_name
+        self._sid_users: dict[str, int] = {}  # sid -> users.db id of its signed-in session
         self._rooms_lock = threading.Lock()
         self._queue_status_fn: Callable | None = None  # Reference to queue_status()
 
@@ -130,6 +131,37 @@ class WebSocketManager:
         del is_admin, db_user_id  # Backward-compatible signature; routing is SID-based.
         with self._rooms_lock:
             self._set_sid_room_locked(sid, None)
+            self._sid_users.pop(sid, None)
+
+    def set_sid_user(self, sid: str, user_id: int | None) -> None:
+        """Record which signed-in user a SID belongs to, for ``disconnect_user``.
+
+        Kept apart from the room: an admin's SID sits in the shared admins room.
+        """
+        with self._rooms_lock:
+            if user_id is None:
+                self._sid_users.pop(sid, None)
+            else:
+                self._sid_users[sid] = user_id
+
+    def disconnect_user(self, user_id: int) -> None:
+        """Close every Socket.IO connection of a user.
+
+        For when the user's role changes, their sessions are revoked or they are deleted:
+        the rooms were chosen from the session at connect time, and the client's reconnect
+        is checked against the user's current state. Needs a Flask app context.
+        """
+        if self._get_socketio() is None:
+            return
+        with self._rooms_lock:
+            sids = [sid for sid, owner in self._sid_users.items() if owner == user_id]
+        for sid in sids:
+            try:
+                disconnect(sid=sid, namespace="/")
+            except KeyError, RuntimeError, ValueError:
+                logger.warning("Could not disconnect Socket.IO client %s of user %s", sid, user_id)
+        if sids:
+            logger.info("Disconnected %d Socket.IO client(s) of user %s", len(sids), user_id)
 
     def broadcast_status_update(self, status_data: dict[str, Any]) -> None:
         """Broadcast status update to all connected clients, filtered by user room."""

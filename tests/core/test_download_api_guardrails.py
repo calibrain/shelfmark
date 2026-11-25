@@ -9,6 +9,7 @@ from unittest.mock import patch
 import pytest
 
 from shelfmark.core.models import DownloadTask, QueueStatus
+from tests.core.sessions import sign_in
 
 
 @pytest.fixture(scope="module")
@@ -30,14 +31,10 @@ def _set_authenticated_session(
     client,
     *,
     user_id: str = "alice",
-    db_user_id: int | None = 7,
+    db_user_id: int | None = None,
     is_admin: bool = False,
-) -> None:
-    with client.session_transaction() as sess:
-        sess["user_id"] = user_id
-        sess["is_admin"] = is_admin
-        if db_user_id is not None:
-            sess["db_user_id"] = db_user_id
+) -> dict:
+    return sign_in(client, user_id=user_id, db_user_id=db_user_id, is_admin=is_admin)
 
 
 def _create_user(main_module, *, prefix: str, role: str = "user") -> dict:
@@ -95,10 +92,9 @@ class TestReleaseDownloadEndpointGuardrails:
             )
             return True, None
 
-        _set_authenticated_session(
+        bob = _set_authenticated_session(
             client,
             user_id="bob",
-            db_user_id=19,
             is_admin=False,
         )
         payload = {
@@ -117,7 +113,7 @@ class TestReleaseDownloadEndpointGuardrails:
         assert resp.get_json() == {"status": "queued", "priority": 3}
         assert captured["release_data"] == {**payload, "content_type": "ebook"}
         assert captured["priority"] == 3
-        assert captured["user_id"] == 19
+        assert captured["user_id"] == bob["id"]
         assert captured["username"] == "bob"
 
     def test_missing_content_type_infers_audiobook_from_format(self, main_module, client):
@@ -299,7 +295,8 @@ class TestReleaseDownloadEndpointGuardrails:
             "on_behalf_of_user_id": 7,
         }
 
-        with patch.object(main_module, "get_auth_mode", return_value="builtin"):
+        # CWA sign-in works without users.db, so that is where a signed-in admin meets this.
+        with patch.object(main_module, "get_auth_mode", return_value="cwa"):
             with patch.object(main_module, "user_db", None):
                 with patch.object(main_module.backend, "queue_release") as mock_queue_release:
                     resp = client.post("/api/releases/download", json=payload)
@@ -826,10 +823,9 @@ class TestStatusEndpointGuardrails:
             observed["user_id"] = user_id
             return {"queued": {}, "downloading": {}, "completed": {}, "failed": {}, "cancelled": {}}
 
-        _set_authenticated_session(
+        reader = _set_authenticated_session(
             client,
             user_id="reader",
-            db_user_id=55,
             is_admin=False,
         )
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):
@@ -837,7 +833,7 @@ class TestStatusEndpointGuardrails:
                 resp = client.get("/api/status")
 
         assert resp.status_code == 200
-        assert observed["user_id"] == 55
+        assert observed["user_id"] == reader["id"]
 
     def test_admin_status_is_unscoped(self, main_module, client):
         observed: dict[str, object] = {}
@@ -849,7 +845,6 @@ class TestStatusEndpointGuardrails:
         _set_authenticated_session(
             client,
             user_id="admin",
-            db_user_id=1,
             is_admin=True,
         )
         with patch.object(main_module, "get_auth_mode", return_value="builtin"):

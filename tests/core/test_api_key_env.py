@@ -128,6 +128,7 @@ def _cookie_client(app, user, *, is_admin=False, permanent=False):
         sess["user_id"] = user["username"]
         sess["is_admin"] = is_admin
         sess["db_user_id"] = user["id"]
+        sess["session_nonce"] = user["session_nonce"]
         sess.permanent = permanent
     return client
 

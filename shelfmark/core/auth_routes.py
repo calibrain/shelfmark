@@ -16,6 +16,7 @@ from flask import jsonify, request, session
 from shelfmark.core.config import config as app_config
 from shelfmark.core.cwa_user_sync import upsert_cwa_user
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.session_auth import stamp_session_nonce
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -264,6 +265,7 @@ def register_auth_routes(
                     session["user_id"] = username
                     session["db_user_id"] = db_user["id"]
                     session["is_admin"] = is_admin
+                    stamp_session_nonce(session, db_user)
                     session.permanent = remember_me
                     clear_failed_logins(username)
                     logger.info(
@@ -308,7 +310,7 @@ def register_auth_routes(
                     is_admin = (user_role & 1) == 1
                     cwa_email = row[2] or None
 
-                    db_user_id = None
+                    db_user = None
                     user_db = get_user_db()
                     if user_db is not None:
                         role = "admin" if is_admin else "user"
@@ -319,13 +321,13 @@ def register_auth_routes(
                             role=role,
                             context="cwa_login",
                         )
-                        db_user_id = db_user["id"]
 
                     # Successful authentication - create session and clear failed attempts
                     session["user_id"] = username
                     session["is_admin"] = is_admin
-                    if db_user_id is not None:
-                        session["db_user_id"] = db_user_id
+                    if db_user is not None:
+                        session["db_user_id"] = db_user["id"]
+                        stamp_session_nonce(session, db_user)
                     session.permanent = remember_me
                     clear_failed_logins(username)
                     logger.info(
