@@ -89,7 +89,7 @@ def test_turning_the_proxy_off_removes_the_variables_shelfmark_set(settings):
 
 
 @pytest.mark.parametrize("mode", ["USING_TOR", "USING_WIREGUARD"])
-def test_no_variables_are_written_when_a_tunnel_routes_the_traffic(settings, monkeypatch, mode):
+def test_no_proxy_is_written_when_a_tunnel_routes_the_traffic(settings, monkeypatch, mode):
     """Under Tor or WireGuard the saved proxy reaches no library through the environment."""
     import os
 
@@ -100,7 +100,48 @@ def test_no_variables_are_written_when_a_tunnel_routes_the_traffic(settings, mon
 
     network.apply_proxy_environment()
 
-    assert not set(_VARIABLES) & set(os.environ)
+    assert not {"HTTP_PROXY", "http_proxy", "HTTPS_PROXY", "https_proxy"} & set(os.environ)
+    assert os.environ["NO_PROXY"] == os.environ["no_proxy"] == "*"
+
+
+@pytest.mark.parametrize("mode", ["USING_TOR", "USING_WIREGUARD"])
+def test_a_proxy_in_the_container_environment_is_not_used_under_a_tunnel(
+    settings, monkeypatch, mode
+):
+    """A library reading the environment itself, such as Apprise, goes direct."""
+    import os
+
+    from requests.utils import get_environ_proxies
+
+    from shelfmark.config import env
+
+    settings["USING_TOR"] = mode == "USING_TOR"
+    monkeypatch.setattr(env, "USING_WIREGUARD", mode == "USING_WIREGUARD")
+    monkeypatch.setenv("HTTPS_PROXY", "http://container-proxy:3128")
+    monkeypatch.setenv("NO_PROXY", "internal.example.com")
+
+    network.apply_proxy_environment()
+
+    assert os.environ["HTTPS_PROXY"] == "http://container-proxy:3128"
+    assert get_environ_proxies("https://api.hardcover.app/") == {}
+
+
+def test_a_proxy_in_the_container_environment_still_applies_without_a_tunnel(settings, monkeypatch):
+    """Only a tunnel overrides the container's own NO_PROXY; otherwise it is left alone."""
+    import os
+
+    from requests.utils import get_environ_proxies
+
+    settings["PROXY_MODE"] = "none"
+    monkeypatch.setenv("HTTPS_PROXY", "http://container-proxy:3128")
+    monkeypatch.setenv("NO_PROXY", "internal.example.com")
+
+    network.apply_proxy_environment()
+
+    assert os.environ["NO_PROXY"] == "internal.example.com"
+    assert (
+        get_environ_proxies("https://api.hardcover.app/")["https"] == "http://container-proxy:3128"
+    )
 
 
 def test_a_proxy_from_the_container_environment_is_left_alone(settings, monkeypatch):

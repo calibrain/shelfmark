@@ -775,8 +775,12 @@ def proxy_environment() -> dict[str, str]:
     """The proxy variables Settings → Network calls for, upper- and lower-case.
 
     Empty when no proxy is configured. ``NO_PROXY`` comes with the proxies, from
-    ``no_proxy_for_environment()``.
+    ``no_proxy_for_environment()``. Under Tor or WireGuard (``tunnel_egress``) no proxy is
+    written and ``NO_PROXY`` is ``*``, so a library that reads the environment goes direct
+    and the tunnel carries the traffic, as it does for ``NetworkSession``.
     """
+    if tunnel_egress():
+        return {"NO_PROXY": "*", "no_proxy": "*"}
     proxies = get_proxies("")
     env: dict[str, str] = {}
     for scheme in ("http", "https"):
@@ -798,15 +802,19 @@ def apply_proxy_environment() -> None:
     ``NO_PROXY`` instead of calling ``get_proxies()``. Called at startup and after every
     settings save. A variable Shelfmark set is replaced or removed to follow the settings;
     one that was already in the environment when Shelfmark found it, such as a proxy given
-    in the container's own environment, is left alone. The ones it writes are recorded with
-    ``set_process_env`` so the Settings fields of the same names don't read as "set via env".
+    in the container's own environment, is left alone, except that under a tunnel its
+    ``NO_PROXY`` is replaced by ``*``: a proxy from the container's environment would carry
+    traffic around the tunnel. The ones it writes are recorded with ``set_process_env`` so
+    the Settings fields of the same names don't read as "set via env".
     """
     from shelfmark.core.settings_registry import is_process_written_env, set_process_env
 
     desired = proxy_environment()
+    tunnel = bool(tunnel_egress())
     with _proxy_env_lock:
         for name in _PROXY_VARIABLES:
-            if name in os.environ and not is_process_written_env(name):
+            given = name in os.environ and not is_process_written_env(name)
+            if given and not (tunnel and name in desired):
                 continue
             set_process_env(name, desired.get(name) or None)
 
