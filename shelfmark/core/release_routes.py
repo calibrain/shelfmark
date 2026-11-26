@@ -12,7 +12,7 @@ from flask import jsonify, request, session
 from shelfmark.core import search_deadline
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
-from shelfmark.core.models import SearchFilters
+from shelfmark.core.models import QueueStatus, SearchFilters
 from shelfmark.core.release_inspect_routes import register_release_inspect_routes
 from shelfmark.core.request_helpers import (
     coerce_bool,
@@ -473,6 +473,37 @@ def register_release_routes(
             emit_request_updates([updated])
         return jsonify({"status": "queued", "priority": 0, "request_id": updated["id"]})
 
+    def _owners_failed_request_id(source: object, source_id: object) -> int | None:
+        """The request a signed-in user's own failed download of this release belongs to (#1715).
+
+        A non-admin's request-linked downloads are listed under an opaque id, so the page cannot
+        say that the release it is about to retry failed for a request. The queue can: the task
+        keeps its request and its owner. Only the owner's own failed task counts, and only for a
+        non-admin; an admin's page names the request itself. The queue keys a task by its
+        source id alone, so the source has to match too.
+        """
+        if resolve_auth_mode() == "none" or session.get("is_admin", False):
+            return None
+        db_user_id = get_session_db_user_id(session)
+        if db_user_id is None or not isinstance(source_id, str):
+            return None
+        task = backend.book_queue.get_task(source_id)
+        if (
+            task is None
+            or backend.book_queue.get_task_status(source_id) != QueueStatus.ERROR
+            or task.user_id != db_user_id
+            or task.source != source
+        ):
+            return None
+        return normalize_positive_int(task.request_id)
+
+    def _is_closed_request_refusal(result: Response | tuple[Response, int]) -> bool:
+        """Whether a Retry answer says the request is no longer pending."""
+        if not isinstance(result, tuple) or result[1] != HTTPStatus.CONFLICT:
+            return False
+        body = result[0].get_json(silent=True)
+        return isinstance(body, dict) and body.get("code") == "stale_transition"
+
     @app.route("/api/releases/download", methods=["POST"])
     @login_required
     def api_download_release() -> Response | tuple[Response, int]:
@@ -522,6 +553,14 @@ def register_release_routes(
             # Retry on a failed release of a reopened request goes through that request.
             if data.get("request_id") not in (None, ""):
                 return _queue_for_request(data["request_id"], release_payload, data)
+            if data.get("on_behalf_of_user_id") in (None, ""):
+                owners_request_id = _owners_failed_request_id(source, data["source_id"])
+                if owners_request_id is not None:
+                    linked = _queue_for_request(owners_request_id, release_payload, data)
+                    # Only a request closed since the failure falls back to a plain download.
+                    # Any other refusal, such as a queue that would not take the release, stands.
+                    if not _is_closed_request_refusal(linked):
+                        return linked
 
             logger.info(
                 "Download request received. keys=%s downloads=%s extra.downloads=%s",

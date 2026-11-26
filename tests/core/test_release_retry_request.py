@@ -243,3 +243,199 @@ def test_a_large_pack_plan_is_queued_but_not_stored_on_the_request(client, main_
     assert updated["status"] == "fulfilled"
     assert "book_plan" not in (updated["release_data"] or {})
     assert "ignored_files" not in (updated["release_data"] or {})
+
+
+def _failed_task(
+    main_module,
+    owner: dict,
+    request_id: int | None,
+    *,
+    source_id: str = "md5-failed",
+    source: str = "direct_download",
+):
+    """A download of the release that failed, still in the queue, for this request."""
+    from shelfmark.core.models import DownloadTask, QueueStatus
+
+    queue = orchestrator.book_queue
+    queue.add(
+        DownloadTask(
+            task_id=source_id,
+            source=source,
+            title="The Book",
+            user_id=owner["id"],
+            username=owner["username"],
+            request_id=request_id,
+        )
+    )
+    queue.update_status(source_id, QueueStatus.ERROR)
+    return queue
+
+
+def _plain_download(client, main_module, **extra):
+    """Press Download on the release, as the page does when it knows of no request."""
+    body = {
+        "source": "direct_download",
+        "source_id": "md5-failed",
+        "title": "The Book",
+        "content_type": "ebook",
+        **extra,
+    }
+    with (
+        patch.object(main_module, "get_auth_mode", return_value="builtin"),
+        patch.object(
+            main_module,
+            "load_users_request_policy_settings",
+            return_value=_policy(PolicyMode.DOWNLOAD.value),
+        ),
+    ):
+        return client.post("/api/releases/download", json=body)
+
+
+@pytest.fixture
+def clean_queue():
+    """Leave no task behind in the shared queue."""
+    yield
+    queue = orchestrator.book_queue
+    with queue._lock:
+        for name in ("_task_data", "_status", "_status_timestamps", "_attempts"):
+            getattr(queue, name).pop("md5-failed", None)
+
+
+def test_an_owners_retry_links_their_failed_download_to_the_request(
+    client, main_module, queued, clean_queue
+):
+    """The page cannot see the request behind a hidden download, so the server finds it (#1715)."""
+    owner = _user(main_module)
+    reopened = _reopened_request(main_module, owner)
+    _failed_task(main_module, owner, reopened["id"])
+    _login(client, owner)
+
+    response = _plain_download(client, main_module)
+
+    assert response.status_code == 200, response.get_json()
+    assert response.get_json()["request_id"] == reopened["id"]
+    assert queued[0]["release"]["_request_id"] == reopened["id"]
+    assert main_module.user_db.get_request(reopened["id"])["status"] == "fulfilled"
+
+
+def test_a_download_with_no_failed_task_stays_plain(client, main_module, queued, clean_queue):
+    """Nothing failed for a request, so nothing is linked."""
+    owner = _user(main_module)
+    _login(client, owner)
+
+    response = _plain_download(client, main_module)
+
+    assert response.status_code == 200, response.get_json()
+    assert "_request_id" not in queued[0]["release"]
+
+
+def test_someone_elses_failed_download_is_not_linked(client, main_module, queued, clean_queue):
+    """A user's Download never reaches another user's request."""
+    owner, other = _user(main_module), _user(main_module)
+    reopened = _reopened_request(main_module, owner)
+    _failed_task(main_module, owner, reopened["id"])
+    _login(client, other)
+
+    response = _plain_download(client, main_module)
+
+    assert response.status_code == 200, response.get_json()
+    assert "_request_id" not in queued[0]["release"]
+    assert main_module.user_db.get_request(reopened["id"])["status"] == "pending"
+
+
+def test_a_failed_download_with_no_request_stays_plain(client, main_module, queued, clean_queue):
+    """A download the user queued themselves has no request behind it."""
+    owner = _user(main_module)
+    _failed_task(main_module, owner, None)
+    _login(client, owner)
+
+    response = _plain_download(client, main_module)
+
+    assert response.status_code == 200, response.get_json()
+    assert "_request_id" not in queued[0]["release"]
+
+
+def test_a_request_closed_since_the_failure_falls_back_to_a_plain_download(
+    client, main_module, queued, clean_queue
+):
+    """Linked while pending, queued plainly once the request has been closed."""
+    owner = _user(main_module)
+    closed = _reopened_request(main_module, owner, status="cancelled")
+    _failed_task(main_module, owner, closed["id"])
+    _login(client, owner)
+
+    response = _plain_download(client, main_module)
+
+    assert response.status_code == 200, response.get_json()
+    assert "_request_id" not in queued[0]["release"]
+
+
+def test_an_admins_own_download_is_not_linked_by_the_server(
+    client, main_module, queued, clean_queue
+):
+    """An admin's page names the request itself, so the server does not guess."""
+    admin = _user(main_module, is_admin=True)
+    reopened = _reopened_request(main_module, admin)
+    _failed_task(main_module, admin, reopened["id"])
+    _login(client, admin)
+
+    response = _plain_download(client, main_module)
+
+    assert response.status_code == 200, response.get_json()
+    assert "_request_id" not in queued[0]["release"]
+
+
+def test_an_owners_download_for_someone_else_is_not_linked(
+    client, main_module, queued, clean_queue
+):
+    """An explicit recipient already says who the download is for."""
+    owner = _user(main_module)
+    reopened = _reopened_request(main_module, owner)
+    _failed_task(main_module, owner, reopened["id"])
+    _login(client, owner)
+
+    _plain_download(client, main_module, on_behalf_of_user_id=owner["id"])
+
+    assert "_request_id" not in (queued[0]["release"] if queued else {})
+    assert main_module.user_db.get_request(reopened["id"])["status"] == "pending"
+
+
+def test_a_failed_download_of_another_source_is_not_linked(
+    client, main_module, queued, clean_queue
+):
+    """The queue keys a task by its source id alone, so the source must match as well."""
+    owner = _user(main_module)
+    reopened = _reopened_request(main_module, owner)
+    _failed_task(main_module, owner, reopened["id"], source="prowlarr")
+    _login(client, owner)
+
+    response = _plain_download(client, main_module)
+
+    assert response.status_code == 200, response.get_json()
+    assert "_request_id" not in queued[0]["release"]
+    assert main_module.user_db.get_request(reopened["id"])["status"] == "pending"
+
+
+def test_a_queue_that_refuses_the_linked_release_is_not_retried_plainly(
+    client, main_module, monkeypatch, clean_queue
+):
+    """Only a closed request falls back; a refused queue attempt is reported as it is."""
+    owner = _user(main_module)
+    reopened = _reopened_request(main_module, owner)
+    _failed_task(main_module, owner, reopened["id"])
+    _login(client, owner)
+    calls: list[dict] = []
+
+    def refusing_queue(release_data, priority, *, user_id=None, username=None):
+        """Refuse every release, noting what was offered."""
+        calls.append(dict(release_data))
+        return False, "no room"
+
+    monkeypatch.setattr(orchestrator, "queue_release", refusing_queue)
+
+    response = _plain_download(client, main_module)
+
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "queue_failed"
+    assert len(calls) == 1
+    assert main_module.user_db.get_request(reopened["id"])["status"] == "pending"
