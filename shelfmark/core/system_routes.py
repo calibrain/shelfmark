@@ -15,6 +15,7 @@ from werkzeug.wrappers import Response
 from shelfmark.config.env import BUILD_VERSION, RELEASE_VERSION
 from shelfmark.config.settings import _SUPPORTED_BOOK_LANGUAGE
 from shelfmark.core import search_deadline
+from shelfmark.core.api_errors import error_response
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import normalize_optional_text
@@ -305,7 +306,7 @@ def register_system_routes(
                 logger.error_trace(
                     f"Debug script error: {e}, stdout: {e.stdout}, stderr: {e.stderr}"
                 )
-                return jsonify({"error": f"Debug script failed: {e.stderr}"}), 500
+                return error_response(f"Debug script failed: {e.stderr}", 500)
             except _OPERATIONAL_ERRORS as e:
                 logger.error_trace(f"Debug endpoint error: {e}")
                 return jsonify({"error": "Could not create the debug file"}), 500

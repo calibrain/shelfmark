@@ -12,6 +12,7 @@ import sqlite3
 from typing import TYPE_CHECKING
 
 from shelfmark.core.logger import setup_logger
+from shelfmark.core.redaction import redact_secrets
 from shelfmark.core.search_plan import build_release_search_plan
 
 if TYPE_CHECKING:
@@ -94,7 +95,7 @@ def search_source_releases(
     except (SourceUnavailableError, *_OPERATIONAL_ERRORS) as exc:
         logger.warning("Release search failed for source %s: %s", source_name, exc)
         if include_error_detail or isinstance(exc, SourceUnavailableError):
-            return None, [], f"{source_name}: {exc!s}"
+            return None, [], redact_secrets(f"{source_name}: {exc!s}")
         return None, [], f"{source_name}: search failed"
     else:
         return source, releases, None

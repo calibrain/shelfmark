@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Any
 from flask import jsonify, request, session
 
 from shelfmark.core import search_deadline
+from shelfmark.core.api_errors import error_response
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.models import QueueStatus, SearchFilters
@@ -591,7 +592,7 @@ def register_release_routes(
 
             if success:
                 return jsonify({"status": "queued", "priority": priority})
-            return jsonify({"error": error_msg or "Failed to queue release"}), 500
+            return error_response(error_msg or "Failed to queue release", 500)
         except _OPERATIONAL_ERRORS as e:
             logger.error_trace(f"Release download error: {e}")
             return jsonify({"error": "Could not queue the release"}), 500
@@ -883,12 +884,12 @@ def register_release_routes(
                 # Strip the source prefix if present (e.g., "direct_download: message" -> "message")
                 if ": " in error_message:
                     error_message = error_message.split(": ", 1)[1]
-                return jsonify({"error": error_message}), 503
+                return error_response(error_message, 503)
 
             return jsonify(response)
         except SourceUnavailableError as e:
             logger.warning("Release search unavailable: %s", e)
-            return jsonify({"error": str(e)}), 503
+            return error_response(str(e), 503)
         except _IMPORT_OPERATIONAL_ERRORS as e:
             logger.error_trace(f"Releases search error: {e}")
             return jsonify({"error": "Could not search for releases"}), 500
@@ -932,7 +933,7 @@ def register_release_routes(
             return jsonify({"error": f"Unknown release source: {source_name}"}), 400
         except SourceUnavailableError as e:
             logger.warning("Release source record unavailable: %s", e)
-            return jsonify({"error": str(e)}), 503
+            return error_response(str(e), 503)
         except _OPERATIONAL_ERRORS as e:
             logger.error_trace(f"Release source record error: {e}")
             return jsonify({"error": "Could not resolve the record"}), 500

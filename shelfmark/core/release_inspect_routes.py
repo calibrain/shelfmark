@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Any
 
 from flask import jsonify, request
 
+from shelfmark.core.api_errors import error_response
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.utils import is_audiobook
 from shelfmark.download.postprocess.packs import PackFile, PackPlan, plan_pack
@@ -97,6 +98,7 @@ def register_release_inspect_routes(
     @app.route("/api/releases/inspect", methods=["POST"])
     @login_required
     def api_inspect_release() -> Response | tuple[Response, int]:
+        """Inspect a release for the pack review."""
         data = request.get_json(silent=True)
         if not isinstance(data, dict):
             return jsonify({"error": "No data provided"}), 400
@@ -107,7 +109,7 @@ def register_release_inspect_routes(
         try:
             get_handler(str(data["source"]))
         except ValueError as exc:
-            return jsonify({"error": str(exc)}), 400
+            return error_response(str(exc), 400)
         if policy_gate is not None:
             refusal = policy_gate(data)
             if refusal is not None:
