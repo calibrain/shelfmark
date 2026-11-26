@@ -204,7 +204,11 @@ class TestTerminalSnapshot:
     def test_each_terminal_status_finalizes_history(
         self, main_module, services, ws_emit, status, expected
     ):
-        task = _task(status_message="  msg ", download_path="/tmp/x.epub")
+        task = _task(
+            status_message="  msg ",
+            download_path="/tmp/x.epub",
+            download_identities={"/tmp/x.epub": "1:2:3"},
+        )
         with (
             patch.object(_recording(), "notify_admin"),
             patch.object(_recording(), "notify_user"),
@@ -217,6 +221,7 @@ class TestTerminalSnapshot:
             final_status=expected,
             status_message="msg",
             download_path="/tmp/x.epub",
+            download_identity="1:2:3",
             retry_payload={"k": "v"},
         )
         assert [c.kwargs["to"] for c in ws_emit.call_args_list] == ["admins", "user_7"]
@@ -453,3 +458,14 @@ class TestReopenAfterTerminalError:
             ),
         ):
             _terminal_hook()("t1", QueueStatus.ERROR, _task(request_id=42))
+
+
+def test_history_gets_the_identity_recorded_for_the_delivered_path():
+    _delivered_identity = download_recording._delivered_identity
+    task = SimpleNamespace(
+        download_path="/books/a.epub",
+        download_identities={"/books/a.epub": "1:2:3", "/books/b.epub": "4:5:6"},
+    )
+    assert _delivered_identity(task) == "1:2:3"
+    assert _delivered_identity(SimpleNamespace(download_path=None, download_identities={})) is None
+    assert _delivered_identity(SimpleNamespace(download_path="/books/c.epub")) is None

@@ -39,3 +39,24 @@ def test_zip_entry_names_keep_folders_below_the_common_parent(tmp_path):
     names = [name for _, name in zip_entry_names([str(first), str(second)])]
 
     assert names == ["Book One/a.mp3", "Book Two/b.mp3"]
+
+
+def test_stream_zip_reads_through_the_opener_one_file_at_a_time(tmp_path):
+    parts = [tmp_path / "Part 01.m4b", tmp_path / "Part 02.m4b"]
+    for index, part in enumerate(parts, start=1):
+        part.write_bytes(f"chapter {index}".encode())
+    opened = []
+
+    def opener(path):
+        assert all(handle.closed for handle in opened)
+        handle = open(path, "rb")
+        opened.append(handle)
+        return handle
+
+    data = b"".join(stream_zip([str(part) for part in parts], opener))
+
+    assert len(opened) == 2
+    assert all(handle.closed for handle in opened)
+    with zipfile.ZipFile(io.BytesIO(data)) as archive:
+        assert archive.read("Part 02.m4b") == b"chapter 2"
+        assert archive.getinfo("Part 02.m4b").file_size == len(b"chapter 2")

@@ -139,3 +139,49 @@ def test_the_download_payload_says_when_a_finished_download_ended():
     assert active["finished_at"] is None
     assert isinstance(done["finished_at"], float)
     assert done["finished_at"] >= done["added_time"]
+
+
+def test_finalize_keeps_the_identity_of_the_delivered_file_until_a_retry():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _user_db, service = _service(tmpdir)
+        _record(service, request_id=None, title="Book")
+        service.finalize_download(
+            task_id="release-1",
+            final_status="complete",
+            download_path="/books/Book.epub",
+            download_identity="12:34:56",
+        )
+        assert service.get_by_task_id("release-1")["download_identity"] == "12:34:56"
+
+        _record(service, request_id=None, title="Book")
+
+        assert service.get_by_task_id("release-1")["download_identity"] is None
+
+
+def test_finalize_records_no_identity_without_a_path():
+    with tempfile.TemporaryDirectory() as tmpdir:
+        _user_db, service = _service(tmpdir)
+        _record(service, request_id=None, title="Book")
+        service.finalize_download(
+            task_id="release-1", final_status="error", download_identity="12:34:56"
+        )
+        assert service.get_by_task_id("release-1")["download_identity"] is None
+
+
+def test_an_existing_database_gains_the_identity_column():
+    import sqlite3
+
+    with tempfile.TemporaryDirectory() as tmpdir:
+        db_path = os.path.join(tmpdir, "users.db")
+        UserDB(db_path).initialize()
+        conn = sqlite3.connect(db_path)
+        conn.execute("ALTER TABLE download_history DROP COLUMN download_identity")
+        conn.commit()
+        conn.close()
+
+        UserDB(db_path).initialize()
+
+        conn = sqlite3.connect(db_path)
+        columns = {row[1] for row in conn.execute("PRAGMA table_info(download_history)")}
+        conn.close()
+        assert "download_identity" in columns

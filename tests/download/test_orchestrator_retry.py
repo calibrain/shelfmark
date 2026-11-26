@@ -380,3 +380,34 @@ def test_get_book_paths_ignores_a_list_that_no_longer_holds_download_path(monkey
     paths, _ = orchestrator.get_book_paths(task.task_id)
 
     assert paths == [str(current)]
+
+
+@pytest.mark.parametrize(
+    ("replaced", "expected"), [(False, QueueStatus.COMPLETE), (True, QueueStatus.QUEUED)]
+)
+def test_a_delivered_download_completes_only_the_attempt_that_delivered_it(
+    monkeypatch, tmp_path, replaced, expected
+):
+    """Cancelled and retried while the delivered file is read, the new attempt stays queued."""
+    import shelfmark.download.orchestrator as orchestrator
+
+    delivered = tmp_path / "book.epub"
+    delivered.write_bytes(b"epub")
+    queue = BookQueue()
+    queue.add(DownloadTask(task_id="task-done-1", source="direct_download", title="Delivered"))
+
+    def identity(_path):
+        """Replace the attempt in the middle of the read when the case asks for it."""
+        if replaced:
+            queue.update_status("task-done-1", QueueStatus.CANCELLED)
+            assert queue.enqueue_existing("task-done-1") is True
+        return "1:2:3"
+
+    monkeypatch.setattr(orchestrator, "book_queue", queue)
+    monkeypatch.setattr(orchestrator, "ws_manager", None)
+    monkeypatch.setattr(orchestrator, "_download_task", lambda _id, _flag: str(delivered))
+    monkeypatch.setattr("shelfmark.core.queue.file_identity", identity)
+
+    orchestrator._process_single_download("task-done-1", Event())
+
+    assert queue.get_task_status("task-done-1") == expected
