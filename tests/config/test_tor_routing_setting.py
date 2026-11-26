@@ -142,3 +142,35 @@ def test_a_failed_cleanup_leaves_the_saved_config_as_it_was(config_dir, monkeypa
     assert path.read_text() == original
     assert not (path.parent / "network.json.tmp").exists()
     assert registry.load_config_file("network")["PROXY_MODE"] == "http"
+
+
+def test_cleanup_on_a_read_only_config_folder_does_not_stop_startup(config_dir, monkeypatch):
+    """Writing and removing the scratch file both fail there; the saved config stays."""
+    import errno
+    from pathlib import Path
+
+    monkeypatch.setattr(env, "USING_TOR", False)
+    path = config_dir / "plugins" / "network.json"
+    path.parent.mkdir()
+    original = json.dumps({"USING_TOR": True, "PROXY_MODE": "http"})
+    path.write_text(original)
+
+    def read_only(self, *args, **kwargs):
+        """Fail as a read-only filesystem does."""
+        raise OSError(errno.EROFS, "Read-only file system")
+
+    real_open = Path.open
+
+    def open_for_reading_only(self, mode="r", *args, **kwargs):
+        """Allow reads and refuse writes."""
+        if "w" in mode:
+            read_only(self)
+        return real_open(self, mode, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", open_for_reading_only)
+    monkeypatch.setattr(Path, "unlink", read_only)
+
+    registry.drop_saved_live_values()
+
+    assert path.read_text() == original
+    assert _shown() is False

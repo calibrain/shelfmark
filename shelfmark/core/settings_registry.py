@@ -2,7 +2,7 @@
 
 import json
 import os
-from contextlib import contextmanager
+from contextlib import contextmanager, suppress
 from contextvars import ContextVar
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -630,7 +630,9 @@ def drop_saved_live_values() -> None:
             scratch.replace(config_path)
         except OSError, TypeError, ValueError:
             logger.exception("Could not drop saved values %s from %s", stale, tab.name)
-            scratch.unlink(missing_ok=True)
+            # On a read-only config folder the removal fails too, and startup goes on.
+            with suppress(OSError):
+                scratch.unlink(missing_ok=True)
             continue
         for key in stale:
             config.pop(key, None)
