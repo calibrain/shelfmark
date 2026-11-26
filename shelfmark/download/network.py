@@ -846,6 +846,20 @@ def apply_proxy_environment() -> None:
             set_process_env(name, desired.get(name) or None)
 
 
+def _ipv4_from_shorthand(host_str: str) -> ipaddress.IPv4Address | None:
+    """The address a dotless numeric host such as ``134744072`` or ``0x08080808`` connects to.
+
+    The system resolver reads a single decimal, octal or hex number as an IPv4 address, so
+    it is judged as that address and not as a single-label name.
+    """
+    if "." in host_str:
+        return None
+    try:
+        return ipaddress.IPv4Address(socket.inet_aton(host_str))
+    except OSError, ValueError:
+        return None
+
+
 def _is_local_address(host_str: str) -> bool:
     """Whether a host is on the local network, judged from its name or literal IP alone.
 
@@ -874,8 +888,8 @@ def _is_local_address(host_str: str) -> bool:
     try:
         addr = ipaddress.ip_address(host_str.strip("[]"))
     except ValueError:
-        pass
-    else:
+        addr = _ipv4_from_shorthand(host_str)
+    if addr is not None:
         return addr.is_private or addr.is_loopback or addr.is_link_local
 
     # Check for simple hostnames (no dot = likely internal Docker/container name)

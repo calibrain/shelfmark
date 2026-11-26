@@ -94,6 +94,8 @@ import pytest
         "http://nas.local/share",
         "https://abs.lan:13378",
         "http://qbittorrent.docker:8080",
+        "http://2130706433/",
+        "http://0x7f000001/",
     ],
 )
 def test_a_local_host_always_bypasses_the_proxy(monkeypatch, url):
@@ -113,6 +115,9 @@ def test_a_local_host_always_bypasses_the_proxy(monkeypatch, url):
         "https://abs.example.com",
         "http://8.8.8.8",
         "http://[2606:4700::1]/",
+        "http://134744072/file",
+        "http://0x08080808/file",
+        "http://01002004010/file",
     ],
 )
 def test_a_public_host_goes_through_the_proxy(monkeypatch, url):
