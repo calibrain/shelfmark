@@ -25,6 +25,7 @@ from shelfmark.core.status_messages import client_problem
 
 MAX_REQUEST_NOTE_LENGTH = 1000
 MAX_REQUEST_JSON_BLOB_BYTES = 10 * 1024
+_UNSET: object = object()
 
 
 if TYPE_CHECKING:
@@ -321,6 +322,7 @@ def sync_delivery_states_from_queue_status(
                 request_id,
                 failure_reason=failure_reason,
                 remember_failed_release=not client_problem(failure_reason),
+                expected_attempt_id=row.get("delivery_attempt_id"),
             )
             if reopened is not None:
                 updated.append(reopened)
@@ -329,13 +331,19 @@ def sync_delivery_states_from_queue_status(
         if row.get("delivery_state", DELIVERY_STATE_NONE) == delivery_state:
             continue
 
-        updated.append(
-            user_db.update_request(
-                request_id,
-                delivery_state=delivery_state,
-                delivery_updated_at=_now_timestamp(),
+        try:
+            updated.append(
+                user_db.update_request(
+                    request_id,
+                    expected_current_status=RequestStatus.FULFILLED,
+                    expected_delivery_attempt_id=row.get("delivery_attempt_id"),
+                    delivery_state=delivery_state,
+                    delivery_updated_at=_now_timestamp(),
+                )
             )
-        )
+        except ValueError:
+            # Another thread superseded or reopened this attempt since our snapshot.
+            continue
 
     return updated
 
@@ -806,6 +814,7 @@ def reopen_failed_request(
     *,
     request_id: int,
     failure_reason: str | None = None,
+    expected_attempt_id: object = _UNSET,
 ) -> dict[str, Any] | None:
     """Reopen a failed fulfilled request so admins can re-approve with a new release.
 
@@ -813,8 +822,15 @@ def reopen_failed_request(
     unless the failure was the client being unreachable or refusing the login, which says nothing
     about the release.
     """
+    if expected_attempt_id is _UNSET:
+        return user_db.reopen_failed_request(
+            request_id,
+            failure_reason=failure_reason,
+            remember_failed_release=not client_problem(failure_reason),
+        )
     return user_db.reopen_failed_request(
         request_id,
         failure_reason=failure_reason,
         remember_failed_release=not client_problem(failure_reason),
+        expected_attempt_id=expected_attempt_id,
     )

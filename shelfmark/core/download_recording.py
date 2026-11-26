@@ -262,6 +262,7 @@ def register_download_recording(
                 user_db,
                 request_id=request_id,
                 failure_reason=fallback_reason,
+                expected_attempt_id=getattr(task, "request_attempt_id", None),
             )
             if reopened_request is not None:
                 if view_state_service is not None:

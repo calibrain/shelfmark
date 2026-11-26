@@ -31,6 +31,7 @@ logger = setup_logger(__name__)
 # the cache at once, so this only bounds changes made by another process or instance.
 USER_CACHE_TTL_SECONDS = 5.0
 _USER_CACHE_MAX_ENTRIES = 256
+_UNSET: object = object()
 
 _CREATE_TABLES_SQL = """
 CREATE TABLE IF NOT EXISTS users (
@@ -888,6 +889,7 @@ class UserDB:
         self,
         request_id: int,
         expected_current_status: str | None = None,
+        expected_delivery_attempt_id: object = _UNSET,
         **kwargs: object,
     ) -> dict[str, Any]:
         """Update request fields and return the updated record."""
@@ -901,6 +903,12 @@ class UserDB:
                 if request["status"] != normalized_expected_status:
                     msg = "Request state changed before update"
                     raise ValueError(msg)
+            if (
+                expected_delivery_attempt_id is not _UNSET
+                and request.get("delivery_attempt_id") != expected_delivery_attempt_id
+            ):
+                msg = "Request attempt changed before update"
+                raise ValueError(msg)
             return request
 
         for key in kwargs:
@@ -925,6 +933,13 @@ class UserDB:
                     if current["status"] != normalized_expected_status:
                         msg = "Request state changed before update"
                         raise ValueError(msg)
+
+                if (
+                    expected_delivery_attempt_id is not _UNSET
+                    and current.get("delivery_attempt_id") != expected_delivery_attempt_id
+                ):
+                    msg = "Request attempt changed before update"
+                    raise ValueError(msg)
 
                 updates = dict(kwargs)
 
@@ -1000,6 +1015,7 @@ class UserDB:
         failure_reason: str | None = None,
         remember_failed_release: bool = False,
         admin_note: str | None = None,
+        expected_attempt_id: object = _UNSET,
     ) -> dict[str, Any] | None:
         """Reopen a failed fulfilled request so admins can re-approve it.
 
@@ -1027,6 +1043,12 @@ class UserDB:
                     return None
 
                 if current_request.get("status") != RequestStatus.FULFILLED:
+                    return None
+
+                if (
+                    expected_attempt_id is not _UNSET
+                    and current_request.get("delivery_attempt_id") != expected_attempt_id
+                ):
                     return None
 
                 current_delivery_state = current_request.get("delivery_state", DELIVERY_STATE_NONE)
