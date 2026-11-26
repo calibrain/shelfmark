@@ -1841,9 +1841,7 @@ def _initialize_aa_state() -> None:
             logger.debug("AA_BASE_URL: auto, checking available urls %s", candidates)
             for url in candidates:
                 try:
-                    response = requests.get(
-                        url, proxies=get_proxies(url), timeout=3, verify=get_ssl_verify(url)
-                    )
+                    response = get_session().get(url, timeout=3)
                     if response.status_code == HTTPStatus.OK:
                         _current_aa_url_index = _aa_urls.index(url)
                         _aa_base_url = url

@@ -7,6 +7,8 @@ NXDOMAINs, refuses the connection, or answers 200 with a parking page is not a m
 at all and must never be tried again this session.
 """
 
+from types import SimpleNamespace
+
 import requests
 
 
@@ -192,7 +194,7 @@ def test_startup_probe_skips_quarantined_mirrors(monkeypatch):
         response.status_code = 200
         return response
 
-    monkeypatch.setattr(network.requests, "get", fake_get)
+    monkeypatch.setattr(network, "get_session", lambda: SimpleNamespace(get=fake_get))
     monkeypatch.setattr(network, "_build_aa_urls", lambda: list(MIRRORS))
     monkeypatch.setattr(network, "_get_configured_aa_url", lambda: "auto")
     monkeypatch.setattr(network, "state", {})
@@ -214,8 +216,30 @@ def test_startup_probe_does_not_restore_a_quarantined_mirror(monkeypatch):
     monkeypatch.setattr(network, "state", {"aa_base_url": "https://aa-one.test"})
     monkeypatch.setattr(network, "get_proxies", lambda _url: None)
     monkeypatch.setattr(network, "get_ssl_verify", lambda _url: True)
-    monkeypatch.setattr(network.requests, "get", lambda *a, **k: (_ for _ in ()).throw(OSError()))
+
+    def unreachable(*_args, **_kwargs):
+        raise OSError
+
+    monkeypatch.setattr(network, "get_session", lambda: SimpleNamespace(get=unreachable))
 
     network._initialize_aa_state()
 
     assert network.get_aa_base_url() != "https://aa-one.test"
+
+
+def test_startup_probe_ignores_an_environment_proxy_under_a_tunnel(monkeypatch, sent_requests):
+    """The probe goes through the network session, so a tunnel is not bypassed by it."""
+    from shelfmark.config import env
+
+    network = _fresh_network(monkeypatch, MIRRORS)
+    monkeypatch.setattr(env, "USING_WIREGUARD", True)
+    monkeypatch.setenv("HTTPS_PROXY", "http://env-proxy.example.com:3128")
+    monkeypatch.setattr(network, "_build_aa_urls", lambda: list(MIRRORS))
+    monkeypatch.setattr(network, "_get_configured_aa_url", lambda: "auto")
+    monkeypatch.setattr(network, "state", {})
+
+    network._initialize_aa_state()
+
+    proxies = sent_requests.last()["proxies"]
+    assert "https" in proxies
+    assert not any(proxies.values())
