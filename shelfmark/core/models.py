@@ -183,6 +183,7 @@ class DownloadTask:
     user_id: int | None = None  # DB user ID who queued this download
     username: str | None = None  # Username for {User} template variable
     request_id: int | None = None  # Origin request ID when queued from request fulfilment
+    request_attempt_id: str | None = None  # Attempt token identifying a single request claim
 
     # Runtime state
     priority: int = 0

@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 import json
+import threading
+import uuid
+from contextlib import contextmanager
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Any
 
@@ -25,9 +28,34 @@ MAX_REQUEST_JSON_BLOB_BYTES = 10 * 1024
 
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Callable, Iterator
 
     from shelfmark.core.user_db import UserDB
+
+
+_FULFIL_LOCKS_GUARD = threading.Lock()
+_FULFIL_LOCKS: dict[int, tuple[threading.Lock, int]] = {}
+
+
+@contextmanager
+def _fulfil_lock_for(request_id: int) -> Iterator[None]:
+    """Serialize claim + queue dispatch for a single request across threads."""
+    with _FULFIL_LOCKS_GUARD:
+        lock, waiters = _FULFIL_LOCKS.get(request_id) or (threading.Lock(), 0)
+        _FULFIL_LOCKS[request_id] = (lock, waiters + 1)
+    lock.acquire()
+    try:
+        yield
+    finally:
+        lock.release()
+        with _FULFIL_LOCKS_GUARD:
+            current = _FULFIL_LOCKS.get(request_id)
+            if current is not None:
+                cur_lock, cur_waiters = current
+                if cur_waiters <= 1:
+                    _FULFIL_LOCKS.pop(request_id, None)
+                else:
+                    _FULFIL_LOCKS[request_id] = (cur_lock, cur_waiters - 1)
 
 
 class RequestServiceError(ValueError):
@@ -214,6 +242,8 @@ def sync_delivery_states_from_queue_status(
     if not fulfilled_rows:
         return []
 
+    fulfilled_by_id = {int(row["id"]): row for row in fulfilled_rows}
+
     unique_request_ids_by_source: dict[str, int] = {}
     ambiguous_source_ids: set[str] = set()
     for row in fulfilled_rows:
@@ -241,6 +271,19 @@ def sync_delivery_states_from_queue_status(
                 request_id = unique_request_ids_by_source.get(str(source_id).strip())
             if request_id is None:
                 continue
+            matched_row = fulfilled_by_id.get(request_id)
+            expected_attempt_id = (
+                matched_row.get("delivery_attempt_id") if matched_row is not None else None
+            )
+            if expected_attempt_id is not None:
+                task_attempt_id = (
+                    task_payload.get("request_attempt_id")
+                    if isinstance(task_payload, dict)
+                    else None
+                )
+                # Once a newer attempt has claimed the request, ignore tasks from older attempts.
+                if task_attempt_id != expected_attempt_id:
+                    continue
             # A request retried after a failure has more than one task. The attempt that
             # decides its state is one still running, else any that completed: an older
             # failure must not undo a later delivery (and reopen the request).
@@ -608,36 +651,75 @@ def fulfil_request(
     manual_approval: object = False,
 ) -> dict[str, Any]:
     """Fulfil a pending request and queue the release under requesting-user identity."""
-    request_row = ensure_request_access(
-        user_db,
-        request_id=request_id,
-        actor_user_id=admin_user_id,
-        is_admin=True,
-    )
-    _require_pending(request_row)
-
     normalized_admin_note = _normalize_admin_note(admin_note)
 
     if not isinstance(manual_approval, bool):
         msg = "manual_approval must be a boolean"
         raise RequestServiceError(msg, status_code=400)
 
-    selected_release_data = (
-        release_data if release_data is not None else request_row.get("release_data")
-    )
-    if selected_release_data is not None and not isinstance(selected_release_data, dict):
-        msg = "release_data must be an object"
-        raise RequestServiceError(msg, status_code=400)
+    with _fulfil_lock_for(request_id):
+        request_row = ensure_request_access(
+            user_db,
+            request_id=request_id,
+            actor_user_id=admin_user_id,
+            is_admin=True,
+        )
+        _require_pending(request_row)
 
-    if selected_release_data is None and manual_approval:
+        selected_release_data = (
+            release_data if release_data is not None else request_row.get("release_data")
+        )
+        if selected_release_data is not None and not isinstance(selected_release_data, dict):
+            msg = "release_data must be an object"
+            raise RequestServiceError(msg, status_code=400)
+
+        if selected_release_data is None and manual_approval:
+            try:
+                return user_db.update_request(
+                    request_id,
+                    expected_current_status=RequestStatus.PENDING,
+                    status=RequestStatus.FULFILLED,
+                    release_data=None,
+                    delivery_state=QueueStatus.COMPLETE,
+                    delivery_updated_at=_now_timestamp(),
+                    delivery_attempt_id=None,
+                    last_failure_reason=None,
+                    admin_note=normalized_admin_note,
+                    reviewed_by=admin_user_id,
+                    reviewed_at=_now_timestamp(),
+                )
+            except TypeError as exc:
+                raise RequestServiceError(str(exc), status_code=400) from exc
+            except ValueError as exc:
+                raise RequestServiceError(
+                    str(exc), status_code=409, code="stale_transition"
+                ) from exc
+
+        if selected_release_data is None:
+            msg = "release_data is required to fulfil requests"
+            raise RequestServiceError(
+                msg,
+                status_code=400,
+            )
+
+        _validate_json_blob_size("release_data", selected_release_data)
+
+        requester = user_db.get_user(user_id=request_row["user_id"])
+        if requester is None:
+            msg = "Requesting user not found"
+            raise RequestServiceError(msg, status_code=404)
+
+        attempt_id = uuid.uuid4().hex
+        original_release_data = request_row.get("release_data")
         try:
-            return user_db.update_request(
+            claimed_request = user_db.update_request(
                 request_id,
                 expected_current_status=RequestStatus.PENDING,
                 status=RequestStatus.FULFILLED,
-                release_data=None,
-                delivery_state=QueueStatus.COMPLETE,
+                release_data=selected_release_data,
+                delivery_state=QueueStatus.QUEUED,
                 delivery_updated_at=_now_timestamp(),
+                delivery_attempt_id=attempt_id,
                 last_failure_reason=None,
                 admin_note=normalized_admin_note,
                 reviewed_by=admin_user_id,
@@ -648,69 +730,37 @@ def fulfil_request(
         except ValueError as exc:
             raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
 
-    if selected_release_data is None:
-        msg = "release_data is required to fulfil requests"
-        raise RequestServiceError(
-            msg,
-            status_code=400,
-        )
+        queued_release_data = dict(selected_release_data)
+        queued_release_data["_request_id"] = request_id
+        queued_release_data["_request_attempt_id"] = attempt_id
 
-    _validate_json_blob_size("release_data", selected_release_data)
+        try:
+            success, error = queue_release(
+                queued_release_data,
+                0,
+                user_id=request_row["user_id"],
+                username=requester.get("username"),
+            )
+        except Exception:
+            user_db.rollback_request_fulfilment(
+                request_id,
+                release_data=original_release_data,
+                last_failure_reason="Queue dispatch raised an exception",
+            )
+            raise
+        if not success:
+            user_db.rollback_request_fulfilment(
+                request_id,
+                release_data=original_release_data,
+                last_failure_reason=error,
+            )
+            raise RequestServiceError(
+                error or "Failed to queue release",
+                status_code=409,
+                code="queue_failed",
+            )
 
-    requester = user_db.get_user(user_id=request_row["user_id"])
-    if requester is None:
-        msg = "Requesting user not found"
-        raise RequestServiceError(msg, status_code=404)
-
-    original_release_data = request_row.get("release_data")
-    try:
-        claimed_request = user_db.update_request(
-            request_id,
-            expected_current_status=RequestStatus.PENDING,
-            status=RequestStatus.FULFILLED,
-            release_data=selected_release_data,
-            delivery_state=QueueStatus.QUEUED,
-            delivery_updated_at=_now_timestamp(),
-            last_failure_reason=None,
-            admin_note=normalized_admin_note,
-            reviewed_by=admin_user_id,
-            reviewed_at=_now_timestamp(),
-        )
-    except TypeError as exc:
-        raise RequestServiceError(str(exc), status_code=400) from exc
-    except ValueError as exc:
-        raise RequestServiceError(str(exc), status_code=409, code="stale_transition") from exc
-
-    queued_release_data = dict(selected_release_data)
-    queued_release_data["_request_id"] = request_id
-
-    try:
-        success, error = queue_release(
-            queued_release_data,
-            0,
-            user_id=request_row["user_id"],
-            username=requester.get("username"),
-        )
-    except Exception:
-        user_db.rollback_request_fulfilment(
-            request_id,
-            release_data=original_release_data,
-            last_failure_reason="Queue dispatch raised an exception",
-        )
-        raise
-    if not success:
-        user_db.rollback_request_fulfilment(
-            request_id,
-            release_data=original_release_data,
-            last_failure_reason=error,
-        )
-        raise RequestServiceError(
-            error or "Failed to queue release",
-            status_code=409,
-            code="queue_failed",
-        )
-
-    return claimed_request
+        return claimed_request
 
 
 def retry_request_release(

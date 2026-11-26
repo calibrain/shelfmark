@@ -56,6 +56,7 @@ CREATE TABLE IF NOT EXISTS download_requests (
     user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     status         TEXT NOT NULL DEFAULT 'pending',
     delivery_state TEXT NOT NULL DEFAULT 'none',
+    delivery_attempt_id TEXT,
     source_hint    TEXT,
     content_type   TEXT NOT NULL,
     request_level  TEXT NOT NULL,
@@ -312,6 +313,8 @@ class UserDB:
             )
         if "delivery_updated_at" not in column_names:
             conn.execute("ALTER TABLE download_requests ADD COLUMN delivery_updated_at TIMESTAMP")
+        if "delivery_attempt_id" not in column_names:
+            conn.execute("ALTER TABLE download_requests ADD COLUMN delivery_attempt_id TEXT")
         if "last_failure_reason" not in column_names:
             conn.execute("ALTER TABLE download_requests ADD COLUMN last_failure_reason TEXT")
 
@@ -859,6 +862,7 @@ class UserDB:
             "reviewed_at",
             "delivery_state",
             "delivery_updated_at",
+            "delivery_attempt_id",
             "last_failure_reason",
         }
     )
@@ -876,6 +880,7 @@ class UserDB:
         "reviewed_at": "UPDATE download_requests SET reviewed_at = ? WHERE id = ?",
         "delivery_state": "UPDATE download_requests SET delivery_state = ? WHERE id = ?",
         "delivery_updated_at": "UPDATE download_requests SET delivery_updated_at = ? WHERE id = ?",
+        "delivery_attempt_id": "UPDATE download_requests SET delivery_attempt_id = ? WHERE id = ?",
         "last_failure_reason": "UPDATE download_requests SET last_failure_reason = ? WHERE id = ?",
     }
 
@@ -940,6 +945,12 @@ class UserDB:
                     delivery_updated_at = updates["delivery_updated_at"]
                     if delivery_updated_at is not None and not isinstance(delivery_updated_at, str):
                         msg = "delivery_updated_at must be a string when provided"
+                        raise TypeError(msg)
+
+                if "delivery_attempt_id" in updates:
+                    delivery_attempt_id = updates["delivery_attempt_id"]
+                    if delivery_attempt_id is not None and not isinstance(delivery_attempt_id, str):
+                        msg = "delivery_attempt_id must be a string when provided"
                         raise TypeError(msg)
 
                 if "content_type" in updates and not updates["content_type"]:
@@ -1046,6 +1057,7 @@ class UserDB:
                     SET status = 'pending',
                         delivery_state = 'none',
                         delivery_updated_at = NULL,
+                        delivery_attempt_id = NULL,
                         release_data = NULL,
                         book_data = COALESCE(?, book_data),
                         last_failure_reason = ?,
@@ -1140,6 +1152,7 @@ class UserDB:
                     SET status = 'pending',
                         delivery_state = 'none',
                         delivery_updated_at = NULL,
+                        delivery_attempt_id = NULL,
                         last_failure_reason = NULL,
                         admin_note = ?,
                         reviewed_by = NULL,
@@ -1191,6 +1204,7 @@ class UserDB:
                         reviewed_at = NULL,
                         delivery_state = 'none',
                         delivery_updated_at = NULL,
+                        delivery_attempt_id = NULL,
                         last_failure_reason = ?
                     WHERE id = ?
                     """,

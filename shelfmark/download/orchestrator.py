@@ -268,6 +268,12 @@ def queue_release(
         request_id: int | None = None
         if isinstance(raw_request_id, int) and raw_request_id > 0:
             request_id = raw_request_id
+        raw_attempt_id = release_data.get("_request_attempt_id")
+        request_attempt_id = (
+            raw_attempt_id.strip()
+            if isinstance(raw_attempt_id, str) and raw_attempt_id.strip()
+            else None
+        )
         search_mode = _parse_release_search_mode(release_data.get("search_mode"))
 
         # Get author, year, preview, and content_type from top-level (preferred) or extra (fallback)
@@ -348,6 +354,7 @@ def queue_release(
             user_id=user_id,
             username=username,
             request_id=request_id,
+            request_attempt_id=request_attempt_id,
             **retry_resolution_fields,
         )
 
@@ -581,6 +588,7 @@ def serialize_task_for_retry(task: DownloadTask) -> dict[str, Any]:
         "user_id": getattr(task, "user_id", None),
         "username": getattr(task, "username", None),
         "request_id": getattr(task, "request_id", None),
+        "request_attempt_id": getattr(task, "request_attempt_id", None),
         "staged_path": getattr(task, "staged_path", None),
         "retry_download_url": getattr(task, "retry_download_url", None),
         "retry_download_protocol": getattr(task, "retry_download_protocol", None),
@@ -644,6 +652,7 @@ def _restore_task_from_retry_payload(payload: object) -> DownloadTask | None:
         user_id=normalize_positive_int(payload.get("user_id")),
         username=normalize_optional_text(payload.get("username")),
         request_id=normalize_positive_int(payload.get("request_id")),
+        request_attempt_id=normalize_optional_text(payload.get("request_attempt_id")),
         staged_path=normalize_optional_text(payload.get("staged_path")),
         retry_download_url=normalize_optional_text(payload.get("retry_download_url")),
         retry_download_protocol=normalize_optional_text(payload.get("retry_download_protocol")),
@@ -751,6 +760,7 @@ def _task_to_dict(
         "user_id": task.user_id,
         "username": task.username,
         "request_id": task.request_id,
+        "request_attempt_id": task.request_attempt_id,
         "retry_available": can_retry_download_task(task, retry_status),
         "reattached": bool(task.reattached),
         "finished_at": task.finished_at,
