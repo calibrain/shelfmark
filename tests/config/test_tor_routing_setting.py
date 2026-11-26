@@ -115,3 +115,30 @@ def test_auto_dns_rotation_follows_the_running_state(monkeypatch, tor, auto):
     )
 
     assert network._is_auto_dns_mode() is auto
+
+
+def test_a_failed_cleanup_leaves_the_saved_config_as_it_was(config_dir, monkeypatch):
+    """A write that fails must not lose the other settings or change what the process sees."""
+    from pathlib import Path
+
+    monkeypatch.setattr(env, "USING_TOR", False)
+    path = config_dir / "plugins" / "network.json"
+    path.parent.mkdir()
+    original = json.dumps({"USING_TOR": True, "PROXY_MODE": "http"})
+    path.write_text(original)
+
+    real_replace = Path.replace
+
+    def failing_replace(self, target):
+        """Fail only the swap of the cleaned file into place."""
+        if self.name == "network.json.tmp":
+            raise OSError("disk full")
+        return real_replace(self, target)
+
+    monkeypatch.setattr(Path, "replace", failing_replace)
+
+    registry.drop_saved_live_values()
+
+    assert path.read_text() == original
+    assert not (path.parent / "network.json.tmp").exists()
+    assert registry.load_config_file("network")["PROXY_MODE"] == "http"

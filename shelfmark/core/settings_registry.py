@@ -611,7 +611,8 @@ def sync_env_to_config() -> None:
 def drop_saved_live_values() -> None:
     """Remove values saved for live fields, such as a Tor flag saved while Tor was running.
 
-    Older versions saved them, and a saved value outlives the variable that set it.
+    Older versions saved them, and a saved value outlives the variable that set it. The
+    file is replaced whole, so a failed write leaves the saved config as it was.
     """
     for tab in get_all_settings_tabs():
         config = load_config_file(tab.name)
@@ -620,14 +621,19 @@ def drop_saved_live_values() -> None:
         ]
         if not stale:
             continue
-        for key in stale:
-            del config[key]
+        remaining = {k: v for k, v in config.items() if k not in stale}
+        config_path = _get_config_file_path(tab.name)
+        scratch = config_path.with_name(config_path.name + ".tmp")
         try:
-            with _get_config_file_path(tab.name).open("w") as f:
-                json.dump(config, f, indent=2)
-        except OSError:
+            with scratch.open("w") as f:
+                json.dump(remaining, f, indent=2)
+            scratch.replace(config_path)
+        except OSError, TypeError, ValueError:
             logger.exception("Could not drop saved values %s from %s", stale, tab.name)
+            scratch.unlink(missing_ok=True)
             continue
+        for key in stale:
+            config.pop(key, None)
         logger.info("Dropped saved %s from the %s settings", ", ".join(stale), tab.name)
 
 
