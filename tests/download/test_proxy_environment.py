@@ -21,6 +21,7 @@ def settings(monkeypatch):
     from shelfmark.core import settings_registry
 
     monkeypatch.setattr(settings_registry, "_PROCESS_WRITTEN_ENV", {})
+    monkeypatch.setattr(settings_registry, "_DEPLOYMENT_ENV", {})
     monkeypatch.setattr(network, "_deployment_no_proxy", {}, raising=False)
     network.app_config.get("PROXY_MODE")  # load the settings registry before patching
     values = {"PROXY_MODE": "http", "HTTP_PROXY": _PROXY, "HTTPS_PROXY": "", "NO_PROXY": ""}
@@ -305,3 +306,24 @@ def test_a_proxy_variable_from_the_deployment_still_reads_as_set_via_env(monkeyp
     field, _tab = settings_registry.get_settings_field_map()["NO_PROXY"]
 
     assert settings_registry.is_value_from_env(field) is True
+
+
+def test_the_containers_no_proxy_keeps_its_field_locked(settings, monkeypatch):
+    """Adding the local rule to the container's NO_PROXY leaves the setting set via env.
+
+    The field still reads the container's own value, so a save cannot replace it and the
+    app keeps bypassing the hosts the deployment listed.
+    """
+    import os
+
+    from shelfmark.core import settings_registry
+
+    field, _tab = settings_registry.get_settings_field_map()["NO_PROXY"]
+    monkeypatch.setenv("NO_PROXY", "deployment.example.com")
+
+    network.apply_proxy_environment()
+    network.apply_proxy_environment()
+
+    assert "192.168.0.0/16" in os.environ["NO_PROXY"].split(",")
+    assert settings_registry.is_value_from_env(field) is True
+    assert settings_registry._get_env_value_for_field(field) == (True, "deployment.example.com")

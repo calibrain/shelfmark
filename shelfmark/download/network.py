@@ -836,7 +836,7 @@ def apply_proxy_environment() -> None:
         for name in _PROXY_VARIABLES:
             if name in _deployment_no_proxy:
                 if desired.get(name):
-                    set_process_env(name, desired[name])
+                    set_process_env(name, desired[name], deployment=_deployment_no_proxy[name])
                 else:
                     os.environ[name] = _deployment_no_proxy[name]
                 continue

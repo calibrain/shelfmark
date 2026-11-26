@@ -922,16 +922,26 @@ def _normalize_mirror_env_urls(values: list[str]) -> list[str]:
 # network.apply_proxy_environment() writes from those same settings; a value Shelfmark wrote
 # is not deployment configuration, so it must not count as "set via env" and lock the field.
 _PROCESS_WRITTEN_ENV: dict[str, str] = {}
+# What the deployment had set in a variable Shelfmark then wrote over, name -> value. The
+# container's NO_PROXY gains the local-address entries, and its field stays set via env.
+_DEPLOYMENT_ENV: dict[str, str] = {}
 
 
-def set_process_env(name: str, value: str | None) -> None:
-    """Set or remove an environment variable and record it as written by Shelfmark."""
+def set_process_env(name: str, value: str | None, *, deployment: str | None = None) -> None:
+    """Set or remove an environment variable and record it as written by Shelfmark.
+
+    ``deployment`` is the value the deployment gave, when Shelfmark writes over one; the
+    settings keep reading that value.
+    """
+    _DEPLOYMENT_ENV.pop(name, None)
     if value is None:
         os.environ.pop(name, None)
         _PROCESS_WRITTEN_ENV.pop(name, None)
     else:
         os.environ[name] = value
         _PROCESS_WRITTEN_ENV[name] = value
+        if deployment is not None:
+            _DEPLOYMENT_ENV[name] = deployment
 
 
 def is_process_written_env(name: str) -> bool:
@@ -940,17 +950,24 @@ def is_process_written_env(name: str) -> bool:
     return current is not None and _PROCESS_WRITTEN_ENV.get(name) == current
 
 
+def _deployment_env_value(name: str) -> str | None:
+    """The variable's value as the deployment set it, ignoring what Shelfmark wrote."""
+    if is_process_written_env(name):
+        return _DEPLOYMENT_ENV.get(name)
+    return os.environ.get(name)
+
+
 def _get_env_value_for_field(field: FieldBase) -> tuple[bool, object | None]:
     """Return parsed env-backed value for a field, including legacy mirror aliases.
 
-    A variable Shelfmark wrote itself (``set_process_env``) is ignored, so a setting is
-    only treated as set via env when the deployment set it.
+    A value Shelfmark wrote itself (``set_process_env``) is ignored, so a setting is only
+    treated as set via env when the deployment set it, and reads the deployment's value.
     """
     if not field.env_supported:
         return False, None
 
     env_var_name = field.get_env_var_name()
-    env_value = None if is_process_written_env(env_var_name) else os.environ.get(env_var_name)
+    env_value = _deployment_env_value(env_var_name)
     if env_value is not None:
         parsed = _parse_env_value(env_value, field)
         if field.key in {
