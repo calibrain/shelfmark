@@ -654,8 +654,7 @@ _dns_exhausted_logged = False
 def _is_auto_dns_mode() -> bool:
     """Check if DNS is in auto-rotation mode."""
     custom_dns = app_config.get("CUSTOM_DNS", "auto")
-    using_tor = app_config.get("USING_TOR", False)
-    return str(custom_dns).lower().strip() == "auto" and not using_tor
+    return str(custom_dns).lower().strip() == "auto" and not env.USING_TOR
 
 
 def _current_dns_label() -> str:

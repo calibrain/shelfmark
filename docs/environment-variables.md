@@ -188,10 +188,11 @@ Show the onboarding wizard on first run. Set to false to skip (useful for epheme
 
 ## Egress / VPN Routing
 
-These startup-only variables are consumed by `entrypoint.sh` / `wireguard.sh` to select and configure the WireGuard transparent-egress kill-switch. `USING_WIREGUARD` and [`USING_TOR`](#using_tor) (documented under Network) are mutually exclusive; both require root startup. `TOR_CHECK_INTERVAL` and `TOR_MAX_FAILURES` tune the Tor watchdog in `tor.sh`.
+These startup-only variables are consumed by `entrypoint.sh` / `wireguard.sh` to select and configure the WireGuard transparent-egress kill-switch. `USING_TOR` and `USING_WIREGUARD` are mutually exclusive; both require root startup. `TOR_CHECK_INTERVAL` and `TOR_MAX_FAILURES` tune the Tor watchdog in `tor.sh`.
 
 | Variable | Description | Type | Default |
 |----------|-------------|------|---------|
+| `USING_TOR` | Route all traffic through Tor for enhanced privacy. Requires root startup. Only the exact value `true` starts Tor. Mutually exclusive with USING_WIREGUARD. | boolean | `false` |
 | `USING_WIREGUARD` | Route all traffic through a WireGuard VPN tunnel with a fail-closed iptables kill-switch (non-tunnel egress is dropped). Requires root startup and NET_ADMIN (plus NET_RAW). Mutually exclusive with USING_TOR. | boolean | `false` |
 | `WIREGUARD_CONFIG` | Path to the mounted wg-quick configuration file. | string (path) | `/config/wg0.conf` |
 | `WIREGUARD_INTERFACE` | WireGuard interface name brought up by wg-quick. | string | `wg0` |
@@ -207,6 +208,13 @@ These startup-only variables are consumed by `entrypoint.sh` / `wireguard.sh` to
 
 <details>
 <summary>Detailed descriptions</summary>
+
+#### `USING_TOR`
+
+Route all traffic through Tor for enhanced privacy. Requires root startup. Only the exact value `true` starts Tor. Mutually exclusive with USING_WIREGUARD.
+
+- **Type:** boolean
+- **Default:** `false`
 
 #### `USING_WIREGUARD`
 
@@ -1316,7 +1324,6 @@ A copy of an audiobook smaller than this share of the largest copy found for the
 | `CUSTOM_DNS` | DNS provider for domain resolution. 'Auto' rotates through providers on failure. | string (choice) | `auto` |
 | `CUSTOM_DNS_MANUAL` | Comma-separated list of DNS server IP addresses (e.g., 8.8.8.8, 1.1.1.1). | string | _none_ |
 | `USE_DOH` | Use encrypted DNS queries for improved reliability and privacy. | boolean | `true` |
-| `USING_TOR` | Route all traffic through Tor for enhanced privacy. Requires root startup. | boolean | `false` |
 | `PROXY_MODE` | Choose proxy type. SOCKS5 handles all traffic through a single proxy. | string (choice) | `none` |
 | `HTTP_PROXY` | HTTP proxy URL. Supports auth: http://user:pass@host:port | string | _none_ |
 | `HTTPS_PROXY` | HTTPS proxy URL (leave empty to use HTTP proxy for HTTPS). Supports auth: http://user:pass@host:port | string | _none_ |
@@ -1363,15 +1370,6 @@ Use encrypted DNS queries for improved reliability and privacy.
 
 - **Type:** boolean
 - **Default:** `true`
-
-#### `USING_TOR`
-
-**Tor Routing**
-
-Route all traffic through Tor for enhanced privacy. Requires root startup.
-
-- **Type:** boolean
-- **Default:** `false`
 
 #### `PROXY_MODE`
 

@@ -5,10 +5,9 @@ def _set_auto_dns_mode(monkeypatch):
     import shelfmark.download.network as network
 
     def fake_get(key, default=""):
+        """Answer the DNS mode as auto and anything else with its default."""
         if key == "CUSTOM_DNS":
             return "auto"
-        if key == "USING_TOR":
-            return False
         return default
 
     monkeypatch.setattr(network.app_config, "get", fake_get)

@@ -47,6 +47,10 @@ class FieldBase:
     requires_restart: bool = False  # Whether changing this setting requires a container restart
     universal_only: bool = False  # Only show in Universal search mode (hide in Direct mode)
     hidden_in_ui: bool = False  # Keep field in schema/save path but hide default renderer
+    # State of the running process, such as whether Tor is routing. It is read from here on
+    # every request and never saved, synced from the environment or read back from a config
+    # file, so it can't go stale when the container is recreated differently.
+    live_value: Callable[[], object] | None = None
 
     def get_env_var_name(self) -> str:
         """Get the environment variable name for this field."""
@@ -530,8 +534,8 @@ def initialize_default_configs() -> bool:
             # Collect default values for all fields
             defaults = {}
             for field in iter_value_fields(tab):
-                # Only include fields that have a non-None default
-                if field.default is not None:
+                # Only include fields that have a non-None default; live ones aren't saved
+                if field.default is not None and field.live_value is None:
                     defaults[field.key] = field.default
 
             # Create config file with defaults if we have any
@@ -574,6 +578,9 @@ def sync_env_to_config() -> None:
         for settings_field in iter_value_fields(tab):
             # Skip fields that don't support ENV vars
             if not getattr(settings_field, "env_supported", True):
+                continue
+
+            if settings_field.live_value is not None:
                 continue
 
             has_env_value, parsed_value = _get_env_value_for_field(settings_field)
@@ -856,6 +863,10 @@ def migrate_download_to_browser_settings() -> None:
 
 def get_setting_value(field: FieldBase, tab_name: str) -> object:
     """Resolve the effective value for a settings field."""
+    # 0. A live field is whatever the running process says it is
+    if field.live_value is not None:
+        return field.live_value()
+
     # 1. Check environment variable (if supported for this field)
     has_env_value, parsed_env_value = _get_env_value_for_field(field)
     if has_env_value:
@@ -1376,6 +1387,9 @@ def update_settings(tab_name: str, values: dict[str, Any]) -> dict[str, Any]:
             continue
 
         field = field_map[key]
+        if field.live_value is not None:
+            skipped_unknown.append(key)
+            continue
         if is_value_from_env(field):
             skipped_env.append(key)
             continue

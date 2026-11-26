@@ -273,12 +273,17 @@ def _generate_egress_env_docs() -> list[str]:
 
     These are startup-only variables consumed by entrypoint.sh / wireguard.sh
     (before and outside the settings registry) to select and configure the
-    transparent-egress kill-switch. `USING_TOR` has a registry-backed entry
-    under Network and is cross-referenced rather than repeated here so the two
-    mutually exclusive egress modes are discoverable side by side without
-    emitting a duplicate `#### USING_TOR` anchor.
+    transparent-egress kill-switch. `USING_TOR` is documented here with
+    `USING_WIREGUARD`: the Settings checkbox only shows whether Tor is running
+    and is not an environment-backed setting.
     """
     egress_vars = [
+        {
+            "name": "USING_TOR",
+            "description": "Route all traffic through Tor for enhanced privacy. Requires root startup. Only the exact value `true` starts Tor. Mutually exclusive with USING_WIREGUARD.",
+            "type": "boolean",
+            "default": "false",
+        },
         {
             "name": "USING_WIREGUARD",
             "description": "Route all traffic through a WireGuard VPN tunnel with a fail-closed iptables kill-switch (non-tunnel egress is dropped). Requires root startup and NET_ADMIN (plus NET_RAW). Mutually exclusive with USING_TOR.",
@@ -356,7 +361,7 @@ def _generate_egress_env_docs() -> list[str]:
     lines = [
         "## Egress / VPN Routing",
         "",
-        "These startup-only variables are consumed by `entrypoint.sh` / `wireguard.sh` to select and configure the WireGuard transparent-egress kill-switch. `USING_WIREGUARD` and [`USING_TOR`](#using_tor) (documented under Network) are mutually exclusive; both require root startup. `TOR_CHECK_INTERVAL` and `TOR_MAX_FAILURES` tune the Tor watchdog in `tor.sh`.",
+        "These startup-only variables are consumed by `entrypoint.sh` / `wireguard.sh` to select and configure the WireGuard transparent-egress kill-switch. `USING_TOR` and `USING_WIREGUARD` are mutually exclusive; both require root startup. `TOR_CHECK_INTERVAL` and `TOR_MAX_FAILURES` tune the Tor watchdog in `tor.sh`.",
         "",
         "| Variable | Description | Type | Default |",
         "|----------|-------------|------|---------|",
