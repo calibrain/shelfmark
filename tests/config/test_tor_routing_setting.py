@@ -7,12 +7,21 @@ import pytest
 import shelfmark.config.settings  # noqa: F401  (registers the settings tabs)
 from shelfmark.config import env
 from shelfmark.core import settings_registry as registry
+from shelfmark.core.config import config
 
 
 @pytest.fixture
 def config_dir(tmp_path, monkeypatch):
-    """A scratch config folder the registry reads and writes."""
+    """A scratch config folder the registry reads and writes.
+
+    A test that reloads or saves settings fills the shared ``config`` object from this
+    folder, so it works on copies and the original state comes back afterwards.
+    """
     monkeypatch.setattr(registry, "_get_config_dir", lambda: tmp_path)
+    for name in ("_cache", "_field_map"):
+        monkeypatch.setattr(config, name, dict(getattr(config, name)))
+    for name in ("_loaded", "_last_refresh_time"):
+        monkeypatch.setattr(config, name, getattr(config, name))
     return tmp_path
 
 
@@ -80,8 +89,6 @@ def test_a_fresh_config_does_not_save_the_tor_default(config_dir, monkeypatch):
 
 def test_a_flag_saved_by_an_older_version_is_never_read(config_dir, monkeypatch):
     """An old saved value stays in the file after startup and the app does not read it."""
-    from shelfmark.core.config import config
-
     monkeypatch.setattr(env, "USING_TOR", False)
     (config_dir / "plugins").mkdir()
     (config_dir / "plugins" / "network.json").write_text(
