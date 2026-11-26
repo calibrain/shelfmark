@@ -832,7 +832,9 @@ def apply_proxy_environment() -> None:
                 for entry in value.split(",")
                 if entry.strip()
             ]
-            desired["NO_PROXY"] = desired["no_proxy"] = ",".join(dict.fromkeys(entries))
+            # "*" means bypass everything only as the whole value, so it is not listed.
+            merged = "*" if "*" in entries else ",".join(dict.fromkeys(entries))
+            desired["NO_PROXY"] = desired["no_proxy"] = merged
         for name in _PROXY_VARIABLES:
             if name in _deployment_no_proxy:
                 if desired.get(name):

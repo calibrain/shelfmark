@@ -327,3 +327,23 @@ def test_the_containers_no_proxy_keeps_its_field_locked(settings, monkeypatch):
     assert "192.168.0.0/16" in os.environ["NO_PROXY"].split(",")
     assert settings_registry.is_value_from_env(field) is True
     assert settings_registry._get_env_value_for_field(field) == (True, "deployment.example.com")
+
+
+@pytest.mark.parametrize("value", ["*", "abs.example.org, *"])
+@pytest.mark.parametrize("name", ["NO_PROXY", "no_proxy"])
+def test_a_wildcard_no_proxy_from_the_container_stays_the_whole_value(
+    settings, monkeypatch, name, value
+):
+    """requests reads ``*`` as "bypass everything" only on its own, so nothing is added to it."""
+    import os
+
+    import requests
+
+    monkeypatch.setenv(name, value)
+
+    network.apply_proxy_environment()
+
+    assert os.environ["NO_PROXY"] == os.environ["no_proxy"] == "*"
+    url = "http://api.example.com/"
+    merged = requests.Session().merge_environment_settings(url, {}, None, None, None)
+    assert "http" not in merged["proxies"]
