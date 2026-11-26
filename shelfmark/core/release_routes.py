@@ -473,13 +473,14 @@ def register_release_routes(
             emit_request_updates([updated])
         return jsonify({"status": "queued", "priority": 0, "request_id": updated["id"]})
 
-    def _owners_failed_request_id(source_id: object) -> int | None:
+    def _owners_failed_request_id(source: object, source_id: object) -> int | None:
         """The request a signed-in user's own failed download of this release belongs to (#1715).
 
         A non-admin's request-linked downloads are listed under an opaque id, so the page cannot
         say that the release it is about to retry failed for a request. The queue can: the task
         keeps its request and its owner. Only the owner's own failed task counts, and only for a
-        non-admin; an admin's page names the request itself.
+        non-admin; an admin's page names the request itself. The queue keys a task by its
+        source id alone, so the source has to match too.
         """
         if resolve_auth_mode() == "none" or session.get("is_admin", False):
             return None
@@ -491,9 +492,17 @@ def register_release_routes(
             task is None
             or backend.book_queue.get_task_status(source_id) != QueueStatus.ERROR
             or task.user_id != db_user_id
+            or task.source != source
         ):
             return None
         return normalize_positive_int(task.request_id)
+
+    def _is_closed_request_refusal(result: Response | tuple[Response, int]) -> bool:
+        """Whether a Retry answer says the request is no longer pending."""
+        if not isinstance(result, tuple) or result[1] != HTTPStatus.CONFLICT:
+            return False
+        body = result[0].get_json(silent=True)
+        return isinstance(body, dict) and body.get("code") == "stale_transition"
 
     @app.route("/api/releases/download", methods=["POST"])
     @login_required
@@ -545,11 +554,12 @@ def register_release_routes(
             if data.get("request_id") not in (None, ""):
                 return _queue_for_request(data["request_id"], release_payload, data)
             if data.get("on_behalf_of_user_id") in (None, ""):
-                owners_request_id = _owners_failed_request_id(data["source_id"])
+                owners_request_id = _owners_failed_request_id(source, data["source_id"])
                 if owners_request_id is not None:
                     linked = _queue_for_request(owners_request_id, release_payload, data)
-                    # The request closed since the failure: queue the release plainly instead.
-                    if not (isinstance(linked, tuple) and linked[1] == HTTPStatus.CONFLICT):
+                    # Only a request closed since the failure falls back to a plain download.
+                    # Any other refusal, such as a queue that would not take the release, stands.
+                    if not _is_closed_request_refusal(linked):
                         return linked
 
             logger.info(

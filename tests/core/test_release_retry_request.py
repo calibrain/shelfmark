@@ -246,7 +246,12 @@ def test_a_large_pack_plan_is_queued_but_not_stored_on_the_request(client, main_
 
 
 def _failed_task(
-    main_module, owner: dict, request_id: int | None, *, source_id: str = "md5-failed"
+    main_module,
+    owner: dict,
+    request_id: int | None,
+    *,
+    source_id: str = "md5-failed",
+    source: str = "direct_download",
 ):
     """A download of the release that failed, still in the queue, for this request."""
     from shelfmark.core.models import DownloadTask, QueueStatus
@@ -255,7 +260,7 @@ def _failed_task(
     queue.add(
         DownloadTask(
             task_id=source_id,
-            source="direct_download",
+            source=source,
             title="The Book",
             user_id=owner["id"],
             username=owner["username"],
@@ -392,4 +397,45 @@ def test_an_owners_download_for_someone_else_is_not_linked(
     _plain_download(client, main_module, on_behalf_of_user_id=owner["id"])
 
     assert "_request_id" not in (queued[0]["release"] if queued else {})
+    assert main_module.user_db.get_request(reopened["id"])["status"] == "pending"
+
+
+def test_a_failed_download_of_another_source_is_not_linked(
+    client, main_module, queued, clean_queue
+):
+    """The queue keys a task by its source id alone, so the source must match as well."""
+    owner = _user(main_module)
+    reopened = _reopened_request(main_module, owner)
+    _failed_task(main_module, owner, reopened["id"], source="prowlarr")
+    _login(client, owner)
+
+    response = _plain_download(client, main_module)
+
+    assert response.status_code == 200, response.get_json()
+    assert "_request_id" not in queued[0]["release"]
+    assert main_module.user_db.get_request(reopened["id"])["status"] == "pending"
+
+
+def test_a_queue_that_refuses_the_linked_release_is_not_retried_plainly(
+    client, main_module, monkeypatch, clean_queue
+):
+    """Only a closed request falls back; a refused queue attempt is reported as it is."""
+    owner = _user(main_module)
+    reopened = _reopened_request(main_module, owner)
+    _failed_task(main_module, owner, reopened["id"])
+    _login(client, owner)
+    calls: list[dict] = []
+
+    def refusing_queue(release_data, priority, *, user_id=None, username=None):
+        """Refuse every release, noting what was offered."""
+        calls.append(dict(release_data))
+        return False, "no room"
+
+    monkeypatch.setattr(orchestrator, "queue_release", refusing_queue)
+
+    response = _plain_download(client, main_module)
+
+    assert response.status_code == 409
+    assert response.get_json()["code"] == "queue_failed"
+    assert len(calls) == 1
     assert main_module.user_db.get_request(reopened["id"])["status"] == "pending"
