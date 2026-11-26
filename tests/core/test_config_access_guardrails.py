@@ -28,6 +28,9 @@ _BOOTSTRAP_ENV_ACCESS_ALLOWLIST = {
 }
 _BOOTSTRAP_ENV_ACCESS_KEY_ALLOWLIST = {
     (Path("shelfmark/config/settings.py"), "USING_TOR"),
+    # Whether Tor is routing traffic comes from the variable that starts it; the saved
+    # setting stays true after the variable is removed.
+    (Path("shelfmark/download/network.py"), "USING_TOR"),
     # Loggers are configured while settings_registry itself is still importing,
     # so the level has to come from the bootstrap env module.
     (Path("shelfmark/core/logger.py"), "LOG_LEVEL"),

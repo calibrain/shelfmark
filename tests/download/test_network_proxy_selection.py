@@ -200,9 +200,8 @@ def test_a_saved_proxy_is_not_used_when_a_tunnel_routes_the_traffic(monkeypatch,
         PROXY_MODE="http",
         HTTP_PROXY="http://192.168.1.5:3128",
         NO_PROXY="",
-        USING_TOR=mode == "USING_TOR",
     )
-    monkeypatch.setattr(env, "USING_WIREGUARD", mode == "USING_WIREGUARD")
+    monkeypatch.setattr(env, mode, True)
 
     assert network.get_proxies("https://example.com") == {}
 
@@ -214,10 +213,8 @@ def test_an_environment_proxy_is_not_used_when_a_tunnel_routes_the_traffic(monke
 
     from shelfmark.config import env
 
-    network = _set_proxy_config(
-        monkeypatch, PROXY_MODE="none", NO_PROXY="", USING_TOR=mode == "USING_TOR"
-    )
-    monkeypatch.setattr(env, "USING_WIREGUARD", mode == "USING_WIREGUARD")
+    network = _set_proxy_config(monkeypatch, PROXY_MODE="none", NO_PROXY="")
+    monkeypatch.setattr(env, mode, True)
     monkeypatch.setenv("HTTP_PROXY", "http://env-proxy.example.com:3128")
     monkeypatch.setenv("HTTPS_PROXY", "http://env-proxy.example.com:3128")
     monkeypatch.delenv("NO_PROXY", raising=False)
@@ -251,8 +248,8 @@ def test_a_redirect_hop_does_not_pick_up_an_environment_proxy_under_a_tunnel(mon
 
     from shelfmark.config import env
 
-    network = _set_proxy_config(monkeypatch, PROXY_MODE="none", NO_PROXY="", USING_TOR=True)
-    monkeypatch.setattr(env, "USING_WIREGUARD", False)
+    network = _set_proxy_config(monkeypatch, PROXY_MODE="none", NO_PROXY="")
+    monkeypatch.setattr(env, "USING_TOR", True)
     monkeypatch.setenv("HTTPS_PROXY", "http://env-proxy.example.com:3128")
     monkeypatch.delenv("NO_PROXY", raising=False)
     monkeypatch.delenv("no_proxy", raising=False)
@@ -289,3 +286,30 @@ def test_the_proxy_fields_say_why_they_are_unused_under_a_tunnel(monkeypatch, mo
     for key in ("PROXY_MODE", "HTTP_PROXY", "HTTPS_PROXY", "SOCKS5_PROXY", "NO_PROXY"):
         assert fields[key].disabled is True
         assert name in fields[key].disabled_reason
+
+
+def test_a_saved_tor_setting_without_the_variable_keeps_the_proxy(monkeypatch):
+    """``USING_TOR`` stays saved after the variable is removed; no tunnel runs then."""
+    network = _set_proxy_config(
+        monkeypatch,
+        PROXY_MODE="http",
+        HTTP_PROXY="http://proxy.example.com:8118",
+        NO_PROXY="",
+        USING_TOR=True,
+    )
+
+    assert network.tunnel_egress() == ""
+    assert network.get_proxies("https://example.com")["https"] == "http://proxy.example.com:8118"
+
+
+@pytest.mark.parametrize(
+    ("value", "starts"),
+    [("true", True), ("True", False), ("1", False), ("yes", False), ("false", False)],
+)
+def test_a_tunnel_counts_only_when_the_entrypoint_would_start_it(monkeypatch, value, starts):
+    """entrypoint.sh compares with ``true`` exactly, so no other spelling routes traffic."""
+    from shelfmark.config import env
+
+    monkeypatch.setenv("USING_TOR", value)
+
+    assert env._starts_tunnel("USING_TOR") is starts

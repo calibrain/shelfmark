@@ -97,8 +97,7 @@ def test_no_proxy_is_written_when_a_tunnel_routes_the_traffic(settings, monkeypa
 
     from shelfmark.config import env
 
-    settings["USING_TOR"] = mode == "USING_TOR"
-    monkeypatch.setattr(env, "USING_WIREGUARD", mode == "USING_WIREGUARD")
+    monkeypatch.setattr(env, mode, True)
 
     network.apply_proxy_environment()
 
@@ -117,8 +116,7 @@ def test_a_proxy_in_the_container_environment_is_not_used_under_a_tunnel(
 
     from shelfmark.config import env
 
-    settings["USING_TOR"] = mode == "USING_TOR"
-    monkeypatch.setattr(env, "USING_WIREGUARD", mode == "USING_WIREGUARD")
+    monkeypatch.setattr(env, mode, True)
     monkeypatch.setenv("HTTPS_PROXY", "http://container-proxy:3128")
     monkeypatch.setenv("NO_PROXY", "internal.example.com")
 

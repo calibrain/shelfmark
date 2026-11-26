@@ -47,6 +47,15 @@ def _fresh_shared_session(monkeypatch):
     monkeypatch.setattr(network, "_shared_session", None)
 
 
+@pytest.fixture(autouse=True)
+def _no_tunnel(monkeypatch):
+    """Tor and WireGuard are off unless a test turns one on, whatever the host's env says."""
+    from shelfmark.config import env
+
+    monkeypatch.setattr(env, "USING_TOR", False)
+    monkeypatch.setattr(env, "USING_WIREGUARD", False)
+
+
 @pytest.fixture
 def sent_requests(monkeypatch):
     """Record what a ``NetworkSession`` hands to ``requests`` after the network rules ran.

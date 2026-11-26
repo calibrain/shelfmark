@@ -79,8 +79,11 @@ def tunnel_egress() -> str:
     leave the private ranges off it. A proxy from Settings would undo that: one on the LAN
     would carry all traffic around the tunnel, and a public one would put its own address
     in front. So with either mode on, the proxy settings are not used.
+
+    Both come from the environment, which is what starts them. The saved ``USING_TOR``
+    setting stays true after the variable is removed, so it is not read here.
     """
-    if coerce_bool(app_config.get("USING_TOR", False)):
+    if env.USING_TOR:
         return "Tor"
     if env.USING_WIREGUARD:
         return "WireGuard"
