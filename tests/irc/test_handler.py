@@ -27,6 +27,54 @@ def test_download_with_hash_prefixed_channel_setting_uses_the_bare_channel(monke
     client.send_message.assert_called_once_with("#ebooks", "!bot Author - Title.epub")
 
 
+def _download_channel(monkeypatch, values, content_type):
+    """Run a download that gets no DCC offer and return the channel it asked in."""
+    client = MagicMock()
+    client.wait_for_dcc.return_value = None
+    manager = MagicMock()
+    manager.get_connection.return_value = client
+    monkeypatch.setattr(irc_handler, "connection_manager", manager)
+    monkeypatch.setattr(irc_handler.config, "get", lambda key, default="": values.get(key, default))
+    task = DownloadTask(
+        task_id="!bot Author - Title.m4b", source="irc", title="t", content_type=content_type
+    )
+
+    irc_handler.IRCDownloadHandler().download(task, Event(), lambda _p: None, lambda _s, _m: None)
+
+    channel = manager.get_connection.call_args.kwargs["channel"]
+    client.send_message.assert_called_once_with(f"#{channel}", "!bot Author - Title.m4b")
+    return channel
+
+
+def test_audiobook_download_asks_in_the_audiobook_channel(monkeypatch):
+    """Search sends an audiobook to IRC_AUDIOBOOK_CHANNEL; the download asked in IRC_CHANNEL (#1753)."""
+    values = {
+        "IRC_SERVER": "irc.example.test",
+        "IRC_CHANNEL": "ebooks",
+        "IRC_AUDIOBOOK_CHANNEL": "#bookz",
+        "IRC_NICK": "reader",
+    }
+
+    assert _download_channel(monkeypatch, values, "audiobook") == "bookz"
+
+
+def test_ebook_download_stays_in_the_main_channel_when_an_audiobook_channel_is_set(monkeypatch):
+    values = {
+        "IRC_SERVER": "irc.example.test",
+        "IRC_CHANNEL": "ebooks",
+        "IRC_AUDIOBOOK_CHANNEL": "bookz",
+        "IRC_NICK": "reader",
+    }
+
+    assert _download_channel(monkeypatch, values, "book (fiction)") == "ebooks"
+
+
+def test_audiobook_download_uses_the_main_channel_without_an_audiobook_channel(monkeypatch):
+    values = {"IRC_SERVER": "irc.example.test", "IRC_CHANNEL": "ebooks", "IRC_NICK": "reader"}
+
+    assert _download_channel(monkeypatch, values, "audiobook") == "ebooks"
+
+
 def test_download_holds_the_connection_lock_while_requesting_the_file(monkeypatch):
     """A search and a download on one socket steal each other's replies, so they take turns."""
     from shelfmark.release_sources.irc.connection_manager import connection_manager
