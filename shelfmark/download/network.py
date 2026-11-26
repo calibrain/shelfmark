@@ -178,9 +178,24 @@ def _direct_if_bypassed(url: str) -> dict[str, None] | dict[str, str]:
 # rebuild_proxies() and send() can read it. A ContextVar keeps one value per thread and per
 # greenlet, whether or not gevent has patched threading yet (with gunicorn's --preload this
 # module is imported first), so overlapping requests cannot see each other's flags.
-_redirect_state: ContextVar[tuple[bool, bool]] = ContextVar(
-    "shelfmark_redirect_state", default=(False, False)
+# None means no request() is in progress, so a caller using send() directly is not mistaken
+# for a redirect hop.
+_redirect_state: ContextVar[tuple[bool, bool] | None] = ContextVar(
+    "shelfmark_redirect_state", default=None
 )
+
+
+def _normalized_url(url: str) -> str:
+    """``url`` as requests will send it, so the rules see the host that is really contacted.
+
+    requests decodes and normalizes the host when it prepares a request, so ``api%2ehardcover%2eapp``
+    reaches ``api.hardcover.app``. Choosing the proxy from the raw text would read it as a
+    single-label name and send the request direct. A URL requests cannot prepare is kept as is.
+    """
+    try:
+        return requests.Request("GET", url).prepare().url or url
+    except requests.exceptions.RequestException, ValueError:
+        return url
 
 
 class NetworkRules:
@@ -195,7 +210,7 @@ class NetworkRules:
 
     def request(self, method: Any, url: Any, *args: Any, **kwargs: Any) -> Any:
         """Send a request with the proxy and ``verify`` for its URL unless the caller set them."""
-        target = url.decode() if isinstance(url, bytes) else str(url)
+        target = _normalized_url(url.decode() if isinstance(url, bytes) else str(url))
         explicit = kwargs.get("proxies") is not None
         explicit_verify = kwargs.get("verify") is not None
         if not explicit:
@@ -217,7 +232,10 @@ class NetworkRules:
         a CA bundle from the environment where verification is on. A ``verify`` the caller
         passed explicitly is kept.
         """
-        if not _redirect_state.get()[1]:
+        state = _redirect_state.get()
+        # Outside request() (state is None) a verify the caller passed is theirs to keep.
+        explicit_verify = state[1] if state is not None else kwargs.get("verify") is not None
+        if not explicit_verify:
             url = str(request.url)
             if get_ssl_verify(url):
                 if kwargs.get("verify") is False:
@@ -236,7 +254,8 @@ class NetworkRules:
         download with Redirect on) went out direct with a proxy configured. Proxies a
         caller passed explicitly are kept. ``send()`` does the same for ``verify``.
         """
-        if _redirect_state.get()[0]:
+        state = _redirect_state.get()
+        if state is not None and state[0]:
             return super().rebuild_proxies(prepared_request, proxies)  # type: ignore[misc]
         url = str(prepared_request.url)
         configured = get_proxies(url)

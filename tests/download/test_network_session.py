@@ -1,5 +1,7 @@
 """NetworkSession applies the Settings → Network proxy and TLS rules to every request."""
 
+import contextlib
+
 import pytest
 
 from shelfmark.download import network
@@ -150,6 +152,20 @@ class _RawWithCookie:
         self.msg = self._Headers()
 
 
+@contextlib.contextmanager
+def _inside_a_request(*, explicit_verify=False):
+    """Run a block as the hops of a ``request()`` that was given no proxies of its own.
+
+    ``send()`` called outside ``request()`` keeps the ``verify`` its caller passed, so a test
+    standing in for a redirect hop has to say a request is in flight.
+    """
+    token = network._redirect_state.set((False, explicit_verify))
+    try:
+        yield
+    finally:
+        network._redirect_state.reset(token)
+
+
 def _redirect_hop(url):
     """A prepared request for a redirect hop to ``url``, as requests builds it."""
     import requests
@@ -250,8 +266,9 @@ def test_verify_is_chosen_again_for_a_redirect_hop(settings, sent_hops):
     settings["CERTIFICATE_VALIDATION"] = "disabled_local"
     session = network.NetworkSession()
 
-    session.send(_redirect_hop("https://auth.example.com/jwks"), verify=False)
-    session.send(_redirect_hop("https://192.168.1.20/jwks"), verify=True)
+    with _inside_a_request():
+        session.send(_redirect_hop("https://auth.example.com/jwks"), verify=False)
+        session.send(_redirect_hop("https://192.168.1.20/jwks"), verify=True)
 
     assert sent_hops == [
         ("https://auth.example.com/jwks", True),
@@ -266,7 +283,8 @@ def test_a_ca_bundle_from_the_environment_is_kept_for_a_verified_hop(
     settings["CERTIFICATE_VALIDATION"] = "disabled_local"
     monkeypatch.setenv("REQUESTS_CA_BUNDLE", "/etc/ssl/custom.pem")
 
-    network.NetworkSession().send(_redirect_hop("https://auth.example.com/jwks"), verify=False)
+    with _inside_a_request():
+        network.NetworkSession().send(_redirect_hop("https://auth.example.com/jwks"), verify=False)
 
     assert sent_hops == [("https://auth.example.com/jwks", "/etc/ssl/custom.pem")]
 
@@ -319,3 +337,35 @@ def test_redirect_state_is_kept_per_greenlet(settings, monkeypatch):
 
     assert hops["http://192.168.1.20/explicit"].get("https") == "http://chosen:1"
     assert hops["http://192.168.1.20/plain"] == {"http": _PROXY, "https": _PROXY}
+
+
+def test_the_proxy_is_chosen_from_the_host_requests_will_contact(settings, sent_requests):
+    """A host spelled with ``%2e`` is the public host requests normalizes it to, not a LAN name."""
+    network.NetworkSession().get("https://api%2ehardcover%2eapp/v1/graphql")
+
+    assert sent_requests.last()["proxies"] == {"http": _PROXY, "https": _PROXY}
+
+
+def test_a_direct_send_keeps_the_verify_the_caller_passed(settings, monkeypatch):
+    """``send()`` outside ``request()`` is not a redirect hop, so its explicit ``verify`` stays."""
+    import requests
+
+    settings["CERTIFICATE_VALIDATION"] = "disabled"
+    seen = []
+
+    def fake_send(self, request, **kwargs):
+        seen.append(kwargs.get("verify"))
+        response = requests.Response()
+        response.status_code = 200
+        response.url = request.url
+        response.request = request
+        return response
+
+    monkeypatch.setattr(requests.Session, "send", fake_send)
+    session = network.NetworkSession()
+    prepared = requests.Request("GET", "https://example.com/").prepare()
+
+    session.send(prepared, verify=True)
+    session.send(prepared)
+
+    assert seen == [True, False]
