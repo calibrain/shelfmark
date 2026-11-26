@@ -3,6 +3,7 @@
 import queue
 import time
 from datetime import UTC, datetime, timedelta
+from itertools import count
 from pathlib import Path
 from threading import Event, Lock
 from typing import TYPE_CHECKING, Any
@@ -50,6 +51,10 @@ class BookQueue:
         self._status_timestamps: dict[str, datetime] = {}  # Track when each status was last updated
         self._cancel_flags: dict[str, Event] = {}  # Cancellation flags for active downloads
         self._active_downloads: dict[str, bool] = {}  # Track currently downloading tasks
+        # A new number each time a task is queued, so work begun for one attempt can tell
+        # that another has replaced it. Never reused.
+        self._attempts: dict[str, int] = {}
+        self._attempt_numbers = count()
         self._terminal_status_hook: Callable[[str, QueueStatus, DownloadTask], None] | None = None
         self._queue_hook: Callable[[str, DownloadTask], None] | None = None
 
@@ -84,6 +89,7 @@ class BookQueue:
             queue_item = QueueItem(task_id, task.priority, task.added_time)
             self._queue.put(queue_item)
             self._task_data[task_id] = task
+            self._attempts[task_id] = next(self._attempt_numbers)
             self._update_status(task_id, QueueStatus.QUEUED)
             hook = self._queue_hook
 
@@ -211,6 +217,7 @@ class BookQueue:
             task = self._task_data.get(task_id)
             if task is None:
                 return
+            attempt = self._attempts.get(task_id)
             delivered = list(dict.fromkeys([download_path, *task.download_paths]))
 
         # Outside the lock: a stat on a slow mount must not hold up every other download.
@@ -218,7 +225,8 @@ class BookQueue:
 
         with self._lock:
             task = self._task_data.get(task_id)
-            if task is None:
+            if task is None or self._attempts.get(task_id) != attempt:
+                # Cancelled and queued again meanwhile: this path is the old attempt's.
                 return
             task.download_path = download_path
             if list(dict.fromkeys([download_path, *task.download_paths])) == delivered:
@@ -375,6 +383,7 @@ class BookQueue:
 
             queue_item = QueueItem(task_id, task.priority, time.time())
             self._queue.put(queue_item)
+            self._attempts[task_id] = next(self._attempt_numbers)
             self._update_status(task_id, QueueStatus.QUEUED)
             hook = self._queue_hook
             hook_task = task
@@ -451,6 +460,7 @@ class BookQueue:
                 self._status.pop(task_id, None)
                 self._status_timestamps.pop(task_id, None)
                 self._task_data.pop(task_id, None)
+                self._attempts.pop(task_id, None)
 
 
 # Global instance of BookQueue

@@ -2,6 +2,8 @@
 
 from unittest.mock import patch
 
+import pytest
+
 from shelfmark.core.models import DownloadTask, QueueStatus
 from shelfmark.core.queue import BookQueue
 
@@ -141,6 +143,31 @@ def test_finishing_a_download_records_the_identity_of_each_delivered_file(tmp_pa
     assert recorded.download_path == str(first)
     assert set(recorded.download_identities) == {str(first), str(second)}
     assert all(recorded.download_identities.values())
+
+
+@pytest.mark.parametrize("how", ["added_again", "retried"])
+def test_a_replaced_attempt_does_not_record_its_path_on_the_new_one(tmp_path, how):
+    """Cancelled and queued again during the stat, the old path belongs to neither."""
+    old = tmp_path / "old.epub"
+    old.write_bytes(b"old")
+    queue = BookQueue()
+    queue.add(_make_task("replaced-task"))
+
+    def identity_then_requeue(path):
+        """Cancel the task and queue it again while its file is being read."""
+        queue.update_status("replaced-task", QueueStatus.CANCELLED)
+        if how == "added_again":
+            assert queue.add(_make_task("replaced-task")) is True
+        else:
+            assert queue.enqueue_existing("replaced-task") is True
+        return "1:2:3"
+
+    with patch("shelfmark.core.queue.file_identity", side_effect=identity_then_requeue):
+        queue.update_download_path("replaced-task", str(old))
+
+    recorded = queue.get_task("replaced-task")
+    assert recorded.download_path is None
+    assert recorded.download_identities == {}
 
 
 def test_no_identity_is_kept_when_the_file_list_changes_while_it_is_taken(tmp_path):
