@@ -24,7 +24,7 @@ For signing in through a proxy, see [OIDC](oidc.md#using-an-outbound-proxy).
 
 At startup, and after each settings save, Shelfmark sets `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` (and their lowercase forms) to match the settings.
 
-- A proxy variable you give the container is left as you set it. With Proxy Mode set to None, requests to hosts that aren't local still use it.
+- A proxy variable you give the container is left as you set it. With Proxy Mode set to None, Shelfmark's own requests to hosts that aren't local still use it. `curl` in a custom script only reads the lowercase `http_proxy` for `http://` addresses, so set that one if your scripts need it.
 - A `NO_PROXY` you give the container locks the No Proxy field. With a proxy set, Shelfmark adds the local entries to your value.
 
 ## Tor and WireGuard
