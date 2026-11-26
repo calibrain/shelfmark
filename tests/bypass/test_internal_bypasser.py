@@ -777,3 +777,31 @@ def test_host_resolver_rules_use_the_system_resolvers_address_family(monkeypatch
         "MAP aa.v4 186.2.163.174",
     ]
     assert all(socket.AF_INET not in call["args"] and "family" not in call for call in calls)
+
+
+@pytest.mark.parametrize("wrapper", ["system_failover", "custom"])
+def test_host_resolver_rules_work_with_the_custom_dns_wrappers(monkeypatch, wrapper):
+    """With custom DNS on, ``socket.getaddrinfo`` is a wrapper that names its parameters.
+
+    It takes ``socket_type``, not the stdlib's ``type``, so a ``type=`` keyword raised
+    TypeError and no host was pre-resolved.
+    """
+    import socket
+
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+    from shelfmark.download import network
+
+    answer = [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("186.2.163.174", 443))]
+    monkeypatch.setattr(network, "original_getaddrinfo", lambda *args: answer)
+    if wrapper == "system_failover":
+        resolver = network.create_system_failover_getaddrinfo()
+    else:
+        resolver = network.create_custom_getaddrinfo(
+            lambda host: [], lambda host: [], lambda host: True
+        )
+    monkeypatch.setattr(
+        internal_bypasser.network, "get_available_aa_urls", lambda: ["https://aa.v4"]
+    )
+    monkeypatch.setattr(internal_bypasser.socket, "getaddrinfo", resolver)
+
+    assert internal_bypasser._build_host_resolver_rules() == ["MAP aa.v4 186.2.163.174"]
