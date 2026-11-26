@@ -369,3 +369,102 @@ def test_a_direct_send_keeps_the_verify_the_caller_passed(settings, monkeypatch)
     session.send(prepared)
 
     assert seen == [True, False]
+
+
+@pytest.fixture
+def recorded_hops(monkeypatch):
+    """Record the ``proxies`` and ``verify`` each hop reaches the transport adapter with."""
+    import requests
+
+    hops = []
+
+    class Recorder(requests.adapters.BaseAdapter):
+        def send(self, request, **kwargs):
+            """Answer a redirect for ``/start`` and record what reached the adapter."""
+            hops.append((request.url, (kwargs.get("proxies") or {}).get("https"), kwargs["verify"]))
+            response = requests.Response()
+            response.url = request.url
+            response.request = request
+            response._content = b""
+            response._content_consumed = True
+            if request.url.endswith("/start"):
+                response.status_code = 302
+                response.headers["location"] = "https://public.example.org/end"
+            else:
+                response.status_code = 200
+            return response
+
+        def close(self):
+            pass
+
+    def session():
+        """A ``NetworkSession`` whose https requests end at the recorder."""
+        net = network.NetworkSession()
+        net.mount("https://", Recorder())
+        return net
+
+    return hops, session
+
+
+def test_a_direct_send_gets_the_proxy_from_settings(settings, recorded_hops):
+    """``send()`` without ``proxies`` is routed like ``request()``, not left to the environment."""
+    import requests
+
+    hops, session = recorded_hops
+
+    session().send(requests.Request("GET", "https://api.example.org/").prepare())
+
+    assert hops == [("https://api.example.org/", _PROXY, True)]
+
+
+def test_a_direct_send_keeps_its_own_proxies_across_a_redirect(settings, recorded_hops):
+    """Proxies the caller passed to ``send()`` stay on the hop after a redirect."""
+    import requests
+
+    hops, session = recorded_hops
+
+    session().send(
+        requests.Request("GET", "https://a.example.org/start").prepare(),
+        proxies={"https": "http://callers-proxy:2"},
+    )
+
+    assert [hop[1] for hop in hops] == ["http://callers-proxy:2", "http://callers-proxy:2"]
+
+
+def test_a_direct_send_checks_the_certificate_of_a_public_redirect(settings, recorded_hops):
+    """Under disabled_local, a direct send from a LAN host to a public one is verified there."""
+    import requests
+
+    settings["CERTIFICATE_VALIDATION"] = "disabled_local"
+    hops, session = recorded_hops
+
+    session().send(requests.Request("GET", "https://192.168.1.20/start").prepare())
+
+    assert [hop[2] for hop in hops] == [False, True]
+
+
+def test_a_direct_send_with_verify_false_keeps_it_on_every_hop(settings, recorded_hops):
+    """A ``verify`` the caller passed stays authoritative for the whole redirect chain."""
+    import requests
+
+    settings["CERTIFICATE_VALIDATION"] = "disabled_local"
+    hops, session = recorded_hops
+
+    session().send(requests.Request("GET", "https://192.168.1.20/start").prepare(), verify=False)
+
+    assert [hop[2] for hop in hops] == [False, False]
+
+
+def test_a_direct_send_leaves_a_container_proxy_to_requests(settings, recorded_hops, monkeypatch):
+    """With no proxy in Settings, a direct ``send()`` still uses the one the container set."""
+    import requests
+
+    settings["PROXY_MODE"] = "none"
+    monkeypatch.setenv("HTTPS_PROXY", "http://container-proxy:3")
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    hops, session = recorded_hops
+
+    session().send(requests.Request("GET", "https://api.example.org/").prepare())
+
+    assert hops == [("https://api.example.org/", "http://container-proxy:3", True)]

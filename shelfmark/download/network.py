@@ -234,22 +234,36 @@ class NetworkRules:
         requests reuses the first URL's ``verify`` for every redirect, so with
         ``disabled_local`` a local link that redirected to a public host was fetched without
         checking its certificate. Each hop now gets ``get_ssl_verify()`` for its URL, keeping
-        a CA bundle from the environment where verification is on. A ``verify`` the caller
-        passed explicitly is kept.
+        a CA bundle from the environment where verification is on. A ``verify`` or
+        ``proxies`` the caller passed explicitly is kept, on a direct call too.
         """
         state = _redirect_state.get()
-        # Outside request() (state is None) a verify the caller passed is theirs to keep.
-        explicit_verify = state[1] if state is not None else kwargs.get("verify") is not None
-        if not explicit_verify:
-            url = str(request.url)
-            if get_ssl_verify(url):
-                if kwargs.get("verify") is False:
-                    kwargs["verify"] = self.merge_environment_settings(  # type: ignore[attr-defined]
-                        url, {}, None, True, None
-                    )["verify"]
-            else:
-                kwargs["verify"] = False
-        return super().send(request, **kwargs)  # type: ignore[misc]
+        token = None
+        if state is None:
+            # Called directly, not from request(). What the caller passed is decided here
+            # once and holds for every redirect this call follows, and a proxy it left out
+            # is chosen from the URL as request() would.
+            state = (kwargs.get("proxies") is not None, kwargs.get("verify") is not None)
+            if not state[0]:
+                target = str(request.url)
+                # Left out when empty, so requests still reads a proxy the container set.
+                if chosen := get_proxies(target) or _direct_if_bypassed(target):
+                    kwargs["proxies"] = chosen
+            token = _redirect_state.set(state)
+        try:
+            if not state[1]:
+                url = str(request.url)
+                if get_ssl_verify(url):
+                    if kwargs.get("verify") is False:
+                        kwargs["verify"] = self.merge_environment_settings(  # type: ignore[attr-defined]
+                            url, {}, None, True, None
+                        )["verify"]
+                else:
+                    kwargs["verify"] = False
+            return super().send(request, **kwargs)  # type: ignore[misc]
+        finally:
+            if token is not None:
+                _redirect_state.reset(token)
 
     def rebuild_proxies(self, prepared_request: Any, proxies: Any) -> Any:
         """Choose the proxy for a redirect hop from the hop's own URL, as for any request.
@@ -728,12 +742,26 @@ def _hostname_of(value: object) -> str:
         return ""
 
 
+def _port_of(value: object) -> int | None:
+    """The explicit port in a URL or ``host:port`` setting value, or None."""
+    text = str(value or "").strip()
+    try:
+        return urllib.parse.urlsplit(text if "://" in text else f"//{text}").port
+    except ValueError:
+        return None
+
+
 def _configured_local_hostnames() -> list[str]:
     """Single-label local hosts named in a service setting (``*_URL``, ``*_URLS``, ``*_HOST``).
 
     These are Docker service names such as ``qbittorrent``. The local rule covers them in
     ``get_proxies()``, but ``NO_PROXY`` has no pattern for "any single-label name", so a
     library reading the environment only skips the proxy for names listed by hand.
+
+    requests matches an entry as a domain suffix, so a bare ``app`` would also bypass the
+    proxy for ``notify.example.app`` on any port. ``app:8080`` narrows that to hosts ending
+    in ``.app`` on port 8080, which is as close to exact as NO_PROXY gets, so the port is
+    kept whenever the setting has one.
     """
     from shelfmark.core.settings_registry import get_settings_field_map
 
@@ -745,7 +773,8 @@ def _configured_local_hostnames() -> list[str]:
         for item in value if isinstance(value, list) else [value]:
             host = _hostname_of(item)
             if host and "." not in host and _is_local_address(host):
-                names.append(host)
+                port = _port_of(item)
+                names.append(f"{host}:{port}" if port else host)
     return names
 
 

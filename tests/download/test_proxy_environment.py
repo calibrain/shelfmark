@@ -62,8 +62,9 @@ def test_no_proxy_lists_the_configured_services_docker_names(settings):
     network.apply_proxy_environment()
 
     entries = os.environ["NO_PROXY"].split(",")
-    assert "qbittorrent" in entries
-    assert "prowlarr" in entries
+    assert "qbittorrent:8080" in entries
+    assert "prowlarr:9696" in entries
+    assert not {"qbittorrent", "prowlarr"} & set(entries)
     assert ".example.org" in entries
     assert not {"abs.example.com", "annas-archive.gl", "192.168.1.20"} & set(entries)
 
@@ -345,3 +346,23 @@ def test_a_wildcard_no_proxy_from_the_container_stays_the_whole_value(
     url = "http://api.example.com/"
     merged = requests.Session().merge_environment_settings(url, {}, None, None, None)
     assert "http" not in merged["proxies"]
+
+
+def test_a_service_name_does_not_bypass_the_proxy_for_a_public_domain(settings):
+    """A bare ``app`` is read as a suffix, covering ``notify.example.app`` on any port; with the port, only on that one."""
+    import os
+
+    import requests
+
+    settings.update(QBITTORRENT_URL="http://app:8080", SABNZBD_URL="http://nzb")
+    network.apply_proxy_environment()
+
+    def used(url):
+        """The proxy an environment-reading client would pick for ``url``, or None."""
+        merged = requests.Session().merge_environment_settings(url, {}, None, None, None)
+        return merged["proxies"].get("https" if url.startswith("https") else "http")
+
+    assert used("http://app:8080/") is None
+    assert used("https://notify.example.app/") == _PROXY
+    assert used("https://notify.example.app:9000/") == _PROXY
+    assert "nzb" in os.environ["NO_PROXY"].split(",")
