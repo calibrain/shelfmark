@@ -78,8 +78,10 @@ def test_a_fresh_config_does_not_save_the_tor_default(config_dir, monkeypatch):
     assert "USING_TOR" not in _saved_network(config_dir)
 
 
-def test_a_flag_saved_by_an_older_version_is_dropped(config_dir, monkeypatch):
-    """The saved value from before the fix is removed on startup, and other settings stay."""
+def test_a_flag_saved_by_an_older_version_is_never_read(config_dir, monkeypatch):
+    """An old saved value stays in the file after startup and the app does not read it."""
+    from shelfmark.core.config import config
+
     monkeypatch.setattr(env, "USING_TOR", False)
     (config_dir / "plugins").mkdir()
     (config_dir / "plugins" / "network.json").write_text(
@@ -87,10 +89,10 @@ def test_a_flag_saved_by_an_older_version_is_dropped(config_dir, monkeypatch):
     )
 
     registry.sync_env_to_config()
+    config.refresh(force=True)
 
-    saved = _saved_network(config_dir)
-    assert "USING_TOR" not in saved
-    assert saved["PROXY_MODE"] == "http"
+    assert _saved_network(config_dir)["USING_TOR"] is True
+    assert config.get("USING_TOR") is False
 
 
 def test_saving_settings_does_not_store_the_tor_flag(config_dir, monkeypatch):
@@ -115,62 +117,3 @@ def test_auto_dns_rotation_follows_the_running_state(monkeypatch, tor, auto):
     )
 
     assert network._is_auto_dns_mode() is auto
-
-
-def test_a_failed_cleanup_leaves_the_saved_config_as_it_was(config_dir, monkeypatch):
-    """A write that fails must not lose the other settings or change what the process sees."""
-    from pathlib import Path
-
-    monkeypatch.setattr(env, "USING_TOR", False)
-    path = config_dir / "plugins" / "network.json"
-    path.parent.mkdir()
-    original = json.dumps({"USING_TOR": True, "PROXY_MODE": "http"})
-    path.write_text(original)
-
-    real_replace = Path.replace
-
-    def failing_replace(self, target):
-        """Fail only the swap of the cleaned file into place."""
-        if self.name == "network.json.tmp":
-            raise OSError("disk full")
-        return real_replace(self, target)
-
-    monkeypatch.setattr(Path, "replace", failing_replace)
-
-    registry.drop_saved_live_values()
-
-    assert path.read_text() == original
-    assert not (path.parent / "network.json.tmp").exists()
-    assert registry.load_config_file("network")["PROXY_MODE"] == "http"
-
-
-def test_cleanup_on_a_read_only_config_folder_does_not_stop_startup(config_dir, monkeypatch):
-    """Writing and removing the scratch file both fail there; the saved config stays."""
-    import errno
-    from pathlib import Path
-
-    monkeypatch.setattr(env, "USING_TOR", False)
-    path = config_dir / "plugins" / "network.json"
-    path.parent.mkdir()
-    original = json.dumps({"USING_TOR": True, "PROXY_MODE": "http"})
-    path.write_text(original)
-
-    def read_only(self, *args, **kwargs):
-        """Fail as a read-only filesystem does."""
-        raise OSError(errno.EROFS, "Read-only file system")
-
-    real_open = Path.open
-
-    def open_for_reading_only(self, mode="r", *args, **kwargs):
-        """Allow reads and refuse writes."""
-        if "w" in mode:
-            read_only(self)
-        return real_open(self, mode, *args, **kwargs)
-
-    monkeypatch.setattr(Path, "open", open_for_reading_only)
-    monkeypatch.setattr(Path, "unlink", read_only)
-
-    registry.drop_saved_live_values()
-
-    assert path.read_text() == original
-    assert _shown() is False
