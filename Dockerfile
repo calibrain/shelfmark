@@ -149,6 +149,15 @@ ENTRYPOINT ["/usr/bin/dumb-init", "--"]
 FROM base AS shelfmark
 
 # --- Chromium (Debian's current build from trixie-security) ---
+#
+# Debian's software-GL stack (about 200MB installed) is not used: Chromium's WebGL
+# comes from its own bundled SwiftShader (--enable-unsafe-swiftshader in
+# _get_browser_args), not from Mesa's llvmpipe. On trixie it arrives as chromium ->
+# libgbm1 -> mesa-libgallium -> libllvm19 -> libz3-4 and xvfb -> libgl1 ->
+# libglx-mesa0 -> libgl1-mesa-dri, so removing the four would take chromium and xvfb
+# with them, and purging them by force leaves apt refusing to install anything.
+# Each is replaced by an empty package of the same name and version, held so apt keeps
+# it. A rename in a new Debian release (libllvm19, say) fails the build here.
 RUN apt-get update -o Acquire::Retries=5 && \
     apt-get install -y --no-install-recommends -o Acquire::Retries=5 \
     # For dumb display
@@ -162,24 +171,25 @@ RUN apt-get update -o Acquire::Retries=5 && \
     ln -sf /usr/bin/unrar-free /usr/bin/unrar && \
     # Cleanup APT cache
     apt-get purge -y --auto-remove -o APT::AutoRemove::RecommendsImportant=false && \
+    # Swap Debian's software-GL stack for empty placeholders (see above). This has to
+    # stay in the RUN that installs it, or the files remain in that layer.
+    gl_stack="libgl1-mesa-dri mesa-libgallium libllvm19 libz3-4" && \
+    for pkg in $gl_stack; do \
+        mkdir -p "/tmp/placeholders/$pkg/DEBIAN" && \
+        dpkg-query -W -f='Package: ${Package}\nVersion: ${Version}\nArchitecture: ${Architecture}\nMulti-Arch: ${Multi-Arch}\nProvides: ${Provides}\nMaintainer: Shelfmark\nDescription: empty placeholder\n' "$pkg" \
+            | sed '/: $/d' > "/tmp/placeholders/$pkg/DEBIAN/control" && \
+        dpkg-deb --root-owner-group --build "/tmp/placeholders/$pkg" "/tmp/placeholders/$pkg.deb" \
+        || exit 1; \
+    done && \
+    dpkg -i /tmp/placeholders/*.deb && \
+    apt-mark hold $gl_stack && \
+    rm -rf /tmp/placeholders && \
+    # Fail the build if apt is left unable to install what entrypoint.sh installs
+    apt-get check && \
+    apt-get install -s --no-install-recommends ffmpeg strace > /dev/null && \
+    chromium --version && \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
-
-# Drop Debian's software-GL stack (about 180MB installed) that Chromium does not
-# use. WebGL comes from Chromium's own bundled SwiftShader (via
-# --enable-unsafe-swiftshader in _get_browser_args), not from Mesa's llvmpipe.
-# On trixie these arrive as: chromium -> libgbm1 -> mesa-libgallium -> libllvm19
-# -> libz3-4, and xvfb -> libgl1 -> libglx-mesa0 -> libgl1-mesa-dri. libgbm1 and
-# libglx-mesa0 depend on them, so apt-get remove would take chromium or xvfb
-# along; dpkg --force-depends drops only these four and leaves the dependents.
-# dpkg only warns on a package that is not installed, so if the base or the
-# Chromium pin renames these, the purge quietly stops saving space.
-RUN dpkg --force-depends --purge \
-        libgl1-mesa-dri \
-        mesa-libgallium \
-        libllvm19 \
-        libz3-4 && \
-    chromium --version
 
 # Install the browser automation stack used by the full image
 RUN --mount=type=cache,target=/root/.cache/uv \
