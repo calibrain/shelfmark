@@ -852,7 +852,9 @@ def network_settings() -> list[SettingsField]:
             description=(
                 "Local and private addresses (LAN IPs, Docker service names, .local/.lan hosts) "
                 "always bypass the proxy. List additional hosts here, comma-separated, e.g. "
-                "a LAN service reached by a public hostname: *.example.com,abs.example.org"
+                "a LAN service reached by a public hostname: *.example.com,abs.example.org. "
+                "Notifications and qBittorrent match a host as a domain suffix, so "
+                "abs.example.org there also covers www.abs.example.org."
             ),
             disabled=bool(tunnel),
             disabled_reason=proxy_unused,
