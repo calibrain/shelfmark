@@ -7,8 +7,6 @@ def _set_auto_dns_mode(monkeypatch):
     def fake_get(key, default=""):
         if key == "CUSTOM_DNS":
             return "auto"
-        if key == "USING_TOR":
-            return False
         return default
 
     monkeypatch.setattr(network.app_config, "get", fake_get)

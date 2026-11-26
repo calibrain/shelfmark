@@ -794,7 +794,11 @@ def network_settings() -> list[SettingsField]:
                 if tor_enabled
                 else "Route all traffic through Tor for enhanced privacy. Requires root startup."
             ),
-            default=tor_enabled,  # Reflects actual state from env var
+            default=tor_enabled,
+            # What is running, from the variable that starts it. Never saved or read from
+            # the config, which stays true after the variable is removed.
+            live_value=lambda: env.USING_TOR,
+            env_supported=False,
             disabled=True,  # Tor state requires container restart
             disabled_reason=(
                 "Tor routing is active. Set USING_TOR=false and restart to disable."
