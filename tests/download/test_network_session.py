@@ -483,3 +483,20 @@ def test_a_direct_send_with_verify_none_follows_certificate_validation(
     session().send(requests.Request("GET", "https://api.example.org/").prepare(), verify=None)
 
     assert hops[0][2] is verify
+
+
+def test_a_direct_send_with_proxies_none_leaves_a_container_proxy_to_requests(
+    settings, recorded_hops, monkeypatch
+):
+    """``proxies=None`` is unspecified, the same as leaving it out."""
+    import requests
+
+    settings["PROXY_MODE"] = "none"
+    monkeypatch.setenv("HTTPS_PROXY", "http://container-proxy:3")
+    monkeypatch.delenv("NO_PROXY", raising=False)
+    monkeypatch.delenv("no_proxy", raising=False)
+    hops, session = recorded_hops
+
+    session().send(requests.Request("GET", "https://api.example.org/").prepare(), proxies=None)
+
+    assert hops == [("https://api.example.org/", "http://container-proxy:3", True)]
