@@ -124,6 +124,7 @@ def test_a_proxy_in_the_container_environment_is_not_used_under_a_tunnel(
     network.apply_proxy_environment()
 
     assert os.environ["HTTPS_PROXY"] == "http://container-proxy:3128"
+    assert os.environ["NO_PROXY"] == "*"
     assert get_environ_proxies("https://api.hardcover.app/") == {}
 
 

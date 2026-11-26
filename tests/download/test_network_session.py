@@ -289,6 +289,19 @@ def test_a_ca_bundle_from_the_environment_is_kept_for_a_verified_hop(
     assert sent_hops == [("https://auth.example.com/jwks", "/etc/ssl/custom.pem")]
 
 
+def test_a_direct_send_without_verify_uses_the_ca_bundle_from_the_environment(
+    settings, sent_hops, monkeypatch
+):
+    """A ``send()`` that leaves ``verify`` out reads the environment bundle, as ``request()`` does."""
+    settings["CERTIFICATE_VALIDATION"] = "disabled_local"
+    monkeypatch.setenv("REQUESTS_CA_BUNDLE", "/etc/ssl/custom.pem")
+
+    network.NetworkSession().send(_redirect_hop("https://auth.example.com/jwks"))
+    network.NetworkSession().send(_redirect_hop("https://auth.example.com/jwks"), verify=None)
+
+    assert sent_hops == [("https://auth.example.com/jwks", "/etc/ssl/custom.pem")] * 2
+
+
 def test_an_explicit_verify_is_kept_on_every_hop(settings, sent_hops):
     """A caller's own ``verify`` is not replaced, on the first hop or a redirect."""
     settings["CERTIFICATE_VALIDATION"] = "disabled"

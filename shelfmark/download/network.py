@@ -260,7 +260,7 @@ class NetworkRules:
             if not state[1]:
                 url = str(request.url)
                 if get_ssl_verify(url):
-                    if kwargs.get("verify") is False:
+                    if kwargs.get("verify") in (None, False):
                         kwargs["verify"] = self.merge_environment_settings(  # type: ignore[attr-defined]
                             url, {}, None, True, None
                         )["verify"]
