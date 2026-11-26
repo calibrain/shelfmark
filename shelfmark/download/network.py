@@ -240,6 +240,10 @@ class NetworkRules:
         state = _redirect_state.get()
         token = None
         if state is None:
+            if kwargs.get("verify") is None:
+                # None means unspecified here as in request(); passed on, the adapter would
+                # read it as "do not verify".
+                kwargs.pop("verify", None)
             # Called directly, not from request(). What the caller passed is decided here
             # once and holds for every redirect this call follows, and a proxy it left out
             # is chosen from the URL as request() would.

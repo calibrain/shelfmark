@@ -468,3 +468,18 @@ def test_a_direct_send_leaves_a_container_proxy_to_requests(settings, recorded_h
     session().send(requests.Request("GET", "https://api.example.org/").prepare())
 
     assert hops == [("https://api.example.org/", "http://container-proxy:3", True)]
+
+
+@pytest.mark.parametrize(("mode", "verify"), [("enabled", True), ("disabled", False)])
+def test_a_direct_send_with_verify_none_follows_certificate_validation(
+    settings, recorded_hops, mode, verify
+):
+    """``verify=None`` is unspecified, and is never passed on to read as "do not verify"."""
+    import requests
+
+    settings["CERTIFICATE_VALIDATION"] = mode
+    hops, session = recorded_hops
+
+    session().send(requests.Request("GET", "https://api.example.org/").prepare(), verify=None)
+
+    assert hops[0][2] is verify
