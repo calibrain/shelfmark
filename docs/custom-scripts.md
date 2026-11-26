@@ -61,6 +61,16 @@ When enabled, Shelfmark runs your script once per successful task:
 - Concurrency: downloads can run in parallel, so your script may be invoked concurrently for different tasks.
 - Runtime: the script runs inside the Shelfmark container (if you use Docker) under the same user as Shelfmark.
 
+## Proxy Settings
+
+Your script inherits Shelfmark's environment. With a [proxy](proxy.md) set, that includes `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` from startup, so tools such as `curl` send requests through the proxy.
+
+Don't count on a call to another container going direct. `NO_PROXY` has no way to say "any name without a dot", so it only lists the containers named in Shelfmark's service settings. When such a URL has a port, the entry keeps it (`qbittorrent:8080`), which `curl` doesn't match. Add the name to **No Proxy** without a port, or tell the tool in the script:
+
+```bash
+curl --noproxy calibre-web http://calibre-web:8083/
+```
+
 ## The Target Path (`$1`)
 
 Shelfmark chooses a "best single path" for the task:

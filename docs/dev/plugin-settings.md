@@ -723,15 +723,19 @@ The full source and handler interfaces, and how to register the module, are in t
       "group": "metadata_providers",
       "fields": [
         {
-          "type": "password",
           "key": "MY_PLUGIN_API_KEY",
           "label": "API Key",
+          "type": "PasswordField",
           "description": "Your API key",
-          "hasValue": true,
-          "value": "",
           "required": true,
           "disabled": false,
-          "requiresRestart": false
+          "disabledReason": "",
+          "requiresRestart": false,
+          "userOverridable": false,
+          "hiddenInUi": false,
+          "placeholder": "",
+          "value": "",
+          "fromEnv": false
         }
       ]
     }
