@@ -846,7 +846,9 @@ def _build_host_resolver_rules() -> list[str]:
                 continue
 
             try:
-                results = socket.getaddrinfo(hostname, 443, type=socket.SOCK_STREAM)
+                # Positional: the custom DNS wrappers name this parameter socket_type, so
+                # type= raises TypeError there. 0 leaves the family to the resolver.
+                results = socket.getaddrinfo(hostname, 443, 0, socket.SOCK_STREAM)
                 if results:
                     family, _, _, _, sockaddr = results[0]
                     ip = str(sockaddr[0])
