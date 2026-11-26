@@ -1125,8 +1125,8 @@ def _process_single_download(task_id: str, cancel_flag: Event) -> None:
         return
 
     if download_path:
-        book_queue.update_download_path(task_id, download_path)
-        book_queue.update_status(task_id, QueueStatus.COMPLETE)
+        # One step: a task cancelled and queued again meanwhile must not show complete.
+        book_queue.update_download_path(task_id, download_path, complete=True)
     else:
         _finalize_download_failure(task_id)
 

@@ -211,8 +211,14 @@ class BookQueue:
         if hook is not None and hook_task is not None:
             hook(book_id, status, hook_task)
 
-    def update_download_path(self, task_id: str, download_path: str) -> None:
-        """Record where a finished download was delivered, and the identity of each file."""
+    def update_download_path(
+        self, task_id: str, download_path: str, *, complete: bool = False
+    ) -> None:
+        """Record where a finished download was delivered, and the identity of each file.
+
+        ``complete`` also marks the task complete, in the same locked step, so an attempt
+        that was replaced while its files were being read gets neither.
+        """
         with self._lock:
             task = self._task_data.get(task_id)
             if task is None:
@@ -223,6 +229,8 @@ class BookQueue:
         # Outside the lock: a stat on a slow mount must not hold up every other download.
         identities = {path: identity for path in delivered if (identity := file_identity(path))}
 
+        hook: Callable[[str, QueueStatus, DownloadTask], None] | None = None
+        hook_task: DownloadTask | None = None
         with self._lock:
             task = self._task_data.get(task_id)
             if task is None or self._attempts.get(task_id) != attempt:
@@ -234,6 +242,11 @@ class BookQueue:
             else:
                 # The file list changed meanwhile, so none of these can be trusted.
                 task.download_identities = {}
+            if complete:
+                hook, hook_task = self._apply_status_locked(task_id, QueueStatus.COMPLETE)
+
+        if hook is not None and hook_task is not None:
+            hook(task_id, QueueStatus.COMPLETE, hook_task)
 
     def update_progress(self, task_id: str, progress: float) -> None:
         """Update download progress for a task."""

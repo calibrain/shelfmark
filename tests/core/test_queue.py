@@ -152,6 +152,8 @@ def test_a_replaced_attempt_does_not_record_its_path_on_the_new_one(tmp_path, ho
     old.write_bytes(b"old")
     queue = BookQueue()
     queue.add(_make_task("replaced-task"))
+    finished: list[QueueStatus] = []
+    queue.set_terminal_status_hook(lambda _id, status, _task: finished.append(status))
 
     def identity_then_requeue(path):
         """Cancel the task and queue it again while its file is being read."""
@@ -163,11 +165,50 @@ def test_a_replaced_attempt_does_not_record_its_path_on_the_new_one(tmp_path, ho
         return "1:2:3"
 
     with patch("shelfmark.core.queue.file_identity", side_effect=identity_then_requeue):
-        queue.update_download_path("replaced-task", str(old))
+        queue.update_download_path("replaced-task", str(old), complete=True)
 
     recorded = queue.get_task("replaced-task")
     assert recorded.download_path is None
     assert recorded.download_identities == {}
+    assert queue.get_task_status("replaced-task") == QueueStatus.QUEUED
+    assert finished == [QueueStatus.CANCELLED]
+
+
+def test_completing_with_the_path_runs_the_hook_once_with_the_path_recorded(tmp_path):
+    """The hook that saves history sees the delivered path and its identity."""
+    book = tmp_path / "book.epub"
+    book.write_bytes(b"epub")
+    queue = BookQueue()
+    queue.add(_make_task("done-task"))
+    seen: list[tuple[QueueStatus, str | None, int]] = []
+    queue.set_terminal_status_hook(
+        lambda _id, status, task: seen.append(
+            (status, task.download_path, len(task.download_identities))
+        )
+    )
+
+    queue.update_download_path("done-task", str(book), complete=True)
+
+    assert queue.get_task_status("done-task") == QueueStatus.COMPLETE
+    assert seen == [(QueueStatus.COMPLETE, str(book), 1)]
+
+
+def test_a_cancel_during_the_file_read_is_not_overwritten_by_completion(tmp_path):
+    """Cancelled without a retry, the task stays cancelled."""
+    book = tmp_path / "book.epub"
+    book.write_bytes(b"epub")
+    queue = BookQueue()
+    queue.add(_make_task("cancelled-task"))
+
+    def identity_then_cancel(path):
+        """Cancel the task while its file is being read."""
+        queue.update_status("cancelled-task", QueueStatus.CANCELLED)
+        return "1:2:3"
+
+    with patch("shelfmark.core.queue.file_identity", side_effect=identity_then_cancel):
+        queue.update_download_path("cancelled-task", str(book), complete=True)
+
+    assert queue.get_task_status("cancelled-task") == QueueStatus.CANCELLED
 
 
 def test_no_identity_is_kept_when_the_file_list_changes_while_it_is_taken(tmp_path):
