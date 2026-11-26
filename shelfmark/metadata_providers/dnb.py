@@ -26,7 +26,7 @@ from shelfmark.core.settings_registry import (
     SettingsField,
     register_settings,
 )
-from shelfmark.download.network import get_proxies, get_ssl_verify
+from shelfmark.download.network import NetworkSession
 from shelfmark.metadata_providers import (
     BookMetadata,
     DisplayField,
@@ -510,7 +510,7 @@ class DNBProvider(MetadataProvider):
 
     def __init__(self) -> None:
         """Initialize provider."""
-        self.session = requests.Session()
+        self.session = NetworkSession()
         self.session.headers["User-Agent"] = USER_AGENT
 
     def is_available(self) -> bool:
@@ -518,11 +518,10 @@ class DNBProvider(MetadataProvider):
         return True
 
     def _fetch(self, url: str, params: dict[str, Any] | None = None) -> requests.Response | None:
+        """GET from the DNB after the rate limit; the response, or None on a timeout or HTTP error."""
         _rate_limiter.wait_if_needed()
         try:
-            response = self.session.get(
-                url, params=params, timeout=15, proxies=get_proxies(url), verify=get_ssl_verify(url)
-            )
+            response = self.session.get(url, params=params, timeout=15)
             response.raise_for_status()
         except requests.Timeout:
             logger.warning("DNB request timed out: %s", url)
@@ -746,9 +745,7 @@ class DNBProvider(MetadataProvider):
                     continue
                 _rate_limiter.wait_if_needed()
                 try:
-                    response = self.session.get(
-                        url, timeout=15, proxies=get_proxies(url), verify=get_ssl_verify(url)
-                    )
+                    response = self.session.get(url, timeout=15)
                     response.raise_for_status()
                 except requests.RequestException as e:
                     logger.debug("DNB blurb fetch failed for %s: %s", url, e)

@@ -35,7 +35,7 @@ def test_download_count_lookup_passes_configured_proxies(monkeypatch):
         captured.update(kwargs)
         return MagicMock(status_code=200, json=MagicMock(return_value={"downloads_total": 7}))
 
-    monkeypatch.setattr(aa.network, "get_proxies", fake_get_proxies)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", fake_get_proxies)
     monkeypatch.setattr(requests.Session, "request", fake_request)
 
     assert aa._fetch_download_count_inline("aaa") == 7

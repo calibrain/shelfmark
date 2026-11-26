@@ -20,7 +20,7 @@ from shelfmark.core.settings_registry import (
 )
 from shelfmark.core.utils import get_hardened_xmlrpc_client, normalize_http_url
 from shelfmark.download.activity import STALL_TIMEOUT_SECONDS
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import NetworkSession, get_session, get_ssl_verify
 
 try:
     import qbittorrentapi as _qbittorrentapi
@@ -313,8 +313,9 @@ def _test_deluge_connection(current_values: dict[str, Any] | None = None) -> dic
     rpc_url = f"{scheme}://{host}:{port}{base_path}/json"
 
     def rpc_call(session: requests.Session, rpc_id: int, method: str, *params: Any) -> Any:
+        """Call one Deluge Web JSON-RPC method and return its result, raising on an RPC error."""
         payload = {"id": rpc_id, "method": method, "params": list(params)}
-        resp = session.post(rpc_url, json=payload, timeout=15, verify=get_ssl_verify(rpc_url))
+        resp = session.post(rpc_url, json=payload, timeout=15)
         resp.raise_for_status()
         data = resp.json()
         if data.get("error"):
@@ -336,7 +337,7 @@ def _test_deluge_connection(current_values: dict[str, Any] | None = None) -> dic
         return rpc_call(session, rpc_id + 1, "daemon.info")
 
     try:
-        session = requests.Session()
+        session = NetworkSession()
 
         if rpc_call(session, 1, "auth.login", password) is not True:
             return {"success": False, "message": "Deluge Web UI authentication failed"}
@@ -465,12 +466,11 @@ def _test_nzbget_connection(current_values: dict[str, Any] | None = None) -> dic
     try:
         rpc_url = f"{url.rstrip('/')}/jsonrpc"
         payload = {"jsonrpc": "2.0", "method": "status", "params": [], "id": 1}
-        response = requests.post(
+        response = get_session().post(
             rpc_url,
             json=payload,
             auth=(username, password),
             timeout=30,
-            verify=get_ssl_verify(rpc_url),
         )
         response.raise_for_status()
         result = response.json()
@@ -516,7 +516,7 @@ def _test_sabnzbd_connection(current_values: dict[str, Any] | None = None) -> di
     try:
         api_url = f"{url.rstrip('/')}/api"
         params = {"apikey": api_key, "mode": "version", "output": "json"}
-        response = requests.get(api_url, params=params, timeout=30, verify=get_ssl_verify(api_url))
+        response = get_session().get(api_url, params=params, timeout=30)
         response.raise_for_status()
         result = response.json()
         version = result.get("version", "unknown")

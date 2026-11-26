@@ -20,6 +20,7 @@ import pytest
 
 import shelfmark.bypass.cookie_store as cs
 import shelfmark.bypass.internal_bypasser as ib
+from shelfmark.download.network import get_session as _shared_session
 
 
 @pytest.fixture(autouse=True)
@@ -207,8 +208,8 @@ class _Resp:
 
 def _seed(monkeypatch):
     _store([_Cookie("__ddg1_", "clearance"), _Cookie("__ddg2_", "c2")])
-    monkeypatch.setattr(ib, "get_proxies", lambda _url: None)
-    monkeypatch.setattr(ib, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: None)
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: True)
     assert ib.get_cf_cookies_for_domain("annas-archive.gl")
 
 
@@ -216,7 +217,7 @@ def test_rejected_cached_cookies_are_discarded(monkeypatch):
     """A 403 while presenting cookies proves they are dead - keep them and every
     later request re-presents a known-rejected cookie."""
     _seed(monkeypatch)
-    monkeypatch.setattr(ib.requests, "get", lambda *a, **k: _Resp(403))
+    monkeypatch.setattr(_shared_session(), "get", lambda *a, **k: _Resp(403))
 
     assert (
         ib._try_with_cached_cookies("https://annas-archive.gl/search", "annas-archive.gl") is None
@@ -232,7 +233,7 @@ def test_redirect_loop_on_cached_cookies_discards_them(monkeypatch):
     def boom(*_a, **_k):
         raise ib.requests.exceptions.TooManyRedirects("Exceeded 30 redirects")
 
-    monkeypatch.setattr(ib.requests, "get", boom)
+    monkeypatch.setattr(_shared_session(), "get", boom)
 
     assert (
         ib._try_with_cached_cookies("https://annas-archive.gl/search", "annas-archive.gl") is None
@@ -242,7 +243,7 @@ def test_redirect_loop_on_cached_cookies_discards_them(monkeypatch):
 
 def test_working_cookies_are_kept(monkeypatch):
     _seed(monkeypatch)
-    monkeypatch.setattr(ib.requests, "get", lambda *a, **k: _Resp(200, "the page"))
+    monkeypatch.setattr(_shared_session(), "get", lambda *a, **k: _Resp(200, "the page"))
 
     result = ib._try_with_cached_cookies("https://annas-archive.gl/search", "annas-archive.gl")
 
@@ -255,7 +256,7 @@ def test_failure_only_clears_the_failing_host(monkeypatch):
     clearance for sites that are working fine."""
     _seed(monkeypatch)
     _store([_Cookie("__ddg1_", "other")], url="https://other-site.test/x")
-    monkeypatch.setattr(ib.requests, "get", lambda *a, **k: _Resp(403))
+    monkeypatch.setattr(_shared_session(), "get", lambda *a, **k: _Resp(403))
 
     ib._try_with_cached_cookies("https://annas-archive.gl/search", "annas-archive.gl")
 

@@ -40,7 +40,7 @@ from shelfmark.download.clients.torrent_utils import (
     safe_relative_path,
 )
 from shelfmark.download.http import download_url
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import NetworkSession
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -51,7 +51,7 @@ _API_BASE = "https://debrid-link.com/api/v2"
 
 # One session for every client instance, so the status poll every couple of seconds
 # reuses a keep-alive connection instead of opening a new TLS connection each time.
-_session = requests.Session()
+_session = NetworkSession()
 
 _DEBRIDLINK_CLIENT_ERRORS = (
     AttributeError,
@@ -437,7 +437,6 @@ class DebridLinkClient(DownloadClient):
                 url,
                 headers=self._auth_headers(),
                 timeout=timeout,
-                verify=get_ssl_verify(url),
                 **kwargs,
             )
         except requests.exceptions.RequestException as e:

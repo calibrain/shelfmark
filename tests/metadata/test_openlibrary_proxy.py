@@ -19,18 +19,17 @@ class _FakeResponse:
         return self._payload
 
 
-def test_openlibrary_search_passes_configured_http_proxy(monkeypatch):
+def test_openlibrary_search_passes_configured_http_proxy(monkeypatch, sent_requests):
     """Universal Open Library search must send traffic through get_proxies()."""
     expected = {
         "http": "http://10.0.80.3:8118",
         "https": "http://10.0.80.3:8118",
     }
     monkeypatch.setattr(
-        openlibrary_module,
-        "get_proxies",
+        "shelfmark.download.network.get_proxies",
         lambda url: expected if "openlibrary.org" in url else {},
     )
-    monkeypatch.setattr(openlibrary_module, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: True)
     monkeypatch.setattr(openlibrary_module._rate_limiter, "wait_if_needed", lambda: None)
 
     from shelfmark.core.config import config as app_config
@@ -42,43 +41,26 @@ def test_openlibrary_search_passes_configured_http_proxy(monkeypatch):
     )
 
     provider = OpenLibraryProvider()
-    captured: dict = {}
-
-    def fake_get(url, **kwargs):
-        captured["url"] = url
-        captured.update(kwargs)
-        return _FakeResponse({"docs": []})
-
-    monkeypatch.setattr(provider.session, "get", fake_get)
+    sent_requests.respond = _FakeResponse({"docs": []})
 
     provider.search(MetadataSearchOptions(query="Mistborn", search_type=SearchType.GENERAL))
 
-    assert captured.get("proxies") == expected
+    assert sent_requests.calls
+    assert all(call["proxies"] == expected for call in sent_requests.calls)
 
 
-def test_openlibrary_connection_test_passes_configured_http_proxy(monkeypatch):
+def test_openlibrary_connection_test_passes_configured_http_proxy(monkeypatch, sent_requests):
     """Settings connection test for Open Library must also use the proxy."""
     expected = {
         "http": "http://proxy.local:8118",
         "https": "http://proxy.local:8118",
     }
-    monkeypatch.setattr(openlibrary_module, "get_proxies", lambda _url: expected)
-    monkeypatch.setattr(openlibrary_module, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: expected)
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: True)
 
-    captured: dict = {}
-
-    def fake_get(url, **kwargs):
-        captured["url"] = url
-        captured.update(kwargs)
-        return _FakeResponse({"docs": [{"title": "ok"}]})
-
-    monkeypatch.setattr(
-        openlibrary_module.requests.Session,
-        "get",
-        lambda self, url, **kwargs: fake_get(url, **kwargs),
-    )
+    sent_requests.respond = _FakeResponse({"docs": [{"title": "ok"}]})
 
     result = openlibrary_module._test_openlibrary_connection()
 
     assert result["success"] is True
-    assert captured.get("proxies") == expected
+    assert sent_requests.last()["proxies"] == expected

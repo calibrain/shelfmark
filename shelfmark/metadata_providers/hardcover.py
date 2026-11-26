@@ -30,7 +30,7 @@ from shelfmark.core.settings_registry import (
     register_settings,
 )
 from shelfmark.core.text_match import strip_alternate_title
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import NetworkSession
 from shelfmark.metadata_providers import (
     BookMetadata,
     DisplayField,
@@ -1147,7 +1147,7 @@ class HardcoverProvider(MetadataProvider):
         """Initialize provider with optional API key (falls back to config)."""
         raw_key = api_key or app_config.get("HARDCOVER_API_KEY", "")
         self.api_key = _normalize_hardcover_api_key(raw_key)
-        self.session = requests.Session()
+        self.session = NetworkSession()
         self.session.mount(HARDCOVER_API_URL, HTTPAdapter(max_retries=HARDCOVER_CONNECT_RETRY))
         if self.api_key:
             self.session.headers.update(
@@ -2791,7 +2791,6 @@ class HardcoverProvider(MetadataProvider):
                 HARDCOVER_API_URL,
                 json=payload,
                 timeout=15,
-                verify=get_ssl_verify(HARDCOVER_API_URL),
             )
             if response.status_code != HTTPStatus.TOO_MANY_REQUESTS:
                 return response

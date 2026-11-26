@@ -11,8 +11,6 @@ from __future__ import annotations
 import re
 from typing import TYPE_CHECKING, Any
 
-import requests
-
 from shelfmark.core.config import config as app_config
 from shelfmark.core.library_providers import LibraryEntry, setting
 from shelfmark.core.text_match import isbn_variants, tokens
@@ -20,6 +18,8 @@ from shelfmark.core.utils import normalize_http_url
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+    import requests
 
 _REQUEST_TIMEOUT = 15
 _ITEMS_PAGE_LIMIT = 500
@@ -38,13 +38,16 @@ def _config(overrides: Mapping[str, Any] | None = None) -> tuple[bool, str, str,
 
 
 def _session(url: str, token: str) -> requests.Session:
-    from shelfmark.download.network import get_ssl_verify
+    """A session for one Audiobookshelf server, signed in with its API token.
 
-    session = requests.Session()
+    The proxy and certificate rules come from ``NetworkSession`` per request, so a LAN
+    server goes direct and ``CERTIFICATE_VALIDATION=disabled_local`` covers it.
+    """
+    from shelfmark.download.network import NetworkSession
+
+    del url  # the rules read each request's own URL
+    session = NetworkSession()
     session.headers.update({"Authorization": f"Bearer {token}"})
-    # The URL lets CERTIFICATE_VALIDATION=disabled_local skip verification for a LAN
-    # server, which is where Audiobookshelf usually lives.
-    session.verify = get_ssl_verify(url)
     return session
 
 

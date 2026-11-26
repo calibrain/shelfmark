@@ -9,6 +9,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
+from shelfmark.download.network import get_session as _shared_session
+
 
 class TestSABnzbdClientIsConfigured:
     """Tests for SABnzbdClient.is_configured()."""
@@ -104,8 +106,9 @@ class TestSABnzbdClientTestConnection:
         mock_response = MagicMock()
         mock_response.json.return_value = {"version": "4.2.1"}
 
-        with patch(
-            "shelfmark.download.clients.sabnzbd.requests.get",
+        with patch.object(
+            _shared_session(),
+            "get",
             return_value=mock_response,
         ):
             from shelfmark.download.clients.sabnzbd import (
@@ -132,8 +135,9 @@ class TestSABnzbdClientTestConnection:
             lambda key, default="": config_values.get(key, default),
         )
 
-        with patch(
-            "shelfmark.download.clients.sabnzbd.requests.get",
+        with patch.object(
+            _shared_session(),
+            "get",
             side_effect=requests.exceptions.ConnectionError("Connection refused"),
         ):
             from shelfmark.download.clients.sabnzbd import (
@@ -527,12 +531,14 @@ class TestSABnzbdClientAddDownload:
         mock_post_response.json.return_value = {"status": True, "nzo_ids": ["SABnzbd_nzo_xyz789"]}
 
         with (
-            patch(
-                "shelfmark.download.clients.sabnzbd.requests.get",
+            patch.object(
+                _shared_session(),
+                "get",
                 return_value=mock_get_response,
             ),
-            patch(
-                "shelfmark.download.clients.sabnzbd.requests.post",
+            patch.object(
+                _shared_session(),
+                "post",
                 return_value=mock_post_response,
             ) as mock_post,
         ):
@@ -640,8 +646,9 @@ class TestSABnzbdClientAddDownload:
         mock_response = MagicMock()
         mock_response.json.return_value = {"status": True, "nzo_ids": ["SABnzbd_nzo_addurl"]}
 
-        with patch(
-            "shelfmark.download.clients.sabnzbd.requests.get",
+        with patch.object(
+            _shared_session(),
+            "get",
             return_value=mock_response,
         ) as mock_get:
             from shelfmark.download.clients.sabnzbd import SABnzbdClient
@@ -758,8 +765,9 @@ class TestFetchNzbContentRedirects:
             status_code=302, headers={"Location": "https://indexer.example/get.nzb"}
         )
         final = MagicMock(status_code=200, content=b"nzbdata")
-        with patch(
-            "shelfmark.download.clients.sabnzbd.requests.get",
+        with patch.object(
+            _shared_session(),
+            "get",
             MagicMock(side_effect=[redirect, final]),
         ) as mock_get:
             assert client._fetch_nzb_content("https://prowlarr.example/download?id=1") == b"nzbdata"
@@ -772,8 +780,9 @@ class TestFetchNzbContentRedirects:
         client = self._client(monkeypatch)
         redirect = MagicMock(status_code=302, headers={"Location": "/download2?id=1"})
         final = MagicMock(status_code=200, content=b"nzbdata")
-        with patch(
-            "shelfmark.download.clients.sabnzbd.requests.get",
+        with patch.object(
+            _shared_session(),
+            "get",
             MagicMock(side_effect=[redirect, final]),
         ) as mock_get:
             assert client._fetch_nzb_content("https://prowlarr.example/download?id=1") == b"nzbdata"

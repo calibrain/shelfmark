@@ -15,6 +15,15 @@ def string_to_bool(s: str) -> bool:
     return s.lower() in ["true", "yes", "1", "y"]
 
 
+def _starts_tunnel(name: str) -> bool:
+    """Whether entrypoint.sh starts this egress mode: only for the exact value ``true``.
+
+    A wider reading would call Tor or WireGuard on while nothing routes the traffic, and
+    the proxy settings are not used under a tunnel.
+    """
+    return os.getenv(name) == "true"
+
+
 def _read_advanced_config(key: str) -> object | None:
     """Read a key from the advanced settings file (import-time safe)."""
     config_dir = Path(os.getenv("CONFIG_DIR", "/config"))
@@ -218,7 +227,8 @@ RELEASE_VERSION = os.getenv("RELEASE_VERSION", "N/A")
 
 DOCKERMODE = string_to_bool(os.getenv("DOCKERMODE", "false"))
 TOR_VARIANT_AVAILABLE = shutil.which("tor") is not None
-USING_TOR = string_to_bool(os.getenv("USING_TOR", "false"))
+USING_TOR = _starts_tunnel("USING_TOR")
+USING_WIREGUARD = _starts_tunnel("USING_WIREGUARD")
 
 
 # =============================================================================

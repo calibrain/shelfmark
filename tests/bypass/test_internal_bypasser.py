@@ -5,6 +5,8 @@ from pathlib import Path
 
 import pytest
 
+from shelfmark.download.network import get_session as _shared_session
+
 
 def test_diamwall_is_detected_until_the_challenge_clears():
     import shelfmark.bypass.internal_bypasser as internal_bypasser
@@ -417,7 +419,7 @@ def test_try_with_cached_cookies_returns_none_on_request_exception(monkeypatch):
     def _raise(*_args, **_kwargs):
         raise requests.RequestException("boom")
 
-    monkeypatch.setattr(internal_bypasser.requests, "get", _raise)
+    monkeypatch.setattr(_shared_session(), "get", _raise)
 
     assert internal_bypasser._try_with_cached_cookies("https://example.com", "example.com") is None
 

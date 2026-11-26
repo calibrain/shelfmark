@@ -30,7 +30,7 @@ from shelfmark.download.clients.torrent_utils import (
     resolve_debrid_upload,
 )
 from shelfmark.download.http import download_url
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import NetworkSession
 
 logger = setup_logger(__name__)
 
@@ -38,7 +38,7 @@ _API_BASE = "https://api.real-debrid.com/rest/1.0"
 
 # One session for every client instance, so the status poll every couple of seconds
 # reuses a keep-alive connection instead of opening a new TLS connection each time.
-_session = requests.Session()
+_session = NetworkSession()
 
 _REALDEBRID_CLIENT_ERRORS = (
     AttributeError,
@@ -159,7 +159,6 @@ class RealDebridClient(DownloadClient):
                 url,
                 headers=self._auth_headers(),
                 timeout=_STATUS_TIMEOUT,
-                verify=get_ssl_verify(url),
             )
             resp.raise_for_status()
             user = resp.json()
@@ -210,7 +209,6 @@ class RealDebridClient(DownloadClient):
                 headers=self._auth_headers(),
                 data={"files": "all"},
                 timeout=_API_TIMEOUT,
-                verify=get_ssl_verify(select_url),
             )
             sel_resp.raise_for_status()
 
@@ -248,7 +246,6 @@ class RealDebridClient(DownloadClient):
                 headers=self._auth_headers(),
                 data={"magnet": upload.magnet_url},
                 timeout=_API_TIMEOUT,
-                verify=get_ssl_verify(add_url),
             )
         else:
             # addTorrent is a PUT that takes the raw file as the request body,
@@ -262,7 +259,6 @@ class RealDebridClient(DownloadClient):
                 },
                 data=upload.torrent_data,
                 timeout=_API_TIMEOUT,
-                verify=get_ssl_verify(add_url),
             )
 
         resp.raise_for_status()
@@ -302,7 +298,6 @@ class RealDebridClient(DownloadClient):
                 info_url,
                 headers=self._auth_headers(),
                 timeout=_STATUS_TIMEOUT,
-                verify=get_ssl_verify(info_url),
             )
             resp.raise_for_status()
             info = resp.json()
@@ -328,7 +323,6 @@ class RealDebridClient(DownloadClient):
                 url,
                 headers=self._auth_headers(),
                 timeout=_STATUS_TIMEOUT,
-                verify=get_ssl_verify(url),
             )
         except _REALDEBRID_CLIENT_ERRORS as e:
             logger.warning("Failed to delete torrent from Real-Debrid: %s", e)
@@ -486,7 +480,6 @@ class RealDebridClient(DownloadClient):
                     headers=self._auth_headers(),
                     data={"link": link},
                     timeout=_API_TIMEOUT,
-                    verify=get_ssl_verify(unrestrict_url),
                 )
                 unl_resp.raise_for_status()
                 unl_data = unl_resp.json()

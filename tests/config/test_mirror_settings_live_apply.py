@@ -11,7 +11,7 @@ def test_update_settings_mirrors_applies_aa_changes_live(monkeypatch):
     monkeypatch.setattr(
         "shelfmark.core.settings_registry.save_config_file", lambda _tab, _values: True
     )
-    monkeypatch.setattr(config_obj, "refresh", lambda: None)
+    monkeypatch.setattr(config_obj, "refresh", lambda **_kwargs: None)
 
     called: dict[str, object] = {}
 
@@ -37,7 +37,7 @@ def test_update_settings_mirrors_logs_live_apply_failure(monkeypatch):
     monkeypatch.setattr(
         "shelfmark.core.settings_registry.save_config_file", lambda _tab, _values: True
     )
-    monkeypatch.setattr(config_obj, "refresh", lambda: None)
+    monkeypatch.setattr(config_obj, "refresh", lambda **_kwargs: None)
 
     import shelfmark.download.network as network
 

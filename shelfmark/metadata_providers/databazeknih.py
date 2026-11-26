@@ -31,7 +31,7 @@ from shelfmark.core.settings_registry import (
     SettingsField,
     register_settings,
 )
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import NetworkSession
 from shelfmark.metadata_providers import (
     BookMetadata,
     DisplayField,
@@ -192,7 +192,7 @@ class DatabazeKnihProvider(MetadataProvider):
 
     def __init__(self) -> None:
         """Initialize provider."""
-        self.session = requests.Session()
+        self.session = NetworkSession()
         self.session.headers.update(REQUEST_HEADERS)
 
     def is_available(self) -> bool:
@@ -200,9 +200,10 @@ class DatabazeKnihProvider(MetadataProvider):
         return True
 
     def _fetch(self, url: str, timeout: int = 15) -> str | None:
+        """GET a page from databazeknih.cz after the rate limit; its HTML, or None on any failure."""
         _rate_limiter.wait_if_needed()
         try:
-            response = self.session.get(url, timeout=timeout, verify=get_ssl_verify(DBK_BASE_URL))
+            response = self.session.get(url, timeout=timeout)
             response.raise_for_status()
         except requests.Timeout:
             logger.warning("Databáze knih request timed out: %s", url)
@@ -588,7 +589,6 @@ def _test_databazeknih_connection() -> dict[str, Any]:
         response = provider.session.get(
             DBK_SEARCH_URL + urlencode({"q": "test"}),
             timeout=10,
-            verify=get_ssl_verify(DBK_BASE_URL),
         )
         response.raise_for_status()
     except requests.Timeout:

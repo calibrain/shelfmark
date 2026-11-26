@@ -13,7 +13,7 @@ import requests
 
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import coerce_int
-from shelfmark.download.network import get_ssl_verify, hostname_resolves_publicly
+from shelfmark.download.network import get_session, hostname_resolves_publicly
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -533,6 +533,8 @@ class ImageCacheService:
         if not hostname:
             return None
 
+        # With a proxy set, the proxy resolves the name again when it connects, so this
+        # check only holds as far as the proxy's DNS agrees with Shelfmark's (#1687).
         if not hostname_resolves_publicly(hostname, use_custom_dns=True):
             return None
 
@@ -551,12 +553,11 @@ class ImageCacheService:
             return None
 
         for _ in range(MAX_REDIRECTS + 1):
-            response = requests.get(
+            response = get_session().get(
                 current_url,
                 timeout=(5, 10),
                 headers=FETCH_HEADERS,
                 stream=True,
-                verify=get_ssl_verify(current_url),
                 allow_redirects=False,
             )
 
@@ -589,6 +590,7 @@ class ImageCacheService:
 
         """
         cached_data: tuple[bytes, str] | None = None
+        response: requests.Response | None = None
         try:
             response = self._fetch_safe_response(url)
             if response is None:
@@ -637,6 +639,11 @@ class ImageCacheService:
             return None
         else:
             return cached_data
+        finally:
+            # The body is streamed; every exit, including the early returns above, must
+            # give the pooled connection back instead of waiting for garbage collection.
+            if response is not None:
+                response.close()
 
 
 # Singleton instance (initialized lazily when config is available)

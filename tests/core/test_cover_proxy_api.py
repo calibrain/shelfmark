@@ -35,6 +35,9 @@ class _FakeResponse:
     def iter_content(self, chunk_size: int = 8192):
         yield self._data
 
+    def close(self) -> None:
+        return None
+
 
 def _encode(url: str) -> str:
     return base64.urlsafe_b64encode(url.encode()).decode()

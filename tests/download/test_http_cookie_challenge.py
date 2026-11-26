@@ -2,6 +2,8 @@
 
 import requests
 
+from shelfmark.download.network import get_session as _shared_session
+
 
 class _FakeResponse:
     """Minimal stand-in for requests.Response covering what html_get_page touches."""
@@ -30,8 +32,8 @@ class _FakeResponse:
 
 def _neutralize_network(monkeypatch, http):
     monkeypatch.setattr(http, "_apply_cf_bypass", lambda _url, _headers: {})
-    monkeypatch.setattr(http, "get_proxies", lambda _url: {})
-    monkeypatch.setattr(http, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: True)
     monkeypatch.setattr(http.network, "should_rotate_dns_for_url", lambda _url: False)
     monkeypatch.setattr(http.time, "sleep", lambda _seconds: None)
 
@@ -50,7 +52,7 @@ def test_html_get_page_echoes_503_cookie(monkeypatch):
             return _FakeResponse(503, cookies={"zlib_sid": "s3cr3t"})
         return _FakeResponse(200, text="<html>real page</html>")
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
 
     html = http.html_get_page("https://z-lib.fm/md5/abc", retry=3, success_delay=0)
 
@@ -72,7 +74,7 @@ def test_html_get_page_stops_echoing_when_cookie_is_reissued(monkeypatch):
         sent_cookies.append(dict(kwargs["cookies"]))
         return _FakeResponse(503, cookies={"zlib_sid": "same"})
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
 
     html = http.html_get_page("https://z-lib.fm/md5/abc", retry=1, success_delay=0)
 
@@ -94,7 +96,7 @@ def test_html_get_page_leaves_cookieless_503_on_the_retry_path(monkeypatch):
         attempts.append(dict(kwargs["cookies"]))
         return _FakeResponse(503)
 
-    monkeypatch.setattr(http.requests, "get", fake_get)
+    monkeypatch.setattr(_shared_session(), "get", fake_get)
 
     html = http.html_get_page("https://z-lib.fm/md5/abc", retry=2, success_delay=0)
 

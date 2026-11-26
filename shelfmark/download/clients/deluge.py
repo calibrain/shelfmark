@@ -35,7 +35,7 @@ from shelfmark.download.clients._coercion import (
 from shelfmark.download.clients.torrent_utils import (
     extract_torrent_info,
 )
-from shelfmark.download.network import get_ssl_verify
+from shelfmark.download.network import NetworkSession
 
 logger = setup_logger(__name__)
 
@@ -124,7 +124,7 @@ class DelugeClient(DownloadClient):
 
         self._rpc_url = f"{scheme}://{host}:{port}{base_path}/json"
         self._password = password
-        self._session = requests.Session()
+        self._session = NetworkSession()
 
         self._authenticated = False
         self._connected = False
@@ -141,6 +141,7 @@ class DelugeClient(DownloadClient):
         return self._rpc_id
 
     def _rpc_call(self, method: str, *params: object, timeout: int = 15) -> Any:
+        """Call one Deluge Web JSON-RPC method and return its result, raising DelugeRpcError."""
         payload = {
             "id": self._next_rpc_id(),
             "method": method,
@@ -151,7 +152,6 @@ class DelugeClient(DownloadClient):
             self._rpc_url,
             json=payload,
             timeout=timeout,
-            verify=get_ssl_verify(self._rpc_url),
         )
         response.raise_for_status()
 

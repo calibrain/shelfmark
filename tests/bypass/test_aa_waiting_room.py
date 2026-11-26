@@ -11,6 +11,7 @@ import requests
 import shelfmark.bypass.internal_bypasser as b
 from shelfmark.bypass import BypassCancelledError
 from shelfmark.bypass.waiting_room import WaitingRoomTimeoutError, is_aa_waiting_room
+from shelfmark.download.network import get_session as _shared_session
 
 URL = "https://annas-archive.gl/slow_download/abc/0/0"
 WAIT = '<html><span class="js-partner-countdown">25</span></html>'
@@ -36,7 +37,7 @@ def cached_http(monkeypatch):
     cleared = Mock()
     monkeypatch.setattr(b, "get_cf_cookies_for_domain", lambda _: {"cf_clearance": "valid"})
     monkeypatch.setattr(b, "clear_cf_cookies", cleared)
-    monkeypatch.setattr(b.requests, "get", Mock(return_value=response))
+    monkeypatch.setattr(_shared_session(), "get", Mock(return_value=response))
     monkeypatch.setattr(b.network, "host_cooldown_remaining", lambda _: 0)
     return response, cleared
 
@@ -138,13 +139,14 @@ def test_non_waiting_page_returns_without_polling(html):
 def test_http_200_timer_handoff_honors_browser_settings(
     monkeypatch, enabled, external, fallback, handoff
 ):
+    """A waiting-room page served with 200 goes to the browser only when the bypass settings allow it."""
     import shelfmark.download.http as http
 
     response = requests.Response()
     response.status_code = 200
     response.url = URL
     response._content = WAIT.encode()
-    monkeypatch.setattr(http.requests, "get", lambda *a, **kw: response)
+    monkeypatch.setattr(_shared_session(), "get", lambda *a, **kw: response)
     monkeypatch.setattr(http, "_apply_cf_bypass", lambda *a: {})
     monkeypatch.setattr(http, "_is_cf_bypass_enabled", lambda: enabled)
     monkeypatch.setattr(http, "_is_using_external_bypasser", lambda: external)

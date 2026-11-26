@@ -1,11 +1,15 @@
 """DNS rotation, mirror selection, and network utilities."""
 
 import fnmatch
+import http.cookiejar
 import ipaddress
+import os
 import socket
+import threading
 import time
 import urllib.parse
 import urllib.request
+from contextvars import ContextVar
 from datetime import UTC, datetime, timedelta
 from http import HTTPStatus
 from socket import AddressFamily, SocketKind
@@ -16,6 +20,7 @@ import httpx
 import requests
 from dns.exception import DNSException
 
+from shelfmark.config import env
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import coerce_bool, normalize_optional_text
@@ -34,21 +39,22 @@ def _get_no_proxy_patterns() -> list[str]:
 
 
 def should_bypass_proxy(url: str) -> bool:
-    """Check if a URL should bypass the proxy based on NO_PROXY patterns.
+    """Whether a request to ``url`` goes direct instead of through the configured proxy.
 
-    Supports:
-    - Exact hostname match: localhost, myhost.local
-    - Wildcard prefix: *.local matches foo.local
-    - Wildcard suffix: 10.* matches 10.1.2.3
+    Two reasons, either is enough:
+
+    - The host is local by ``_is_local_address``: loopback or private IPs, single-label
+      names such as Docker service names, and internal TLDs (``.local``, ``.lan`` ...). A
+      proxy chosen for outbound privacy cannot reach these, so they never go through it.
+    - The host matches a No Proxy pattern: an exact name (``myhost.example.com``), a
+      wildcard prefix (``*.example.com``) or a wildcard suffix (``10.*``). This is for
+      hosts that are local but don't look it, such as a LAN service under a public name.
+
+    The decision is made from the name alone; nothing is resolved.
     """
     if not url:
         return False
 
-    patterns = _get_no_proxy_patterns()
-    if not patterns:
-        return False
-
-    # Extract hostname from URL
     try:
         parsed = urllib.parse.urlparse(url)
         hostname = (parsed.hostname or "").lower()
@@ -59,17 +65,45 @@ def should_bypass_proxy(url: str) -> bool:
     if not hostname:
         return False
 
+    if _is_local_address(hostname):
+        return True
+
+    patterns = _get_no_proxy_patterns()
     return any(fnmatch.fnmatch(hostname, pattern) for pattern in patterns)
+
+
+def tunnel_egress() -> str:
+    """The egress mode that routes all traffic itself, or "" when there is none.
+
+    Tor and WireGuard send every outbound connection through the tunnel with iptables and
+    leave the private ranges off it. A proxy from Settings would undo that: one on the LAN
+    would carry all traffic around the tunnel, and a public one would put its own address
+    in front. So with either mode on, the proxy settings are not used.
+
+    Both come from the environment, which is what starts them. The saved ``USING_TOR``
+    setting stays true after the variable is removed, so it is not read here.
+    """
+    if env.USING_TOR:
+        return "Tor"
+    if env.USING_WIREGUARD:
+        return "WireGuard"
+    return ""
 
 
 def get_proxies(url: str = "") -> dict:
     """Get current proxy configuration from config singleton.
+
+    Empty when Tor or WireGuard routes the traffic (``tunnel_egress``), or when ``url``
+    matches the local rule or a No Proxy pattern.
 
     Args:
         url: Optional URL to check against NO_PROXY patterns.
              If provided and matches a pattern, returns empty dict.
 
     """
+    if tunnel_egress():
+        return {}
+
     # Check NO_PROXY bypass first
     if url and should_bypass_proxy(url):
         return {}
@@ -118,6 +152,178 @@ def get_ssl_verify(url: str = "") -> bool:
             pass
 
     return True
+
+
+def _goes_direct(url: str) -> bool:
+    """Whether no proxy of any kind, Settings or environment, may carry a request to ``url``.
+
+    True under Tor or WireGuard, whose iptables rules route the traffic themselves, and for
+    a local or No Proxy host.
+    """
+    return bool(tunnel_egress()) or should_bypass_proxy(url)
+
+
+def _direct_if_bypassed(url: str) -> dict[str, None] | dict[str, str]:
+    """Proxies for a request ``get_proxies`` sent nowhere: direct when ``_goes_direct``.
+
+    An empty mapping lets requests fill in ``HTTP_PROXY``/``HTTPS_PROXY``/``ALL_PROXY`` from
+    the environment, which would send a tunnelled, local or No Proxy request to an
+    environment proxy. ``None`` for each scheme keeps requests from adding one; it drops the
+    ``None`` entries once merged, so the request goes direct. With no proxy configured in
+    Settings and nothing forcing it direct, the mapping stays empty and an environment proxy
+    still applies.
+    """
+    if _goes_direct(url):
+        return {"http": None, "https": None, "all": None}
+    return {}
+
+
+# Whether the request in this context was given explicit proxies and an explicit verify, as
+# (proxies, verify). Redirects are followed in the context that made the request, so
+# rebuild_proxies() and send() can read it. A ContextVar keeps one value per thread and per
+# greenlet, whether or not gevent has patched threading yet (with gunicorn's --preload this
+# module is imported first), so overlapping requests cannot see each other's flags.
+# None means no request() is in progress, so a caller using send() directly is not mistaken
+# for a redirect hop.
+_redirect_state: ContextVar[tuple[bool, bool] | None] = ContextVar(
+    "shelfmark_redirect_state", default=None
+)
+
+
+def _normalized_url(url: str) -> str:
+    """``url`` as requests will send it, so the rules see the host that is really contacted.
+
+    requests decodes and normalizes the host when it prepares a request, so ``api%2ehardcover%2eapp``
+    reaches ``api.hardcover.app``. Choosing the proxy from the raw text would read it as a
+    single-label name and send the request direct. A URL requests cannot prepare is kept as is.
+    """
+    try:
+        return requests.Request("GET", url).prepare().url or url
+    except requests.exceptions.RequestException, ValueError:
+        return url
+
+
+class NetworkRules:
+    """Mixin that applies the Settings → Network proxy and TLS rules to each request.
+
+    Each request gets ``proxies=get_proxies(url)`` and ``verify=get_ssl_verify(url)`` for
+    its own URL, read when it is sent, so a settings change applies to the next request
+    without a restart and a local host goes direct. A caller that passes ``proxies`` or
+    ``verify`` itself keeps its value. Mixed into ``NetworkSession`` and into any session
+    class a library builds for itself, such as the OIDC client's.
+    """
+
+    def request(self, method: Any, url: Any, *args: Any, **kwargs: Any) -> Any:
+        """Send a request with the proxy and ``verify`` for its URL unless the caller set them."""
+        target = _normalized_url(url.decode() if isinstance(url, bytes) else str(url))
+        explicit = kwargs.get("proxies") is not None
+        explicit_verify = kwargs.get("verify") is not None
+        if not explicit:
+            kwargs["proxies"] = get_proxies(target) or _direct_if_bypassed(target)
+        if not explicit_verify:
+            kwargs["verify"] = get_ssl_verify(target)
+        token = _redirect_state.set((explicit, explicit_verify))
+        try:
+            return super().request(method, url, *args, **kwargs)  # type: ignore[misc]
+        finally:
+            _redirect_state.reset(token)
+
+    def send(self, request: Any, **kwargs: Any) -> Any:
+        """Send one hop, with ``verify`` chosen for that hop's own URL.
+
+        requests reuses the first URL's ``verify`` for every redirect, so with
+        ``disabled_local`` a local link that redirected to a public host was fetched without
+        checking its certificate. Each hop now gets ``get_ssl_verify()`` for its URL, keeping
+        a CA bundle from the environment where verification is on. A ``verify`` or
+        ``proxies`` the caller passed explicitly is kept, on a direct call too.
+        """
+        state = _redirect_state.get()
+        token = None
+        if state is None:
+            # None means unspecified here as in request(). Passed on, verify would read as
+            # "do not verify", and a proxies key, even None, stops requests reading the
+            # container's proxy.
+            for name in ("verify", "proxies"):
+                if kwargs.get(name) is None:
+                    kwargs.pop(name, None)
+            # Called directly, not from request(). What the caller passed is decided here
+            # once and holds for every redirect this call follows, and a proxy it left out
+            # is chosen from the URL as request() would.
+            state = (kwargs.get("proxies") is not None, kwargs.get("verify") is not None)
+            if not state[0]:
+                target = str(request.url)
+                # Left out when empty, so requests still reads a proxy the container set.
+                if chosen := get_proxies(target) or _direct_if_bypassed(target):
+                    kwargs["proxies"] = chosen
+            token = _redirect_state.set(state)
+        try:
+            if not state[1]:
+                url = str(request.url)
+                if get_ssl_verify(url):
+                    if kwargs.get("verify") in (None, False):
+                        kwargs["verify"] = self.merge_environment_settings(  # type: ignore[attr-defined]
+                            url, {}, None, True, None
+                        )["verify"]
+                else:
+                    kwargs["verify"] = False
+            return super().send(request, **kwargs)  # type: ignore[misc]
+        finally:
+            if token is not None:
+                _redirect_state.reset(token)
+
+    def rebuild_proxies(self, prepared_request: Any, proxies: Any) -> Any:
+        """Choose the proxy for a redirect hop from the hop's own URL, as for any request.
+
+        requests keeps the first URL's proxies for every redirect and only re-checks the
+        environment's NO_PROXY, so a LAN link that redirects to the internet (a Prowlarr
+        download with Redirect on) went out direct with a proxy configured. Proxies a
+        caller passed explicitly are kept. ``send()`` does the same for ``verify``.
+        """
+        state = _redirect_state.get()
+        if state is not None and state[0]:
+            return super().rebuild_proxies(prepared_request, proxies)  # type: ignore[misc]
+        url = str(prepared_request.url)
+        configured = get_proxies(url)
+        if configured:
+            return super().rebuild_proxies(prepared_request, configured)  # type: ignore[misc]
+        if _goes_direct(url):
+            prepared_request.headers.pop("Proxy-Authorization", None)
+            return {}
+        return super().rebuild_proxies(prepared_request, {})  # type: ignore[misc]
+
+
+class NetworkSession(NetworkRules, requests.Session):
+    """The ``requests.Session`` every outbound HTTP call in Shelfmark goes through.
+
+    ``tests/download/test_outbound_http_guard.py`` fails on a plain ``requests`` call or
+    session anywhere else.
+    """
+
+
+class _NoCookies(http.cookiejar.DefaultCookiePolicy):
+    """Refuse every cookie, so the shared session behaves like the one-off calls it replaced."""
+
+    def set_ok(self, cookie: http.cookiejar.Cookie, request: Any) -> bool:
+        """Never store a cookie."""
+        return False
+
+
+_shared_session: NetworkSession | None = None
+
+
+def get_session() -> NetworkSession:
+    """The shared session for one-off requests that keep no state of their own.
+
+    It stores no cookies, so a request made through it carries nothing from an earlier
+    one. A client that keeps headers, auth or cookies across its calls creates its own
+    ``NetworkSession`` instead.
+    """
+    global _shared_session
+    if _shared_session is None:
+        session = NetworkSession()
+        session.cookies.set_policy(_NoCookies())
+        _shared_session = session
+    return _shared_session
 
 
 _ssl_warnings_suppressed = False
@@ -513,8 +719,194 @@ def _decode_port(port: str | bytes | int | None) -> int:
     return int(port)
 
 
+_INTERNAL_TLDS = (".local", ".internal", ".lan", ".home", ".docker", ".localdomain")
+
+# The local-address rule as standard NO_PROXY entries, for code that reads the environment
+# instead of calling get_proxies(). Single-label names (Docker services) have no NO_PROXY
+# form, so this covers them only through No Proxy.
+_LOCAL_NO_PROXY = (
+    "localhost",
+    "127.0.0.0/8",
+    "10.0.0.0/8",
+    "172.16.0.0/12",
+    "192.168.0.0/16",
+    "169.254.0.0/16",
+    "::1",
+    *_INTERNAL_TLDS,
+)
+
+
+def _hostname_of(value: object) -> str:
+    """The host in a URL or ``host:port`` setting value, lower-cased, or empty."""
+    text = str(value or "").strip()
+    if not text:
+        return ""
+    try:
+        parsed = urllib.parse.urlsplit(text if "://" in text else f"//{text}")
+        return (parsed.hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+def _port_of(value: object) -> int | None:
+    """The explicit port in a URL or ``host:port`` setting value, or None."""
+    text = str(value or "").strip()
+    try:
+        return urllib.parse.urlsplit(text if "://" in text else f"//{text}").port
+    except ValueError:
+        return None
+
+
+def _configured_local_hostnames() -> list[str]:
+    """Single-label local hosts named in a service setting (``*_URL``, ``*_URLS``, ``*_HOST``).
+
+    These are Docker service names such as ``qbittorrent``. The local rule covers them in
+    ``get_proxies()``, but ``NO_PROXY`` has no pattern for "any single-label name", so a
+    library reading the environment only skips the proxy for names listed by hand.
+
+    requests matches an entry as a domain suffix, so a bare ``app`` would also bypass the
+    proxy for ``notify.example.app`` on any port. ``app:8080`` narrows that to hosts ending
+    in ``.app`` on port 8080, which is as close to exact as NO_PROXY gets, so the port is
+    kept whenever the setting has one.
+    """
+    from shelfmark.core.settings_registry import get_settings_field_map
+
+    names: list[str] = []
+    for key in get_settings_field_map():
+        if not key.endswith(("_URL", "_URLS", "_HOST")):
+            continue
+        value = app_config.get(key, "")
+        for item in value if isinstance(value, list) else [value]:
+            host = _hostname_of(item)
+            if host and "." not in host and _is_local_address(host):
+                port = _port_of(item)
+                names.append(f"{host}:{port}" if port else host)
+    return names
+
+
+def no_proxy_for_environment() -> str:
+    """A ``NO_PROXY`` value carrying the local-address rule and the No Proxy setting.
+
+    requests matches ``NO_PROXY`` entries as IPv4 networks or as name suffixes, so the
+    private ranges and internal TLDs come first, then the configured services' Docker
+    names, then each No Proxy pattern, with a leading ``*.`` written as ``.`` because
+    that is the form requests understands. A lone ``*`` means every host and requests only
+    honours it as the whole value, so it is returned by itself.
+    """
+    patterns = [f".{p[2:]}" if p.startswith("*.") else p for p in _get_no_proxy_patterns()]
+    if "*" in patterns:
+        return "*"
+    return ",".join(dict.fromkeys([*_LOCAL_NO_PROXY, *_configured_local_hostnames(), *patterns]))
+
+
+_PROXY_VARIABLES = (
+    "HTTP_PROXY",
+    "http_proxy",
+    "HTTPS_PROXY",
+    "https_proxy",
+    "NO_PROXY",
+    "no_proxy",
+)
+_proxy_env_lock = threading.Lock()
+# The NO_PROXY / no_proxy values the deployment gave, kept because applying a proxy writes
+# its own entries into the same variables and turning the proxy off must put these back.
+_deployment_no_proxy: dict[str, str] = {}
+
+
+def proxy_environment() -> dict[str, str]:
+    """The proxy variables Settings → Network calls for, upper- and lower-case.
+
+    Empty when no proxy is configured. ``NO_PROXY`` comes with the proxies, from
+    ``no_proxy_for_environment()``. Under Tor or WireGuard (``tunnel_egress``) no proxy is
+    written and ``NO_PROXY`` is ``*``, so a library that reads the environment goes direct
+    and the tunnel carries the traffic, as it does for ``NetworkSession``.
+    """
+    if tunnel_egress():
+        return {"NO_PROXY": "*", "no_proxy": "*"}
+    proxies = get_proxies("")
+    env: dict[str, str] = {}
+    for scheme in ("http", "https"):
+        value = str(proxies.get(scheme) or "").strip()
+        if value:
+            env[f"{scheme.upper()}_PROXY"] = value
+            env[f"{scheme}_proxy"] = value
+    if env:
+        no_proxy = no_proxy_for_environment()
+        env["NO_PROXY"] = no_proxy
+        env["no_proxy"] = no_proxy
+    return env
+
+
+def apply_proxy_environment() -> None:
+    """Make the process's proxy variables match Settings → Network.
+
+    Some libraries (Apprise, qbittorrent-api) read ``HTTP_PROXY``/``HTTPS_PROXY``/
+    ``NO_PROXY`` instead of calling ``get_proxies()``. Called at startup and after every
+    settings save. A variable Shelfmark set is replaced or removed to follow the settings;
+    one that was already in the environment when Shelfmark found it, such as a proxy given
+    in the container's own environment, is left alone, except that under a tunnel its
+    ``NO_PROXY`` is replaced by ``*``: a proxy from the container's environment would carry
+    traffic around the tunnel. A ``NO_PROXY`` or ``no_proxy`` the container set is kept too,
+    with the local-address rule added to it in both cases, because requests reads the
+    lowercase one first and it would otherwise hide that rule; it goes back to the
+    container's value when no proxy is set. The ones it writes are recorded with
+    ``set_process_env`` so the Settings fields of the same names don't read as "set via env".
+    """
+    from shelfmark.core.settings_registry import is_process_written_env, set_process_env
+
+    with _proxy_env_lock:
+        # Read the settings under the lock too: two saves that overlap must apply in the
+        # order they take the lock, or an older value computed first could land last.
+        desired = proxy_environment()
+        tunnel = bool(tunnel_egress())
+        for name in ("NO_PROXY", "no_proxy"):
+            value = os.environ.get(name)
+            if value is not None and not is_process_written_env(name):
+                _deployment_no_proxy[name] = value
+        if _deployment_no_proxy and desired.get("NO_PROXY", "*") != "*":
+            entries = [
+                entry.strip()
+                for value in (*_deployment_no_proxy.values(), desired["NO_PROXY"])
+                for entry in value.split(",")
+                if entry.strip()
+            ]
+            # "*" means bypass everything only as the whole value, so it is not listed.
+            merged = "*" if "*" in entries else ",".join(dict.fromkeys(entries))
+            desired["NO_PROXY"] = desired["no_proxy"] = merged
+        for name in _PROXY_VARIABLES:
+            if name in _deployment_no_proxy:
+                if desired.get(name):
+                    set_process_env(name, desired[name], deployment=_deployment_no_proxy[name])
+                else:
+                    os.environ[name] = _deployment_no_proxy[name]
+                continue
+            given = name in os.environ and not is_process_written_env(name)
+            if given and not (tunnel and name in desired):
+                continue
+            set_process_env(name, desired.get(name) or None)
+
+
+def _ipv4_from_shorthand(host_str: str) -> ipaddress.IPv4Address | None:
+    """The address a dotless numeric host such as ``134744072`` or ``0x08080808`` connects to.
+
+    The system resolver reads a single decimal, octal or hex number as an IPv4 address, so
+    it is judged as that address and not as a single-label name.
+    """
+    if "." in host_str:
+        return None
+    try:
+        return ipaddress.IPv4Address(socket.inet_aton(host_str))
+    except OSError, ValueError:
+        return None
+
+
 def _is_local_address(host_str: str) -> bool:
-    """Check if an address is local/private and should bypass custom DNS.
+    """Whether a host is on the local network, judged from its name or literal IP alone.
+
+    This is the one definition of "local" shared by custom DNS (local names are not sent
+    to the custom resolver), certificate validation (``disabled_local``) and the proxy
+    (``should_bypass_proxy``). It never resolves a name, so a LAN service under a public
+    hostname is not local here; No Proxy covers that case for the proxy.
 
     Returns True for:
     - 'localhost'
@@ -531,22 +923,21 @@ def _is_local_address(host_str: str) -> bool:
     if host_lower == "localhost":
         return True
 
+    # An IP literal first: an IPv6 address has no dot, so it must not fall through to the
+    # single-label rule below, where a public one would count as local.
+    try:
+        addr = ipaddress.ip_address(host_str.strip("[]"))
+    except ValueError:
+        addr = _ipv4_from_shorthand(host_str)
+    if addr is not None:
+        return addr.is_private or addr.is_loopback or addr.is_link_local
+
     # Check for simple hostnames (no dot = likely internal Docker/container name)
     if "." not in host_str:
         return True
 
     # Check for common internal TLDs
-    internal_tlds = (".local", ".internal", ".lan", ".home", ".docker", ".localdomain")
-    if any(host_lower.endswith(tld) for tld in internal_tlds):
-        return True
-
-    # Check for private/loopback/link-local IP addresses
-    try:
-        addr = ipaddress.ip_address(host_str)
-    except ValueError:
-        return False
-    else:
-        return addr.is_private or addr.is_loopback or addr.is_link_local
+    return any(host_lower.endswith(tld) for tld in _INTERNAL_TLDS)
 
 
 class UnsafeDestinationError(requests.exceptions.InvalidURL):
@@ -1485,9 +1876,7 @@ def _initialize_aa_state() -> None:
             logger.debug("AA_BASE_URL: auto, checking available urls %s", candidates)
             for url in candidates:
                 try:
-                    response = requests.get(
-                        url, proxies=get_proxies(url), timeout=3, verify=get_ssl_verify(url)
-                    )
+                    response = get_session().get(url, timeout=3)
                     if response.status_code == HTTPStatus.OK:
                         _current_aa_url_index = _aa_urls.index(url)
                         _aa_base_url = url
@@ -1581,6 +1970,7 @@ def init(*, force: bool = False) -> None:
         init_dns(force=force)
         init_aa(force=force)
         _apply_ssl_warning_suppression()
+        apply_proxy_environment()
         # Only set flag AFTER work completes successfully.
         _initialized = True
 

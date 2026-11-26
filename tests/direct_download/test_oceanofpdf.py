@@ -14,6 +14,7 @@ from bs4 import BeautifulSoup
 
 from shelfmark.core import mirrors
 from shelfmark.core.models import SearchFilters
+from shelfmark.download.network import get_session as _shared_session
 from shelfmark.release_sources import BrowseRecord
 from shelfmark.release_sources.direct_download import oceanofpdf as op
 from shelfmark.release_sources.direct_download import registry
@@ -117,8 +118,8 @@ def configured(monkeypatch):
     )
     monkeypatch.setattr(mirrors, "_get_config", lambda: {"OCEANOFPDF_MIRROR_URLS": [BASE]})
     monkeypatch.setattr(op.network, "AAMirrorSelector", lambda: SimpleNamespace(last_failure=None))
-    monkeypatch.setattr(op.network, "get_proxies", lambda _url: {})
-    monkeypatch.setattr(op.network, "get_ssl_verify", lambda _url: True)
+    monkeypatch.setattr("shelfmark.download.network.get_proxies", lambda _url: {})
+    monkeypatch.setattr("shelfmark.download.network.get_ssl_verify", lambda _url: True)
     monkeypatch.setattr(op.downloader, "get_cf_cookies_for_domain", lambda _host: {})
     monkeypatch.setattr(op.downloader, "get_cf_user_agent_for_domain", lambda _host: None)
     return settings
@@ -369,7 +370,7 @@ def _wire_download(monkeypatch, *, post_responses, payload: bytes):
         downloads.append({"link": link, "size": size, "referer": referer})
         return BytesIO(payload)
 
-    monkeypatch.setattr(op.requests, "post", fake_post)
+    monkeypatch.setattr(_shared_session(), "post", fake_post)
     monkeypatch.setattr(op.downloader, "download_url", fake_download_url)
     return posts, downloads
 
@@ -667,7 +668,7 @@ def test_form_post_redirect_off_the_mirror_is_not_followed(configured, monkeypat
         monkeypatch, post_responses=[redirect], payload=b"PK" * 10_000
     )
     gets: list[str] = []
-    monkeypatch.setattr(op.requests, "get", lambda url, **_kw: gets.append(url))
+    monkeypatch.setattr(_shared_session(), "get", lambda url, **_kw: gets.append(url))
 
     result = op.OceanofPDFProvider().download(_record(), tmp_path / "x.epub", None, Event(), None)
 
