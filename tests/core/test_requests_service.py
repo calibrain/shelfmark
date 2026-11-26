@@ -2385,7 +2385,6 @@ def test_sync_delivery_states_ignores_previous_attempt_failure_during_claim_to_q
 
 def test_concurrent_retry_fulfilments_serialize_so_fallback_plain_download_cannot_win_queue(
     user_db,
-    monkeypatch,
 ):
     """Second Retry waits for winner's queue dispatch before observing stale_transition."""
     import threading
@@ -2409,23 +2408,22 @@ def test_concurrent_retry_fulfilments_serialize_so_fallback_plain_download_canno
 
     queue = BookQueue()
     winner_entered_dispatch = threading.Event()
-    t2_attempting_lock = threading.Event()
+    t2_blocked_on_lock = threading.Event()
     allow_winner_queue_add = threading.Event()
     results: list[object] = []
 
-    real_fulfil_lock_for = requests_service._fulfil_lock_for
-    lock_attempts = 0
-    attempt_guard = threading.Lock()
+    class _ObservedLock:
+        def __init__(self, inner: threading.Lock) -> None:
+            self._inner = inner
 
-    def tracked_fulfil_lock(req_id: int):
-        nonlocal lock_attempts
-        with attempt_guard:
-            lock_attempts += 1
-            if lock_attempts == 2:
-                t2_attempting_lock.set()
-        return real_fulfil_lock_for(req_id)
+        def acquire(self, blocking: bool = True, timeout: float = -1) -> bool:
+            if not self._inner.acquire(blocking=False):
+                t2_blocked_on_lock.set()
+                return self._inner.acquire(blocking=blocking, timeout=timeout)
+            return True
 
-    monkeypatch.setattr(requests_service, "_fulfil_lock_for", tracked_fulfil_lock)
+        def release(self) -> None:
+            self._inner.release()
 
     def dispatch(release_data, _priority, user_id=None, username=None):
         winner_entered_dispatch.set()
@@ -2473,9 +2471,15 @@ def test_concurrent_retry_fulfilments_serialize_so_fallback_plain_download_canno
     t1.start()
     assert winner_entered_dispatch.wait(timeout=2.0)
 
+    with requests_service._FULFIL_LOCKS_GUARD:
+        active = requests_service._FULFIL_LOCKS.get(created["id"])
+        assert active is not None
+        shared_lock, waiters = active
+        requests_service._FULFIL_LOCKS[created["id"]] = (_ObservedLock(shared_lock), waiters)
+
     t2 = threading.Thread(target=attempt_retry, kwargs={"trigger_fallback_on_stale": True})
     t2.start()
-    assert t2_attempting_lock.wait(timeout=2.0)
+    assert t2_blocked_on_lock.wait(timeout=2.0)
     allow_winner_queue_add.set()
 
     t1.join(timeout=2.0)
