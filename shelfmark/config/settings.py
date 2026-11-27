@@ -408,6 +408,13 @@ def _test_audiobookshelf_library(current_values: dict[str, Any] | None = None) -
     return library_index.test_connection("audiobookshelf", current_values)
 
 
+def _test_storyteller_library(current_values: dict[str, Any] | None = None) -> dict[str, Any]:
+    """Action-button callback: read the Storyteller library and count each format."""
+    from shelfmark.core.library_providers.storyteller import check_connection
+
+    return check_connection(current_values)
+
+
 @register_settings("general", "General", icon="settings", order=0)
 def general_settings() -> list[SettingsField]:
     """Core application settings."""
@@ -490,6 +497,42 @@ def general_settings() -> list[SettingsField]:
             label="Test Audiobookshelf library",
             description="Check that Shelfmark can reach Audiobookshelf and count the items.",
             callback=_test_audiobookshelf_library,
+        ),
+        CheckboxField(
+            key="LIBRARY_CHECK_STORYTELLER_ENABLED",
+            label="Mark books already in your Storyteller library",
+            description=(
+                "Ask your Storyteller server which ebooks and audiobooks you already own, so "
+                "synced and automatic downloads skip them. Each format is checked on its own, "
+                "so a book you only have as an ebook can still get its audiobook. "
+                "Shelfmark only reads your library."
+            ),
+            default=False,
+        ),
+        TextField(
+            key="STORYTELLER_URL",
+            label="Storyteller URL",
+            description="Base URL reachable from the Shelfmark container, e.g. http://storyteller:8001.",
+            placeholder="http://storyteller:8001",
+        ),
+        TextField(
+            key="STORYTELLER_USERNAME",
+            label="Storyteller Username",
+            description=(
+                "A Storyteller user with the permission to list books. Books in a private "
+                "collection only count when this user is a member of it."
+            ),
+        ),
+        PasswordField(
+            key="STORYTELLER_PASSWORD",
+            label="Storyteller Password",
+            description="Password of that Storyteller user.",
+        ),
+        ActionButton(
+            key="test_storyteller_library",
+            label="Test Storyteller library",
+            description="Check that Shelfmark can sign in to Storyteller and count the books.",
+            callback=_test_storyteller_library,
         ),
         HeadingField(
             key="search_defaults_heading",

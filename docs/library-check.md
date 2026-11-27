@@ -41,6 +41,20 @@ Audiobookshelf titles are often raw folder names such as `Alex Cross 02: Kiss th
 When the server reports a series for the item, the leading label and number are read as the
 series, not as a different book, so a search for `Kiss the Girls` still matches.
 
+## Storyteller
+
+Shelfmark signs in to Storyteller and reads its book list over the v2 API. It checks
+ebooks and audiobooks separately. A finished readaloud counts as both formats.
+
+1. Create a dedicated Storyteller user with the **List Books** permission. Add the user
+   to any private collections you want Shelfmark to check.
+2. In **Settings, General**, turn on **Mark books already in your Storyteller library**.
+3. Set **Storyteller URL** to the base URL that the Shelfmark container can reach.
+   Use the final URL if your proxy redirects requests. Use HTTPS when traffic crosses
+   an untrusted network, since Shelfmark signs in with a password.
+4. Enter the user's name or email and password. Press **Test Storyteller library** to
+   see the ebook and audiobook counts before saving.
+
 ## How a match is decided
 
 In order of confidence:
@@ -64,8 +78,7 @@ Sequels and other near-miss titles fail the title rule; the same title by a diff
   now lists none is treated as unreadable too, not as an emptied shelf.
 - **Results are cached** for ten minutes, and refreshed early when the database file
   changes, so a large library costs one read rather than one per search.
-- **Each library answers for its own format.** Calibre holds ebooks and Audiobookshelf holds
-  audiobooks, so an ebook result is only checked against Calibre and an audiobook against
-  Audiobookshelf. The provider interface in `shelfmark/core/library_providers/` takes more libraries: add a
-  module with the `LibraryProvider` shape and list it in `all_providers()`. Nothing above
-  that function knows which libraries exist.
+- **Each library answers for its own format.** Ebook results check Calibre and Storyteller.
+  Audiobook results check Audiobookshelf and Storyteller. Storyteller only counts a format
+  when it has the corresponding file or a finished readaloud. To add another library,
+  implement the `LibraryProvider` interface and register it in `all_providers()`.

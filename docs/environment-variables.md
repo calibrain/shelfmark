@@ -315,6 +315,10 @@ Consecutive failed Tor watchdog probes before the container is reset. 2 tolerate
 | `AUDIOBOOKSHELF_URL` | Base URL reachable from the Shelfmark container (not the public URL). Often the host LAN IP, e.g. http://10.0.0.91:13378. | string | _none_ |
 | `AUDIOBOOKSHELF_TOKEN` | API token from Audiobookshelf (Settings > Users > your user > API Token). | string (secret) | _none_ |
 | `AUDIOBOOKSHELF_LIBRARY_IDS` | Comma-separated library IDs to check. Leave blank for all book libraries. | string | _none_ |
+| `LIBRARY_CHECK_STORYTELLER_ENABLED` | Ask your Storyteller server which ebooks and audiobooks you already own, so synced and automatic downloads skip them. Each format is checked on its own, so a book you only have as an ebook can still get its audiobook. Shelfmark only reads your library. | boolean | `false` |
+| `STORYTELLER_URL` | Base URL reachable from the Shelfmark container, e.g. http://storyteller:8001. | string | _none_ |
+| `STORYTELLER_USERNAME` | A Storyteller user with the permission to list books. Books in a private collection only count when this user is a member of it. | string | _none_ |
+| `STORYTELLER_PASSWORD` | Password of that Storyteller user. | string (secret) | _none_ |
 | `SUPPORTED_FORMATS` | Book formats to include in search results. ZIP/RAR archives are extracted automatically and book files are used if found. | string (comma-separated) | `epub,mobi,azw3,fb2,djvu,cbz,cbr` |
 | `SUPPORTED_AUDIOBOOK_FORMATS` | Audiobook formats to include in search results. ZIP/RAR archives are extracted automatically and audiobook files are used if found. | string (comma-separated) | `m4b,mp3,m4a,mp4,flac,ogg,wma,aac,wav,opus,zip,rar` |
 
@@ -400,6 +404,42 @@ API token from Audiobookshelf (Settings > Users > your user > API Token).
 Comma-separated library IDs to check. Leave blank for all book libraries.
 
 - **Type:** string
+- **Default:** _none_
+
+#### `LIBRARY_CHECK_STORYTELLER_ENABLED`
+
+**Mark books already in your Storyteller library**
+
+Ask your Storyteller server which ebooks and audiobooks you already own, so synced and automatic downloads skip them. Each format is checked on its own, so a book you only have as an ebook can still get its audiobook. Shelfmark only reads your library.
+
+- **Type:** boolean
+- **Default:** `false`
+
+#### `STORYTELLER_URL`
+
+**Storyteller URL**
+
+Base URL reachable from the Shelfmark container, e.g. http://storyteller:8001.
+
+- **Type:** string
+- **Default:** _none_
+
+#### `STORYTELLER_USERNAME`
+
+**Storyteller Username**
+
+A Storyteller user with the permission to list books. Books in a private collection only count when this user is a member of it.
+
+- **Type:** string
+- **Default:** _none_
+
+#### `STORYTELLER_PASSWORD`
+
+**Storyteller Password**
+
+Password of that Storyteller user.
+
+- **Type:** string (secret)
 - **Default:** _none_
 
 #### `SUPPORTED_FORMATS`
