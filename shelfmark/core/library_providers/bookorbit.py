@@ -15,8 +15,6 @@ import hashlib
 import re
 from typing import TYPE_CHECKING, Any
 
-import requests
-
 from shelfmark.core.config import config as app_config
 from shelfmark.core.library_providers import LibraryEntry, setting
 from shelfmark.core.text_match import isbn_variants, tokens
@@ -24,6 +22,8 @@ from shelfmark.core.utils import normalize_http_url
 
 if TYPE_CHECKING:
     from collections.abc import Mapping
+
+    import requests
 
 _TIMEOUT_SECONDS = 15
 _PAGE_SIZE = 200  # The server's maximum page size; a larger one is rejected.
@@ -59,13 +59,18 @@ def _config(overrides: Mapping[str, Any] | None = None) -> tuple[str, str]:
 
 
 def _session(url: str, key: str) -> requests.Session:
-    from shelfmark.download.network import get_ssl_verify
+    """A session for one BookOrbit server, signed in with its API key.
 
-    session = requests.Session()
+    The proxy and certificate rules come from ``NetworkSession`` per request, so a LAN
+    server goes direct and ``CERTIFICATE_VALIDATION=disabled_local`` covers it.
+    """
+    from shelfmark.download.network import NetworkSession
+
+    del url  # the rules read each request's own URL
+    session = NetworkSession()
     # BookOrbit also takes X-Api-Key, but requests drops only Authorization when a
     # redirect leads to another host.
     session.headers.update({"Authorization": f"Bearer {key}"})
-    session.verify = get_ssl_verify(url)
     return session
 
 

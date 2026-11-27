@@ -749,11 +749,13 @@ def test_the_key_is_sent_as_a_bearer_token() -> None:
     ],
 )
 def test_the_session_honours_certificate_validation_for_the_server_url(
-    fake_app_config: FakeConfig, mode: str, url: str, verify: bool
+    fake_app_config: FakeConfig, sent_requests: Any, mode: str, url: str, verify: bool
 ) -> None:
     fake_app_config.values["CERTIFICATE_VALIDATION"] = mode
 
-    assert bookorbit._session(url, "k").verify is verify
+    bookorbit._session(url, "k").get(f"{url}/api/v1/libraries")
+
+    assert sent_requests.last()["verify"] is verify
 
 
 def test_both_formats_are_registered_after_audiobookshelf() -> None:
