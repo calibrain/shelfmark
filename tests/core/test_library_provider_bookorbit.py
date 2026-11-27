@@ -281,7 +281,9 @@ def test_a_failed_read_after_a_good_one_keeps_answering_from_the_earlier_index(
     assert library_index.is_in_library(_searching("Dune"), "ebook", strict=True) is True
 
     server.cards = [_card("Dune", status="missing")]
-    library_index._cache["bookorbit_ebook"].fetched_at = 0.0  # past the ten-minute TTL
+    # Shifted back rather than set to 0.0: a CI runner booted minutes ago has a monotonic
+    # clock below the TTL, so 0.0 would still read as fresh there.
+    library_index._cache["bookorbit_ebook"].fetched_at -= library_index._CACHE_TTL_SECONDS + 1
 
     assert library_index.is_in_library(_searching("Dune"), "ebook", strict=True) is True
     assert len(server.posts) == 2
