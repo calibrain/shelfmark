@@ -19,6 +19,7 @@ import dns.resolver
 import httpx
 import requests
 from dns.exception import DNSException
+from publicsuffixlist import PublicSuffixList
 
 from shelfmark.config import env
 from shelfmark.core.config import config as app_config
@@ -756,7 +757,7 @@ def _port_of(value: object) -> int | None:
         return None
 
 
-def _configured_local_hostnames() -> list[str]:
+def _configured_local_hostnames(*, with_port: bool = True) -> list[str]:
     """Single-label local hosts named in a service setting (``*_URL``, ``*_URLS``, ``*_HOST``).
 
     These are Docker service names such as ``qbittorrent``. The local rule covers them in
@@ -766,7 +767,7 @@ def _configured_local_hostnames() -> list[str]:
     requests matches an entry as a domain suffix, so a bare ``app`` would also bypass the
     proxy for ``notify.example.app`` on any port. ``app:8080`` narrows that to hosts ending
     in ``.app`` on port 8080, which is as close to exact as NO_PROXY gets, so the port is
-    kept whenever the setting has one.
+    kept whenever the setting has one (``with_port=False`` leaves it off).
     """
     from shelfmark.core.settings_registry import get_settings_field_map
 
@@ -779,7 +780,7 @@ def _configured_local_hostnames() -> list[str]:
             host = _hostname_of(item)
             if host and "." not in host and _is_local_address(host):
                 port = _port_of(item)
-                names.append(f"{host}:{port}" if port else host)
+                names.append(f"{host}:{port}" if port and with_port else host)
     return names
 
 
@@ -796,6 +797,38 @@ def no_proxy_for_environment() -> str:
     if "*" in patterns:
         return "*"
     return ",".join(dict.fromkeys([*_LOCAL_NO_PROXY, *_configured_local_hostnames(), *patterns]))
+
+
+_PUBLIC_SUFFIXES = PublicSuffixList()
+
+
+def _is_public_suffix(name: str) -> bool:
+    """Whether a single label is a public suffix such as ``app``, ``dev`` or ``io``."""
+    return _PUBLIC_SUFFIXES.publicsuffix(name.lower(), accept_unknown=False) is not None
+
+
+def script_environment() -> dict[str, str]:
+    """The environment a custom script runs in: this process's, with service names listed bare.
+
+    ``NO_PROXY`` keeps a configured service's port (``qbittorrent:8080``), which ``requests``
+    matches but ``curl`` ignores, so a script calling that container through ``curl`` would go
+    through the proxy. The script's copy also lists each name without its port. A name alone
+    matches as a suffix, which is why the app's own value keeps the port, so a name that is
+    also a public suffix (a service called ``app`` would then bypass the proxy for every
+    ``.app`` site) is left out and keeps only its port entry. A ``NO_PROXY`` that is empty,
+    absent or ``*`` is left as it is.
+    """
+    env = dict(os.environ)
+    bare = [
+        name for name in _configured_local_hostnames(with_port=False) if not _is_public_suffix(name)
+    ]
+    for name in ("NO_PROXY", "no_proxy"):
+        value = env.get(name, "").strip()
+        if not value or value == "*":
+            continue
+        entries = [entry.strip() for entry in value.split(",") if entry.strip()]
+        env[name] = ",".join(dict.fromkeys([*entries, *bare]))
+    return env
 
 
 _PROXY_VARIABLES = (

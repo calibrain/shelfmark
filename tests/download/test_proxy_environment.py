@@ -367,3 +367,77 @@ def test_a_service_name_does_not_bypass_the_proxy_for_a_public_domain(settings):
     assert used("https://notify.example.app/") == _PROXY
     assert used("https://notify.example.app:9000/") == _PROXY
     assert "nzb" in os.environ["NO_PROXY"].split(",")
+
+
+def test_a_script_gets_the_service_names_without_their_port(settings, monkeypatch):
+    """curl ignores a host:port entry, so a script's NO_PROXY lists the name alone too (#1766)."""
+    settings.update(
+        QBITTORRENT_URL="http://qbittorrent:8080",
+        PROWLARR_URL="prowlarr:9696",
+        SABNZBD_URL="http://nzb",
+        AUDIOBOOKSHELF_URL="https://abs.example.com",
+        NO_PROXY="*.example.org",
+    )
+    network.apply_proxy_environment()
+
+    for name in ("NO_PROXY", "no_proxy"):
+        entries = network.script_environment()[name].split(",")
+        assert {"qbittorrent", "prowlarr", "nzb"} <= set(entries)
+        assert {"qbittorrent:8080", "prowlarr:9696", ".example.org"} <= set(entries)
+        assert "abs.example.com" not in entries
+        assert len(entries) == len(set(entries))
+
+
+def test_the_apps_own_no_proxy_keeps_the_port(settings):
+    """Only the script's copy gets the bare name, since a name alone matches as a suffix."""
+    import os
+
+    settings.update(QBITTORRENT_URL="http://qbittorrent:8080")
+    network.apply_proxy_environment()
+
+    network.script_environment()
+
+    assert "qbittorrent" not in os.environ["NO_PROXY"].split(",")
+
+
+def test_a_script_environment_without_a_no_proxy_is_unchanged(settings, monkeypatch):
+    """With nothing to extend there is nothing to add."""
+    import os
+
+    settings.update(QBITTORRENT_URL="http://qbittorrent:8080")
+    for name in ("NO_PROXY", "no_proxy"):
+        monkeypatch.delenv(name, raising=False)
+
+    assert network.script_environment() == dict(os.environ)
+
+
+@pytest.mark.parametrize("value", ["*", "  *  ", ""])
+def test_a_wildcard_or_empty_no_proxy_is_left_alone_for_a_script(settings, monkeypatch, value):
+    """A lone * already bypasses everything, and an empty value names nothing."""
+    settings.update(QBITTORRENT_URL="http://qbittorrent:8080")
+    monkeypatch.setenv("NO_PROXY", value)
+    monkeypatch.delenv("no_proxy", raising=False)
+
+    assert network.script_environment()["NO_PROXY"] == value
+
+
+def test_a_name_the_container_already_lists_is_not_repeated(settings, monkeypatch):
+    """A NO_PROXY that already has the bare name keeps one copy of it."""
+    settings.update(QBITTORRENT_URL="http://qbittorrent:8080")
+    monkeypatch.setenv("NO_PROXY", "localhost,qbittorrent")
+    monkeypatch.delenv("no_proxy", raising=False)
+
+    assert network.script_environment()["NO_PROXY"] == "localhost,qbittorrent"
+
+
+@pytest.mark.parametrize("name", ["app", "dev", "io"])
+def test_a_service_named_like_a_public_suffix_gets_no_bare_entry(settings, name):
+    """A bare ``app`` would bypass the proxy for any ``.app`` site in a script using requests."""
+    settings.update(QBITTORRENT_URL=f"http://{name}:8080", PROWLARR_URL="http://prowlarr:9696")
+    network.apply_proxy_environment()
+
+    entries = network.script_environment()["NO_PROXY"].split(",")
+
+    assert f"{name}:8080" in entries
+    assert name not in entries
+    assert "prowlarr" in entries
