@@ -1,5 +1,7 @@
 import asyncio
+import errno
 import json
+import os
 import threading
 from pathlib import Path
 
@@ -274,6 +276,267 @@ def test_create_cdp_browser_wraps_plain_startup_exception_and_cleans_up(monkeypa
         asyncio.run(internal_bypasser._create_cdp_browser("https://example.com"))
 
     assert cleanup_calls == ["cleanup"]
+
+
+def _stub_browser_start(monkeypatch, *, setting, euid, start):
+    """Run `_create_cdp_browser` against a fake browser; return the start arguments."""
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    started = []
+
+    async def _start(*_args, **kwargs):
+        started.append(kwargs)
+        return await start()
+
+    def _get(key, default=None):
+        """Answer the sandbox setting, skip the startup sleep, default the rest."""
+        if key == "BYPASS_BROWSER_SANDBOX":
+            return setting
+        return 0 if key == "DEFAULT_SLEEP" else default
+
+    monkeypatch.setattr(internal_bypasser.app_config, "get", _get)
+    monkeypatch.setattr(internal_bypasser.os, "geteuid", lambda: euid)
+    monkeypatch.setattr(internal_bypasser.cdp_driver, "start_async", _start)
+    monkeypatch.setattr(internal_bypasser, "_get_browser_args", lambda: [])
+    monkeypatch.setattr(internal_bypasser, "get_screen_size", lambda: (1280, 800))
+    monkeypatch.setattr(internal_bypasser, "_get_proxy_string", lambda _url: None)
+    monkeypatch.setattr(internal_bypasser.env, "DOCKERMODE", False)
+    return started
+
+
+@pytest.mark.parametrize(
+    ("setting", "euid", "expected"),
+    [(False, 1000, False), (True, 1000, True), (True, 0, False), (False, 0, False)],
+)
+def test_browser_sandbox_follows_setting_unless_root(monkeypatch, setting, euid, expected):
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    monkeypatch.setattr(internal_bypasser.app_config, "get", lambda *_args: setting)
+    monkeypatch.setattr(internal_bypasser.os, "geteuid", lambda: euid)
+
+    assert internal_bypasser._use_browser_sandbox() is expected
+
+
+@pytest.mark.parametrize(("setting", "euid"), [(False, 1000), (True, 1000), (True, 0)])
+def test_create_cdp_browser_passes_sandbox_choice_to_the_driver(monkeypatch, setting, euid):
+    """The driver gets the sandbox choice, and only a sandboxed failure is explained."""
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    async def _fail():
+        raise Exception("Failed to connect to the browser")
+
+    started = _stub_browser_start(monkeypatch, setting=setting, euid=euid, start=_fail)
+    explained = []
+    monkeypatch.setattr(
+        internal_bypasser, "_log_sandbox_startup_failure", lambda: explained.append(True)
+    )
+
+    with pytest.raises(RuntimeError, match="Pure CDP browser startup failed"):
+        asyncio.run(internal_bypasser._create_cdp_browser("https://example.com"))
+
+    sandboxed = setting and euid != 0
+    assert started[0]["sandbox"] is sandboxed
+    assert explained == ([True] if sandboxed else [])
+
+
+def test_create_cdp_browser_cleans_up_before_explaining_off_the_event_loop(monkeypatch):
+    """Leftover processes go first, and the namespace check does not block the loop."""
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    async def _fail():
+        raise Exception("Failed to connect to the browser")
+
+    _stub_browser_start(monkeypatch, setting=True, euid=1000, start=_fail)
+    monkeypatch.setattr(internal_bypasser.env, "DOCKERMODE", True)
+    steps = []
+    monkeypatch.setattr(
+        internal_bypasser, "_cleanup_orphan_processes", lambda: steps.append(("cleanup", None))
+    )
+    monkeypatch.setattr(
+        internal_bypasser,
+        "_log_sandbox_startup_failure",
+        lambda: steps.append(("explain", threading.get_ident())),
+    )
+
+    with pytest.raises(RuntimeError, match="Pure CDP browser startup failed"):
+        asyncio.run(internal_bypasser._create_cdp_browser("https://example.com"))
+
+    assert [name for name, _thread in steps] == ["cleanup", "explain"]
+    assert steps[1][1] != threading.get_ident()
+
+
+def test_create_cdp_browser_explains_sandbox_startup_timeout(monkeypatch):
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    async def _hang():
+        await asyncio.Event().wait()
+
+    _stub_browser_start(monkeypatch, setting=True, euid=1000, start=_hang)
+    monkeypatch.setattr(internal_bypasser, "_BROWSER_START_TIMEOUT_SECONDS", 0.01)
+    explained = []
+    monkeypatch.setattr(
+        internal_bypasser, "_log_sandbox_startup_failure", lambda: explained.append(True)
+    )
+
+    with pytest.raises(TimeoutError):
+        asyncio.run(internal_bypasser._create_cdp_browser("https://example.com"))
+
+    assert explained == [True]
+
+
+@pytest.mark.parametrize(
+    ("available", "names_profile"), [(False, True), (True, False), (None, False)]
+)
+def test_sandbox_startup_failure_names_the_profile_only_when_namespaces_are_refused(
+    monkeypatch, available, names_profile
+):
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    errors = []
+    monkeypatch.setattr(internal_bypasser, "_can_create_sandbox_namespaces", lambda: available)
+    monkeypatch.setattr(internal_bypasser.logger, "error", errors.append)
+
+    internal_bypasser._log_sandbox_startup_failure()
+
+    assert len(errors) == 1
+    assert ("shelfmark-browser-seccomp.json" in errors[0]) is names_profile
+    assert ("host restricts user namespaces" in errors[0]) is names_profile
+    assert "Run Browser with Sandbox" in errors[0]
+
+
+@pytest.mark.parametrize(("returncode", "expected"), [(0, True), (3, False), (1, None), (-9, None)])
+def test_sandbox_namespace_check_reports_the_child_result(monkeypatch, returncode, expected):
+    import subprocess
+
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    monkeypatch.setattr(
+        internal_bypasser.subprocess,
+        "run",
+        lambda args, **_kwargs: subprocess.CompletedProcess(args, returncode),
+    )
+
+    assert internal_bypasser._can_create_sandbox_namespaces() is expected
+
+
+# The child code reads the `os.CLONE_*` flags, which only Linux has.
+@pytest.mark.skipif(not hasattr(os, "unshare"), reason="needs Linux os.unshare")
+@pytest.mark.parametrize(
+    ("error", "refused"), [(errno.EPERM, True), (errno.EACCES, True), (errno.ENOMEM, False)]
+)
+def test_sandbox_namespace_check_counts_only_permission_errors_as_refused(
+    monkeypatch, error, refused
+):
+    """Run the real child code with `unshare` failing, and read its exit status."""
+    import subprocess
+
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    real_run = subprocess.run
+    results = []
+
+    def _run_with_failing_unshare(args, **kwargs):
+        stub = (
+            "import os, sys\n"
+            "def _fail(_flags):\n"
+            "    print('stub reached', file=sys.stderr, flush=True)\n"
+            f"    raise OSError({error}, 'refused')\n"
+            "os.unshare = _fail\n"
+        )
+        result = real_run([*args[:-1], stub + args[-1]], **kwargs)
+        results.append(result)
+        return result
+
+    monkeypatch.setattr(internal_bypasser.subprocess, "run", _run_with_failing_unshare)
+
+    answer = internal_bypasser._can_create_sandbox_namespaces()
+
+    assert answer is (False if refused else None)
+    # The child got as far as the failing call, so a None answer is about that error.
+    assert b"stub reached" in results[0].stderr
+    assert (results[0].returncode == internal_bypasser._NAMESPACES_REFUSED_EXIT) is refused
+
+
+def test_sandbox_namespace_check_is_unknown_when_it_cannot_run(monkeypatch):
+    import shelfmark.bypass.internal_bypasser as internal_bypasser
+
+    def _cannot_run(*_args, **_kwargs):
+        raise OSError("no fork")
+
+    monkeypatch.setattr(internal_bypasser.subprocess, "run", _cannot_run)
+
+    assert internal_bypasser._can_create_sandbox_namespaces() is None
+
+
+_CLONE_NEWNS = 0x00020000
+_CLONE_NEWTIME = 0x00000080
+_CLONE_NEWCGROUP = 0x02000000
+_CLONE_NEWUTS = 0x04000000
+_CLONE_NEWIPC = 0x08000000
+_CLONE_NEWUSER = 0x10000000
+_CLONE_NEWPID = 0x20000000
+_CLONE_NEWNET = 0x40000000
+_SANDBOX_FLAGS = (_CLONE_NEWUSER, _CLONE_NEWPID, _CLONE_NEWNET)
+_OTHER_FLAGS = (_CLONE_NEWNS, _CLONE_NEWCGROUP, _CLONE_NEWUTS, _CLONE_NEWIPC)
+
+
+def _browser_profile() -> dict:
+    """The seccomp profile shipped under compose/."""
+    path = Path(__file__).parents[2] / "compose" / "shelfmark-browser-seccomp.json"
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _allowed_without_capabilities(syscall: str, flags: int) -> bool:
+    """Whether the profile lets an unprivileged x86-64 process make this call.
+
+    `flags` is the call's first argument; the others are zero.
+    """
+    arguments = (flags, 0, 0, 0, 0, 0)
+    for rule in _browser_profile()["syscalls"]:
+        includes = rule.get("includes", {})
+        if syscall not in rule["names"] or rule["action"] != "SCMP_ACT_ALLOW":
+            continue
+        if includes.get("caps") or "amd64" not in includes.get("arches", ["amd64"]):
+            continue
+        if "amd64" in rule.get("excludes", {}).get("arches", []):
+            continue
+        if all(
+            arg["op"] == "SCMP_CMP_MASKED_EQ"
+            and arguments[arg["index"]] & arg["value"] == arg.get("valueTwo", 0)
+            for arg in rule.get("args", [])
+        ):
+            return True
+    return False
+
+
+@pytest.mark.parametrize("syscall", ["clone", "unshare"])
+def test_browser_seccomp_profile_allows_only_the_sandbox_namespaces(syscall):
+    """User, PID and network namespaces are open; every other namespace stays shut."""
+    assert _allowed_without_capabilities(syscall, sum(_SANDBOX_FLAGS))
+    for flag in _OTHER_FLAGS:
+        assert not _allowed_without_capabilities(syscall, flag)
+        assert not _allowed_without_capabilities(syscall, _CLONE_NEWUSER | flag)
+
+
+def test_browser_seccomp_profile_allows_chroot_without_the_capability():
+    """Chrome's sandbox calls chroot, also in a container that dropped CAP_SYS_CHROOT."""
+    assert _allowed_without_capabilities("chroot", 0)
+
+
+def test_browser_seccomp_profile_keeps_the_rest_of_dockers_limits():
+    """No setns or time namespace, and clone3 still answers ENOSYS."""
+    profile = _browser_profile()
+
+    assert profile["defaultAction"] == "SCMP_ACT_ERRNO"
+    assert not _allowed_without_capabilities("setns", 0)
+    assert not _allowed_without_capabilities("unshare", _CLONE_NEWTIME)
+    # glibc falls back to clone() only while clone3() answers ENOSYS.
+    assert {
+        "names": ["clone3"],
+        "action": "SCMP_ACT_ERRNO",
+        "errnoRet": 38,
+        "excludes": {"caps": ["CAP_SYS_ADMIN"]},
+    } in profile["syscalls"]
 
 
 def test_run_child_process_writes_failure_for_unexpected_exception(monkeypatch, tmp_path):

@@ -63,6 +63,8 @@ _BYPASS_EMOJI_MATCH_MIN = 3
 _LOADING_BODY_LENGTH_MAX = 50
 _PAGE_BODY_PREVIEW_CHARS = 500
 _BROWSER_START_TIMEOUT_SECONDS = 45.0
+_NAMESPACE_CHECK_TIMEOUT_SECONDS = 10.0
+_NAMESPACES_REFUSED_EXIT = 3
 _BYPASS_SUBPROCESS_TIMEOUT_SECONDS = 420.0
 # How long a cancelled bypass may take to close its browser before the calling thread
 # stops waiting for it. Counted on top of the bypass deadline, so every budget below is
@@ -1435,6 +1437,66 @@ def _get_proxy_string(url: str) -> str | None:
     return proxy_url or None
 
 
+def _use_browser_sandbox() -> bool:
+    """Whether to start Chrome with its sandbox: the setting is on and we are not root."""
+    if not app_config.get("BYPASS_BROWSER_SANDBOX", False):
+        return False
+    if os.geteuid() == 0:
+        logger.warning(
+            "Run Browser with Sandbox is on, but Shelfmark is running as root and Chrome "
+            "cannot sandbox as root. Starting the browser without it."
+        )
+        return False
+    return True
+
+
+def _can_create_sandbox_namespaces() -> bool | None:
+    """Try the namespaces Chrome's sandbox needs, in a throwaway process.
+
+    Returns None when the check did not get as far as an answer.
+    """
+    code = (
+        "import os, sys\n"
+        "try:\n"
+        "    os.unshare(os.CLONE_NEWUSER | os.CLONE_NEWPID | os.CLONE_NEWNET)\n"
+        "except PermissionError:\n"
+        f"    sys.exit({_NAMESPACES_REFUSED_EXIT})\n"
+    )
+    try:
+        result = subprocess.run(
+            [sys.executable, "-I", "-c", code],
+            capture_output=True,
+            timeout=_NAMESPACE_CHECK_TIMEOUT_SECONDS,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError) as e:
+        logger.debug("Could not check for sandbox namespaces: %s", e)
+        return None
+    if result.returncode == 0:
+        return True
+    if result.returncode == _NAMESPACES_REFUSED_EXIT:
+        return False
+    logger.debug("Sandbox namespace check exited with %s", result.returncode)
+    return None
+
+
+def _log_sandbox_startup_failure() -> None:
+    """Say what to change when a sandboxed browser did not start."""
+    if _can_create_sandbox_namespaces() is False:
+        logger.error(
+            "The browser could not start with its sandbox on: this container is not allowed "
+            "to create the namespaces the sandbox needs. Recreate the container with the "
+            "browser seccomp profile (compose/shelfmark-browser-seccomp.json) if it does not "
+            "use it yet. If it does, check whether the host restricts user namespaces. Or "
+            "turn off Run Browser with Sandbox in the Cloudflare Bypass settings."
+        )
+        return
+    logger.error(
+        "The browser could not start with its sandbox on. Turn off Run Browser with Sandbox "
+        "in the Cloudflare Bypass settings to see whether the sandbox is the cause."
+    )
+
+
 async def _create_cdp_browser(url: str) -> Any:
     """Create a fresh CDP browser instance."""
     browser_args = _get_browser_args()
@@ -1442,6 +1504,7 @@ async def _create_cdp_browser(url: str) -> Any:
     display_width = screen_width + 100
     display_height = screen_height + 150
     proxy = _get_proxy_string(url)
+    sandbox = _use_browser_sandbox()
 
     logger.debug("Creating Pure CDP browser with args: %s", browser_args)
     logger.debug("Browser screen size: %sx%s", screen_width, screen_height)
@@ -1453,7 +1516,7 @@ async def _create_cdp_browser(url: str) -> Any:
                 headed=False,
                 xvfb=True,
                 xvfb_metrics=f"{display_width},{display_height}",
-                sandbox=False,
+                sandbox=sandbox,
                 lang="en",
                 incognito=True,
                 ad_block=True,
@@ -1469,6 +1532,8 @@ async def _create_cdp_browser(url: str) -> Any:
         )
         if env.DOCKERMODE:
             _cleanup_orphan_processes()
+        if sandbox:
+            await asyncio.to_thread(_log_sandbox_startup_failure)
         raise
     except Exception as e:
         logger.warning("Pure CDP browser startup failed: %s: %s", type(e).__name__, e)
@@ -1482,6 +1547,8 @@ async def _create_cdp_browser(url: str) -> Any:
         )
         if env.DOCKERMODE:
             _cleanup_orphan_processes()
+        if sandbox:
+            await asyncio.to_thread(_log_sandbox_startup_failure)
         msg = f"Pure CDP browser startup failed: {e}"
         raise RuntimeError(msg) from e
 

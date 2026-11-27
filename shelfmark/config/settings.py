@@ -1906,6 +1906,18 @@ def cloudflare_bypass_settings() -> list[SettingsField]:
             requires_restart=True,
             show_when={"field": "USING_EXTERNAL_BYPASSER", "value": False},
         ),
+        CheckboxField(
+            key="BYPASS_BROWSER_SANDBOX",
+            label="Run Browser with Sandbox",
+            description=(
+                "Keep Chrome's sandbox on in the built-in bypasser. The container must be "
+                "created with the browser seccomp profile, or the browser will not start. "
+                "Has no effect when Shelfmark runs as root."
+            ),
+            default=False,
+            requires_restart=True,
+            show_when={"field": "USING_EXTERNAL_BYPASSER", "value": False},
+        ),
     ]
 
 
