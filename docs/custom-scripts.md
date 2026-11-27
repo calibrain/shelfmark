@@ -65,7 +65,9 @@ When enabled, Shelfmark runs your script once per successful task:
 
 Your script inherits Shelfmark's environment. With a [proxy](proxy.md) set, that includes `HTTP_PROXY`, `HTTPS_PROXY` and `NO_PROXY` from startup, so tools such as `curl` send requests through the proxy.
 
-Don't count on a call to another container going direct. `NO_PROXY` has no way to say "any name without a dot", so it only lists the containers named in Shelfmark's service settings. When such a URL has a port, the entry keeps it (`qbittorrent:8080`), which `curl` doesn't match. Add the name to **No Proxy** without a port, or tell the tool in the script:
+A call from a script to a container named in one of Shelfmark's service settings (`QBITTORRENT_URL`, `PROWLARR_URL` and so on) goes direct. The script's `NO_PROXY` lists each of those names on its own, which `curl` matches, as well as with its port.
+
+`NO_PROXY` has no way to say "any name without a dot", so a container that no service setting names still goes through the proxy. So does a service whose name is also a public suffix, such as `app`, `dev` or `io`, because a bare `app` would also bypass the proxy for every `.app` site. For those, add the name to **No Proxy**, or tell the tool in the script:
 
 ```bash
 curl --noproxy calibre-web http://calibre-web:8083/
