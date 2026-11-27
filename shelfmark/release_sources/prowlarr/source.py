@@ -49,6 +49,7 @@ from shelfmark.release_sources.prowlarr.mam import (
     mam_search_options,
     mam_torrent_id,
 )
+from shelfmark.release_sources.prowlarr.mam_query import core_title, mam_fallback_queries
 from shelfmark.release_sources.prowlarr.utils import (
     build_source_id,
     coerce_float_like,
@@ -1237,7 +1238,15 @@ class ProwlarrSource(ReleaseSource):
                     ),
                 )
 
-            def search_indexers(query: str, cats: list[int] | None) -> _IndexerSearchOutcome:
+            unanswered_indexer_ids: set[int] = set()
+
+            def search_indexers(
+                query: str,
+                cats: list[int] | None,
+                *,
+                mam_query: str | None = None,
+                mam_only: bool = False,
+            ) -> _IndexerSearchOutcome:
                 """Search indexers with given categories via Torznab/Newznab.
 
                 Every indexer gets the same title-only query. Enriched indexers used
@@ -1247,22 +1256,28 @@ class ProwlarrSource(ReleaseSource):
                 "Tim Ferriss" - and the UI reports the book as missing (#1293). The
                 author still decides ordering below, where a spelling difference
                 costs a release its position rather than its existence.
+
+                MyAnonamouse gets ``mam_query`` instead when one is given: the same
+                title without the series words MAM's own titles leave out.
                 """
                 outcome = _IndexerSearchOutcome(results=[])
                 target_indexer_ids = self._get_search_indexer_ids(client, indexer_ids, cats)
+                if mam_only:
+                    target_indexer_ids = [i for i in target_indexer_ids if i in mam_indexers]
                 if not target_indexer_ids:
                     return outcome
 
                 for indexer_id in target_indexer_ids:
                     if indexer_id in disabled_indexers:
                         outcome.skipped += 1
+                        unanswered_indexer_ids.add(indexer_id)
                         continue
                     _check_timeout()
                     outcome.attempted += 1
                     try:
                         raw = client.torznab_search(
                             indexer_id=indexer_id,
-                            query=query,
+                            query=mam_query if mam_query and indexer_id in mam_indexers else query,
                             categories=cats,
                             search_type="book",
                         )
@@ -1272,6 +1287,7 @@ class ProwlarrSource(ReleaseSource):
                         # report a failed search instead of an empty one.
                         outcome.failed += 1
                         outcome.last_error = str(e)
+                        unanswered_indexer_ids.add(indexer_id)
                         continue
                     if raw:
                         outcome.results.extend(raw)
@@ -1284,15 +1300,30 @@ class ProwlarrSource(ReleaseSource):
             failed_searches = 0
             skipped_searches = 0
             last_search_error: str | None = None
+            # What MAM was sent, and which of those found something: enrichment reruns
+            # the latter against MAM's own API to find the same torrents.
+            mam_queries_sent: list[str] = []
+            mam_queries_with_results: list[str] = []
+
+            def note_mam_query(mam_query: str, outcome: _IndexerSearchOutcome) -> None:
+                if not mam_indexers:
+                    return
+                mam_queries_sent.append(mam_query)
+                if mam_query not in mam_queries_with_results and any(
+                    _coerce_indexer_id(r.get("indexerId")) in mam_indexers for r in outcome.results
+                ):
+                    mam_queries_with_results.append(mam_query)
 
             for idx, variant in enumerate(variants, start=1):
                 _check_timeout()
                 query = variant.title
+                # A manual query is the user's own words and goes out untouched.
+                mam_query = query if plan.manual_query else core_title(query, book.series_name)
 
                 if len(variants) > 1:
                     logger.debug("Prowlarr query %s/%s: '%s'", idx, len(variants), query)
 
-                outcome = search_indexers(query=query, cats=categories)
+                outcome = search_indexers(query=query, cats=categories, mam_query=mam_query)
 
                 # Auto-expand: if no results with categories and auto-expand enabled, retry without.
                 # Only when every indexer actually answered: a failed search says nothing about
@@ -1310,7 +1341,7 @@ class ProwlarrSource(ReleaseSource):
                         "Prowlarr: no results for query '%s' with category filter, auto-expanding search",
                         query,
                     )
-                    expanded = search_indexers(query=query, cats=None)
+                    expanded = search_indexers(query=query, cats=None, mam_query=mam_query)
                     outcome.results = expanded.results
                     outcome.attempted += expanded.attempted
                     outcome.failed += expanded.failed
@@ -1322,6 +1353,7 @@ class ProwlarrSource(ReleaseSource):
                 failed_searches += outcome.failed
                 skipped_searches += outcome.skipped
                 last_search_error = outcome.last_error or last_search_error
+                note_mam_query(mam_query, outcome)
 
                 for r in outcome.results:
                     key = _result_dedup_key(r)
@@ -1330,6 +1362,42 @@ class ProwlarrSource(ReleaseSource):
                             continue
                         seen_keys.add(key)
                     all_results.append(r)
+
+            # Retry MAM with looser queries until one finds something, whatever other
+            # indexers found. They come from the provider's full title rather than its
+            # search_title, which providers shorten on their own heuristics: Hardcover cuts
+            # "Magic: The Gathering - Ravnica - War of the Spark: 1" to "Magic". Never after
+            # a failed or backed-off MAM request, and never past the budget: running out
+            # here still means "nothing found".
+            if (
+                mam_indexers
+                and not plan.manual_query
+                and not mam_queries_with_results
+                and not unanswered_indexer_ids & mam_indexers.keys()
+            ):
+                fallback_cats = None if self.last_search_type == "expanded" else categories
+                for fallback_query in mam_fallback_queries(
+                    book.title or variants[0].title,
+                    plan.isbn_candidates,
+                    series_name=book.series_name,
+                    already_sent=mam_queries_sent,
+                ):
+                    if time.monotonic() > deadline:
+                        break
+                    logger.info(
+                        "Prowlarr: no MyAnonamouse results, retrying as '%s'", fallback_query
+                    )
+                    outcome = search_indexers(
+                        query=fallback_query, cats=fallback_cats, mam_only=True
+                    )
+                    attempted_searches += outcome.attempted
+                    failed_searches += outcome.failed
+                    skipped_searches += outcome.skipped
+                    last_search_error = outcome.last_error or last_search_error
+                    note_mam_query(fallback_query, outcome)
+                    all_results.extend(outcome.results)
+                    if outcome.results or outcome.failed or outcome.skipped:
+                        break
 
             if failed_searches:
                 logger.warning(
@@ -1421,7 +1489,7 @@ class ProwlarrSource(ReleaseSource):
                     _enrich_mam_releases(
                         mam_releases,
                         mam_session_id,
-                        [variant.title for variant in variants],
+                        mam_queries_with_results,
                         mam_search_options(mam_indexer, mam_categories),
                         deadline,
                     )
