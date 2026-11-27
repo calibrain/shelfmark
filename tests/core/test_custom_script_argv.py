@@ -60,3 +60,23 @@ def test_absolute_mode_is_unchanged():
         payload_json=None,
     )
     assert _argv_for(execution) == ["/scripts/hook.sh", "/library/-rf"]
+
+
+def test_the_script_runs_with_the_environment_from_script_environment():
+    """The environment handed to the script is the one that lists service names for curl."""
+    environment = {"NO_PROXY": "localhost,qbittorrent", "PATH": "/usr/bin"}
+    with (
+        patch(
+            "shelfmark.download.postprocess.custom_script.script_environment",
+            return_value=environment,
+        ),
+        patch(
+            "shelfmark.download.postprocess.custom_script.run_blocking_io",
+            return_value=MagicMock(stdout=""),
+        ) as run,
+    ):
+        assert run_custom_script(
+            _execution("book.epub", "absolute"), task_id="t1", status_callback=MagicMock()
+        )
+
+    assert run.call_args.kwargs["env"] == environment

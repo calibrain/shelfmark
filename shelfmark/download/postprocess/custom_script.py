@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING, Any
 import shelfmark.core.config as core_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.download.fs import run_blocking_io
+from shelfmark.download.network import script_environment
 
 from .steps import log_plan_steps, record_step
 
@@ -152,6 +153,8 @@ def run_custom_script(
             "capture_output": True,
             "text": True,
             "cwd": cwd,
+            # With the proxy's NO_PROXY listing service names the way curl reads them.
+            "env": script_environment(),
         }
         # If we are not sending a JSON payload, close stdin so scripts that try
         # to read it won't block indefinitely. When we do send a payload, let
