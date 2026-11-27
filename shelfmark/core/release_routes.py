@@ -475,28 +475,38 @@ def register_release_routes(
         return jsonify({"status": "queued", "priority": 0, "request_id": updated["id"]})
 
     def _owners_failed_request_id(source: object, source_id: object) -> int | None:
-        """The request a signed-in user's own failed download of this release belongs to (#1715).
+        """The request a signed-in user's own failed download of this release belongs to.
 
         A non-admin's request-linked downloads are listed under an opaque id, so the page cannot
-        say that the release it is about to retry failed for a request. The queue can: the task
-        keeps its request and its owner. Only the owner's own failed task counts, and only for a
-        non-admin; an admin's page names the request itself. The queue keys a task by its
-        source id alone, so the source has to match too.
+        say that the release it is about to retry failed for a request (#1715). The queue can:
+        the task keeps its request and its owner. Only the owner's own failed task counts, and
+        only for a non-admin, whose page names the request itself for an admin. The queue keys a
+        task by its source id alone, so the source has to match too.
+
+        Once that task has left the queue, or when it names no request, the request itself still
+        remembers the release that failed for it (#1769), so the user's own pending request is
+        looked up by it. That is tried for an admin too, but only among requests that admin made.
         """
-        if resolve_auth_mode() == "none" or session.get("is_admin", False):
+        if resolve_auth_mode() == "none":
             return None
         db_user_id = get_session_db_user_id(session)
-        if db_user_id is None or not isinstance(source_id, str):
+        if db_user_id is None or not isinstance(source, str) or not isinstance(source_id, str):
             return None
-        task = backend.book_queue.get_task(source_id)
-        if (
-            task is None
-            or backend.book_queue.get_task_status(source_id) != QueueStatus.ERROR
-            or task.user_id != db_user_id
-            or task.source != source
-        ):
+        if not session.get("is_admin", False):
+            task = backend.book_queue.get_task(source_id)
+            if (
+                task is not None
+                and backend.book_queue.get_task_status(source_id) == QueueStatus.ERROR
+                and task.user_id == db_user_id
+                and task.source == source
+            ):
+                task_request_id = normalize_positive_int(task.request_id)
+                if task_request_id is not None:
+                    return task_request_id
+        user_db = get_user_db()
+        if user_db is None:
             return None
-        return normalize_positive_int(task.request_id)
+        return user_db.pending_request_for_failed_release(db_user_id, source, source_id)
 
     def _is_closed_request_refusal(result: Response | tuple[Response, int]) -> bool:
         """Whether a Retry answer says the request is no longer pending."""

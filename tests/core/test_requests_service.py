@@ -1129,6 +1129,111 @@ def test_reopening_after_an_unreachable_client_does_not_blame_the_release(user_d
     assert "failed_releases" not in reopened["book_data"]
 
 
+def test_a_client_problem_still_records_the_last_failed_release(user_db):
+    """The release is not held against it for the next search, but a Retry can still find it."""
+    user = user_db.create_user(username="alice")
+    request = _fulfilled_with_release(user_db, user["id"], "fine-release")
+
+    reopened = reopen_failed_request(
+        user_db,
+        request_id=request["id"],
+        failure_reason="Failed to connect to qBittorrent",
+    )
+
+    assert reopened["book_data"]["last_failed_release"] == {
+        "source": "slskd",
+        "source_id": "fine-release",
+    }
+    assert "failed_releases" not in reopened["book_data"]
+
+
+def test_a_real_failure_records_the_release_both_ways(user_db):
+    """A release that failed is skipped by the next search and remembered for a Retry."""
+    user = user_db.create_user(username="alice")
+    request = _fulfilled_with_release(user_db, user["id"], "dead-link")
+
+    reopened = reopen_failed_request(
+        user_db, request_id=request["id"], failure_reason="Download failed"
+    )
+
+    entry = {"source": "slskd", "source_id": "dead-link"}
+    assert reopened["book_data"]["last_failed_release"] == entry
+    assert reopened["book_data"]["failed_releases"] == [entry]
+
+
+def test_the_last_failed_release_follows_the_latest_failure(user_db):
+    """A second failure replaces it, and the earlier one stays in the list."""
+    user = user_db.create_user(username="alice")
+    request = _fulfilled_with_release(user_db, user["id"], "first")
+    reopen_failed_request(user_db, request_id=request["id"], failure_reason="Download failed")
+    user_db.update_request(
+        request["id"],
+        status="fulfilled",
+        delivery_state="queued",
+        release_data={"source": "slskd", "source_id": "second", "title": "x"},
+    )
+
+    reopened = reopen_failed_request(
+        user_db, request_id=request["id"], failure_reason="Download failed"
+    )
+
+    assert reopened["book_data"]["last_failed_release"]["source_id"] == "second"
+    assert [r["source_id"] for r in reopened["book_data"]["failed_releases"]] == ["first", "second"]
+
+
+def _reopened_for(user_db, user_id, source_id, *, source="slskd"):
+    """A request for this user that has been reopened after this release failed."""
+    request = _fulfilled_with_release(user_db, user_id, source_id)
+    user_db.update_request(
+        request["id"],
+        release_data={"source": source, "source_id": source_id, "title": "x"},
+    )
+    return reopen_failed_request(
+        user_db, request_id=request["id"], failure_reason="Failed to connect to qBittorrent"
+    )
+
+
+def test_a_pending_request_is_found_by_its_last_failed_release(user_db):
+    user = user_db.create_user(username="alice")
+    reopened = _reopened_for(user_db, user["id"], "rel-1")
+
+    assert (
+        user_db.pending_request_for_failed_release(user["id"], "slskd", "rel-1") == reopened["id"]
+    )
+
+
+def test_the_request_is_found_only_for_its_own_release_and_source(user_db):
+    user = user_db.create_user(username="alice")
+    _reopened_for(user_db, user["id"], "rel-1")
+
+    assert user_db.pending_request_for_failed_release(user["id"], "slskd", "rel-2") is None
+    assert user_db.pending_request_for_failed_release(user["id"], "prowlarr", "rel-1") is None
+
+
+def test_the_request_is_found_only_for_its_owner(user_db):
+    alice = user_db.create_user(username="alice")
+    bob = user_db.create_user(username="bob")
+    _reopened_for(user_db, alice["id"], "rel-1")
+
+    assert user_db.pending_request_for_failed_release(bob["id"], "slskd", "rel-1") is None
+
+
+def test_a_request_that_is_no_longer_pending_is_not_found(user_db):
+    user = user_db.create_user(username="alice")
+    reopened = _reopened_for(user_db, user["id"], "rel-1")
+    user_db.update_request(reopened["id"], status="cancelled")
+
+    assert user_db.pending_request_for_failed_release(user["id"], "slskd", "rel-1") is None
+
+
+def test_two_requests_with_the_same_last_failed_release_are_not_guessed_between(user_db):
+    user = user_db.create_user(username="alice")
+    _reopened_for(user_db, user["id"], "rel-1")
+    _reopened_for(user_db, user["id"], "rel-1")
+
+    assert user_db.pending_request_for_failed_release(user["id"], "slskd", "rel-1") is None
+
+
 def test_reopening_twice_lists_the_release_once(user_db):
     user = user_db.create_user(username="alice")
     request = _fulfilled_with_release(user_db, user["id"], "same-release")
