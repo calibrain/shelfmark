@@ -39,3 +39,31 @@ def test_the_audiobookshelf_test_button_checks_the_unsaved_form_values(monkeypat
 
     assert result["success"] is True
     assert seen["call"] == ("audiobookshelf", form)
+
+
+def test_the_bookorbit_library_check_is_off_by_default():
+    fields = _fields()
+
+    assert fields["LIBRARY_CHECK_BOOKORBIT_EBOOK_ENABLED"].default is False
+    assert fields["LIBRARY_CHECK_BOOKORBIT_AUDIOBOOK_ENABLED"].default is False
+    assert fields["BOOKORBIT_URL"].placeholder == "http://bookorbit:3000"
+    assert isinstance(fields["BOOKORBIT_API_KEY"], settings_registry.PasswordField)
+    assert fields["test_bookorbit_library"].callback is not None
+
+
+def test_the_bookorbit_test_button_reads_the_unsaved_form_values(monkeypatch):
+    seen = {}
+
+    def _fake_check_connection(current_values):
+        seen["values"] = current_values
+        return {"success": True, "message": "BookOrbit ebooks at http://bookorbit:3000: indexed 2"}
+
+    monkeypatch.setattr(
+        "shelfmark.core.library_providers.bookorbit.check_connection", _fake_check_connection
+    )
+    form = {"BOOKORBIT_URL": "http://bookorbit:3000", "BOOKORBIT_API_KEY": "k"}
+
+    result = settings_registry.execute_action("general", "test_bookorbit_library", form)
+
+    assert seen["values"] == form
+    assert result["success"] is True

@@ -69,6 +69,15 @@ def all_providers(overrides: Mapping[str, Any] | None = None) -> list[LibraryPro
     listing it here. Nothing above this function knows which libraries exist.
     """
     from shelfmark.core.library_providers.audiobookshelf import AudiobookshelfLibrary
+    from shelfmark.core.library_providers.bookorbit import (
+        BookOrbitAudiobookLibrary,
+        BookOrbitEbookLibrary,
+    )
     from shelfmark.core.library_providers.calibre import CalibreLibrary
 
-    return [CalibreLibrary(overrides), AudiobookshelfLibrary(overrides)]
+    return [
+        CalibreLibrary(overrides),
+        AudiobookshelfLibrary(overrides),
+        BookOrbitEbookLibrary(overrides),
+        BookOrbitAudiobookLibrary(overrides),
+    ]
