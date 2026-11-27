@@ -64,14 +64,30 @@ def _login(client, user: dict) -> None:
         sess["session_nonce"] = user["session_nonce"]
 
 
-def _reopened_request(main_module, owner: dict, *, status: str = "pending") -> dict:
-    """A request for a unique book, as it stands after a failed download reopened it."""
+def _reopened_request(
+    main_module,
+    owner: dict,
+    *,
+    status: str = "pending",
+    failed_release: tuple[str, str] | None = None,
+) -> dict:
+    """A request for a unique book, as it stands after a failed download reopened it.
+
+    With ``failed_release`` (source, source_id) it also remembers that release as the one that
+    failed, as a reopened request does.
+    """
+    book_data = {"title": f"Book {uuid.uuid4().hex[:8]}", "author": "An Author"}
+    if failed_release is not None:
+        book_data["last_failed_release"] = {
+            "source": failed_release[0],
+            "source_id": failed_release[1],
+        }
     return main_module.user_db.create_request(
         user_id=owner["id"],
         content_type="ebook",
         request_level="book",
         policy_mode="request_book",
-        book_data={"title": f"Book {uuid.uuid4().hex[:8]}", "author": "An Author"},
+        book_data=book_data,
         status=status,
     )
 
@@ -438,4 +454,116 @@ def test_a_queue_that_refuses_the_linked_release_is_not_retried_plainly(
     assert response.status_code == 409
     assert response.get_json()["code"] == "queue_failed"
     assert len(calls) == 1
+    assert main_module.user_db.get_request(reopened["id"])["status"] == "pending"
+
+
+def test_an_owners_retry_is_linked_after_the_failed_download_left_the_queue(
+    client, main_module, queued, clean_queue
+):
+    """The request remembers the release that failed, so no queue entry is needed (#1769)."""
+    owner = _user(main_module)
+    reopened = _reopened_request(
+        main_module, owner, failed_release=("direct_download", "md5-failed")
+    )
+    _login(client, owner)
+
+    response = _plain_download(client, main_module)
+
+    assert response.status_code == 200, response.get_json()
+    assert response.get_json()["request_id"] == reopened["id"]
+    assert queued[0]["release"]["_request_id"] == reopened["id"]
+    assert main_module.user_db.get_request(reopened["id"])["status"] == "fulfilled"
+
+
+def test_a_failed_download_with_no_request_does_not_hide_the_pending_one(
+    client, main_module, queued, clean_queue
+):
+    """The link is the same whether or not an unlinked failed download is still queued."""
+    owner = _user(main_module)
+    reopened = _reopened_request(
+        main_module, owner, failed_release=("direct_download", "md5-failed")
+    )
+    _failed_task(main_module, owner, None)
+    _login(client, owner)
+
+    response = _plain_download(client, main_module)
+
+    assert response.status_code == 200, response.get_json()
+    assert queued[0]["release"]["_request_id"] == reopened["id"]
+    assert main_module.user_db.get_request(reopened["id"])["status"] == "fulfilled"
+
+
+def test_an_admins_own_request_is_linked_the_same_way(client, main_module, queued, clean_queue):
+    """An admin who made the request gets the link too."""
+    admin = _user(main_module, is_admin=True)
+    reopened = _reopened_request(
+        main_module, admin, failed_release=("direct_download", "md5-failed")
+    )
+    _login(client, admin)
+
+    response = _plain_download(client, main_module)
+
+    assert response.status_code == 200, response.get_json()
+    assert queued[0]["release"]["_request_id"] == reopened["id"]
+
+
+def test_an_admins_download_does_not_fulfil_someone_elses_request(
+    client, main_module, queued, clean_queue
+):
+    """Only the person's own requests are looked up, so an admin never closes another user's."""
+    owner, admin = _user(main_module), _user(main_module, is_admin=True)
+    reopened = _reopened_request(
+        main_module, owner, failed_release=("direct_download", "md5-failed")
+    )
+    _login(client, admin)
+
+    response = _plain_download(client, main_module)
+
+    assert response.status_code == 200, response.get_json()
+    assert "_request_id" not in queued[0]["release"]
+    assert main_module.user_db.get_request(reopened["id"])["status"] == "pending"
+
+
+def test_another_release_is_not_linked_to_the_request(client, main_module, queued, clean_queue):
+    """Only the release that failed for the request is linked to it."""
+    owner = _user(main_module)
+    reopened = _reopened_request(
+        main_module, owner, failed_release=("direct_download", "md5-other")
+    )
+    _login(client, owner)
+
+    response = _plain_download(client, main_module)
+
+    assert response.status_code == 200, response.get_json()
+    assert "_request_id" not in queued[0]["release"]
+    assert main_module.user_db.get_request(reopened["id"])["status"] == "pending"
+
+
+def test_the_same_id_from_another_source_is_not_linked(client, main_module, queued, clean_queue):
+    """The source has to match as well as the id."""
+    owner = _user(main_module)
+    _reopened_request(main_module, owner, failed_release=("prowlarr", "md5-failed"))
+    _login(client, owner)
+
+    response = _plain_download(client, main_module)
+
+    assert response.status_code == 200, response.get_json()
+    assert "_request_id" not in queued[0]["release"]
+
+
+def test_a_download_for_someone_else_is_not_linked_by_the_request(
+    client, main_module, queued, clean_queue
+):
+    """An explicit recipient already says who the download is for."""
+    admin, recipient = _user(main_module, is_admin=True), _user(main_module)
+    reopened = _reopened_request(
+        main_module, admin, failed_release=("direct_download", "md5-failed")
+    )
+    _login(client, admin)
+
+    response = _plain_download(client, main_module, on_behalf_of_user_id=recipient["id"])
+
+    assert response.status_code == 200, response.get_json()
+    assert queued[0]["user_id"] == recipient["id"]
+    assert "_request_id" not in queued[0]["release"]
     assert main_module.user_db.get_request(reopened["id"])["status"] == "pending"

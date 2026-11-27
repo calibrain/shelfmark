@@ -144,29 +144,45 @@ def _require_loaded_user(user: dict[str, Any] | None) -> dict[str, Any]:
     return user
 
 
-def _book_data_with_failed_release(request_row: dict[str, Any]) -> dict[str, Any] | None:
-    """The request's book data with the release it was fulfilled with added to ``failed_releases``.
+# Where a reopened request remembers the release that failed for it, in ``book_data`` beside
+# ``failed_releases``. ``failed_releases`` is skipped by the next search and so leaves out a
+# failure that says nothing about the release (the client was down); this is kept either way, so
+# a Retry on that release can be linked to the request after the failed download has left the
+# queue (#1769).
+LAST_FAILED_RELEASE_KEY = "last_failed_release"
 
-    None when there is nothing to add: no readable release, or it is already listed.
-    """
-    book_data = request_row.get("book_data")
-    release_data = request_row.get("release_data")
-    if not isinstance(book_data, dict) or not isinstance(release_data, dict):
+
+def _release_key(release_data: object) -> tuple[str, str] | None:
+    """The (source, source_id) of a release, or None when either is missing."""
+    if not isinstance(release_data, dict):
         return None
     source = str(release_data.get("source") or "").strip()
     source_id = str(release_data.get("source_id") or "").strip()
-    if not source or not source_id:
+    return (source, source_id) if source and source_id else None
+
+
+def _book_data_with_failed_release(
+    request_row: dict[str, Any], *, remember: bool
+) -> dict[str, Any] | None:
+    """The request's book data noting the release it was fulfilled with, which has failed.
+
+    The release is always recorded as ``last_failed_release``, and with ``remember`` it is also
+    added to ``failed_releases``. None when there is nothing to change: no readable release, or
+    both are already as they would be written.
+    """
+    book_data = request_row.get("book_data")
+    release = _release_key(request_row.get("release_data"))
+    if not isinstance(book_data, dict) or release is None:
         return None
-    tried = book_data.get("failed_releases")
-    tried = list(tried) if isinstance(tried, list) else []
-    if any(
-        isinstance(entry, dict)
-        and entry.get("source") == source
-        and entry.get("source_id") == source_id
-        for entry in tried
-    ):
-        return None
-    return {**book_data, "failed_releases": [*tried, {"source": source, "source_id": source_id}]}
+    source, source_id = release
+    entry = {"source": source, "source_id": source_id}
+    updated = {**book_data, LAST_FAILED_RELEASE_KEY: entry}
+    if remember:
+        tried = book_data.get("failed_releases")
+        tried = list(tried) if isinstance(tried, list) else []
+        if not any(_release_key(known) == release for known in tried):
+            updated["failed_releases"] = [*tried, entry]
+    return None if updated == book_data else updated
 
 
 def new_session_nonce() -> str:
@@ -810,6 +826,22 @@ class UserDB:
         finally:
             conn.close()
 
+    def pending_request_for_failed_release(
+        self, user_id: int, source: str, source_id: str
+    ) -> int | None:
+        """The one pending request of this user whose last failed release is this one (#1769).
+
+        None when there is none, and also when there are several: a Download cannot say which
+        of them the person meant.
+        """
+        matches = [
+            row["id"]
+            for row in self.list_requests(user_id=user_id, status=RequestStatus.PENDING)
+            if isinstance(row.get("book_data"), dict)
+            and _release_key(row["book_data"].get(LAST_FAILED_RELEASE_KEY)) == (source, source_id)
+        ]
+        return matches[0] if len(matches) == 1 else None
+
     def list_requests(
         self,
         *,
@@ -1028,7 +1060,8 @@ class UserDB:
     ) -> dict[str, Any] | None:
         """Reopen a failed fulfilled request so admins can re-approve it.
 
-        With ``remember_failed_release``, the release it was fulfilled with is added to
+        The release it was fulfilled with is noted as ``book_data["last_failed_release"]``, and with
+        ``remember_failed_release`` it is added to
         ``book_data["failed_releases"]`` in the same write that reopens it, so a search that
         picks the request up as soon as it is pending already skips that release. An
         ``admin_note`` is written in that same write; None leaves the current note alone.
@@ -1072,10 +1105,8 @@ class UserDB:
                 ):
                     return None
 
-                failed_book_data = (
-                    _book_data_with_failed_release(current_request)
-                    if remember_failed_release
-                    else None
+                failed_book_data = _book_data_with_failed_release(
+                    current_request, remember=remember_failed_release
                 )
                 book_data_json = (
                     None
