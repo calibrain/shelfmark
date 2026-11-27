@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from flask import jsonify, request
 
+from shelfmark.core.api_errors import exception_response
 from shelfmark.core.logger import setup_logger
 
 if TYPE_CHECKING:
@@ -54,7 +55,7 @@ def register_settings_routes(
             return jsonify(data)
         except _SETTINGS_ERRORS as e:
             logger.error_trace(f"Settings get error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return exception_response(e, "Could not read the settings", show_detail=True)
 
     @app.route("/api/settings/<tab_name>", methods=["GET"])
     @login_required
@@ -87,7 +88,7 @@ def register_settings_routes(
             return jsonify(serialize_tab(tab, include_values=True))
         except _SETTINGS_ERRORS as e:
             logger.error_trace(f"Settings get tab error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return exception_response(e, "Could not read the settings tab", show_detail=True)
 
     @app.route("/api/settings/<tab_name>", methods=["PUT"])
     @login_required
@@ -135,7 +136,7 @@ def register_settings_routes(
             return jsonify(result), 400
         except _SETTINGS_ERRORS as e:
             logger.error_trace(f"Settings update error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return exception_response(e, "Could not save the settings", show_detail=True)
 
     @app.route("/api/settings/<tab_name>/action/<action_key>", methods=["POST"])
     @login_required
@@ -174,4 +175,4 @@ def register_settings_routes(
             return jsonify(result), 400
         except _SETTINGS_ERRORS as e:
             logger.error_trace(f"Settings action error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return exception_response(e, "Could not run the action", show_detail=True)

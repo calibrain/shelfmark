@@ -8,6 +8,7 @@ from typing import TYPE_CHECKING
 
 from flask import jsonify, request
 
+from shelfmark.core.api_errors import exception_response
 from shelfmark.core.logger import setup_logger
 
 if TYPE_CHECKING:
@@ -49,7 +50,7 @@ def register_onboarding_routes(
             return jsonify(config)
         except _ONBOARDING_ERRORS as e:
             logger.error_trace(f"Onboarding get error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return exception_response(e, "Could not read the onboarding settings", show_detail=True)
 
     @app.route("/api/onboarding", methods=["POST"])
     @login_required
@@ -79,7 +80,7 @@ def register_onboarding_routes(
             return jsonify(result), 400
         except _ONBOARDING_ERRORS as e:
             logger.error_trace(f"Onboarding save error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return exception_response(e, "Could not save the onboarding settings", show_detail=True)
 
     @app.route("/api/onboarding/skip", methods=["POST"])
     @login_required
@@ -97,4 +98,4 @@ def register_onboarding_routes(
             return jsonify({"success": True, "message": "Onboarding skipped"})
         except _ONBOARDING_ERRORS as e:
             logger.error_trace(f"Onboarding skip error: {e}")
-            return jsonify({"error": str(e)}), 500
+            return exception_response(e, "Could not skip onboarding", show_detail=True)

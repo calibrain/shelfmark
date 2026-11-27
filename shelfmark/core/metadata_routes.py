@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING, Any
 
 from flask import jsonify, request, session
 
+from shelfmark.core.api_errors import error_response
 from shelfmark.core.config import config as app_config
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.request_helpers import get_session_db_user_id
@@ -70,9 +71,9 @@ def _handle_target_errors(
             try:
                 return fn(*args, **kwargs)
             except (NotImplementedError, ValueError) as e:
-                return jsonify({"error": str(e)}), 400
+                return error_response(str(e), 400)
             except RuntimeError as e:
-                return jsonify({"error": str(e)}), 502
+                return error_response(str(e), 502)
             except (OSError, TypeError, sqlite3.Error) as e:
                 logger.error_trace(f"{fallback_message}: {e}")
                 return jsonify({"error": fallback_message}), 500
@@ -478,9 +479,9 @@ def register_metadata_routes(
 
             return jsonify(book_dict)
         except ValueError as e:
-            return jsonify({"error": str(e)}), 400
+            return error_response(str(e), 400)
         except RuntimeError as e:
-            return jsonify({"error": str(e)}), 503
+            return error_response(str(e), 503)
         except (OSError, TypeError, sqlite3.Error) as e:
             logger.error_trace(f"Metadata book error: {e}")
             return jsonify({"error": "Could not load the book"}), 500

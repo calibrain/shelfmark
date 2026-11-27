@@ -7,6 +7,7 @@ from typing import TYPE_CHECKING, Any
 
 from flask import Flask, Response, jsonify, request, session
 
+from shelfmark.core.api_errors import error_response
 from shelfmark.core.logger import setup_logger
 from shelfmark.core.notifications import (
     NotificationContext,
@@ -849,6 +850,7 @@ def register_request_routes(
 
     @app.route("/api/requests", methods=["GET"])
     def api_list_requests() -> ResponseReturnValue:
+        """List the signed-in user's own requests, hiding the release an admin picked from a non-admin."""
         auth_gate = _require_request_endpoints_available(resolve_auth_mode)
         if auth_gate is not None:
             return auth_gate
@@ -875,7 +877,7 @@ def register_request_routes(
                 offset=offset,
             )
         except ValueError as exc:
-            return jsonify({"error": str(exc)}), 400
+            return error_response(str(exc), 400)
         if not session.get("is_admin", False):
             # A fulfilled request carries the release an admin picked (#1418).
             rows = [redact_request_row(row) for row in rows]
@@ -953,7 +955,7 @@ def register_request_routes(
         try:
             rows = user_db.list_requests(status=status, limit=limit, offset=offset)
         except ValueError as exc:
-            return jsonify({"error": str(exc)}), 400
+            return error_response(str(exc), 400)
 
         populate_request_usernames(rows, user_db)
         populate_request_reviewers(rows, user_db)
