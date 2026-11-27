@@ -70,5 +70,11 @@ def all_providers(overrides: Mapping[str, Any] | None = None) -> list[LibraryPro
     """
     from shelfmark.core.library_providers.audiobookshelf import AudiobookshelfLibrary
     from shelfmark.core.library_providers.calibre import CalibreLibrary
+    from shelfmark.core.library_providers.storyteller import StorytellerLibrary
 
-    return [CalibreLibrary(overrides), AudiobookshelfLibrary(overrides)]
+    return [
+        CalibreLibrary(overrides),
+        AudiobookshelfLibrary(overrides),
+        StorytellerLibrary("ebook", overrides),
+        StorytellerLibrary("audiobook", overrides),
+    ]
