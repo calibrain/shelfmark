@@ -31,6 +31,7 @@ logger = setup_logger(__name__)
 # the cache at once, so this only bounds changes made by another process or instance.
 USER_CACHE_TTL_SECONDS = 5.0
 _USER_CACHE_MAX_ENTRIES = 256
+_UNSET: object = object()
 
 _CREATE_TABLES_SQL = """
 CREATE TABLE IF NOT EXISTS users (
@@ -56,6 +57,7 @@ CREATE TABLE IF NOT EXISTS download_requests (
     user_id        INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     status         TEXT NOT NULL DEFAULT 'pending',
     delivery_state TEXT NOT NULL DEFAULT 'none',
+    delivery_attempt_id TEXT,
     source_hint    TEXT,
     content_type   TEXT NOT NULL,
     request_level  TEXT NOT NULL,
@@ -314,6 +316,8 @@ class UserDB:
             )
         if "delivery_updated_at" not in column_names:
             conn.execute("ALTER TABLE download_requests ADD COLUMN delivery_updated_at TIMESTAMP")
+        if "delivery_attempt_id" not in column_names:
+            conn.execute("ALTER TABLE download_requests ADD COLUMN delivery_attempt_id TEXT")
         if "last_failure_reason" not in column_names:
             conn.execute("ALTER TABLE download_requests ADD COLUMN last_failure_reason TEXT")
 
@@ -868,6 +872,7 @@ class UserDB:
             "reviewed_at",
             "delivery_state",
             "delivery_updated_at",
+            "delivery_attempt_id",
             "last_failure_reason",
         }
     )
@@ -885,6 +890,7 @@ class UserDB:
         "reviewed_at": "UPDATE download_requests SET reviewed_at = ? WHERE id = ?",
         "delivery_state": "UPDATE download_requests SET delivery_state = ? WHERE id = ?",
         "delivery_updated_at": "UPDATE download_requests SET delivery_updated_at = ? WHERE id = ?",
+        "delivery_attempt_id": "UPDATE download_requests SET delivery_attempt_id = ? WHERE id = ?",
         "last_failure_reason": "UPDATE download_requests SET last_failure_reason = ? WHERE id = ?",
     }
 
@@ -892,6 +898,7 @@ class UserDB:
         self,
         request_id: int,
         expected_current_status: str | None = None,
+        expected_delivery_attempt_id: object = _UNSET,
         **kwargs: object,
     ) -> dict[str, Any]:
         """Update request fields and return the updated record."""
@@ -905,6 +912,12 @@ class UserDB:
                 if request["status"] != normalized_expected_status:
                     msg = "Request state changed before update"
                     raise ValueError(msg)
+            if (
+                expected_delivery_attempt_id is not _UNSET
+                and request.get("delivery_attempt_id") != expected_delivery_attempt_id
+            ):
+                msg = "Request attempt changed before update"
+                raise ValueError(msg)
             return request
 
         for key in kwargs:
@@ -930,6 +943,13 @@ class UserDB:
                         msg = "Request state changed before update"
                         raise ValueError(msg)
 
+                if (
+                    expected_delivery_attempt_id is not _UNSET
+                    and current.get("delivery_attempt_id") != expected_delivery_attempt_id
+                ):
+                    msg = "Request attempt changed before update"
+                    raise ValueError(msg)
+
                 updates = dict(kwargs)
 
                 if "status" in updates:
@@ -949,6 +969,12 @@ class UserDB:
                     delivery_updated_at = updates["delivery_updated_at"]
                     if delivery_updated_at is not None and not isinstance(delivery_updated_at, str):
                         msg = "delivery_updated_at must be a string when provided"
+                        raise TypeError(msg)
+
+                if "delivery_attempt_id" in updates:
+                    delivery_attempt_id = updates["delivery_attempt_id"]
+                    if delivery_attempt_id is not None and not isinstance(delivery_attempt_id, str):
+                        msg = "delivery_attempt_id must be a string when provided"
                         raise TypeError(msg)
 
                 if "content_type" in updates and not updates["content_type"]:
@@ -998,6 +1024,7 @@ class UserDB:
         failure_reason: str | None = None,
         remember_failed_release: bool = False,
         admin_note: str | None = None,
+        expected_attempt_id: object = _UNSET,
     ) -> dict[str, Any] | None:
         """Reopen a failed fulfilled request so admins can re-approve it.
 
@@ -1025,6 +1052,12 @@ class UserDB:
                     return None
 
                 if current_request.get("status") != RequestStatus.FULFILLED:
+                    return None
+
+                if (
+                    expected_attempt_id is not _UNSET
+                    and current_request.get("delivery_attempt_id") != expected_attempt_id
+                ):
                     return None
 
                 current_delivery_state = current_request.get("delivery_state", DELIVERY_STATE_NONE)
@@ -1055,6 +1088,7 @@ class UserDB:
                     SET status = 'pending',
                         delivery_state = 'none',
                         delivery_updated_at = NULL,
+                        delivery_attempt_id = NULL,
                         release_data = NULL,
                         book_data = COALESCE(?, book_data),
                         last_failure_reason = ?,
@@ -1149,6 +1183,7 @@ class UserDB:
                     SET status = 'pending',
                         delivery_state = 'none',
                         delivery_updated_at = NULL,
+                        delivery_attempt_id = NULL,
                         last_failure_reason = NULL,
                         admin_note = ?,
                         reviewed_by = NULL,
@@ -1200,6 +1235,7 @@ class UserDB:
                         reviewed_at = NULL,
                         delivery_state = 'none',
                         delivery_updated_at = NULL,
+                        delivery_attempt_id = NULL,
                         last_failure_reason = ?
                     WHERE id = ?
                     """,

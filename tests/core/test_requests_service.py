@@ -2264,3 +2264,379 @@ def test_reopen_request_refuses_a_fulfilled_request_that_is_delivered_or_in_flig
 
     assert exc_info.value.code == "stale_transition"
     assert user_db.get_request(request_id)["status"] == "fulfilled"
+
+
+@pytest.mark.parametrize("same_source_id", [False, True])
+def test_sync_delivery_states_ignores_previous_attempt_failure_during_claim_to_queue_gap(
+    user_db, same_source_id
+):
+    """A status poll between claim and queue add must not reopen the request from the old error."""
+    alice = user_db.create_user(username="alice")
+    admin = user_db.create_user(username="admin", role="admin")
+    created = create_request(
+        user_db,
+        user_id=alice["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data={**_release_data(), "source_id": "first-try"},
+    )
+
+    first_queued: dict[str, object] = {}
+
+    def record_first(release_data, _priority, **_kwargs):
+        first_queued["release"] = dict(release_data)
+        return True, None
+
+    first_fulfilled = fulfil_request(
+        user_db,
+        request_id=created["id"],
+        admin_user_id=admin["id"],
+        queue_release=record_first,
+    )
+    first_attempt_id = first_fulfilled["delivery_attempt_id"]
+    assert first_attempt_id
+    assert first_queued["release"]["_request_attempt_id"] == first_attempt_id
+
+    reopened = reopen_failed_request(
+        user_db,
+        request_id=created["id"],
+        failure_reason="Download failed",
+    )
+    assert reopened is not None
+    assert reopened["status"] == "pending"
+    assert reopened["delivery_attempt_id"] is None
+
+    retry_source_id = "first-try" if same_source_id else "second-try"
+    second_release = {**_release_data(), "source_id": retry_source_id}
+    in_gap_updates: list[list[dict]] = []
+    second_queued: dict[str, object] = {}
+
+    def poll_before_queue_add(release_data, _priority, **_kwargs):
+        second_queued["release"] = dict(release_data)
+        # Simulate a status poll reading the stale first attempt while the retry claim exists.
+        updated = sync_delivery_states_from_queue_status(
+            user_db,
+            queue_status={
+                "error": {
+                    "first-try": {
+                        "id": "first-try",
+                        "request_id": created["id"],
+                        "request_attempt_id": first_attempt_id,
+                        "retry_available": False,
+                        "status_message": "Peer transfer failed",
+                    },
+                },
+            },
+            user_id=alice["id"],
+        )
+        in_gap_updates.append(updated)
+        return True, None
+
+    second_fulfilled = fulfil_request(
+        user_db,
+        request_id=created["id"],
+        admin_user_id=admin["id"],
+        queue_release=poll_before_queue_add,
+        release_data=second_release,
+    )
+
+    assert in_gap_updates == [[]]
+    refreshed = user_db.get_request(created["id"])
+    assert refreshed["status"] == "fulfilled"
+    assert refreshed["delivery_state"] == "queued"
+    second_attempt_id = second_fulfilled["delivery_attempt_id"]
+    assert second_attempt_id != first_attempt_id
+
+    completed = sync_delivery_states_from_queue_status(
+        user_db,
+        queue_status={
+            "complete": {
+                retry_source_id: {
+                    "id": retry_source_id,
+                    "request_id": created["id"],
+                    "request_attempt_id": second_attempt_id,
+                },
+            },
+            "error": (
+                {}
+                if same_source_id
+                else {
+                    "first-try": {
+                        "id": "first-try",
+                        "request_id": created["id"],
+                        "request_attempt_id": first_attempt_id,
+                        "retry_available": False,
+                        "status_message": "Peer transfer failed",
+                    },
+                }
+            ),
+        },
+        user_id=alice["id"],
+    )
+
+    assert [row["id"] for row in completed] == [created["id"]]
+    final_row = user_db.get_request(created["id"])
+    assert final_row["status"] == "fulfilled"
+    assert final_row["delivery_state"] == "complete"
+
+
+def test_concurrent_retry_fulfilments_serialize_so_fallback_plain_download_cannot_win_queue(
+    user_db,
+):
+    """Second Retry waits for winner's queue dispatch before observing stale_transition."""
+    import threading
+
+    from shelfmark.core import requests_service
+    from shelfmark.core.models import DownloadTask
+    from shelfmark.core.queue import BookQueue
+
+    alice = user_db.create_user(username="alice")
+    admin = user_db.create_user(username="admin", role="admin")
+    created = create_request(
+        user_db,
+        user_id=alice["id"],
+        source_hint="direct_download",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_book",
+        book_data=_book_data(),
+        release_data={**_release_data(), "source_id": "same-rel"},
+    )
+
+    queue = BookQueue()
+    winner_entered_dispatch = threading.Event()
+    t2_blocked_on_lock = threading.Event()
+    allow_winner_queue_add = threading.Event()
+    results: list[object] = []
+
+    class _ObservedLock:
+        def __init__(self, inner: threading.Lock) -> None:
+            self._inner = inner
+
+        def acquire(self, blocking: bool = True, timeout: float = -1) -> bool:
+            if not self._inner.acquire(blocking=False):
+                t2_blocked_on_lock.set()
+                return self._inner.acquire(blocking=blocking, timeout=timeout)
+            return True
+
+        def release(self) -> None:
+            self._inner.release()
+
+    def dispatch(release_data, _priority, user_id=None, username=None):
+        winner_entered_dispatch.set()
+        assert allow_winner_queue_add.wait(timeout=2.0)
+        task = DownloadTask(
+            task_id=release_data["source_id"],
+            source=release_data["source"],
+            title=release_data["title"],
+            user_id=user_id,
+            username=username,
+            request_id=release_data.get("_request_id"),
+            request_attempt_id=release_data.get("_request_attempt_id"),
+        )
+        if not queue.add(task):
+            return False, "Release is already in the download queue"
+        return True, None
+
+    def attempt_retry(*, trigger_fallback_on_stale: bool) -> None:
+        try:
+            fulfilled = fulfil_request(
+                user_db,
+                request_id=created["id"],
+                admin_user_id=admin["id"],
+                queue_release=dispatch,
+                release_data={**_release_data(), "source_id": "same-rel"},
+            )
+            results.append(("fulfilled", fulfilled["id"]))
+        except RequestServiceError as exc:
+            if trigger_fallback_on_stale and exc.code == "stale_transition":
+                plain_added = queue.add(
+                    DownloadTask(
+                        task_id="same-rel",
+                        source="prowlarr",
+                        title="Some Book",
+                        user_id=alice["id"],
+                        username="alice",
+                        request_id=None,
+                    )
+                )
+                results.append(("stale_fallback", plain_added))
+            else:
+                results.append(("error", exc.code))
+
+    t1 = threading.Thread(target=attempt_retry, kwargs={"trigger_fallback_on_stale": True})
+    t1.start()
+    assert winner_entered_dispatch.wait(timeout=2.0)
+
+    with requests_service._FULFIL_LOCKS_GUARD:
+        active = requests_service._FULFIL_LOCKS.get(created["id"])
+        assert active is not None
+        shared_lock, waiters = active
+        requests_service._FULFIL_LOCKS[created["id"]] = (_ObservedLock(shared_lock), waiters)
+
+    t2 = threading.Thread(target=attempt_retry, kwargs={"trigger_fallback_on_stale": True})
+    t2.start()
+    assert t2_blocked_on_lock.wait(timeout=2.0)
+    allow_winner_queue_add.set()
+
+    t1.join(timeout=2.0)
+    t2.join(timeout=2.0)
+
+    assert ("fulfilled", created["id"]) in results
+    assert ("stale_fallback", False) in results
+    row = user_db.get_request(created["id"])
+    assert row["status"] == "fulfilled"
+    queued_task = queue.get_task("same-rel")
+    assert queued_task is not None
+    assert queued_task.request_id == created["id"]
+    assert queued_task.request_attempt_id == row["delivery_attempt_id"]
+
+
+def test_orchestrator_task_payload_preserves_request_attempt_id():
+    from shelfmark.core.models import DownloadTask
+    from shelfmark.download.orchestrator import (
+        _restore_task_from_retry_payload,
+        _task_to_dict,
+        serialize_task_for_retry,
+    )
+
+    task = DownloadTask(
+        task_id="rel-attempt",
+        source="prowlarr",
+        title="Some Book",
+        request_id=42,
+        request_attempt_id="attempt-abc",
+    )
+
+    assert _task_to_dict(task)["request_attempt_id"] == "attempt-abc"
+    retry_payload = serialize_task_for_retry(task)
+    assert retry_payload["request_attempt_id"] == "attempt-abc"
+    restored = _restore_task_from_retry_payload(retry_payload)
+    assert restored is not None
+    assert restored.request_attempt_id == "attempt-abc"
+
+
+def test_reopen_failed_request_ignores_stale_attempt_id(user_db):
+    """Terminal hooks or polls carrying an older attempt token cannot reopen a newer claim."""
+    alice = user_db.create_user(username="alice")
+    admin = user_db.create_user(username="admin", role="admin")
+    created = create_request(
+        user_db,
+        user_id=alice["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data=_release_data(),
+    )
+    fulfilled = fulfil_request(
+        user_db,
+        request_id=created["id"],
+        admin_user_id=admin["id"],
+        queue_release=lambda *_a, **_kw: (True, None),
+    )
+
+    assert (
+        reopen_failed_request(
+            user_db,
+            request_id=created["id"],
+            failure_reason="Stale error",
+            expected_attempt_id="older-attempt",
+        )
+        is None
+    )
+    assert (
+        reopen_failed_request(
+            user_db,
+            request_id=created["id"],
+            failure_reason="Stale pre-attempt error",
+            expected_attempt_id=None,
+        )
+        is None
+    )
+    still_fulfilled = user_db.get_request(created["id"])
+    assert still_fulfilled["status"] == "fulfilled"
+    assert still_fulfilled["delivery_attempt_id"] == fulfilled["delivery_attempt_id"]
+
+    reopened = reopen_failed_request(
+        user_db,
+        request_id=created["id"],
+        failure_reason="Current error",
+        expected_attempt_id=fulfilled["delivery_attempt_id"],
+    )
+    assert reopened is not None
+    assert reopened["status"] == "pending"
+    assert reopened["delivery_attempt_id"] is None
+
+
+def test_sync_delivery_states_skips_stale_write_when_attempt_changes_mid_poll(user_db, monkeypatch):
+    """A poll whose snapshot is superseded before DB write must not overwrite the newer claim."""
+    alice = user_db.create_user(username="alice")
+    admin = user_db.create_user(username="admin", role="admin")
+    created = create_request(
+        user_db,
+        user_id=alice["id"],
+        source_hint="prowlarr",
+        content_type="ebook",
+        request_level="release",
+        policy_mode="request_release",
+        book_data=_book_data(),
+        release_data=_release_data(),
+    )
+    first = fulfil_request(
+        user_db,
+        request_id=created["id"],
+        admin_user_id=admin["id"],
+        queue_release=lambda *_a, **_kw: (True, None),
+    )
+    first_attempt_id = first["delivery_attempt_id"]
+
+    real_list_requests = user_db.list_requests
+
+    def supersede_after_snapshot(**kwargs):
+        rows = real_list_requests(**kwargs)
+        # Advance the DB request from attempt A -> attempt B complete before the poll writes.
+        reopened = user_db.reopen_failed_request(
+            created["id"],
+            failure_reason="Transient error",
+            expected_attempt_id=first_attempt_id,
+        )
+        assert reopened is not None
+        second = fulfil_request(
+            user_db,
+            request_id=created["id"],
+            admin_user_id=admin["id"],
+            queue_release=lambda *_a, **_kw: (True, None),
+            release_data=_release_data(),
+        )
+        user_db.update_request(
+            created["id"],
+            expected_delivery_attempt_id=second["delivery_attempt_id"],
+            delivery_state="complete",
+        )
+        return rows
+
+    monkeypatch.setattr(user_db, "list_requests", supersede_after_snapshot)
+
+    updated = sync_delivery_states_from_queue_status(
+        user_db,
+        queue_status={
+            "downloading": {
+                "release-123": {
+                    "id": "release-123",
+                    "request_id": created["id"],
+                    "request_attempt_id": first_attempt_id,
+                }
+            }
+        },
+        user_id=alice["id"],
+    )
+
+    assert updated == []
+    final_row = user_db.get_request(created["id"])
+    assert final_row["status"] == "fulfilled"
+    assert final_row["delivery_state"] == "complete"

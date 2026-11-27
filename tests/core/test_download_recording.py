@@ -392,11 +392,23 @@ class TestReopenAfterTerminalError:
             _terminal_hook()("t1", status, task)
         return reopen, emitted
 
-    def test_error_on_request_linked_task_reopens_and_broadcasts(self, main_module, services):
-        task = _task(request_id=42, status_message=" kaput ")
+    @pytest.mark.parametrize("request_attempt_id", [None, "attempt-123"])
+    def test_error_on_request_linked_task_reopens_and_broadcasts(
+        self, main_module, services, request_attempt_id
+    ):
+        task = _task(
+            request_id=42,
+            status_message=" kaput ",
+            request_attempt_id=request_attempt_id,
+        )
         reopen, emitted = self._run(main_module, services, task=task)
 
-        reopen.assert_called_once_with(services.user_db, request_id=42, failure_reason="kaput")
+        reopen.assert_called_once_with(
+            services.user_db,
+            request_id=42,
+            failure_reason="kaput",
+            expected_attempt_id=request_attempt_id,
+        )
         services.view_state.clear_item_for_all_viewers.assert_called_once_with(
             item_type="request", item_key="request:42"
         )
