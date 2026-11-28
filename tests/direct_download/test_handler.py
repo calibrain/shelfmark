@@ -1,7 +1,7 @@
 from threading import Event
 
 from shelfmark.core.config import config
-from shelfmark.core.models import DownloadTask
+from shelfmark.core.models import DownloadTask, with_task_suffix
 from shelfmark.release_sources.direct_download import DirectDownloadHandler
 
 
@@ -38,7 +38,11 @@ def test_direct_download_handler_builds_staging_filename_from_browse_record(monk
     assert result is not None
     assert captured["title"] == "Project Hail Mary: A Novel"
     assert captured["year"] == "2021"
-    assert captured["path"].name == "Andy Weir - Project Hail Mary_ A Novel (2021).epub"
+    expected_name = with_task_suffix(
+        "Andy Weir - Project Hail Mary_ A Novel (2021).epub",
+        task.task_id,
+    )
+    assert captured["path"].name == expected_name
 
 
 def test_direct_download_handler_uses_source_id_filename_when_organization_disabled(monkeypatch):
@@ -70,7 +74,7 @@ def test_direct_download_handler_uses_source_id_filename_when_organization_disab
     result = handler.download(task, Event(), lambda _progress: None, lambda _status, _message: None)
 
     assert result is not None
-    assert captured["path"].name == "aa-md5-hash.epub"
+    assert captured["path"].name == with_task_suffix("aa-md5-hash.epub", task.task_id)
 
 
 def test_direct_download_handler_skips_download_when_cancelled_before_start(monkeypatch):
@@ -142,7 +146,10 @@ def test_direct_download_handler_removes_partial_file_when_cancelled_after_downl
         lambda status, message: status_updates.append((status, message)),
     )
 
-    expected_path = tmp_path / "A. Author - Partial Book (2024).epub"
+    expected_path = tmp_path / with_task_suffix(
+        "A. Author - Partial Book (2024).epub",
+        task.task_id,
+    )
 
     assert result is None
     assert not expected_path.exists()
