@@ -340,7 +340,7 @@ def test_wireformat_rebuild_waits_for_concurrent_in_flight_requests(monkeypatch)
             name = threading.current_thread().name
             if name in entered:
                 entered[name].set()
-                assert proceed[name].wait(5)
+                proceed[name].wait()
                 if name == "old-fail":
                     raise network.httpx.ConnectError("simulated failure")
             return _FakeResponse()
@@ -359,31 +359,230 @@ def test_wireformat_rebuild_waits_for_concurrent_in_flight_requests(monkeypatch)
         except network.httpx.HTTPError as exc:
             results[name] = exc
 
-    threads = [threading.Thread(target=_lookup, name=name) for name in entered]
-    for thread in threads:
-        thread.start()
-    for name in entered:
-        assert entered[name].wait(5)
+    threads = [threading.Thread(target=_lookup, name=name, daemon=True) for name in entered]
+    started_threads: list[threading.Thread] = []
+    try:
+        for thread in threads:
+            thread.start()
+            started_threads.append(thread)
+        for name in entered:
+            assert entered[name].wait(5)
 
-    old = resolver._http2_client
-    assert resolver._http2_borrowers == {old: 2}
+        old = resolver._http2_client
+        assert resolver._http2_borrowers == {old: 2}
 
-    state["verify"] = True
-    assert resolver._resolve_wireformat("example.com", "A") == ["192.0.2.1"]
-    new = resolver._http2_client
-    assert new is not old
-    assert closed == []
+        state["verify"] = True
+        third_result: list[object] = []
 
-    proceed["old-fail"].set()
-    threads[0].join(5)
-    assert isinstance(results["old-fail"], network.httpx.ConnectError)
-    assert closed == []
+        def _third_lookup():
+            third_result.append(resolver._resolve_wireformat("example.com", "A"))
 
-    proceed["old-ok"].set()
-    threads[1].join(5)
-    assert results["old-ok"] == ["192.0.2.1"]
-    assert closed == [old]
-    assert resolver._http2_borrowers == {}
+        third = threading.Thread(target=_third_lookup, name="new-ok", daemon=True)
+        third.start()
+        started_threads.append(third)
+        third.join(5)
+        assert not third.is_alive()
+        assert third_result == [["192.0.2.1"]]
+        new = resolver._http2_client
+        assert new is not old
+        assert closed == []
+
+        proceed["old-fail"].set()
+        threads[0].join(5)
+        assert not threads[0].is_alive()
+        assert isinstance(results["old-fail"], network.httpx.ConnectError)
+        assert closed == []
+
+        proceed["old-ok"].set()
+        threads[1].join(5)
+        assert not threads[1].is_alive()
+        assert results["old-ok"] == ["192.0.2.1"]
+        assert closed == [old]
+        assert resolver._http2_borrowers == {}
+    finally:
+        for event in proceed.values():
+            event.set()
+        for thread in started_threads:
+            thread.join(5)
+
+
+def test_configured_proxy_hostnames_matches_httpx_idna_and_bypasses_doh(monkeypatch):
+    """Non-ASCII proxy hostnames (including IDNA2008 eszett and trailing dots) use
+    httpx's own URL encoding so socket lookups bypass DoH, while invalid IDNA labels
+    do not add spurious aliases."""
+    import socket
+
+    import shelfmark.download.network as network
+
+    monkeypatch.setattr(network, "get_proxies", lambda _url: {})
+    for key in (
+        "HTTP_PROXY",
+        "http_proxy",
+        "HTTPS_PROXY",
+        "https_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    # IDNA2008 eszett (differs from stdlib IDNA2003 'fass.example') and trailing dot.
+    monkeypatch.setenv("HTTPS_PROXY", "socks5://faß.example:1080")
+    monkeypatch.setenv("HTTP_PROXY", "http://faß.example.:8080")
+    monkeypatch.setenv("ALL_PROXY", "socks5://ab\u200dcd.example:1080")
+
+    hosts = network._configured_proxy_hostnames()
+    assert "xn--fa-hia.example" in hosts
+    assert "xn--fa-hia.example." in hosts
+    assert "fass.example" not in hosts
+    assert "abcd.example" not in hosts
+
+    # Verify custom_getaddrinfo routes httpx's encoded proxy hosts to system DNS, not DoH.
+    doh_calls: list[str] = []
+    system_calls: list[str] = []
+
+    def _fake_system_getaddrinfo(host, port, *_args, **_kwargs):
+        system_calls.append(host)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.0.2.9", port))]
+
+    monkeypatch.setattr(network, "original_getaddrinfo", _fake_system_getaddrinfo)
+    custom = network.create_custom_getaddrinfo(
+        lambda host: doh_calls.append(host) or ["198.51.100.1"],
+        lambda _host: [],
+        lambda host: host.lower() in network._configured_proxy_hostnames(),
+    )
+
+    for target in ("xn--fa-hia.example", "xn--fa-hia.example."):
+        res = custom(target, 1080, socket.AF_INET, socket.SOCK_STREAM)
+        assert res[0][4][0] == "192.0.2.9"
+    assert doh_calls == []
+    assert system_calls == ["xn--fa-hia.example", "xn--fa-hia.example."]
+
+
+def test_malformed_proxy_values_do_not_break_unrelated_dns_lookups(monkeypatch):
+    """Non-string proxy settings and lone-surrogate URLs must neither raise inside
+    skip_doh nor crash Quad9 DoH client creation (falling back cleanly to system DNS
+    rather than raising AttributeError or silently connecting direct)."""
+    import socket
+
+    import shelfmark.download.network as network
+
+    surrogate_url = "http://\ud800@proxy.example:8080"
+    with pytest.raises(UnicodeEncodeError):
+        network.httpx.URL(surrogate_url)
+
+    monkeypatch.setattr(
+        network,
+        "get_proxies",
+        lambda _url: {"https": 123, "http": surrogate_url},
+    )
+    monkeypatch.setattr(network, "get_ssl_verify", lambda _url: True)
+    for key in (
+        "HTTP_PROXY",
+        "http_proxy",
+        "HTTPS_PROXY",
+        "https_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+    assert network._configured_proxy_hostnames() == {"proxy.example"}
+
+    # Full real-resolver path: non-string proxy 123 must fail as a DoH transport error
+    # (never silently direct-connecting) and fall back cleanly to system DNS.
+    system_calls: list[str] = []
+
+    def _fake_system_getaddrinfo(host, port, *_args, **_kwargs):
+        system_calls.append(host)
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("192.0.2.42", port))]
+
+    monkeypatch.setattr(network, "original_getaddrinfo", _fake_system_getaddrinfo)
+    resolver = network.DoHResolver("https://dns.quad9.net/dns-query", "dns.quad9.net", "9.9.9.9")
+    custom = network.create_custom_getaddrinfo(
+        lambda host: resolver.resolve(host, "A"),
+        lambda host: resolver.resolve(host, "AAAA"),
+        lambda host: host.lower() in network._configured_proxy_hostnames(),
+    )
+    res = custom("unrelated.example", 443, socket.AF_INET, socket.SOCK_STREAM)
+    assert res[0][4][0] == "192.0.2.42"
+    assert system_calls == ["unrelated.example"]
+    assert resolver._http2_client is None
+
+
+def test_acquire_http2_client_reads_settings_under_lock(monkeypatch):
+    """Both get_proxies and get_ssl_verify must be read while holding _http2_lock,
+    so a waiting lookup observes the latest settings after taking the lock rather
+    than replacing a newer client with a stale pre-lock snapshot."""
+    import shelfmark.download.network as network
+
+    state = {"verify": False}
+    created: list[dict[str, object]] = []
+    lock_waiting = threading.Event()
+    finished = threading.Event()
+    getter_lock_owners: list[tuple[str, int | None, int]] = []
+
+    class _TrackingLock:
+        def __init__(self):
+            self._lock = threading.Lock()
+            self.owner: int | None = None
+
+        def __enter__(self):
+            if threading.current_thread().name == "waiter":
+                lock_waiting.set()
+            self._lock.acquire()
+            self.owner = threading.get_ident()
+            return self
+
+        def __exit__(self, *args):
+            self.owner = None
+            self._lock.release()
+
+    class _FakeClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            created.append(kwargs)
+
+        def close(self):
+            pass
+
+    resolver = network.DoHResolver("https://dns.quad9.net/dns-query", "dns.quad9.net", "9.9.9.9")
+    tracking_lock = _TrackingLock()
+    resolver._http2_lock = tracking_lock  # type: ignore[assignment]
+
+    def _fake_get_proxies(_url: str) -> dict[str, str]:
+        getter_lock_owners.append(("proxies", tracking_lock.owner, threading.get_ident()))
+        return {}
+
+    def _fake_get_ssl_verify(_url: str) -> bool:
+        getter_lock_owners.append(("verify", tracking_lock.owner, threading.get_ident()))
+        return state["verify"]
+
+    monkeypatch.setattr(network.httpx, "Client", lambda **kwargs: _FakeClient(**kwargs))
+    monkeypatch.setattr(network, "get_proxies", _fake_get_proxies)
+    monkeypatch.setattr(network, "get_ssl_verify", _fake_get_ssl_verify)
+
+    def _borrow_once():
+        with resolver._borrow_http2_client():
+            pass
+        finished.set()
+
+    with resolver._http2_lock:
+        worker = threading.Thread(target=_borrow_once, name="waiter", daemon=True)
+        worker.start()
+        assert lock_waiting.wait(5)
+        state["verify"] = True
+        newest = _FakeClient(http2=True, timeout=10, verify=True, proxy=None)
+        resolver._http2_client = newest
+        resolver._http2_client_config = (None, True)
+
+    assert finished.wait(5)
+    worker.join(5)
+    assert not worker.is_alive()
+    assert resolver._http2_client is newest
+    assert resolver._http2_client_config == (None, True)
+    assert [c["verify"] for c in created] == [True]
+    assert len(getter_lock_owners) == 2
+    assert all(owner == caller for _, owner, caller in getter_lock_owners)
 
 
 def test_wireformat_resolve_catches_missing_optional_transport_and_retries(monkeypatch):

@@ -628,6 +628,25 @@ class _DoHTransportError(httpx.HTTPError):
 _DOH_REQUEST_ERRORS = (OSError, ValueError, requests.RequestException, httpx.HTTPError)
 
 
+def _add_proxy_host(hosts: set[str], value: object) -> None:
+    if not isinstance(value, str):
+        return
+    host = _hostname_of(value)
+    if host:
+        hosts.add(host)
+    raw = value.strip()
+    if not raw:
+        return
+    url_str = raw if "://" in raw else f"http://{raw}"
+    with contextlib.suppress(httpx.InvalidURL, UnicodeError):
+        raw_host = httpx.URL(url_str).raw_host
+        if raw_host:
+            decoded = raw_host.decode("ascii").lower()
+            if decoded.startswith("[") and decoded.endswith("]"):
+                decoded = decoded[1:-1]
+            hosts.add(decoded)
+
+
 def _configured_proxy_hostnames() -> set[str]:
     """Hostnames of active proxy endpoints that must resolve via system DNS.
 
@@ -636,9 +655,7 @@ def _configured_proxy_hostnames() -> set[str]:
     """
     hosts: set[str] = set()
     for value in get_proxies("").values():
-        host = _hostname_of(value)
-        if host:
-            hosts.add(host)
+        _add_proxy_host(hosts, value)
     for env_key in (
         "HTTP_PROXY",
         "http_proxy",
@@ -647,9 +664,7 @@ def _configured_proxy_hostnames() -> set[str]:
         "ALL_PROXY",
         "all_proxy",
     ):
-        host = _hostname_of(os.environ.get(env_key, ""))
-        if host:
-            hosts.add(host)
+        _add_proxy_host(hosts, os.environ.get(env_key, ""))
     return hosts
 
 
@@ -1185,18 +1200,36 @@ class DoHResolver:
         finally:
             self._release_http2_client(client)
 
+    def _build_http2_client(self, proxy: object, verify: bool) -> Any:
+        if proxy is not None and not isinstance(proxy, str):
+            msg = (
+                f"Invalid proxy configuration for DoH ({self.base_url}): "
+                f"expected str or None, got {type(proxy).__name__}"
+            )
+            raise _DoHTransportError(msg)
+        try:
+            return httpx.Client(
+                http2=True,
+                timeout=10,
+                verify=verify,
+                proxy=proxy,
+            )
+        except (ImportError, httpx.InvalidURL, TypeError, ValueError) as exc:
+            msg = f"Invalid or unavailable httpx transport for DoH ({self.base_url}): {exc}"
+            raise _DoHTransportError(msg) from exc
+
     def _acquire_http2_client(self) -> tuple[Any, Any | None]:
         """Count a borrow of the current client, rebuilding it if settings changed.
 
         Returns the client plus the idle client it replaced, if any; the caller must
         close that one outside the lock.
         """
-        proxy = _first_proxy(get_proxies(self.base_url))
-        verify = get_ssl_verify(self.base_url)
-        desired = (proxy, verify)
         retired: Any | None = None
         try:
             with self._http2_lock:
+                proxy = _first_proxy(get_proxies(self.base_url))
+                verify = get_ssl_verify(self.base_url)
+                desired = (proxy, verify)
                 client = self._http2_client
                 if client is None or self._http2_client_config != desired:
                     if client is not None:
@@ -1204,19 +1237,7 @@ class DoHResolver:
                         self._http2_client_config = None
                         if client not in self._http2_borrowers:
                             retired = client
-                    try:
-                        client = httpx.Client(
-                            http2=True,
-                            timeout=10,
-                            verify=verify,
-                            proxy=proxy,
-                        )
-                    except ImportError as exc:
-                        msg = (
-                            f"Missing optional httpx transport dependency for DoH "
-                            f"({self.base_url}): {exc}"
-                        )
-                        raise _DoHTransportError(msg) from exc
+                    client = self._build_http2_client(proxy, verify)
                     self._http2_client = client
                     self._http2_client_config = desired
                 self._http2_borrowers[client] = self._http2_borrowers.get(client, 0) + 1
