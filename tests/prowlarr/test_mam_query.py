@@ -12,6 +12,7 @@ from shelfmark.release_sources.prowlarr.source import ProwlarrSource
 
 MAM = 6
 OTHER = 7
+MAM_FREELEECH = 8
 
 
 class TestCoreTitle:
@@ -35,6 +36,8 @@ class TestCoreTitle:
             ("Catch-22", None, "Catch-22"),
             ("1984", None, "1984"),
             ("Spider-Man - Forever Young", None, "Forever Young"),
+            ("Dune - #1", None, "Dune"),
+            ("Dune - Vol. 2", None, "Dune"),
         ],
     )
     def test_core_title(self, title, series, expected):
@@ -53,23 +56,29 @@ class _Client:
 
     indexer_timeout = 90
 
-    def __init__(self, hits=None, fail_queries=()):
+    def __init__(self, hits=None, fail_queries=(), mam_ids=(MAM,), on_call=None):
         self.hits = set(hits or ())
         self.fail_queries = set(fail_queries)
         self.calls: list[tuple[int, str]] = []
         self.fail_other = False
+        self.mam_ids = list(mam_ids)
+        self.on_call = on_call
 
     def get_enabled_indexers_detailed(self, *, raise_on_error=False):
         del raise_on_error
         caps = {"categories": [{"id": 7000, "subCategories": []}]}
+        mam = [
+            {"id": i, "enable": True, "implementation": "MyAnonamouse", "capabilities": caps}
+            for i in self.mam_ids
+        ]
         return [
-            {"id": MAM, "enable": True, "implementation": "MyAnonamouse", "capabilities": caps},
+            *mam,
             {"id": OTHER, "enable": True, "implementation": "Torznab", "capabilities": caps},
         ]
 
     def get_enriched_indexer_ids(self, restrict_to=None, indexers=None):
         del indexers
-        return [i for i in [MAM] if restrict_to is None or i in restrict_to]
+        return [i for i in self.mam_ids if restrict_to is None or i in restrict_to]
 
     def get_disabled_indexers(self, **_):
         return {}
@@ -77,6 +86,8 @@ class _Client:
     def torznab_search(self, *, indexer_id, query, categories=None, search_type="book", **_):
         del categories, search_type
         self.calls.append((indexer_id, query))
+        if self.on_call:
+            self.on_call(indexer_id, query)
         if query in self.fail_queries or (indexer_id == OTHER and self.fail_other):
             raise ProwlarrSearchError("boom")
         if (indexer_id, query) not in self.hits:
@@ -86,7 +97,7 @@ class _Client:
                 "guid": f"{indexer_id}-{query}",
                 "title": query,
                 "indexerId": indexer_id,
-                "indexer": "MyAnonamouse" if indexer_id == MAM else "Other",
+                "indexer": "MyAnonamouse" if indexer_id in self.mam_ids else "Other",
                 "protocol": "torrent",
                 "size": 1048576,
                 "seeders": 1,
@@ -204,3 +215,19 @@ class TestMamQuery:
         client = _Client(hits={(MAM, "War of the Spark")})
         search(client, WAR_OF_THE_SPARK, mam_id="session")
         assert rerun == [["War of the Spark"]]
+
+    def test_fallback_out_of_budget_keeps_what_it_found(self, search, monkeypatch):
+        clock = [0.0]
+        monkeypatch.setattr(prowlarr_source.time, "monotonic", lambda: clock[0])
+
+        def budget_runs_out(indexer_id, query):
+            if (indexer_id, query) == (MAM, "War of the Spark"):
+                clock[0] = 1e9
+
+        client = _Client(
+            hits={(MAM, "War of the Spark")},
+            mam_ids=(MAM, MAM_FREELEECH),
+            on_call=budget_runs_out,
+        )
+        assert len(search(client, WAR_OF_THE_SPARK)) == 1
+        assert (MAM_FREELEECH, "War of the Spark") not in client.calls

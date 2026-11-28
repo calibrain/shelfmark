@@ -20,7 +20,8 @@ _NUMBER = r"\d+(?:\.\d+)?"
 _SERIES_NUMBER = re.compile(
     rf"""(?ix)
     (?:
-        \s*[:,]\s*(?:{_SERIES_WORD}\s*|\#\s*)?{_NUMBER}
+        \s+[-\u2013\u2014]\s+(?:{_SERIES_WORD}\s*|\#\s*)?{_NUMBER}
+      | \s*[:,]\s*(?:{_SERIES_WORD}\s*|\#\s*)?{_NUMBER}
       | \s*[(\[]\s*(?:{_SERIES_WORD}\s*|\#\s*)?{_NUMBER}\s*[)\]]
       | \s*\#\s*{_NUMBER}
       | \s+(?:book|vol(?:ume)?)\.?\s*{_NUMBER}
@@ -42,8 +43,9 @@ def core_title(title: str, series_name: str | None = None) -> str:
     if series_name:
         series = re.escape(" ".join(series_name.split()))
         stripped = re.sub(rf"(?i)^{series}{_SERIES_PREFIX_SEPARATOR}", "", stripped)
-    stripped = _SEGMENT_SEPARATOR.split(stripped)[-1]
-    stripped = _SERIES_NUMBER.sub("", stripped).strip()
+    # The volume number first: as the last segment, "Dune - #1" would become "#1".
+    stripped = _SERIES_NUMBER.sub("", stripped)
+    stripped = _SEGMENT_SEPARATOR.split(stripped)[-1].strip()
     return stripped or original
 
 

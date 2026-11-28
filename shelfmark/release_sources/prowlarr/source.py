@@ -1272,6 +1272,9 @@ class ProwlarrSource(ReleaseSource):
                         outcome.skipped += 1
                         unanswered_indexer_ids.add(indexer_id)
                         continue
+                    # A fallback that runs out of budget keeps what it found.
+                    if mam_only and time.monotonic() > deadline:
+                        break
                     _check_timeout()
                     outcome.attempted += 1
                     try:
