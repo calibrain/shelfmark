@@ -29,7 +29,7 @@ from shelfmark.core.request_helpers import coerce_bool, normalize_optional_text
 from shelfmark.core.utils import normalize_http_url
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Iterator, Sequence
 
 
 def _get_no_proxy_patterns() -> list[str]:
@@ -1118,6 +1118,11 @@ def _is_aa_hostname(host_str: str) -> bool:
 original_getaddrinfo = socket.getaddrinfo
 
 
+def _close_http2_client(client: Any) -> None:
+    with contextlib.suppress(OSError, httpx.HTTPError):
+        client.close()
+
+
 class DoHResolver:
     """DNS over HTTPS resolver implementation with caching."""
 
@@ -1140,6 +1145,9 @@ class DoHResolver:
         )
         self._http2_client: Any | None = None
         self._http2_client_config: tuple[str | None, bool] | None = None
+        # In-flight request count per HTTP/2 client. A client replaced after a live
+        # proxy/TLS change is closed only once its count drops to zero.
+        self._http2_borrowers: dict[Any, int] = {}
         self._http2_lock = threading.Lock()
 
         if self.use_wireformat:
@@ -1157,44 +1165,67 @@ class DoHResolver:
                 }
             )
 
-    def _get_http2_client(self) -> Any:
-        """Lazily build the HTTP/2 client used for RFC 8484 providers.
+    @contextlib.contextmanager
+    def _borrow_http2_client(self) -> Iterator[Any]:
+        """Lend the HTTP/2 client used for RFC 8484 providers for one request.
 
         Built on first use so a resolver pointed at a JSON provider never opens an
         HTTP/2 connection pool it will not use, and rebuilt whenever the effective
-        proxy or TLS verification setting changes live.
+        proxy or TLS verification setting changes live. A client replaced while a
+        request is still in flight on it stays open until that request returns it,
+        so a concurrent lookup never sends on a closed client.
         """
+        client = self._acquire_http2_client()
+        try:
+            yield client
+        finally:
+            self._release_http2_client(client)
+
+    def _acquire_http2_client(self) -> Any:
         proxy = _first_proxy(get_proxies(self.base_url))
         verify = get_ssl_verify(self.base_url)
         desired = (proxy, verify)
-        old_client: Any | None = None
+        retired: Any | None = None
         try:
             with self._http2_lock:
-                if self._http2_client is not None and self._http2_client_config == desired:
-                    return self._http2_client
-                old_client = self._http2_client
-                self._http2_client = None
-                self._http2_client_config = None
-                try:
-                    client = httpx.Client(
-                        http2=True,
-                        timeout=10,
-                        verify=verify,
-                        proxy=proxy,
-                    )
-                except ImportError as exc:
-                    msg = (
-                        f"Missing optional httpx transport dependency for DoH "
-                        f"({self.base_url}): {exc}"
-                    )
-                    raise _DoHTransportError(msg) from exc
-                self._http2_client = client
-                self._http2_client_config = desired
+                client = self._http2_client
+                if client is None or self._http2_client_config != desired:
+                    if client is not None:
+                        self._http2_client = None
+                        self._http2_client_config = None
+                        if client not in self._http2_borrowers:
+                            retired = client
+                    try:
+                        client = httpx.Client(
+                            http2=True,
+                            timeout=10,
+                            verify=verify,
+                            proxy=proxy,
+                        )
+                    except ImportError as exc:
+                        msg = (
+                            f"Missing optional httpx transport dependency for DoH "
+                            f"({self.base_url}): {exc}"
+                        )
+                        raise _DoHTransportError(msg) from exc
+                    self._http2_client = client
+                    self._http2_client_config = desired
+                self._http2_borrowers[client] = self._http2_borrowers.get(client, 0) + 1
                 return client
         finally:
-            if old_client is not None:
-                with contextlib.suppress(OSError, httpx.HTTPError):
-                    old_client.close()
+            if retired is not None:
+                _close_http2_client(retired)
+
+    def _release_http2_client(self, client: Any) -> None:
+        with self._http2_lock:
+            remaining = self._http2_borrowers.get(client, 0) - 1
+            if remaining > 0:
+                self._http2_borrowers[client] = remaining
+                return
+            self._http2_borrowers.pop(client, None)
+            if client is self._http2_client:
+                return
+        _close_http2_client(client)
 
     def _resolve_wireformat(self, hostname: str, record_type: str) -> list[str]:
         """Resolve via RFC 8484: base64url query in, DNS message out."""
@@ -1202,11 +1233,12 @@ class DoHResolver:
 
         qtype = doh_wireformat.TYPE_AAAA if record_type == "AAAA" else doh_wireformat.TYPE_A
         param = doh_wireformat.encode_query_param(hostname, qtype)
-        response = self._get_http2_client().get(
-            self.base_url,
-            params={"dns": param},
-            headers={"Accept": "application/dns-message"},
-        )
+        with self._borrow_http2_client() as client:
+            response = client.get(
+                self.base_url,
+                params={"dns": param},
+                headers={"Accept": "application/dns-message"},
+            )
         response.raise_for_status()
         return doh_wireformat.decode_answer(response.content, qtype)
 

@@ -172,15 +172,15 @@ def test_wireformat_http2_client_supports_socks5_proxy(monkeypatch, url, host, i
     monkeypatch.setattr(network, "get_ssl_verify", lambda _url: True)
 
     resolver = network.DoHResolver(url, host, ip)
-    client = resolver._get_http2_client()
-    try:
-        assert client is not None
-        assert len(captured) == 1
-        assert captured[0]["http2"] is True
-        assert captured[0]["verify"] is True
-        assert captured[0]["proxy"] == proxy_url
-    finally:
-        client.close()
+    with resolver._borrow_http2_client() as client:
+        try:
+            assert client is not None
+            assert len(captured) == 1
+            assert captured[0]["http2"] is True
+            assert captured[0]["verify"] is True
+            assert captured[0]["proxy"] == proxy_url
+        finally:
+            client.close()
 
 
 def test_wireformat_http2_client_rebuilds_when_proxy_or_tls_changes(monkeypatch):
@@ -209,8 +209,11 @@ def test_wireformat_http2_client_rebuilds_when_proxy_or_tls_changes(monkeypatch)
     monkeypatch.setattr(network, "get_ssl_verify", lambda _url: state["verify"])
 
     resolver = network.DoHResolver("https://dns.quad9.net/dns-query", "dns.quad9.net", "9.9.9.9")
-    first = resolver._get_http2_client()
-    assert resolver._get_http2_client() is first
+    with resolver._borrow_http2_client() as first:
+        pass
+    with resolver._borrow_http2_client() as again:
+        assert again is first
+    assert closed == []
     assert len(created) == 1
     assert created[0][0]["proxy"] is None
     assert created[0][0]["verify"] is False
@@ -221,12 +224,47 @@ def test_wireformat_http2_client_rebuilds_when_proxy_or_tls_changes(monkeypatch)
     }
     state["verify"] = True
 
-    second = resolver._get_http2_client()
-    assert second is not first
+    with resolver._borrow_http2_client() as second:
+        assert second is not first
     assert len(created) == 2
     assert created[1][0]["proxy"] == "socks5://user:pass@proxy.example.com:1080"
     assert created[1][0]["verify"] is True
     assert closed == [first]
+
+
+def test_wireformat_http2_client_stays_open_for_in_flight_request_after_rebuild(monkeypatch):
+    """A lookup that changes proxy/TLS settings must not close the client another
+    lookup is still sending on; the old client closes once that request returns."""
+    import shelfmark.download.network as network
+
+    state = {"verify": False}
+    closed: list[object] = []
+
+    class _FakeClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def close(self):
+            closed.append(self)
+
+    monkeypatch.setattr(network.httpx, "Client", lambda **kwargs: _FakeClient(**kwargs))
+    monkeypatch.setattr(network, "get_proxies", lambda _url: {})
+    monkeypatch.setattr(network, "get_ssl_verify", lambda _url: state["verify"])
+
+    resolver = network.DoHResolver("https://dns.quad9.net/dns-query", "dns.quad9.net", "9.9.9.9")
+    with resolver._borrow_http2_client() as first:
+        with resolver._borrow_http2_client() as shared:
+            assert shared is first
+
+        state["verify"] = True
+        with resolver._borrow_http2_client() as second:
+            assert second is not first
+        # first is still borrowed by the outer lookup, so it must stay open.
+        assert closed == []
+
+    assert closed == [first]
+    assert resolver._http2_client is second
+    assert resolver._http2_borrowers == {}
 
 
 def test_wireformat_resolve_catches_missing_optional_transport_and_retries(monkeypatch):
