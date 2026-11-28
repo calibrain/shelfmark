@@ -63,6 +63,7 @@ class _Client:
         self.fail_other = False
         self.mam_ids = list(mam_ids)
         self.on_call = on_call
+        self.read_timeouts: list[float | None] = []
 
     def get_enabled_indexers_detailed(self, *, raise_on_error=False):
         del raise_on_error
@@ -83,9 +84,12 @@ class _Client:
     def get_disabled_indexers(self, **_):
         return {}
 
-    def torznab_search(self, *, indexer_id, query, categories=None, search_type="book", **_):
+    def torznab_search(
+        self, *, indexer_id, query, categories=None, search_type="book", read_timeout=None, **_
+    ):
         del categories, search_type
         self.calls.append((indexer_id, query))
+        self.read_timeouts.append(read_timeout)
         if self.on_call:
             self.on_call(indexer_id, query)
         if query in self.fail_queries or (indexer_id == OTHER and self.fail_other):
@@ -231,3 +235,20 @@ class TestMamQuery:
         )
         assert len(search(client, WAR_OF_THE_SPARK)) == 1
         assert (MAM_FREELEECH, "War of the Spark") not in client.calls
+
+    def test_fallback_requests_get_only_the_remaining_budget(self, search, monkeypatch):
+        clock = [0.0]
+        monkeypatch.setattr(prowlarr_source.time, "monotonic", lambda: clock[0])
+        budget = prowlarr_source._search_budget_seconds(_Client.indexer_timeout)
+
+        def nearly_out_of_budget(indexer_id, query):
+            if (indexer_id, query) == (OTHER, "Magic"):
+                clock[0] = budget - 5
+
+        client = _Client(hits={(MAM, "War of the Spark")}, on_call=nearly_out_of_budget)
+        assert len(search(client, WAR_OF_THE_SPARK)) == 1
+        assert list(zip(client.calls, client.read_timeouts, strict=True)) == [
+            ((MAM, "Magic"), None),
+            ((OTHER, "Magic"), None),
+            ((MAM, "War of the Spark"), 5),
+        ]

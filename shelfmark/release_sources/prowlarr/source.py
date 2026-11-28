@@ -3,6 +3,7 @@
 import re
 import time
 from dataclasses import dataclass
+from functools import partial
 from threading import Lock
 from typing import TYPE_CHECKING, ClassVar, NoReturn
 
@@ -1272,13 +1273,19 @@ class ProwlarrSource(ReleaseSource):
                         outcome.skipped += 1
                         unanswered_indexer_ids.add(indexer_id)
                         continue
-                    # A fallback that runs out of budget keeps what it found.
-                    if mam_only and time.monotonic() > deadline:
-                        break
-                    _check_timeout()
+                    # A fallback that runs out of budget keeps what it found, and its
+                    # requests may only use what is left of the budget.
+                    torznab_search = client.torznab_search
+                    if mam_only:
+                        remaining = deadline - time.monotonic()
+                        if remaining <= 0:
+                            break
+                        torznab_search = partial(torznab_search, read_timeout=remaining)
+                    else:
+                        _check_timeout()
                     outcome.attempted += 1
                     try:
-                        raw = client.torznab_search(
+                        raw = torznab_search(
                             indexer_id=indexer_id,
                             query=mam_query if mam_query and indexer_id in mam_indexers else query,
                             categories=cats,

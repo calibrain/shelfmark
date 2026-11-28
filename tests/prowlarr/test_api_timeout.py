@@ -91,6 +91,17 @@ class TestTorznabSearchFailures:
         with pytest.raises(ProwlarrSearchError, match="did not respond within 90s"):
             client.torznab_search(indexer_id=1, query="Dune")
 
+    @pytest.mark.parametrize(("read_timeout", "expected"), [(None, 90), (12.5, 12.5), (300, 90)])
+    def test_read_timeout_only_shortens_the_indexer_timeout(
+        self, monkeypatch, read_timeout, expected
+    ):
+        client, captured = self._client(monkeypatch, _Response(_TORZNAB_EMPTY))
+        kwargs = {} if read_timeout is None else {"read_timeout": read_timeout}
+
+        client.torznab_search(indexer_id=1, query="Dune", **kwargs)
+
+        assert captured["timeout"] == (prowlarr_api._CONNECT_TIMEOUT_SECONDS, expected)
+
     def test_http_error_raises_instead_of_returning_empty(self, monkeypatch):
         """Prowlarr answers 429 once it has disabled an indexer for recent failures."""
         client, _ = self._client(monkeypatch, _Response("", status_code=429, reason="Too Many"))
