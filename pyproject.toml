@@ -27,8 +27,9 @@ dependencies = [
     "joserfc>=1.8.0",
     "apprise>=2.3.0",
     # HTTP/2 client for RFC 8484 DoH: quad9 rejects HTTP/1.1 outright (505), which
-    # requests cannot speak. See shelfmark/download/doh_wireformat.py.
-    "httpx[http2]>=0.28.1",
+    # requests cannot speak. Includes socks (socksio) so DoH works over a SOCKS5 proxy.
+    # See shelfmark/download/doh_wireformat.py.
+    "httpx[http2,socks]>=0.28.1",
     "publicsuffixlist>=1.1.2.20261116",
     # Runs Tor and WireGuard under tor.sh and wireguard.sh. Installed here and not from apt, which
     # pulls in Debian's Python 3.13.

@@ -1,5 +1,6 @@
 """DNS rotation, mirror selection, and network utilities."""
 
+import contextlib
 import fnmatch
 import http.cookiejar
 import ipaddress
@@ -28,7 +29,7 @@ from shelfmark.core.request_helpers import coerce_bool, normalize_optional_text
 from shelfmark.core.utils import normalize_http_url
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Callable, Iterator, Sequence
 
 
 def _get_no_proxy_patterns() -> list[str]:
@@ -617,9 +618,54 @@ DNS_PROVIDERS = [
     ("opendns", ["208.67.222.222", "208.67.220.220"], "https://doh.opendns.com/dns-query"),
 ]
 
+
+class _DoHTransportError(httpx.HTTPError):
+    """Raised when an optional httpx transport (e.g. socksio/h2) cannot be initialised."""
+
+
 # httpx raises its own hierarchy, which shares no base class with requests', so a
 # wireformat failure would escape a requests-only except clause.
 _DOH_REQUEST_ERRORS = (OSError, ValueError, requests.RequestException, httpx.HTTPError)
+
+
+def _add_proxy_host(hosts: set[str], value: object) -> None:
+    if not isinstance(value, str):
+        return
+    host = _hostname_of(value)
+    if host:
+        hosts.add(host)
+    raw = value.strip()
+    if not raw:
+        return
+    url_str = raw if "://" in raw else f"http://{raw}"
+    with contextlib.suppress(httpx.InvalidURL, UnicodeError):
+        raw_host = httpx.URL(url_str).raw_host
+        if raw_host:
+            decoded = raw_host.decode("ascii").lower()
+            if decoded.startswith("[") and decoded.endswith("]"):
+                decoded = decoded[1:-1]
+            hosts.add(decoded)
+
+
+def _configured_proxy_hostnames() -> set[str]:
+    """Hostnames of active proxy endpoints that must resolve via system DNS.
+
+    Sending a proxy hostname itself through DoH over that same proxy recurses back
+    into the proxy transport and can deadlock httpcore's SOCKS connection lock.
+    """
+    hosts: set[str] = set()
+    for value in get_proxies("").values():
+        _add_proxy_host(hosts, value)
+    for env_key in (
+        "HTTP_PROXY",
+        "http_proxy",
+        "HTTPS_PROXY",
+        "https_proxy",
+        "ALL_PROXY",
+        "all_proxy",
+    ):
+        _add_proxy_host(hosts, os.environ.get(env_key, ""))
+    return hosts
 
 
 def _first_proxy(proxies: dict[str, str] | None) -> str | None:
@@ -1087,6 +1133,11 @@ def _is_aa_hostname(host_str: str) -> bool:
 original_getaddrinfo = socket.getaddrinfo
 
 
+def _close_http2_client(client: Any) -> None:
+    with contextlib.suppress(OSError, httpx.HTTPError):
+        client.close()
+
+
 class DoHResolver:
     """DNS over HTTPS resolver implementation with caching."""
 
@@ -1108,6 +1159,11 @@ class DoHResolver:
             _DOH_WIREFORMAT_HOSTS
         )
         self._http2_client: Any | None = None
+        self._http2_client_config: tuple[str | None, bool] | None = None
+        # In-flight request count per HTTP/2 client. A client replaced after a live
+        # proxy/TLS change is closed only once its count drops to zero.
+        self._http2_borrowers: dict[Any, int] = {}
+        self._http2_lock = threading.Lock()
 
         if self.use_wireformat:
             self.session.headers.update({"Accept": "application/dns-message"})
@@ -1124,20 +1180,84 @@ class DoHResolver:
                 }
             )
 
-    def _get_http2_client(self) -> Any:
-        """Lazily build the HTTP/2 client used for RFC 8484 providers.
+    @contextlib.contextmanager
+    def _borrow_http2_client(self) -> Iterator[Any]:
+        """Lend the HTTP/2 client used for RFC 8484 providers for one request.
 
         Built on first use so a resolver pointed at a JSON provider never opens an
-        HTTP/2 connection pool it will not use.
+        HTTP/2 connection pool it will not use, and rebuilt whenever the effective
+        proxy or TLS verification setting changes live. A client replaced while a
+        request is still in flight on it stays open until that request returns it,
+        so a concurrent lookup never sends on a closed client.
         """
-        if self._http2_client is None:
-            self._http2_client = httpx.Client(
+        client, retired = self._acquire_http2_client()
+        try:
+            # Close the idle client this borrow replaced only once the release below
+            # is guaranteed, so a failing close() cannot strand the new client's count.
+            if retired is not None:
+                _close_http2_client(retired)
+            yield client
+        finally:
+            self._release_http2_client(client)
+
+    def _build_http2_client(self, proxy: object, verify: bool) -> Any:
+        if proxy is not None and not isinstance(proxy, str):
+            msg = (
+                f"Invalid proxy configuration for DoH ({self.base_url}): "
+                f"expected str or None, got {type(proxy).__name__}"
+            )
+            raise _DoHTransportError(msg)
+        try:
+            return httpx.Client(
                 http2=True,
                 timeout=10,
-                verify=get_ssl_verify(self.base_url),
-                proxy=_first_proxy(get_proxies(self.base_url)),
+                verify=verify,
+                proxy=proxy,
             )
-        return self._http2_client
+        except (ImportError, httpx.InvalidURL, TypeError, ValueError) as exc:
+            msg = f"Invalid or unavailable httpx transport for DoH ({self.base_url}): {exc}"
+            raise _DoHTransportError(msg) from exc
+
+    def _acquire_http2_client(self) -> tuple[Any, Any | None]:
+        """Count a borrow of the current client, rebuilding it if settings changed.
+
+        Returns the client plus the idle client it replaced, if any; the caller must
+        close that one outside the lock.
+        """
+        retired: Any | None = None
+        try:
+            with self._http2_lock:
+                proxy = _first_proxy(get_proxies(self.base_url))
+                verify = get_ssl_verify(self.base_url)
+                desired = (proxy, verify)
+                client = self._http2_client
+                if client is None or self._http2_client_config != desired:
+                    if client is not None:
+                        self._http2_client = None
+                        self._http2_client_config = None
+                        if client not in self._http2_borrowers:
+                            retired = client
+                    client = self._build_http2_client(proxy, verify)
+                    self._http2_client = client
+                    self._http2_client_config = desired
+                self._http2_borrowers[client] = self._http2_borrowers.get(client, 0) + 1
+        except BaseException:
+            # No borrow was counted; the replaced idle client is no longer reachable.
+            if retired is not None:
+                _close_http2_client(retired)
+            raise
+        return client, retired
+
+    def _release_http2_client(self, client: Any) -> None:
+        with self._http2_lock:
+            remaining = self._http2_borrowers.get(client, 0) - 1
+            if remaining > 0:
+                self._http2_borrowers[client] = remaining
+                return
+            self._http2_borrowers.pop(client, None)
+            if client is self._http2_client:
+                return
+        _close_http2_client(client)
 
     def _resolve_wireformat(self, hostname: str, record_type: str) -> list[str]:
         """Resolve via RFC 8484: base64url query in, DNS message out."""
@@ -1145,11 +1265,12 @@ class DoHResolver:
 
         qtype = doh_wireformat.TYPE_AAAA if record_type == "AAAA" else doh_wireformat.TYPE_A
         param = doh_wireformat.encode_query_param(hostname, qtype)
-        response = self._get_http2_client().get(
-            self.base_url,
-            params={"dns": param},
-            headers={"Accept": "application/dns-message"},
-        )
+        with self._borrow_http2_client() as client:
+            response = client.get(
+                self.base_url,
+                params={"dns": param},
+                headers={"Accept": "application/dns-message"},
+            )
         response.raise_for_status()
         return doh_wireformat.decode_answer(response.content, qtype)
 
@@ -1485,12 +1606,15 @@ def _init_doh_resolver_internal(doh_server: str) -> DoHResolver:
     def resolve_ipv6(hostname: str) -> list[str]:
         return doh_resolver.resolve(hostname, "AAAA")
 
-    # Skip DoH resolution for the DoH server itself, IP addresses, and private addresses
+    # Skip DoH resolution for the DoH server itself, active proxy endpoints,
+    # IP addresses, and private addresses.
     def skip_doh(hostname: str) -> bool:
+        host_lower = hostname.lower()
         return (
-            hostname in (server_hostname, server_ip)
+            host_lower in (server_hostname.lower(), server_ip)
             or _is_ip_address(hostname)
             or _is_local_address(hostname)
+            or host_lower in _configured_proxy_hostnames()
         )
 
     # Replace socket.getaddrinfo with our DoH-enabled version
