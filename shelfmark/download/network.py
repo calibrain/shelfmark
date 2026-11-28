@@ -1175,13 +1175,22 @@ class DoHResolver:
         request is still in flight on it stays open until that request returns it,
         so a concurrent lookup never sends on a closed client.
         """
-        client = self._acquire_http2_client()
+        client, retired = self._acquire_http2_client()
         try:
+            # Close the idle client this borrow replaced only once the release below
+            # is guaranteed, so a failing close() cannot strand the new client's count.
+            if retired is not None:
+                _close_http2_client(retired)
             yield client
         finally:
             self._release_http2_client(client)
 
-    def _acquire_http2_client(self) -> Any:
+    def _acquire_http2_client(self) -> tuple[Any, Any | None]:
+        """Count a borrow of the current client, rebuilding it if settings changed.
+
+        Returns the client plus the idle client it replaced, if any; the caller must
+        close that one outside the lock.
+        """
         proxy = _first_proxy(get_proxies(self.base_url))
         verify = get_ssl_verify(self.base_url)
         desired = (proxy, verify)
@@ -1211,10 +1220,12 @@ class DoHResolver:
                     self._http2_client = client
                     self._http2_client_config = desired
                 self._http2_borrowers[client] = self._http2_borrowers.get(client, 0) + 1
-                return client
-        finally:
+        except BaseException:
+            # No borrow was counted; the replaced idle client is no longer reachable.
             if retired is not None:
                 _close_http2_client(retired)
+            raise
+        return client, retired
 
     def _release_http2_client(self, client: Any) -> None:
         with self._http2_lock:

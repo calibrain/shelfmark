@@ -7,6 +7,7 @@ these providers only work through wireformat. Quad9 additionally requires HTTP/2
 
 import base64
 import struct
+import threading
 
 import pytest
 
@@ -264,6 +265,124 @@ def test_wireformat_http2_client_stays_open_for_in_flight_request_after_rebuild(
 
     assert closed == [first]
     assert resolver._http2_client is second
+    assert resolver._http2_borrowers == {}
+
+
+def test_wireformat_http2_client_failed_close_does_not_strand_new_borrow(monkeypatch):
+    """If closing the replaced idle client raises, the new client's borrow must
+    still be returned so it can be closed when it is replaced in turn."""
+    import shelfmark.download.network as network
+
+    state = {"verify": False}
+    closed: list[object] = []
+
+    class _FakeClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            self.fail_close = False
+
+        def close(self):
+            closed.append(self)
+            if self.fail_close:
+                raise RuntimeError("close failed")
+
+    monkeypatch.setattr(network.httpx, "Client", lambda **kwargs: _FakeClient(**kwargs))
+    monkeypatch.setattr(network, "get_proxies", lambda _url: {})
+    monkeypatch.setattr(network, "get_ssl_verify", lambda _url: state["verify"])
+
+    resolver = network.DoHResolver("https://dns.quad9.net/dns-query", "dns.quad9.net", "9.9.9.9")
+    with resolver._borrow_http2_client() as first:
+        first.fail_close = True
+
+    state["verify"] = True
+    with pytest.raises(RuntimeError, match="close failed"):
+        with resolver._borrow_http2_client():
+            pytest.fail("borrow must not be entered when closing the old client fails")
+
+    second = resolver._http2_client
+    assert second is not None
+    assert second is not first
+    assert closed == [first]
+    assert resolver._http2_borrowers == {}
+
+    state["verify"] = False
+    with resolver._borrow_http2_client() as third:
+        assert third is not second
+    assert closed == [first, second]
+
+
+def test_wireformat_rebuild_waits_for_concurrent_in_flight_requests(monkeypatch):
+    """Two lookups block inside .get() on the old client while a third lookup sees
+    a TLS change and rebuilds. The old client must stay open while either request
+    is in flight (including one that fails) and close exactly once afterwards."""
+    import shelfmark.download.network as network
+
+    state = {"verify": False}
+    closed: list[object] = []
+    entered = {name: threading.Event() for name in ("old-fail", "old-ok")}
+    proceed = {name: threading.Event() for name in ("old-fail", "old-ok")}
+    answer = _build_response(answers=[(wf.TYPE_A, bytes([192, 0, 2, 1]))])
+
+    class _FakeResponse:
+        content = answer
+
+        def raise_for_status(self):
+            return None
+
+    class _FakeClient:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+
+        def close(self):
+            closed.append(self)
+
+        def get(self, *_args, **_kwargs):
+            name = threading.current_thread().name
+            if name in entered:
+                entered[name].set()
+                assert proceed[name].wait(5)
+                if name == "old-fail":
+                    raise network.httpx.ConnectError("simulated failure")
+            return _FakeResponse()
+
+    monkeypatch.setattr(network.httpx, "Client", lambda **kwargs: _FakeClient(**kwargs))
+    monkeypatch.setattr(network, "get_proxies", lambda _url: {})
+    monkeypatch.setattr(network, "get_ssl_verify", lambda _url: state["verify"])
+
+    resolver = network.DoHResolver("https://dns.quad9.net/dns-query", "dns.quad9.net", "9.9.9.9")
+    results: dict[str, object] = {}
+
+    def _lookup():
+        name = threading.current_thread().name
+        try:
+            results[name] = resolver._resolve_wireformat("example.com", "A")
+        except network.httpx.HTTPError as exc:
+            results[name] = exc
+
+    threads = [threading.Thread(target=_lookup, name=name) for name in entered]
+    for thread in threads:
+        thread.start()
+    for name in entered:
+        assert entered[name].wait(5)
+
+    old = resolver._http2_client
+    assert resolver._http2_borrowers == {old: 2}
+
+    state["verify"] = True
+    assert resolver._resolve_wireformat("example.com", "A") == ["192.0.2.1"]
+    new = resolver._http2_client
+    assert new is not old
+    assert closed == []
+
+    proceed["old-fail"].set()
+    threads[0].join(5)
+    assert isinstance(results["old-fail"], network.httpx.ConnectError)
+    assert closed == []
+
+    proceed["old-ok"].set()
+    threads[1].join(5)
+    assert results["old-ok"] == ["192.0.2.1"]
+    assert closed == [old]
     assert resolver._http2_borrowers == {}
 
 
