@@ -398,11 +398,15 @@ class ProwlarrClient:
         search_type: str = "book",
         limit: int = 100,
         offset: int = 0,
+        read_timeout: float | None = None,
     ) -> list[dict[str, Any]]:
         """Search a specific indexer via Prowlarr's Torznab/Newznab endpoint.
 
         This returns richer fields (e.g., author/booktitle, torznab tags like
         FreeLeech) than the JSON /api/v1/search endpoint.
+
+        ``read_timeout`` can only shorten the indexer timeout, for a caller that
+        has less of its own budget left.
 
         Raises:
             ProwlarrSearchError: The search could not be completed. An empty list
@@ -426,12 +430,17 @@ class ProwlarrClient:
             params["cat"] = ",".join(str(c) for c in categories)
 
         logger.debug("Prowlarr API: GET %s (torznab)", url)
+        timeout = (
+            self.indexer_timeout
+            if read_timeout is None
+            else max(0.0, min(self.indexer_timeout, read_timeout))
+        )
 
         try:
             response = self._session.get(
                 url=url,
                 params=params,
-                timeout=(_CONNECT_TIMEOUT_SECONDS, self.indexer_timeout),
+                timeout=(_CONNECT_TIMEOUT_SECONDS, timeout),
                 headers={
                     # Override the session default JSON accept header.
                     "Accept": "application/rss+xml, application/xml;q=0.9, */*;q=0.8"
@@ -454,9 +463,9 @@ class ProwlarrClient:
                 "behind FlareSolverr can need far longer than that on a cold Cloudflare "
                 "challenge - raise PROWLARR_INDEXER_TIMEOUT if this keeps happening.",
                 indexer_id,
-                self.indexer_timeout,
+                timeout,
             )
-            msg = f"indexer {indexer_id} did not respond within {self.indexer_timeout}s"
+            msg = f"indexer {indexer_id} did not respond within {timeout}s"
             raise ProwlarrSearchError(msg) from e
         except Exception as e:
             logger.exception("Prowlarr Torznab search failed for indexer %s", indexer_id)
